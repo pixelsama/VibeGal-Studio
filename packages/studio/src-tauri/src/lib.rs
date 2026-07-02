@@ -106,21 +106,43 @@ fn open_project(path: String) -> Result<ProjectData, String> {
     let manifest = read_json(&content_dir.join("manifest.json"))?;
     let meta_json = read_json(&content_dir.join("meta.json"))?;
 
+    // 章节加载顺序：优先遵循 meta.chapters 契约（决定加载哪些 + 顺序）；
+    // 仅当 meta 没声明 chapters 时，才 fallback 到扫描 chapters/ 目录。
     let mut chapters = vec![];
-    let chapters_dir = content_dir.join("chapters");
-    if chapters_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&chapters_dir) {
-            let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-            paths.sort();
-            for p in paths {
-                if p.extension().and_then(|e| e.to_str()) == Some("json") {
-                    let rel = p
-                        .strip_prefix(project_path)
-                        .unwrap_or(&p)
-                        .to_string_lossy()
-                        .replace('\\', "/");
-                    let data = read_json(&p)?;
-                    chapters.push(ChapterEntry { rel_path: rel, data });
+    let meta_chapters: Vec<String> = meta_json
+        .get("chapters")
+        .and_then(|c| c.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    if !meta_chapters.is_empty() {
+        // 按 meta 声明的顺序逐个读取（meta 里写的是相对 content 根的路径，如 "chapters/ch01.json"）
+        for rel in &meta_chapters {
+            let path = content_dir.join(rel);
+            if path.exists() {
+                let data = read_json(&path)?;
+                chapters.push(ChapterEntry { rel_path: rel.clone(), data });
+            } else {
+                log::warn!("meta.chapters 声明了 {} 但文件不存在，已跳过", rel);
+            }
+        }
+    } else {
+        // fallback：扫描 chapters/ 目录（草稿/废弃文件也会被载入，仅为兼容）
+        let chapters_dir = content_dir.join("chapters");
+        if chapters_dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(&chapters_dir) {
+                let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+                paths.sort();
+                for p in paths {
+                    if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                        let rel = p
+                            .strip_prefix(&content_dir)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        let data = read_json(&p)?;
+                        chapters.push(ChapterEntry { rel_path: rel, data });
+                    }
                 }
             }
         }
@@ -143,16 +165,28 @@ fn open_project(path: String) -> Result<ProjectData, String> {
 /// 在 parent_dir 下创建新项目：建目录结构 + 复制默认渲染层模板 + 写 gal.project.json
 #[tauri::command]
 fn create_project(parent_dir: String, name: String, app_handle: tauri::AppHandle) -> Result<ProjectData, String> {
+    // 校验项目名：只允许文件名片段，禁止路径分隔符与 ..
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name == ".."
+        || name == "."
+        || name.contains('\0')
+    {
+        return Err(format!("非法项目名: {:?}", name));
+    }
     let project_path = Path::new(&parent_dir).join(&name);
     if project_path.exists() {
         return Err(format!("目录已存在: {}", project_path.display()));
     }
+    // 进一步确保 project_path 规范化后仍在 parent_dir 内
+    ensure_within(Path::new(&parent_dir), &project_path)?;
 
-    // 创建目录骨架
+    // 创建目录骨架（资源放在 content/assets/，与 manifest 的相对路径解析契约一致）
     fs::create_dir_all(project_path.join("content/chapters"))
-        .map_err(|e| format!("创建 content 失败: {}", e))?;
-    fs::create_dir_all(project_path.join("assets"))
-        .map_err(|e| format!("创建 assets 失败: {}", e))?;
+        .map_err(|e| format!("创建 content/chapters 失败: {}", e))?;
+    fs::create_dir_all(project_path.join("content/assets"))
+        .map_err(|e| format!("创建 content/assets 失败: {}", e))?;
     fs::create_dir_all(project_path.join("renderers/default"))
         .map_err(|e| format!("创建 renderers/default 失败: {}", e))?;
 
@@ -193,14 +227,16 @@ fn create_project(parent_dir: String, name: String, app_handle: tauri::AppHandle
     open_project(project_path.to_string_lossy().into_owned())
 }
 
-/// 保存单个文件（相对项目根的路径）
+/// 保存单个文件（相对项目根的路径）。校验目标必须在项目目录内。
 #[tauri::command]
 fn save_file(project_path: String, rel_path: String, content: String) -> Result<(), String> {
-    let target = Path::new(&project_path).join(&rel_path);
-    if let Some(parent) = target.parent() {
+    let project_root = Path::new(&project_path);
+    let target = project_root.join(&rel_path);
+    let safe_target = ensure_within(project_root, &target)?;
+    if let Some(parent) = safe_target.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
-    fs::write(&target, content).map_err(|e| format!("写文件失败 ({}): {}", target.display(), e))
+    fs::write(&safe_target, content).map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
 }
 
 /// 更新 gal.project.json
@@ -210,6 +246,31 @@ fn save_project_meta(project_path: String, meta: ProjectMeta) -> Result<(), Stri
 }
 
 // ── 工具函数 ──────────────────────────────────────
+
+/// 安全校验：确保 target 路径规范化后仍位于 base 目录内，防止 `../` 或绝对路径穿越。
+/// 对 base 与 target 都 canonicalize 后做 starts_with 校验。
+fn ensure_within(base: &Path, target: &Path) -> Result<PathBuf, String> {
+    let base_canon = base.canonicalize()
+        .map_err(|e| format!("无法定位基准目录 {}: {}", base.display(), e))?;
+    // target 可能尚不存在（如待写的文件），canonicalize 其【父目录】再拼回文件名
+    let target_canon = match target.canonicalize() {
+        Ok(t) => t,
+        Err(_) => {
+            // 父目录必须存在，否则报错
+            let parent = target.parent().unwrap_or(Path::new("."));
+            let parent_canon = parent.canonicalize()
+                .map_err(|e| format!("无法定位目标父目录 {}: {}", parent.display(), e))?;
+            parent_canon.join(target.file_name().unwrap_or_default())
+        }
+    };
+    if !target_canon.starts_with(&base_canon) {
+        return Err(format!(
+            "路径越界：{} 不在项目目录 {} 内（可能的路径穿越攻击）",
+            target.display(), base.display()
+        ));
+    }
+    Ok(target_canon)
+}
 
 fn read_json(path: &Path) -> Result<serde_json::Value, String> {
     let text = fs::read_to_string(path)
