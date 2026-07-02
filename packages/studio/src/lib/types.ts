@@ -16,6 +16,41 @@ export interface ProjectListItem {
   meta: ProjectMeta;
 }
 
+/** 图节点（graph.json 中的一项） */
+export interface GraphNode {
+  id: string;
+  title: string;
+  /** 相对 content 根，如 "nodes/prologue.json" */
+  file: string;
+  position: { x: number; y: number };
+}
+
+/** 图边 */
+export interface GraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  condition: unknown | null;
+}
+
+/** 完整图 */
+export interface ProjectGraph {
+  version: number;
+  entryNodeId: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /** true = 内存从 chapters 合成，graph.json 不存在 */
+  synthetic?: boolean;
+}
+
+/** 单个节点的指令数据（open_project 已读好的） */
+export interface NodeEntry {
+  /** = graph node 的 file */
+  relPath: string;
+  /** null = 文件缺失/读取失败 */
+  data: unknown | null;
+}
+
 /** 打开项目后拿到的完整数据 */
 export interface ProjectData {
   path: string;
@@ -27,4 +62,8 @@ export interface ProjectData {
   };
   /** 项目内可用的渲染层 id 列表（= renderers/ 子目录名） */
   rendererIds: string[];
+  /** 图结构；合成模式下 synthetic=true */
+  graph?: ProjectGraph;
+  /** 各节点的指令数据（按 graph.nodes 的 file 读取） */
+  nodes?: NodeEntry[];
 }

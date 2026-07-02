@@ -3,7 +3,7 @@
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{
@@ -43,12 +43,55 @@ pub struct ProjectContent {
 }
 
 #[derive(Serialize, Clone)]
+pub struct GraphPosition {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct GraphNode {
+    pub id: String,
+    pub title: String,
+    pub file: String,
+    pub position: GraphPosition,
+}
+
+#[derive(Serialize, Clone)]
+pub struct GraphEdge {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub condition: serde_json::Value,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ProjectGraph {
+    pub version: u32,
+    #[serde(rename = "entryNodeId")]
+    pub entry_node_id: String,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+    pub synthetic: bool,
+}
+
+#[derive(Serialize, Clone)]
+pub struct NodeEntry {
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    pub data: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Clone)]
 pub struct ProjectData {
     pub path: String,
     pub meta: ProjectMeta,
     pub content: ProjectContent,
     #[serde(rename = "rendererIds")]
     pub renderer_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<ProjectGraph>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nodes: Option<Vec<NodeEntry>>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -121,6 +164,10 @@ struct ProjectWatchers {
 
 const PROJECT_CHANGED_EVENT: &str = "project_changed";
 const PROJECT_WATCH_DEBOUNCE: Duration = Duration::from_millis(300);
+const GRAPH_LAYOUT_COLS: usize = 3;
+const GRAPH_LAYOUT_GAP_X: f64 = 260.0;
+const GRAPH_LAYOUT_GAP_Y: f64 = 160.0;
+const GRAPH_LAYOUT_MARGIN: f64 = 80.0;
 
 fn read_project_meta(project_path: &Path) -> Result<ProjectMeta, String> {
     let meta_file = project_path.join("gal.project.json");
@@ -245,6 +292,7 @@ fn open_project(path: String) -> Result<ProjectData, String> {
     }
 
     let renderer_ids = list_renderer_ids(&project_path);
+    let (graph, nodes) = load_project_graph_data(&content_root, &chapters)?;
 
     Ok(ProjectData {
         path: project_path.to_string_lossy().into_owned(),
@@ -255,7 +303,203 @@ fn open_project(path: String) -> Result<ProjectData, String> {
             chapters,
         },
         renderer_ids,
+        graph: Some(graph),
+        nodes: Some(nodes),
     })
+}
+
+fn load_project_graph_data(
+    content_root: &Path,
+    chapters: &[ChapterEntry],
+) -> Result<(ProjectGraph, Vec<NodeEntry>), String> {
+    let graph_path = content_root.join("graph.json");
+    if graph_path.is_file() {
+        load_graph_file(content_root, &graph_path)
+    } else {
+        Ok(synthesize_graph_from_chapters(chapters))
+    }
+}
+
+fn load_graph_file(
+    content_root: &Path,
+    graph_path: &Path,
+) -> Result<(ProjectGraph, Vec<NodeEntry>), String> {
+    let graph_raw = read_json(graph_path)?;
+    let version = graph_raw
+        .get("version")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(1) as u32;
+    let entry_node_id = required_string(&graph_raw, "entryNodeId")?.to_string();
+
+    let mut graph_nodes = vec![];
+    if let Some(nodes_raw) = graph_raw.get("nodes") {
+        let nodes_array = nodes_raw
+            .as_array()
+            .ok_or_else(|| "graph.json 的 nodes 必须是数组".to_string())?;
+        for node_raw in nodes_array {
+            let id = required_string_field(node_raw, "id", "nodes[].id")?;
+            if id.is_empty() {
+                return Err("graph.json 的 nodes[].id 不能为空".to_string());
+            }
+            let file = required_string_field(node_raw, "file", "nodes[].file")?;
+            let title = node_raw
+                .get("title")
+                .and_then(|value| value.as_str())
+                .unwrap_or(id)
+                .to_string();
+            let position = node_raw.get("position");
+            let x = position
+                .and_then(|value| value.get("x"))
+                .and_then(|value| value.as_f64())
+                .unwrap_or(0.0);
+            let y = position
+                .and_then(|value| value.get("y"))
+                .and_then(|value| value.as_f64())
+                .unwrap_or(0.0);
+            graph_nodes.push(GraphNode {
+                id: id.to_string(),
+                title,
+                file: file.to_string(),
+                position: GraphPosition { x, y },
+            });
+        }
+    }
+
+    let mut graph_edges = vec![];
+    if let Some(edges_raw) = graph_raw.get("edges") {
+        let edges_array = edges_raw
+            .as_array()
+            .ok_or_else(|| "graph.json 的 edges 必须是数组".to_string())?;
+        for edge_raw in edges_array {
+            graph_edges.push(GraphEdge {
+                id: required_string_field(edge_raw, "id", "edges[].id")?.to_string(),
+                from: required_string_field(edge_raw, "from", "edges[].from")?.to_string(),
+                to: required_string_field(edge_raw, "to", "edges[].to")?.to_string(),
+                condition: edge_raw
+                    .get("condition")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            });
+        }
+    }
+
+    let mut node_entries = vec![];
+    for node in &graph_nodes {
+        let node_path = resolve_relative_under(content_root, &node.file)?;
+        let data = if node_path.exists() {
+            Some(read_json(&node_path)?)
+        } else {
+            log::warn!("节点 {} 的文件 {} 不存在，已跳过", node.id, node.file);
+            None
+        };
+        node_entries.push(NodeEntry {
+            rel_path: node.file.clone(),
+            data,
+        });
+    }
+
+    Ok((
+        ProjectGraph {
+            version,
+            entry_node_id,
+            nodes: graph_nodes,
+            edges: graph_edges,
+            synthetic: false,
+        },
+        node_entries,
+    ))
+}
+
+fn synthesize_graph_from_chapters(chapters: &[ChapterEntry]) -> (ProjectGraph, Vec<NodeEntry>) {
+    let mut used_ids = HashSet::new();
+    let mut graph_nodes = vec![];
+    let mut graph_edges = vec![];
+    let mut prev_id: Option<String> = None;
+
+    for (index, chapter) in chapters.iter().enumerate() {
+        let stem = Path::new(&chapter.rel_path)
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("chapter");
+        let id = ensure_unique_graph_id(stem, &mut used_ids);
+        let position = auto_layout_graph_position(index);
+
+        if let Some(prev) = prev_id {
+            graph_edges.push(GraphEdge {
+                id: format!("{}__{}", prev, id),
+                from: prev,
+                to: id.clone(),
+                condition: serde_json::Value::Null,
+            });
+        }
+        prev_id = Some(id.clone());
+
+        graph_nodes.push(GraphNode {
+            id,
+            title: stem.to_string(),
+            file: chapter.rel_path.clone(),
+            position,
+        });
+    }
+
+    let entry_node_id = graph_nodes
+        .first()
+        .map(|node| node.id.clone())
+        .unwrap_or_default();
+    let node_entries = chapters
+        .iter()
+        .map(|chapter| NodeEntry {
+            rel_path: chapter.rel_path.clone(),
+            data: Some(chapter.data.clone()),
+        })
+        .collect();
+
+    (
+        ProjectGraph {
+            version: 1,
+            entry_node_id,
+            nodes: graph_nodes,
+            edges: graph_edges,
+            synthetic: true,
+        },
+        node_entries,
+    )
+}
+
+fn required_string<'a>(value: &'a serde_json::Value, field: &str) -> Result<&'a str, String> {
+    required_string_field(value, field, field)
+}
+
+fn required_string_field<'a>(
+    value: &'a serde_json::Value,
+    key: &str,
+    label: &str,
+) -> Result<&'a str, String> {
+    value
+        .get(key)
+        .and_then(|field_value| field_value.as_str())
+        .ok_or_else(|| format!("graph.json 缺少必填字段 {}", label))
+}
+
+fn ensure_unique_graph_id(base: &str, used: &mut HashSet<String>) -> String {
+    let mut candidate = base.to_string();
+    let mut suffix = 2;
+    while used.contains(&candidate) {
+        candidate = format!("{}_{}", base, suffix);
+        suffix += 1;
+    }
+    used.insert(candidate.clone());
+    candidate
+}
+
+fn auto_layout_graph_position(index: usize) -> GraphPosition {
+    let row = index / GRAPH_LAYOUT_COLS;
+    let col = index % GRAPH_LAYOUT_COLS;
+    GraphPosition {
+        x: GRAPH_LAYOUT_MARGIN + col as f64 * GRAPH_LAYOUT_GAP_X,
+        y: GRAPH_LAYOUT_MARGIN + row as f64 * GRAPH_LAYOUT_GAP_Y,
+    }
 }
 
 /// 在 parent_dir 下创建新项目：建目录结构 + 复制默认渲染层模板 + 写 gal.project.json
@@ -808,6 +1052,344 @@ mod tests {
             }),
         )
         .unwrap();
+    }
+
+    fn write_graph_project(
+        project: &Path,
+        graph_json: serde_json::Value,
+        nodes: &[(&str, serde_json::Value)],
+    ) {
+        write_minimal_project(project, serde_json::json!([]));
+        write_json(&project.join("content/graph.json"), &graph_json).unwrap();
+        for (rel_path, data) in nodes {
+            write_json(&project.join("content").join(rel_path), data).unwrap();
+        }
+    }
+
+    #[test]
+    fn open_project_loads_graph_when_present() {
+        let root = unique_temp_dir("graph-present");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "prologue",
+                "nodes": [
+                    {
+                        "id": "prologue",
+                        "title": "Prologue",
+                        "file": "nodes/prologue.json",
+                        "position": { "x": 120.0, "y": 180.0 }
+                    },
+                    {
+                        "id": "first_meeting",
+                        "title": "First Meeting",
+                        "file": "nodes/first_meeting.json",
+                        "position": { "x": 380.0, "y": 180.0 }
+                    }
+                ],
+                "edges": [
+                    {
+                        "id": "prologue__first_meeting",
+                        "from": "prologue",
+                        "to": "first_meeting",
+                        "condition": null
+                    }
+                ]
+            }),
+            &[
+                (
+                    "nodes/prologue.json",
+                    serde_json::json!([{ "t": "narrate", "text": "Start" }]),
+                ),
+                (
+                    "nodes/first_meeting.json",
+                    serde_json::json!([{ "t": "say", "who": "hero", "text": "Hi" }]),
+                ),
+            ],
+        );
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let graph = opened.graph.unwrap();
+        let nodes = opened.nodes.unwrap();
+
+        assert!(!graph.synthetic);
+        assert_eq!(graph.entry_node_id, "prologue");
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].rel_path, "nodes/prologue.json");
+        assert!(nodes[0].data.is_some());
+        assert_eq!(nodes[1].rel_path, "nodes/first_meeting.json");
+        assert!(nodes[1].data.is_some());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_synthesizes_linear_graph_from_chapters() {
+        let root = unique_temp_dir("synthetic-linear");
+        let project = root.join("project");
+        write_minimal_project(
+            &project,
+            serde_json::json!([
+                "chapters/ch01.json",
+                "chapters/ch02.json",
+                "chapters/ch03.json"
+            ]),
+        );
+        write_text(
+            &project.join("content/chapters/ch01.json"),
+            r#"[{"t":"wait","ms":1}]"#,
+        );
+        write_text(
+            &project.join("content/chapters/ch02.json"),
+            r#"[{"t":"wait","ms":2}]"#,
+        );
+        write_text(
+            &project.join("content/chapters/ch03.json"),
+            r#"[{"t":"wait","ms":3}]"#,
+        );
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let graph = opened.graph.unwrap();
+        let nodes = opened.nodes.unwrap();
+
+        assert!(graph.synthetic);
+        assert_eq!(graph.version, 1);
+        assert_eq!(graph.entry_node_id, "ch01");
+        assert_eq!(
+            graph
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ch01", "ch02", "ch03"]
+        );
+        assert_eq!(
+            graph
+                .edges
+                .iter()
+                .map(|edge| (edge.id.as_str(), edge.from.as_str(), edge.to.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("ch01__ch02", "ch01", "ch02"),
+                ("ch02__ch03", "ch02", "ch03")
+            ]
+        );
+        assert_eq!(nodes.len(), 3);
+        assert!(nodes.iter().all(|node| node.data.is_some()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_synthesizes_graph_even_when_no_chapters() {
+        let root = unique_temp_dir("synthetic-empty");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!([]));
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let graph = opened.graph.unwrap();
+        let nodes = opened.nodes.unwrap();
+
+        assert!(graph.synthetic);
+        assert_eq!(graph.entry_node_id, "");
+        assert!(graph.nodes.is_empty());
+        assert!(graph.edges.is_empty());
+        assert!(nodes.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_rejects_graph_node_file_outside_content_dir() {
+        let root = unique_temp_dir("graph-escape");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "escape",
+                "nodes": [
+                    {
+                        "id": "escape",
+                        "title": "Escape",
+                        "file": "../../outside.json",
+                        "position": { "x": 0, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[],
+        );
+        write_text(&root.join("outside.json"), "[]");
+
+        let result = open_project(project.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("路径越界"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_skips_missing_node_file_with_warning() {
+        let root = unique_temp_dir("graph-missing-node");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "present",
+                "nodes": [
+                    {
+                        "id": "present",
+                        "title": "Present",
+                        "file": "nodes/present.json",
+                        "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                        "id": "missing",
+                        "title": "Missing",
+                        "file": "nodes/missing.json",
+                        "position": { "x": 260, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[(
+                "nodes/present.json",
+                serde_json::json!([{ "t": "narrate", "text": "Here" }]),
+            )],
+        );
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let nodes = opened.nodes.unwrap();
+
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].rel_path, "nodes/present.json");
+        assert!(nodes[0].data.is_some());
+        assert_eq!(nodes[1].rel_path, "nodes/missing.json");
+        assert!(nodes[1].data.is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_rejects_graph_json_without_entry_node_id() {
+        let root = unique_temp_dir("graph-no-entry");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "nodes": [
+                    {
+                        "id": "prologue",
+                        "title": "Prologue",
+                        "file": "nodes/prologue.json",
+                        "position": { "x": 0, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[("nodes/prologue.json", serde_json::json!([]))],
+        );
+
+        let result = open_project(project.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn synthesized_graph_assigns_unique_node_ids() {
+        let root = unique_temp_dir("synthetic-unique");
+        let project = root.join("project");
+        write_minimal_project(
+            &project,
+            serde_json::json!(["chapters/a/ch01.json", "chapters/b/ch01.json"]),
+        );
+        write_text(&project.join("content/chapters/a/ch01.json"), "[]");
+        write_text(&project.join("content/chapters/b/ch01.json"), "[]");
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let graph = opened.graph.unwrap();
+
+        assert_eq!(graph.nodes[0].id, "ch01");
+        assert_eq!(graph.nodes[1].id, "ch01_2");
+        assert_eq!(graph.edges[0].id, "ch01__ch01_2");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn synthesized_graph_auto_layout_is_deterministic() {
+        let root = unique_temp_dir("synthetic-layout");
+        let project = root.join("project");
+        write_minimal_project(
+            &project,
+            serde_json::json!([
+                "chapters/ch01.json",
+                "chapters/ch02.json",
+                "chapters/ch03.json",
+                "chapters/ch04.json"
+            ]),
+        );
+        for chapter in ["ch01", "ch02", "ch03", "ch04"] {
+            write_text(
+                &project.join(format!("content/chapters/{chapter}.json")),
+                "[]",
+            );
+        }
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let graph = opened.graph.unwrap();
+
+        assert_eq!(graph.nodes[0].position.x, 80.0);
+        assert_eq!(graph.nodes[0].position.y, 80.0);
+        assert_eq!(graph.nodes[2].position.x, 600.0);
+        assert_eq!(graph.nodes[2].position.y, 80.0);
+        assert_eq!(graph.nodes[3].position.x, 80.0);
+        assert_eq!(graph.nodes[3].position.y, 240.0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_graph_mode_does_not_mutate_disk() {
+        let root = unique_temp_dir("graph-no-mutate");
+        let graph_project = root.join("graph-project");
+        write_graph_project(
+            &graph_project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "prologue",
+                "nodes": [
+                    {
+                        "id": "prologue",
+                        "title": "Prologue",
+                        "file": "nodes/prologue.json",
+                        "position": { "x": 0, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[("nodes/prologue.json", serde_json::json!([]))],
+        );
+        let graph_before = fs::read_to_string(graph_project.join("content/graph.json")).unwrap();
+
+        let synthetic_project = root.join("synthetic-project");
+        write_minimal_project(
+            &synthetic_project,
+            serde_json::json!(["chapters/ch01.json"]),
+        );
+        write_text(&synthetic_project.join("content/chapters/ch01.json"), "[]");
+
+        open_project(graph_project.to_string_lossy().into_owned()).unwrap();
+        open_project(synthetic_project.to_string_lossy().into_owned()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(graph_project.join("content/graph.json")).unwrap(),
+            graph_before
+        );
+        assert!(!synthetic_project.join("content/graph.json").exists());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
