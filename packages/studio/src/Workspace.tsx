@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ProjectData } from "./lib/types";
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
@@ -22,11 +23,22 @@ interface Props {
 
 type WorkspaceId = "render" | "script" | "assets";
 type SyncState = "synced" | "syncing" | "error";
+type WindowDragMouseEvent = Pick<React.MouseEvent<HTMLElement>, "button" | "target">;
 
 interface ProjectChangedPayload {
   projectPath: string;
   rendererChanged: boolean;
 }
+
+const windowDragIgnoreSelector = [
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "[role='button']",
+  "[data-window-drag='ignore']",
+].join(",");
 
 export function Workspace({ project, onBack, onProjectChanged }: Props) {
   const [workspace, setWorkspace] = useState<WorkspaceId>("render");
@@ -101,10 +113,18 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
     await refreshProject(false);
   }, [refreshProject]);
 
+  const handleTitleBarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (!shouldStartWindowDrag(event)) return;
+
+    void getCurrentWindow().startDragging().catch((e) => {
+      console.warn("启动窗口拖拽失败:", e);
+    });
+  }, []);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
       {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
-      <header data-tauri-drag-region style={titleBarStyle}>
+      <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
           <NavBtn onClick={onBack} label="返回项目列表" ariaLabel="返回">‹</NavBtn>
@@ -153,6 +173,18 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
       </div>
     </div>
   );
+}
+
+export function shouldStartWindowDrag(event: WindowDragMouseEvent): boolean {
+  if (event.button !== 0) return false;
+
+  const target = event.target;
+  if (!target || !hasClosest(target)) return true;
+  return target.closest(windowDragIgnoreSelector) === null;
+}
+
+function hasClosest(target: EventTarget): target is EventTarget & { closest: (selector: string) => Element | null } {
+  return typeof (target as { closest?: unknown }).closest === "function";
 }
 
 function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => void }) {
