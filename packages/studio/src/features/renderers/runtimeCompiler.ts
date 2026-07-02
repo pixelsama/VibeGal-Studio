@@ -53,6 +53,38 @@ function bareKey(spec: string): string | null {
   return null;
 }
 
+function normalizeNamedImports(names: string): string {
+  return names
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const match = part.match(/^(.+?)\s+as\s+(.+)$/);
+      return match ? `${match[1].trim()}: ${match[2].trim()}` : part;
+    })
+    .join(", ");
+}
+
+function exportLocalNames(names: string): string {
+  return names
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const match = part.match(/^(.+?)\s+as\s+(.+)$/);
+      return match ? match[2].trim() : part;
+    })
+    .join(", ");
+}
+
+function vendorAccess(key: string): string {
+  return `globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}]`;
+}
+
+function vendorLocalName(key: string): string {
+  return `__gal_vendor_${key.replace(/[^A-Za-z0-9_$]/g, "_")}`;
+}
+
 /**
  * 把一段 ESM 代码里的 bare import 改写成从 globalThis.__GAL_VENDOR__ 取值。
  * 处理三种形式：import 声明、export ... from、动态 import()。
@@ -60,13 +92,22 @@ function bareKey(spec: string): string | null {
 function rewriteBareImports(code: string): { code: string; unknownSpecs: string[] } {
   const unknown: string[] = [];
 
-  // 1. import 声明：import { a, b as c } from "spec"  /  import def from "spec"  /  import * as ns from "spec"
+  // 1. import 声明：import def, { a, b as c } from "spec" / import { a } from "spec" / import def from "spec" / import * as ns from "spec"
   code = code.replace(
-    /import\s+(?:([^\s]+)\s+from\s+)?\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
-    (_m, _def, names: string, spec: string) => {
+    /import\s+([A-Za-z_$][\w$]*)\s*,\s*\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
+    (_m, def: string, names: string, spec: string) => {
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
-      return `const {${names}} = globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}];`;
+      const vendor = vendorLocalName(key);
+      return `const ${vendor} = ${vendorAccess(key)}; const ${def} = ${vendor}.default ?? ${vendor}; const { ${normalizeNamedImports(names)} } = ${vendor};`;
+    },
+  );
+  code = code.replace(
+    /import\s+\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
+    (_m, names: string, spec: string) => {
+      const key = bareKey(spec);
+      if (!key) { unknown.push(spec); return _m; }
+      return `const { ${normalizeNamedImports(names)} } = ${vendorAccess(key)};`;
     },
   );
   code = code.replace(
@@ -74,7 +115,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
     (_m, def: string, spec: string) => {
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
-      return `const ${def} = (globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}]).default ?? globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}];`;
+      return `const ${def} = (${vendorAccess(key)}).default ?? ${vendorAccess(key)};`;
     },
   );
   code = code.replace(
@@ -82,7 +123,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
     (_m, ns: string, spec: string) => {
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
-      return `const ${ns} = globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}];`;
+      return `const ${ns} = ${vendorAccess(key)};`;
     },
   );
 
@@ -92,7 +133,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
     (_m, names: string, spec: string) => {
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
-      return `const {${names}} = globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}]; export {${names}};`;
+      return `const { ${normalizeNamedImports(names)} } = ${vendorAccess(key)}; export { ${exportLocalNames(names)} };`;
     },
   );
 
@@ -100,10 +141,14 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
   code = code.replace(/import\(\s*["']([^"']+)["']\s*\)/g, (_m, spec: string) => {
     const key = bareKey(spec);
     if (!key) { unknown.push(spec); return _m; }
-    return `Promise.resolve(globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}])`;
+    return `Promise.resolve(${vendorAccess(key)})`;
   });
 
   return { code, unknownSpecs: unknown };
+}
+
+export function __rewriteBareImportsForTest(code: string): { code: string; unknownSpecs: string[] } {
+  return rewriteBareImports(code);
 }
 
 function memoryPlugin(files: Map<string, string>): Plugin {

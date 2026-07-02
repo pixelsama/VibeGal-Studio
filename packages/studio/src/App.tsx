@@ -8,6 +8,7 @@ export default function App() {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [checking, setChecking] = useState(false);
   const [selfcheckResult, setSelfcheckResult] = useState<string | null>(null);
+  const showRuntimeChecks = import.meta.env.DEV;
 
   const runSelfCheck = async () => {
     setChecking(true);
@@ -42,16 +43,18 @@ export default function App() {
     return (
       <div style={{ position: "relative", width: "100%", height: "100%" }}>
         <ProjectList onOpen={setProject} />
-        <div style={{ position: "absolute", top: 12, left: 12, zIndex: 100 }}>
-          <button
-            onClick={runSelfCheck}
-            disabled={checking}
-            style={debugBtnStyle("#2a3a2a", "#4a6a4a", "#b0e0b0")}
-          >
-            {checking ? "自检中…" : "🔍 运行时自检"}
-          </button>
-        </div>
-        {selfcheckResult && (
+        {showRuntimeChecks && (
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 100 }}>
+            <button
+              onClick={runSelfCheck}
+              disabled={checking}
+              style={debugBtnStyle("#2a3a2a", "#4a6a4a", "#b0e0b0")}
+            >
+              {checking ? "自检中…" : "运行时自检"}
+            </button>
+          </div>
+        )}
+        {showRuntimeChecks && selfcheckResult && (
           <pre style={selfcheckStyle}>{selfcheckResult}</pre>
         )}
       </div>
@@ -65,16 +68,18 @@ export default function App() {
         onBack={() => setProject(null)}
         onProjectChanged={setProject}
       />
-      <div style={{ position: "absolute", top: 12, left: 12, zIndex: 200 }}>
-        <button
-          onClick={runFullCheck}
-          disabled={checking}
-          style={debugBtnStyle("#2a3a4a", "#4a6a8a", "#a0c0e0")}
-        >
-          {checking ? "编译中…" : "🔬 完整编译自检"}
-        </button>
-      </div>
-      {selfcheckResult && <pre style={selfcheckStyle}>{selfcheckResult}</pre>}
+      {showRuntimeChecks && (
+        <div style={{ position: "absolute", top: 12, left: 12, zIndex: 200 }}>
+          <button
+            onClick={runFullCheck}
+            disabled={checking}
+            style={debugBtnStyle("#2a3a4a", "#4a6a8a", "#a0c0e0")}
+          >
+            {checking ? "编译中…" : "完整编译自检"}
+          </button>
+        </div>
+      )}
+      {showRuntimeChecks && selfcheckResult && <pre style={selfcheckStyle}>{selfcheckResult}</pre>}
     </div>
   );
 }

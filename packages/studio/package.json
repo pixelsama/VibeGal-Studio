@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "vitest run src/**/*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "postinstall": "node -e \"require('fs').copyFileSync(require.resolve('esbuild-wasm/esbuild.wasm'),'public/esbuild.wasm')\" || node scripts/copy-wasm.mjs"
@@ -14,7 +15,6 @@
     "@galstudio/engine": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-fs": "^2",
     "esbuild-wasm": "^0.28.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -26,6 +26,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^4.1.9"
   }
 }

@@ -1,9 +1,9 @@
 // GalStudio Tauri 后端 —— 文件系统操作。
 // 所有磁盘读写集中在这里；前端通过 invoke 调用，不直接碰文件系统。
 
-use std::fs;
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Component, Path, PathBuf};
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -46,8 +46,13 @@ pub struct ProjectData {
 
 fn read_project_meta(project_path: &Path) -> Result<ProjectMeta, String> {
     let meta_file = project_path.join("gal.project.json");
-    let text = fs::read_to_string(&meta_file)
-        .map_err(|e| format!("读取 gal.project.json 失败 ({}): {}", meta_file.display(), e))?;
+    let text = fs::read_to_string(&meta_file).map_err(|e| {
+        format!(
+            "读取 gal.project.json 失败 ({}): {}",
+            meta_file.display(),
+            e
+        )
+    })?;
     serde_json::from_str::<ProjectMeta>(&text)
         .map_err(|e| format!("解析 gal.project.json 失败: {}", e))
 }
@@ -99,10 +104,13 @@ fn list_renderer_ids(project_path: &Path) -> Vec<String> {
 /// 打开项目：读 gal.project.json + content + 渲染层列表
 #[tauri::command]
 fn open_project(path: String) -> Result<ProjectData, String> {
-    let project_path = Path::new(&path);
-    let meta = read_project_meta(project_path)?;
+    let project_path = canonical_project_root(Path::new(&path))?;
+    let meta = read_project_meta(&project_path)?;
 
     let content_dir = project_path.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
     let manifest = read_json(&content_dir.join("manifest.json"))?;
     let meta_json = read_json(&content_dir.join("meta.json"))?;
 
@@ -112,16 +120,23 @@ fn open_project(path: String) -> Result<ProjectData, String> {
     let meta_chapters: Vec<String> = meta_json
         .get("chapters")
         .and_then(|c| c.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     if !meta_chapters.is_empty() {
         // 按 meta 声明的顺序逐个读取（meta 里写的是相对 content 根的路径，如 "chapters/ch01.json"）
         for rel in &meta_chapters {
-            let path = content_dir.join(rel);
+            let path = resolve_relative_under(&content_root, rel)?;
             if path.exists() {
                 let data = read_json(&path)?;
-                chapters.push(ChapterEntry { rel_path: rel.clone(), data });
+                chapters.push(ChapterEntry {
+                    rel_path: rel.clone(),
+                    data,
+                });
             } else {
                 log::warn!("meta.chapters 声明了 {} 但文件不存在，已跳过", rel);
             }
@@ -136,22 +151,25 @@ fn open_project(path: String) -> Result<ProjectData, String> {
                 for p in paths {
                     if p.extension().and_then(|e| e.to_str()) == Some("json") {
                         let rel = p
-                            .strip_prefix(&content_dir)
+                            .strip_prefix(&content_root)
                             .unwrap_or(&p)
                             .to_string_lossy()
                             .replace('\\', "/");
                         let data = read_json(&p)?;
-                        chapters.push(ChapterEntry { rel_path: rel, data });
+                        chapters.push(ChapterEntry {
+                            rel_path: rel,
+                            data,
+                        });
                     }
                 }
             }
         }
     }
 
-    let renderer_ids = list_renderer_ids(project_path);
+    let renderer_ids = list_renderer_ids(&project_path);
 
     Ok(ProjectData {
-        path: path.clone(),
+        path: project_path.to_string_lossy().into_owned(),
         meta,
         content: ProjectContent {
             manifest,
@@ -164,23 +182,20 @@ fn open_project(path: String) -> Result<ProjectData, String> {
 
 /// 在 parent_dir 下创建新项目：建目录结构 + 复制默认渲染层模板 + 写 gal.project.json
 #[tauri::command]
-fn create_project(parent_dir: String, name: String, app_handle: tauri::AppHandle) -> Result<ProjectData, String> {
+fn create_project(
+    parent_dir: String,
+    name: String,
+    app_handle: tauri::AppHandle,
+) -> Result<ProjectData, String> {
     // 校验项目名：只允许文件名片段，禁止路径分隔符与 ..
-    if name.is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name == ".."
-        || name == "."
-        || name.contains('\0')
-    {
-        return Err(format!("非法项目名: {:?}", name));
-    }
-    let project_path = Path::new(&parent_dir).join(&name);
+    validate_plain_name(&name, "项目名")?;
+    let parent_root = Path::new(&parent_dir)
+        .canonicalize()
+        .map_err(|e| format!("无法定位父目录 {}: {}", parent_dir, e))?;
+    let project_path = parent_root.join(&name);
     if project_path.exists() {
         return Err(format!("目录已存在: {}", project_path.display()));
     }
-    // 进一步确保 project_path 规范化后仍在 parent_dir 内
-    ensure_within(Path::new(&parent_dir), &project_path)?;
 
     // 创建目录骨架（资源放在 content/assets/，与 manifest 的相对路径解析契约一致）
     fs::create_dir_all(project_path.join("content/chapters"))
@@ -213,15 +228,21 @@ fn create_project(parent_dir: String, name: String, app_handle: tauri::AppHandle
         .resource_dir()
         .map_err(|e| format!("获取 resource_dir 失败: {}", e))?
         .join("resources/default-renderer");
-    copy_dir_all(&default_renderer_dir, &project_path.join("renderers/default"))
-        .map_err(|e| format!("复制渲染层模板失败: {}", e))?;
+    copy_dir_all(
+        &default_renderer_dir,
+        &project_path.join("renderers/default"),
+    )
+    .map_err(|e| format!("复制渲染层模板失败: {}", e))?;
 
     let project_meta = ProjectMeta {
         name: name.clone(),
         active_renderer_id: "default".to_string(),
         created_at: chrono_now(),
     };
-    write_json(&project_path.join("gal.project.json"), &serde_json::to_value(&project_meta).unwrap())?;
+    write_json(
+        &project_path.join("gal.project.json"),
+        &serde_json::to_value(&project_meta).unwrap(),
+    )?;
 
     // 重新读出来返回
     open_project(project_path.to_string_lossy().into_owned())
@@ -230,23 +251,30 @@ fn create_project(parent_dir: String, name: String, app_handle: tauri::AppHandle
 /// 保存单个文件（相对项目根的路径）。校验目标必须在项目目录内。
 #[tauri::command]
 fn save_file(project_path: String, rel_path: String, content: String) -> Result<(), String> {
-    let project_root = Path::new(&project_path);
-    let target = project_root.join(&rel_path);
-    let safe_target = ensure_within(project_root, &target)?;
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let safe_target = resolve_relative_under(&project_root, &rel_path)?;
     if let Some(parent) = safe_target.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+        ensure_existing_path_within(&project_root, parent)?;
     }
-    fs::write(&safe_target, content).map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
+    if safe_target.exists() {
+        ensure_existing_path_within(&project_root, &safe_target)?;
+    }
+    fs::write(&safe_target, content)
+        .map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
 }
 
 /// 读取一个渲染层目录下的所有源码文件（.ts/.tsx），供前端运行时编译。
 /// 返回 { 相对路径: 源码 } 的列表。递归读取。
 #[tauri::command]
-fn read_renderer_files(project_path: String, renderer_id: String) -> Result<Vec<RendererFile>, String> {
-    let project_root = Path::new(&project_path);
-    let renderer_dir = project_root.join("renderers").join(&renderer_id);
-    // 边界校验：renderer_dir 必须在项目内
-    ensure_within(project_root, &renderer_dir)?;
+fn read_renderer_files(
+    project_path: String,
+    renderer_id: String,
+) -> Result<Vec<RendererFile>, String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    validate_plain_name(&renderer_id, "渲染层 id")?;
+    let renderer_dir = resolve_relative_under(&project_root, &format!("renderers/{renderer_id}"))?;
+    ensure_existing_path_within(&project_root, &renderer_dir)?;
 
     let mut files = vec![];
     collect_source_files(&renderer_dir, &renderer_dir, &mut files)?;
@@ -261,15 +289,24 @@ pub struct RendererFile {
 }
 
 /// 递归收集目录下所有 .ts/.tsx 文件
-fn collect_source_files(base: &Path, dir: &Path, out: &mut Vec<RendererFile>) -> Result<(), String> {
-    let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败 {}: {}", dir.display(), e))?;
+fn collect_source_files(
+    base: &Path,
+    dir: &Path,
+    out: &mut Vec<RendererFile>,
+) -> Result<(), String> {
+    let entries =
+        fs::read_dir(dir).map_err(|e| format!("读取目录失败 {}: {}", dir.display(), e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             collect_source_files(base, &path, out)?;
         } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             if ext == "ts" || ext == "tsx" {
-                let rel = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 let content = fs::read_to_string(&path)
                     .map_err(|e| format!("读取文件失败 {}: {}", path.display(), e))?;
                 out.push(RendererFile { path: rel, content });
@@ -279,48 +316,93 @@ fn collect_source_files(base: &Path, dir: &Path, out: &mut Vec<RendererFile>) ->
     Ok(())
 }
 
-/// DEBUG 专用：写文件到任意绝对路径（仅自检/调试用，写入 /tmp）
-#[tauri::command]
-fn write_debug_file(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, content).map_err(|e| format!("写失败 {}: {}", path, e))
-}
-
 /// 更新 gal.project.json
 #[tauri::command]
 fn save_project_meta(project_path: String, meta: ProjectMeta) -> Result<(), String> {
-    write_json(&Path::new(&project_path).join("gal.project.json"), &serde_json::to_value(&meta).unwrap())
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    write_json(
+        &project_root.join("gal.project.json"),
+        &serde_json::to_value(&meta).unwrap(),
+    )
 }
 
 // ── 工具函数 ──────────────────────────────────────
 
-/// 安全校验：确保 target 路径规范化后仍位于 base 目录内，防止 `../` 或绝对路径穿越。
-/// 对 base 与 target 都 canonicalize 后做 starts_with 校验。
-fn ensure_within(base: &Path, target: &Path) -> Result<PathBuf, String> {
-    let base_canon = base.canonicalize()
-        .map_err(|e| format!("无法定位基准目录 {}: {}", base.display(), e))?;
-    // target 可能尚不存在（如待写的文件），canonicalize 其【父目录】再拼回文件名
-    let target_canon = match target.canonicalize() {
-        Ok(t) => t,
-        Err(_) => {
-            // 父目录必须存在，否则报错
-            let parent = target.parent().unwrap_or(Path::new("."));
-            let parent_canon = parent.canonicalize()
-                .map_err(|e| format!("无法定位目标父目录 {}: {}", parent.display(), e))?;
-            parent_canon.join(target.file_name().unwrap_or_default())
-        }
-    };
-    if !target_canon.starts_with(&base_canon) {
+fn canonical_project_root(project_path: &Path) -> Result<PathBuf, String> {
+    let root = project_path
+        .canonicalize()
+        .map_err(|e| format!("无法定位项目目录 {}: {}", project_path.display(), e))?;
+    if !root.is_dir() {
+        return Err(format!("项目路径不是目录: {}", root.display()));
+    }
+    if !root.join("gal.project.json").is_file() {
         return Err(format!(
-            "路径越界：{} 不在项目目录 {} 内（可能的路径穿越攻击）",
-            target.display(), base.display()
+            "不是 GalStudio 项目目录（缺少 gal.project.json）: {}",
+            root.display()
         ));
     }
-    Ok(target_canon)
+    Ok(root)
+}
+
+fn validate_plain_name(name: &str, label: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name == ".."
+        || name == "."
+        || name.contains('\0')
+    {
+        return Err(format!("非法{}: {:?}", label, name));
+    }
+    Ok(())
+}
+
+fn safe_relative_path(rel: &str) -> Result<PathBuf, String> {
+    if rel.is_empty() || rel.contains('\0') {
+        return Err(format!("非法相对路径: {:?}", rel));
+    }
+    let path = Path::new(rel);
+    if path.is_absolute() {
+        return Err(format!("禁止绝对路径: {}", rel));
+    }
+
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => out.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("路径越界：{}", rel));
+            }
+        }
+    }
+    if out.as_os_str().is_empty() {
+        return Err(format!("非法相对路径: {:?}", rel));
+    }
+    Ok(out)
+}
+
+fn resolve_relative_under(base_canon: &Path, rel: &str) -> Result<PathBuf, String> {
+    Ok(base_canon.join(safe_relative_path(rel)?))
+}
+
+fn ensure_existing_path_within(base_canon: &Path, target: &Path) -> Result<(), String> {
+    let target_canon = target
+        .canonicalize()
+        .map_err(|e| format!("无法定位路径 {}: {}", target.display(), e))?;
+    if !target_canon.starts_with(base_canon) {
+        return Err(format!(
+            "路径越界：{} 不在项目目录 {} 内（可能的路径穿越攻击）",
+            target.display(),
+            base_canon.display()
+        ));
+    }
+    Ok(())
 }
 
 fn read_json(path: &Path) -> Result<serde_json::Value, String> {
-    let text = fs::read_to_string(path)
-        .map_err(|e| format!("读取失败 ({}): {}", path.display(), e))?;
+    let text =
+        fs::read_to_string(path).map_err(|e| format!("读取失败 ({}): {}", path.display(), e))?;
     serde_json::from_str(&text).map_err(|e| format!("解析 JSON 失败 ({}): {}", path.display(), e))
 }
 
@@ -362,7 +444,6 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -381,8 +462,80 @@ pub fn run() {
             save_file,
             save_project_meta,
             read_renderer_files,
-            write_debug_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("galstudio-{name}-{stamp}"))
+    }
+
+    fn write_text(path: &Path, text: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, text).unwrap();
+    }
+
+    fn write_minimal_project(project: &Path, chapters_value: serde_json::Value) {
+        write_text(
+            &project.join("gal.project.json"),
+            r#"{"name":"Test","activeRendererId":"default","createdAt":"0"}"#,
+        );
+        write_text(
+            &project.join("content/manifest.json"),
+            r#"{"characters":{},"backgrounds":{},"audio":{}}"#,
+        );
+        write_json(
+            &project.join("content/meta.json"),
+            &serde_json::json!({
+                "title": "Test",
+                "chapters": chapters_value,
+                "typingSpeedCps": 30,
+                "autoAdvanceMs": 1200,
+                "chapterGapMs": 1500
+            }),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn save_file_rejects_untrusted_project_root() {
+        let dir = unique_temp_dir("untrusted-root");
+        fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("owned.txt");
+
+        let result = save_file(
+            dir.to_string_lossy().into_owned(),
+            "owned.txt".to_string(),
+            "nope".to_string(),
+        );
+
+        assert!(result.is_err());
+        assert!(!target.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_project_rejects_meta_chapter_paths_outside_content_dir() {
+        let root = unique_temp_dir("chapter-escape");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!(["../../outside.json"]));
+        write_text(&root.join("outside.json"), "[]");
+
+        let result = open_project(project.to_string_lossy().into_owned());
+
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
 }
