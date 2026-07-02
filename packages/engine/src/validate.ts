@@ -1,0 +1,138 @@
+/**
+ * 运行时校验：在剧本/资源加载时跑一次。
+ * TS 不会校验 JSON，所以 AI 生成或小工具改过的数据必须在这里兜底，
+ * 报错要指明是哪个文件、第几条指令、什么 id 出了问题。
+ */
+import {
+  ChapterSchema,
+  ManifestSchema,
+  MetaSchema,
+} from "./schema";
+import type { Manifest, Meta, Chapter } from "./types";
+
+export interface ValidationIssue {
+  level: "error" | "warn";
+  file: string;
+  index?: number; // 指令序号（chapter 校验时）
+  message: string;
+}
+
+export class ContentValidationError extends Error {
+  issues: ValidationIssue[];
+  constructor(issues: ValidationIssue[]) {
+    super(`内容校验失败，共 ${issues.length} 个问题:\n` +
+      issues.map((i) => `  [${i.level}] ${i.file}${i.index != null ? `#${i.index}` : ""}: ${i.message}`).join("\n"));
+    this.issues = issues;
+  }
+}
+
+/** 校验单个 chapter 的指令结构（不检查 id 引用，那一步在 validateReferences 里做） */
+export function validateChapter(raw: unknown, file: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const result = ChapterSchema.safeParse(raw);
+  if (!result.success) {
+    for (const err of result.error.issues) {
+      // zod 的 path 形如 [3, "id"]，取首段作为指令序号
+      const idx = typeof err.path[0] === "number" ? err.path[0] : undefined;
+      issues.push({ level: "error", file, index: idx, message: err.message });
+    }
+  }
+  return issues;
+}
+
+/** 校验 manifest 结构 */
+export function validateManifest(raw: unknown, file = "manifest.json"): ValidationIssue[] {
+  const result = ManifestSchema.safeParse(raw);
+  if (!result.success) {
+    return result.error.issues.map((err) => ({ level: "error" as const, file, message: err.message }));
+  }
+  return [];
+}
+
+/** 校验 meta 结构 */
+export function validateMeta(raw: unknown, file = "meta.json"): ValidationIssue[] {
+  const result = MetaSchema.safeParse(raw);
+  if (!result.success) {
+    return result.error.issues.map((err) => ({ level: "error" as const, file, message: err.message }));
+  }
+  return [];
+}
+
+/**
+ * 校验剧本里引用的所有 id 是否在 manifest 中存在。
+ * 这是 AI 生成剧本最容易踩的坑：拼错角色 id、用了不存在的表情。
+ */
+export function validateReferences(
+  chapter: unknown,
+  manifest: Manifest,
+  file: string,
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const parsed = ChapterSchema.safeParse(chapter);
+  if (!parsed.success) return [{ level: "error", file, message: "剧本结构非法，无法做引用检查" }];
+
+  parsed.data.forEach((instr, index) => {
+    switch (instr.t) {
+      case "bg":
+        if (!(instr.id in manifest.backgrounds))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 background id: "${instr.id}"` });
+        break;
+      case "bgm":
+      case "sfx":
+      case "voice":
+        if (!(instr.id in manifest.audio))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 audio id: "${instr.id}"` });
+        break;
+      case "char":
+      case "say": {
+        const charId = instr.t === "char" ? instr.id : instr.who;
+        const char = manifest.characters[charId];
+        if (!char) {
+          issues.push({ level: "error", file, index, message: `引用了不存在的 character id: "${charId}"` });
+          break;
+        }
+        if (!(instr.expr in char.sprites))
+          issues.push({ level: "error", file, index, message: `角色 "${charId}" 没有表情 "${instr.expr}"（可用: ${Object.keys(char.sprites).join(", ")}）` });
+        break;
+      }
+    }
+  });
+  return issues;
+}
+
+/** 一站式：跑完结构校验，再对每个 chapter 跑引用校验。返回值含解析后的 chapters（已应用默认值）。 */
+export function validateContent(opts: {
+  meta: unknown;
+  manifest: unknown;
+  chapters: { file: string; data: unknown }[];
+}): { meta: Meta; manifest: Manifest; chapters: Chapter[] } {
+  const issues: ValidationIssue[] = [];
+  issues.push(...validateMeta(opts.meta));
+  issues.push(...validateManifest(opts.manifest));
+
+  const metaRes = MetaSchema.safeParse(opts.meta);
+  const manifestRes = ManifestSchema.safeParse(opts.manifest);
+  if (!metaRes.success || !manifestRes.success) {
+    throw new ContentValidationError(issues);
+  }
+
+  // 每个 chapter 都 parse 一次，拿到「带默认值」的解析结果；
+  // 这些解析后的指令才是 player 应该消费的数据（裸 JSON 没有默认值）。
+  const parsedChapters: Chapter[] = [];
+  for (const ch of opts.chapters) {
+    issues.push(...validateChapter(ch.data, ch.file));
+    const res = ChapterSchema.safeParse(ch.data);
+    if (res.success) {
+      parsedChapters.push(res.data);
+      issues.push(...validateReferences(res.data, manifestRes.data, ch.file));
+    }
+  }
+
+  const errors = issues.filter((i) => i.level === "error");
+  if (errors.length > 0) throw new ContentValidationError(errors);
+
+  // 警告打印但不阻断
+  issues.filter((i) => i.level === "warn").forEach((i) => console.warn(`[content] ${i.file}: ${i.message}`));
+
+  return { meta: metaRes.data, manifest: manifestRes.data, chapters: parsedChapters };
+}

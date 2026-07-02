@@ -1,0 +1,20 @@
+{
+  "characters": {
+    "protagonist": {
+      "name": "野生舰娘",
+      "color": "#9fc8e3",
+      "sprites": {
+        "default": "assets/characters/protagonist_default.svg",
+        "hurt": "assets/characters/protagonist_hurt.svg"
+      }
+    }
+  },
+  "backgrounds": {
+    "ocean_dawn": "assets/backgrounds/ocean_dawn.svg",
+    "ocean_night": "assets/backgrounds/ocean_night.svg"
+  },
+  "audio": {
+    "bgm_main": "assets/audio/bgm_main.mp3",
+    "sfx_boom": "assets/audio/sfx_boom.mp3"
+  }
+}

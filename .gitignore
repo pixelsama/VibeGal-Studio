@@ -1,0 +1,33 @@
+# ── 依赖 ──────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ── 构建产物 ──────────────────────────
+# Vite / TypeScript 前端产物
+dist/
+*.tsbuildinfo
+.tsbuildinfo
+
+# ── Tauri / Rust ─────────────────────
+# Rust 编译产物（很大，绝不提交）
+src-tauri/target/
+**/target/
+
+# Tauri 自动生成的 schema / capability 缓存
+src-tauri/gen/
+
+# ── 日志 / 临时文件 ──────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ── 编辑器 / 系统 ────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── 环境 / 密钥 ──────────────────────
+.env
+.env.*
+!.env.example

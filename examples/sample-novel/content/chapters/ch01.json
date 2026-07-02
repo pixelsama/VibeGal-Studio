@@ -1,0 +1,38 @@
+[
+  { "t": "transition", "type": "fade_in", "ms": 1500 },
+  { "t": "bg", "id": "ocean_night", "trans": "fade", "ms": 1200 },
+  { "t": "bgm", "id": "bgm_main", "fade": 2500 },
+
+  { "t": "narrate", "text": "海面没有风。" },
+  { "t": "narrate", "text": "沉在海底的那些东西，偶尔会被潮水推上来。" },
+  { "t": "wait", "ms": 700 },
+
+  { "t": "narrate", "text": "它们不该有意识。", "ms": 0 },
+
+  { "t": "bg", "id": "ocean_dawn", "trans": "fade", "ms": 2200 },
+  { "t": "narrate", "text": "天快亮了。" },
+
+  { "t": "char", "id": "protagonist", "pos": "center", "expr": "default", "trans": "slide", "ms": 800 },
+  { "t": "narrate", "text": "她趴在浅滩上，睁开了眼睛。" },
+
+  { "t": "say", "who": "protagonist", "expr": "default", "text": "……我是谁？", "ms": 1800 },
+  { "t": "wait", "ms": 500 },
+  { "t": "say", "who": "protagonist", "expr": "default", "text": "海，浪，还有——光。" },
+
+  { "t": "say", "who": "protagonist", "expr": "default", "text": "我不记得名字。可我好像，知道怎么在水上走。" },
+
+  { "t": "effect", "type": "shake", "intensity": 4, "ms": 300 },
+  { "t": "sfx", "id": "sfx_boom" },
+  { "t": "narrate", "text": "远处的火光，映亮了她的脸。" },
+
+  { "t": "char", "id": "protagonist", "pos": "center", "expr": "hurt", "trans": "fade", "ms": 600 },
+  { "t": "say", "who": "protagonist", "expr": "hurt", "text": "那边……有人在打。" },
+  { "t": "say", "who": "protagonist", "expr": "hurt", "text": "我不认识他们。可我不想让他们死。" },
+
+  { "t": "narrate", "text": "她站了起来。海水，主动让开了路。" },
+
+  { "t": "char", "id": "protagonist", "remove": true },
+  { "t": "narrate", "text": "她走向了那片火光。", "ms": 2500 },
+
+  { "t": "transition", "type": "fade_out", "ms": 1500 }
+]

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000" preserveAspectRatio="xMidYMax meet">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9fc8e3"/>
+      <stop offset="1" stop-color="#3b6585"/>
+    </linearGradient>
+  </defs>
+  <!-- 占位立绘：抽象人形剪影，标角色名 -->
+  <ellipse cx="300" cy="180" rx="95" ry="110" fill="url(#g1)"/>
+  <path d="M205 290 Q300 260 395 290 L440 720 Q300 760 160 720 Z" fill="url(#g1)"/>
+  <text x="300" y="850" text-anchor="middle" fill="#cfe3f0" font-family="serif" font-size="44" letter-spacing="2">野生舰娘</text>
+  <text x="300" y="900" text-anchor="middle" fill="#6f8aa3" font-family="serif" font-size="22">（占位立绘 · default）</text>
+</svg>

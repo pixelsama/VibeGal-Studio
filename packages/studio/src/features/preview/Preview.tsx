@@ -1,0 +1,58 @@
+/**
+ * 预览面板 —— 用引擎跑项目，挂载当前选中的渲染层。
+ */
+import { useEffect, useState } from "react";
+import type { RendererManifest } from "@galstudio/engine";
+import type { ProjectData } from "../../lib/types";
+import { useProjectPlayer } from "./useProjectPlayer";
+import { loadRenderer } from "../renderers/rendererLoader";
+
+interface Props {
+  project: ProjectData;
+  rendererId: string;
+}
+
+export function Preview({ project, rendererId }: Props) {
+  const player = useProjectPlayer(project);
+  const [renderer, setRenderer] = useState<RendererManifest | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // 加载渲染层（项目内 renderers/<id>/index.tsx）
+  useEffect(() => {
+    let cancelled = false;
+    setLoadError(null);
+    loadRenderer(project.path, rendererId)
+      .then((m) => { if (!cancelled) setRenderer(m); })
+      .catch((e) => { if (!cancelled) setLoadError(String(e)); });
+    return () => { cancelled = true; };
+  }, [project.path, rendererId]);
+
+  if (player.error) {
+    return <Centered mono>{`引擎错误：\n\n${player.error}`}</Centered>;
+  }
+  if (loadError) {
+    return <Centered mono>{`渲染层加载失败（${rendererId}）：\n\n${loadError}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且 dev server 的 fs.allow 放行了项目路径。`}</Centered>;
+  }
+  if (!renderer) {
+    return <Centered>加载渲染层中…</Centered>;
+  }
+
+  const Renderer = renderer.Component;
+  return (
+    <div style={{ width: "100%", height: "100%" }}>
+      <Renderer {...player.rendererProps} />
+    </div>
+  );
+}
+
+function Centered({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
+  return (
+    <div style={{
+      width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+      color: "#cdd6e0", fontFamily: mono ? "ui-monospace, monospace" : "inherit",
+      whiteSpace: "pre-wrap", textAlign: "center", padding: 40, lineHeight: 1.8, fontSize: 14,
+    }}>
+      {children}
+    </div>
+  );
+}
