@@ -1,67 +1,78 @@
 /**
- * 项目列表页 —— 选工作区、列出项目、打开、新建。
+ * 项目入口页 —— 打开项目目录，或在父目录下新建项目。
  */
-import { useCallback, useEffect, useState } from "react";
-import { listProjects, createProject, pickDirectory, openProject } from "../../lib/tauri";
-import type { ProjectData, ProjectListItem } from "../../lib/types";
+import { useCallback, useState } from "react";
+import { createProject, initializeProject, openProject, pickDirectory } from "../../lib/tauri";
+import type { ProjectData } from "../../lib/types";
 
 interface Props {
   onOpen: (project: ProjectData) => void;
 }
 
 export function ProjectList({ onOpen }: Props) {
-  const [workspace, setWorkspace] = useState<string>("");
-  const [items, setItems] = useState<ProjectListItem[]>([]);
+  const [projectDir, setProjectDir] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!workspace) return;
+  const openDirectory = useCallback(async (dir: string) => {
+    const target = dir.trim();
+    if (!target) {
+      setError("先选择一个项目目录");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      setItems(await listProjects(workspace));
+      onOpen(await openProject(target));
     } catch (e) {
-      setError(String(e));
+      const message = String(e);
+      if (!message.includes("缺少 gal.project.json")) {
+        setError(message);
+        return;
+      }
+
+      const confirmed = window.confirm(
+        [
+          "这个目录还不是 GalStudio 项目。",
+          "",
+          "是否在此目录中添加 GalStudio 工程文件？",
+          "将创建 gal.project.json、content/ 和 renderers/default/。",
+          "现有文件不会被删除或覆盖。",
+        ].join("\n"),
+      );
+      if (!confirmed) return;
+
+      try {
+        onOpen(await initializeProject(target));
+      } catch (initError) {
+        setError(String(initError));
+      }
     } finally {
       setLoading(false);
     }
-  }, [workspace]);
+  }, [onOpen]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const handlePickWorkspace = async () => {
+  const handlePickProject = async () => {
     const dir = await pickDirectory();
-    if (dir) setWorkspace(dir);
+    if (!dir) return;
+    setProjectDir(dir);
+    await openDirectory(dir);
   };
 
   const handleNew = async () => {
-    if (!workspace) {
-      setError("先选择一个工作区目录");
-      return;
-    }
+    const parentDir = await pickDirectory();
+    if (!parentDir) return;
     const name = window.prompt("项目名称（将作为文件夹名）");
-    if (!name) return;
+    const projectName = name?.trim();
+    if (!projectName) return;
     setLoading(true);
     setError(null);
     try {
-      const project = await createProject(workspace, name);
-      await refresh();
-      onOpen(project);
+      onOpen(await createProject(parentDir, projectName));
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleOpen = async (path: string) => {
-    try {
-      onOpen(await openProject(path));
-    } catch (e) {
-      setError(String(e));
     }
   };
 
@@ -75,33 +86,20 @@ export function ProjectList({ onOpen }: Props) {
       <section style={sectionStyle}>
         <div style={workspaceRow}>
           <input
-            value={workspace}
-            onChange={(e) => setWorkspace(e.target.value)}
-            placeholder="工作区目录路径"
+            value={projectDir}
+            onChange={(e) => setProjectDir(e.target.value)}
+            placeholder="项目目录路径"
             style={inputStyle}
           />
-          <button onClick={handlePickWorkspace} style={btnStyle}>选择…</button>
-          <button onClick={refresh} style={btnStyle} disabled={!workspace || loading}>刷新</button>
-          <button onClick={handleNew} style={primaryBtn} disabled={!workspace || loading}>+ 新建项目</button>
+          <button onClick={handlePickProject} style={btnStyle} disabled={loading}>选择并打开…</button>
+          <button onClick={() => openDirectory(projectDir)} style={btnStyle} disabled={!projectDir || loading}>打开</button>
+          <button onClick={handleNew} style={primaryBtn} disabled={loading}>+ 新建项目</button>
         </div>
 
         {error && <div style={errorStyle}>{error}</div>}
 
-        <div style={listStyle}>
-          {loading && <div style={emptyStyle}>加载中…</div>}
-          {!loading && items.length === 0 && workspace && (
-            <div style={emptyStyle}>工作区里还没有项目。点「+ 新建项目」创建第一个。</div>
-          )}
-          {!loading && items.length === 0 && !workspace && (
-            <div style={emptyStyle}>先选择一个工作区目录。</div>
-          )}
-          {items.map((item) => (
-            <div key={item.path} style={cardStyle} onClick={() => handleOpen(item.path)}>
-              <div style={cardTitleStyle}>{item.meta.name}</div>
-              <div style={cardMetaStyle}>{item.path}</div>
-              <div style={cardTagStyle}>渲染层: {item.meta.activeRendererId}</div>
-            </div>
-          ))}
+        <div style={emptyStyle}>
+          {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 GalStudio 项目，会先询问是否添加工程文件。"}
         </div>
       </section>
     </div>
@@ -134,12 +132,4 @@ const errorStyle: React.CSSProperties = {
   padding: "10px 14px", background: "#3a1a1a", border: "1px solid #6a2a2a",
   borderRadius: 6, color: "#e0a0a0", fontSize: 13, marginBottom: 16, whiteSpace: "pre-wrap",
 };
-const listStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 10 };
 const emptyStyle: React.CSSProperties = { color: "#6a7280", fontSize: 14, padding: 24, textAlign: "center" };
-const cardStyle: React.CSSProperties = {
-  padding: "16px 20px", background: "#161b24", border: "1px solid #232a38",
-  borderRadius: 8, cursor: "pointer",
-};
-const cardTitleStyle: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 4 };
-const cardMetaStyle: React.CSSProperties = { fontSize: 12, color: "#6a7280", marginBottom: 6, wordBreak: "break-all" };
-const cardTagStyle: React.CSSProperties = { fontSize: 12, color: "#7a8290" };

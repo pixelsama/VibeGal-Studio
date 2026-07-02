@@ -29,6 +29,11 @@ export async function createProject(parentDir: string, name: string): Promise<Pr
   return invoke<ProjectData>("create_project", { parentDir, name });
 }
 
+/** 把指定目录初始化为 GalStudio 项目（不额外套子目录），然后打开 */
+export async function initializeProject(path: string): Promise<ProjectData> {
+  return invoke<ProjectData>("initialize_project", { path });
+}
+
 /** 保存单个文件（相对项目根的路径） */
 export async function saveFile(projectPath: string, relPath: string, content: string): Promise<void> {
   await invoke("save_file", { projectPath, relPath, content });

@@ -197,6 +197,44 @@ fn create_project(
         return Err(format!("目录已存在: {}", project_path.display()));
     }
 
+    let default_renderer_dir = default_renderer_dir(&app_handle)?;
+    initialize_project_root(&project_path, &name, &default_renderer_dir)?;
+
+    // 重新读出来返回
+    open_project(project_path.to_string_lossy().into_owned())
+}
+
+/// 把用户选择的当前目录初始化为 GalStudio 项目。
+#[tauri::command]
+fn initialize_project(path: String, app_handle: tauri::AppHandle) -> Result<ProjectData, String> {
+    let project_path = Path::new(&path)
+        .canonicalize()
+        .map_err(|e| format!("无法定位项目目录 {}: {}", path, e))?;
+    if !project_path.is_dir() {
+        return Err(format!("项目路径不是目录: {}", project_path.display()));
+    }
+    if project_path.join("gal.project.json").is_file() {
+        return open_project(project_path.to_string_lossy().into_owned());
+    }
+
+    let name = project_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("GalStudio Project")
+        .to_string();
+    let default_renderer_dir = default_renderer_dir(&app_handle)?;
+    initialize_project_root(&project_path, &name, &default_renderer_dir)?;
+    open_project(project_path.to_string_lossy().into_owned())
+}
+
+fn initialize_project_root(
+    project_path: &Path,
+    name: &str,
+    default_renderer_dir: &Path,
+) -> Result<(), String> {
+    ensure_initialization_targets_available(project_path, default_renderer_dir)?;
+
     // 创建目录骨架（资源放在 content/assets/，与 manifest 的相对路径解析契约一致）
     fs::create_dir_all(project_path.join("content/chapters"))
         .map_err(|e| format!("创建 content/chapters 失败: {}", e))?;
@@ -223,19 +261,14 @@ fn create_project(
     write_json(&project_path.join("content/meta.json"), &meta)?;
 
     // 复制默认渲染层模板（从打包的 app resource）
-    let default_renderer_dir = app_handle
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("获取 resource_dir 失败: {}", e))?
-        .join("resources/default-renderer");
     copy_dir_all(
-        &default_renderer_dir,
+        default_renderer_dir,
         &project_path.join("renderers/default"),
     )
     .map_err(|e| format!("复制渲染层模板失败: {}", e))?;
 
     let project_meta = ProjectMeta {
-        name: name.clone(),
+        name: name.to_string(),
         active_renderer_id: "default".to_string(),
         created_at: chrono_now(),
     };
@@ -244,8 +277,7 @@ fn create_project(
         &serde_json::to_value(&project_meta).unwrap(),
     )?;
 
-    // 重新读出来返回
-    open_project(project_path.to_string_lossy().into_owned())
+    Ok(())
 }
 
 /// 保存单个文件（相对项目根的路径）。校验目标必须在项目目录内。
@@ -414,6 +446,57 @@ fn write_json(path: &Path, value: &serde_json::Value) -> Result<(), String> {
     fs::write(path, text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
 }
 
+fn default_renderer_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("获取 resource_dir 失败: {}", e))?
+        .join("resources/default-renderer"))
+}
+
+fn ensure_initialization_targets_available(
+    project_path: &Path,
+    default_renderer_dir: &Path,
+) -> Result<(), String> {
+    for path in [
+        project_path.join("gal.project.json"),
+        project_path.join("content/manifest.json"),
+        project_path.join("content/meta.json"),
+    ] {
+        ensure_can_create_file(&path)?;
+    }
+    ensure_copy_targets_available(
+        default_renderer_dir,
+        &project_path.join("renderers/default"),
+    )
+}
+
+fn ensure_can_create_file(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        return Err(format!("初始化会覆盖已有文件，已取消: {}", path.display()));
+    }
+    Ok(())
+}
+
+fn ensure_copy_targets_available(src: &Path, dst: &Path) -> Result<(), String> {
+    let entries =
+        fs::read_dir(src).map_err(|e| format!("读取目录失败 {}: {}", src.display(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+        let ty = entry
+            .file_type()
+            .map_err(|e| format!("读取文件类型失败: {}", e))?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            ensure_copy_targets_available(&from, &to)?;
+        } else {
+            ensure_can_create_file(&to)?;
+        }
+    }
+    Ok(())
+}
+
 fn chrono_now() -> String {
     // 简单的 RFC3339 风格时间戳，避免引入 chrono 依赖
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -459,6 +542,7 @@ pub fn run() {
             list_projects,
             open_project,
             create_project,
+            initialize_project,
             save_file,
             save_project_meta,
             read_renderer_files,
@@ -536,6 +620,50 @@ mod tests {
         let result = open_project(project.to_string_lossy().into_owned());
 
         assert!(result.is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn initialize_project_root_adds_project_files_to_selected_directory() {
+        let root = unique_temp_dir("init-root");
+        let renderer_template = root.join("template");
+        let project = root.join("Existing Story");
+        write_text(&renderer_template.join("index.tsx"), "export default {};");
+        fs::create_dir_all(&project).unwrap();
+
+        initialize_project_root(&project, "Existing Story", &renderer_template).unwrap();
+
+        assert!(project.join("gal.project.json").is_file());
+        assert!(project.join("content/manifest.json").is_file());
+        assert!(project.join("content/meta.json").is_file());
+        assert!(project.join("content/chapters").is_dir());
+        assert!(project.join("content/assets").is_dir());
+        assert_eq!(
+            fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
+            "export default {};"
+        );
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(opened.meta.name, "Existing Story");
+        assert_eq!(opened.renderer_ids, vec!["default".to_string()]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn initialize_project_root_does_not_overwrite_existing_files() {
+        let root = unique_temp_dir("init-conflict");
+        let renderer_template = root.join("template");
+        let project = root.join("story");
+        write_text(&renderer_template.join("index.tsx"), "export default {};");
+        write_text(&project.join("content/meta.json"), "keep me");
+
+        let result = initialize_project_root(&project, "story", &renderer_template);
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(project.join("content/meta.json")).unwrap(),
+            "keep me"
+        );
+        assert!(!project.join("gal.project.json").exists());
         let _ = fs::remove_dir_all(&root);
     }
 }
