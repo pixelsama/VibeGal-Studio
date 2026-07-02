@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "GalStudio",
-        "titleBarStyle": "overlay",
+        "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "width": 1280,
         "height": 820,
