@@ -18,7 +18,7 @@ export function Preview({ project, rendererId }: Props) {
     return <Centered mono>{`引擎错误：\n\n${player.error}`}</Centered>;
   }
   if (loadError) {
-    return <Centered mono>{`渲染层加载失败（${rendererId}）：\n\n${loadError}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且 dev server 的 fs.allow 放行了项目路径。`}</Centered>;
+    return <Centered mono>{`渲染层加载失败（${rendererId}）：\n\n${loadError}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且渲染层源码没有未支持的 import。`}</Centered>;
   }
   if (!renderer) {
     return <Centered>加载渲染层中…</Centered>;
