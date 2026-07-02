@@ -23,11 +23,27 @@ import type { Plugin } from "esbuild-wasm";
 import type { RendererFile } from "../../lib/tauri";
 
 let esbuildReady = false;
+const ESBUILD_READY_GLOBAL = "__GAL_ESBUILD_READY__";
 
 async function ensureEsbuild(): Promise<void> {
-  if (esbuildReady) return;
-  await esbuild.initialize({ wasmURL: "/esbuild.wasm" });
+  if (esbuildReady || Boolean((globalThis as Record<string, unknown>)[ESBUILD_READY_GLOBAL])) {
+    esbuildReady = true;
+    return;
+  }
+
+  try {
+    if (typeof window === "undefined") {
+      await esbuild.initialize({});
+    } else {
+      await esbuild.initialize({ wasmURL: "/esbuild.wasm" });
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (!message.includes('Cannot call "initialize" more than once')) throw e;
+  }
+
   esbuildReady = true;
+  (globalThis as Record<string, unknown>)[ESBUILD_READY_GLOBAL] = true;
 }
 
 export const VENDOR_GLOBAL = "__GAL_VENDOR__";
