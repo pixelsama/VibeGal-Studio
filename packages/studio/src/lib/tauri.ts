@@ -6,7 +6,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { ProjectData, ProjectListItem, ProjectMeta } from "./types";
+import type { ProjectData, ProjectGraph, ProjectListItem, ProjectMeta } from "./types";
 
 /** 弹出「选择文件夹」对话框，返回用户选的绝对路径 */
 export async function pickDirectory(): Promise<string | null> {
@@ -47,6 +47,17 @@ export async function unwatchProject(projectPath: string): Promise<void> {
 /** 保存单个文件（相对项目根的路径） */
 export async function saveFile(projectPath: string, relPath: string, content: string): Promise<void> {
   await invoke("save_file", { projectPath, relPath, content });
+}
+
+/** 保存图结构到 content/graph.json */
+export async function saveGraph(projectPath: string, graph: ProjectGraph): Promise<void> {
+  const { synthetic: _synthetic, ...payload } = graph;
+  await invoke("save_graph", { projectPath, graph: payload });
+}
+
+/** 删除 content/ 下的单个文件（relPath 相对 content 根） */
+export async function deleteFile(projectPath: string, relPath: string): Promise<void> {
+  await invoke("delete_file", { projectPath, relPath });
 }
 
 /** 更新 gal.project.json（用于持久化 activeRendererId 等） */

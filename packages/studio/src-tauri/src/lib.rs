@@ -81,6 +81,37 @@ pub struct NodeEntry {
     pub data: Option<serde_json::Value>,
 }
 
+#[derive(Deserialize)]
+pub struct ProjectGraphInput {
+    pub version: u32,
+    #[serde(rename = "entryNodeId")]
+    pub entry_node_id: String,
+    pub nodes: Vec<GraphNodeInput>,
+    pub edges: Vec<GraphEdgeInput>,
+}
+
+#[derive(Deserialize)]
+pub struct GraphNodeInput {
+    pub id: String,
+    pub title: String,
+    pub file: String,
+    pub position: GraphPositionInput,
+}
+
+#[derive(Deserialize)]
+pub struct GraphPositionInput {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Deserialize)]
+pub struct GraphEdgeInput {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub condition: serde_json::Value,
+}
+
 #[derive(Serialize, Clone)]
 pub struct ProjectData {
     pub path: String,
@@ -699,6 +730,86 @@ fn save_file(project_path: String, rel_path: String, content: String) -> Result<
         .map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
 }
 
+/// 保存 content/graph.json。节点文件生命周期由 save_file/delete_file 单独管理。
+#[tauri::command]
+fn save_graph(project_path: String, graph: ProjectGraphInput) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+
+    for (index, node) in graph.nodes.iter().enumerate() {
+        if node.id.is_empty() {
+            return Err(format!("graph.nodes[{index}].id 不能为空"));
+        }
+        if node.file.is_empty() {
+            return Err(format!("graph.nodes[{index}].file 不能为空"));
+        }
+        let node_path = resolve_relative_under(&content_root, &node.file)?;
+        if node_path.exists() {
+            ensure_existing_path_within(&content_root, &node_path)?;
+        }
+    }
+    for (index, edge) in graph.edges.iter().enumerate() {
+        if edge.id.is_empty() {
+            return Err(format!("graph.edges[{index}].id 不能为空"));
+        }
+        if edge.from.is_empty() {
+            return Err(format!("graph.edges[{index}].from 不能为空"));
+        }
+        if edge.to.is_empty() {
+            return Err(format!("graph.edges[{index}].to 不能为空"));
+        }
+    }
+
+    let value = serde_json::json!({
+        "version": graph.version,
+        "entryNodeId": graph.entry_node_id,
+        "nodes": graph.nodes.iter().map(|node| {
+            serde_json::json!({
+                "id": node.id,
+                "title": node.title,
+                "file": node.file,
+                "position": {
+                    "x": node.position.x,
+                    "y": node.position.y,
+                },
+            })
+        }).collect::<Vec<_>>(),
+        "edges": graph.edges.iter().map(|edge| {
+            serde_json::json!({
+                "id": edge.id,
+                "from": edge.from,
+                "to": edge.to,
+                "condition": edge.condition,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    let graph_path = content_dir.join("graph.json");
+    if graph_path.exists() {
+        ensure_existing_path_within(&content_root, &graph_path)?;
+    }
+    write_json(&graph_path, &value)
+}
+
+/// 删除 content/ 下的单个文件。路径相对 content 根，缺失视为已删除。
+#[tauri::command]
+fn delete_file(project_path: String, rel_path: String) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    let target = resolve_relative_under(&content_root, &rel_path)?;
+    if target.exists() {
+        ensure_existing_path_within(&content_root, &target)?;
+        fs::remove_file(&target)
+            .map_err(|e| format!("删除文件失败 ({}): {}", target.display(), e))?;
+    }
+    Ok(())
+}
+
 /// 读取一个渲染层目录下的所有源码文件（.ts/.tsx），供前端运行时编译。
 /// 返回 { 相对路径: 源码 } 的列表。递归读取。
 #[tauri::command]
@@ -1005,6 +1116,8 @@ pub fn run() {
             watch_project,
             unwatch_project,
             save_file,
+            save_graph,
+            delete_file,
             save_project_meta,
             read_renderer_files,
         ])
@@ -1064,6 +1177,242 @@ mod tests {
         for (rel_path, data) in nodes {
             write_json(&project.join("content").join(rel_path), data).unwrap();
         }
+    }
+
+    fn write_graph_project_with_files(
+        project: &Path,
+        graph_json: serde_json::Value,
+        node_files: &[(&str, &str)],
+    ) {
+        write_minimal_project(project, serde_json::json!([]));
+        write_json(&project.join("content/graph.json"), &graph_json).unwrap();
+        for (rel_path, text) in node_files {
+            write_text(&project.join("content").join(rel_path), text);
+        }
+    }
+
+    fn graph_input(node_file: &str, title: &str) -> ProjectGraphInput {
+        ProjectGraphInput {
+            version: 1,
+            entry_node_id: "prologue".to_string(),
+            nodes: vec![
+                GraphNodeInput {
+                    id: "prologue".to_string(),
+                    title: title.to_string(),
+                    file: node_file.to_string(),
+                    position: GraphPositionInput { x: 120.0, y: 180.0 },
+                },
+                GraphNodeInput {
+                    id: "ending".to_string(),
+                    title: "Ending".to_string(),
+                    file: "nodes/ending.json".to_string(),
+                    position: GraphPositionInput { x: 380.0, y: 180.0 },
+                },
+            ],
+            edges: vec![GraphEdgeInput {
+                id: "prologue__ending".to_string(),
+                from: "prologue".to_string(),
+                to: "ending".to_string(),
+                condition: serde_json::Value::Null,
+            }],
+        }
+    }
+
+    #[test]
+    fn save_graph_writes_graph_json() {
+        let root = unique_temp_dir("save-graph");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!([]));
+        write_text(&project.join("content/nodes/prologue.json"), "[]");
+        write_text(&project.join("content/nodes/ending.json"), "[]");
+
+        save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Prologue"),
+        )
+        .unwrap();
+
+        let graph_text = fs::read_to_string(project.join("content/graph.json")).unwrap();
+        let graph: serde_json::Value = serde_json::from_str(&graph_text).unwrap();
+        assert!(graph_text.contains('\n'));
+        assert_eq!(graph["entryNodeId"], "prologue");
+        assert_eq!(graph["nodes"][0]["title"], "Prologue");
+        assert_eq!(graph["edges"][0]["id"], "prologue__ending");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_graph_overwrites_existing_graph_json() {
+        let root = unique_temp_dir("save-graph-overwrite");
+        let project = root.join("project");
+        write_graph_project_with_files(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "old",
+                "nodes": [{ "id": "old", "title": "Old", "file": "nodes/old.json", "position": { "x": 0, "y": 0 } }],
+                "edges": []
+            }),
+            &[("nodes/prologue.json", "[]"), ("nodes/ending.json", "[]")],
+        );
+
+        save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Fresh"),
+        )
+        .unwrap();
+
+        let graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(project.join("content/graph.json")).unwrap())
+                .unwrap();
+        assert_eq!(graph["entryNodeId"], "prologue");
+        assert_eq!(graph["nodes"][0]["title"], "Fresh");
+        assert_ne!(graph["entryNodeId"], "old");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_graph_rejects_untrusted_project_root() {
+        let root = unique_temp_dir("save-graph-untrusted");
+        fs::create_dir_all(&root).unwrap();
+
+        let result = save_graph(
+            root.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Nope"),
+        );
+
+        assert!(result.is_err());
+        assert!(!root.join("content/graph.json").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_graph_rejects_node_file_outside_content_dir() {
+        let root = unique_temp_dir("save-graph-escape");
+        let project = root.join("project");
+        write_graph_project_with_files(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "kept",
+                "nodes": [{ "id": "kept", "title": "Kept", "file": "nodes/kept.json", "position": { "x": 0, "y": 0 } }],
+                "edges": []
+            }),
+            &[("nodes/kept.json", "[]")],
+        );
+        let before = fs::read_to_string(project.join("content/graph.json")).unwrap();
+
+        let result = save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("../../outside.json", "Escape"),
+        );
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("路径越界"));
+        assert_eq!(
+            fs::read_to_string(project.join("content/graph.json")).unwrap(),
+            before
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_file_removes_target_under_content() {
+        let root = unique_temp_dir("delete-file");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!([]));
+        let target = project.join("content/nodes/a.json");
+        write_text(&target, "[]");
+
+        delete_file(
+            project.to_string_lossy().into_owned(),
+            "nodes/a.json".to_string(),
+        )
+        .unwrap();
+
+        assert!(!target.exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_file_is_idempotent_for_missing_file() {
+        let root = unique_temp_dir("delete-file-missing");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!([]));
+
+        let result = delete_file(
+            project.to_string_lossy().into_owned(),
+            "nodes/missing.json".to_string(),
+        );
+
+        assert!(result.is_ok());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_file_rejects_path_traversal() {
+        let root = unique_temp_dir("delete-file-escape");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!([]));
+        write_text(&root.join("outside.json"), "keep");
+
+        let result = delete_file(
+            project.to_string_lossy().into_owned(),
+            "../../outside.json".to_string(),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("outside.json")).unwrap(),
+            "keep"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_file_rejects_untrusted_project_root() {
+        let root = unique_temp_dir("delete-file-untrusted");
+        fs::create_dir_all(&root).unwrap();
+
+        let result = delete_file(
+            root.to_string_lossy().into_owned(),
+            "nodes/a.json".to_string(),
+        );
+
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_graph_then_open_project_roundtrip() {
+        let root = unique_temp_dir("save-graph-roundtrip");
+        let project = root.join("project");
+        write_minimal_project(&project, serde_json::json!([]));
+        write_text(
+            &project.join("content/nodes/prologue.json"),
+            r#"[{"t":"wait","ms":1}]"#,
+        );
+        write_text(
+            &project.join("content/nodes/ending.json"),
+            r#"[{"t":"wait","ms":2}]"#,
+        );
+
+        save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Prologue"),
+        )
+        .unwrap();
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let graph = opened.graph.unwrap();
+        assert!(!graph.synthetic);
+        assert_eq!(graph.entry_node_id, "prologue");
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.nodes[0].file, "nodes/prologue.json");
+        assert_eq!(graph.nodes[0].position.x, 120.0);
+        assert_eq!(graph.edges[0].id, "prologue__ending");
+        assert_eq!(opened.nodes.unwrap().len(), 2);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
