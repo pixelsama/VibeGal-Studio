@@ -16,6 +16,9 @@ src-tauri/target/
 # Tauri 自动生成的 schema / capability 缓存
 src-tauri/gen/
 
+# esbuild.wasm 二进制（13MB，由 postinstall 从 npm 包拷贝，不提交）
+packages/studio/public/esbuild.wasm
+
 # ── 日志 / 临时文件 ──────────────────
 *.log
 npm-debug.log*

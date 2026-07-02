@@ -279,6 +279,12 @@ fn collect_source_files(base: &Path, dir: &Path, out: &mut Vec<RendererFile>) ->
     Ok(())
 }
 
+/// DEBUG 专用：写文件到任意绝对路径（仅自检/调试用，写入 /tmp）
+#[tauri::command]
+fn write_debug_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content).map_err(|e| format!("写失败 {}: {}", path, e))
+}
+
 /// 更新 gal.project.json
 #[tauri::command]
 fn save_project_meta(project_path: String, meta: ProjectMeta) -> Result<(), String> {
@@ -375,6 +381,7 @@ pub fn run() {
             save_file,
             save_project_meta,
             read_renderer_files,
+            write_debug_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
