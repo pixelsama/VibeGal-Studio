@@ -24,8 +24,7 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
           <div style={emptyStyle}>暂无节点</div>
         ) : (
           orderedNodes.map((node) => {
-            const entry = findNodeData(graph, nodeEntries, node.id);
-            const hasContent = entry?.data != null;
+            const hasContent = findNodeData(nodeEntries, node.file) != null;
             const active = node.id === selectedNodeId;
 
             return (

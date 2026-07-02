@@ -38,13 +38,12 @@ export function findNode(graph: ProjectGraph, id: string | null): GraphNode | nu
   return graph.nodes.find((node) => node.id === id) ?? null;
 }
 
-/** 当前选中节点对应的节点文件数据 */
-export function findNodeData(
-  graph: ProjectGraph,
-  entries: NodeEntry[] | undefined,
-  id: string | null,
-): NodeEntry | null {
-  const node = findNode(graph, id);
-  if (!node) return null;
-  return entries?.find((entry) => entry.relPath === node.file) ?? null;
+/** 节点文件条目 */
+export function findNodeEntry(entries: NodeEntry[] | undefined, file: string): NodeEntry | null {
+  return entries?.find((entry) => entry.relPath === file) ?? null;
+}
+
+/** 节点文件数据 */
+export function findNodeData(entries: NodeEntry[] | undefined, file: string): unknown | null {
+  return findNodeEntry(entries, file)?.data ?? null;
 }

@@ -1,11 +1,9 @@
 /**
  * 预览面板 —— 用引擎跑项目，挂载当前选中的渲染层。
  */
-import { useEffect, useState } from "react";
-import type { RendererManifest } from "@galstudio/engine";
 import type { ProjectData } from "../../lib/types";
 import { useProjectPlayer } from "./useProjectPlayer";
-import { loadRenderer } from "../renderers/rendererLoader";
+import { useRendererComponent } from "./useRendererComponent";
 
 interface Props {
   project: ProjectData;
@@ -14,18 +12,7 @@ interface Props {
 
 export function Preview({ project, rendererId }: Props) {
   const player = useProjectPlayer(project);
-  const [renderer, setRenderer] = useState<RendererManifest | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  // 加载渲染层（项目内 renderers/<id>/index.tsx）
-  useEffect(() => {
-    let cancelled = false;
-    setLoadError(null);
-    loadRenderer(project.path, rendererId)
-      .then((m) => { if (!cancelled) setRenderer(m); })
-      .catch((e) => { if (!cancelled) setLoadError(String(e)); });
-    return () => { cancelled = true; };
-  }, [project.path, rendererId]);
+  const { renderer, loadError } = useRendererComponent(project.path, rendererId);
 
   if (player.error) {
     return <Centered mono>{`引擎错误：\n\n${player.error}`}</Centered>;

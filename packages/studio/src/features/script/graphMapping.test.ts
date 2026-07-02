@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectGraph } from "../../lib/types";
+import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { NODE_TYPE, findNode, findNodeData, mapGraphToFlow } from "./graphMapping";
 
 const sampleGraph: ProjectGraph = {
@@ -94,16 +94,15 @@ describe("graphMapping", () => {
     expect(findNode(sampleGraph, null)).toBeNull();
   });
 
-  it("findNodeData returns node entry data by graph node id", () => {
-    const entries = [
+  it("findNodeData locates data by node file", () => {
+    const entries: NodeEntry[] = [
       { relPath: "nodes/prologue.json", data: [{ t: "say", text: "hello" }] },
       { relPath: "nodes/first-meeting.json", data: null },
     ];
 
-    expect(findNodeData(sampleGraph, entries, "prologue")).toEqual(entries[0]);
-    expect(findNodeData(sampleGraph, entries, "first-meeting")).toEqual(entries[1]);
-    expect(findNodeData(sampleGraph, entries, "missing")).toBeNull();
-    expect(findNodeData(sampleGraph, entries, null)).toBeNull();
-    expect(findNodeData(sampleGraph, undefined, "prologue")).toBeNull();
+    expect(findNodeData(entries, "nodes/prologue.json")).toEqual(entries[0].data);
+    expect(findNodeData(entries, "nodes/first-meeting.json")).toBeNull();
+    expect(findNodeData(entries, "nodes/missing.json")).toBeNull();
+    expect(findNodeData(undefined, "nodes/prologue.json")).toBeNull();
   });
 });

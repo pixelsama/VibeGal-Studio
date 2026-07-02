@@ -3,8 +3,9 @@ import type { ProjectData } from "../../lib/types";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
 import { NodeInspector } from "./NodeInspector";
+import { NodeEditor } from "./NodeEditor";
 import { NodeOutline } from "./NodeOutline";
-import { findNode } from "./graphMapping";
+import { findNode, findNodeData } from "./graphMapping";
 import "@xyflow/react/dist/style.css";
 
 interface Props {
@@ -23,7 +24,7 @@ const EMPTY_GRAPH = {
   edges: [],
 };
 
-export function ScriptWorkspace({ project, rendererId: _rendererId, refreshKey: _refreshKey, onSaved: _onSaved }: Props) {
+export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, onSaved }: Props) {
   const [view, setView] = useState<ScriptView>("graph");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const graph = useMemo(() => project.graph ?? EMPTY_GRAPH, [project.graph]);
@@ -82,23 +83,16 @@ export function ScriptWorkspace({ project, rendererId: _rendererId, refreshKey: 
             </div>
           </div>
         ) : (
-          <div style={nodeViewStyle}>
-            <div style={nodeViewCardStyle}>
-              <div style={nodeViewTitleStyle}>{selectedNode?.title ?? "节点编辑器"}</div>
-              <div style={nodeViewMetaStyle}>
-                {selectedNode ? selectedNode.file : "未选择节点"}
-              </div>
-              <div style={nodeViewBodyStyle}>
-                节点编辑器 · Phase 4
-                {selectedNode && project.nodes?.find((entry) => entry.relPath === selectedNode.file)?.data == null && (
-                  <div style={nodeWarningStyle}>当前节点文件缺失，Phase 4 将在此处显示只读提示与编辑入口。</div>
-                )}
-              </div>
-              <button type="button" onClick={() => setView("graph")} style={backButtonStyle}>
-                返回流程图
-              </button>
-            </div>
-          </div>
+          selectedNode && (
+            <NodeEditor
+              key={selectedNode.id}
+              project={project}
+              rendererId={rendererId}
+              node={selectedNode}
+              nodeData={findNodeData(project.nodes, selectedNode.file)}
+              onSaved={onSaved}
+            />
+          )
         )}
       </div>
     </div>
@@ -140,61 +134,4 @@ const inspectorPaneStyle: React.CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   borderLeft: "1px solid #232a38",
-};
-
-const nodeViewStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "100%",
-  height: "100%",
-  padding: 24,
-};
-
-const nodeViewCardStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 12,
-  width: "min(640px, 100%)",
-  padding: 24,
-  borderRadius: 8,
-  background: "#141922",
-  border: "1px solid #232a38",
-  color: "#d4dae2",
-};
-
-const nodeViewTitleStyle: React.CSSProperties = {
-  fontSize: 20,
-  fontWeight: 600,
-  color: "#e8edf5",
-};
-
-const nodeViewMetaStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#7a8290",
-  wordBreak: "break-all",
-};
-
-const nodeViewBodyStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  padding: "18px 0",
-  fontSize: 14,
-  color: "#a0a8b4",
-};
-
-const nodeWarningStyle: React.CSSProperties = {
-  fontSize: 13,
-  color: "#e0b676",
-};
-
-const backButtonStyle: React.CSSProperties = {
-  alignSelf: "flex-start",
-  padding: "10px 14px",
-  borderRadius: 8,
-  background: "#1a1f29",
-  border: "1px solid #2a3242",
-  color: "#d4dae2",
-  cursor: "pointer",
 };

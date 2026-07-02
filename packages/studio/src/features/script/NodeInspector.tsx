@@ -10,7 +10,6 @@ interface NodeInspectorProps {
 
 export function NodeInspector({ graph, nodeEntries, selectedNodeId, onEnter }: NodeInspectorProps) {
   const node = findNode(graph, selectedNodeId);
-  const nodeEntry = findNodeData(graph, nodeEntries, selectedNodeId);
 
   if (!node) {
     return (
@@ -21,7 +20,7 @@ export function NodeInspector({ graph, nodeEntries, selectedNodeId, onEnter }: N
     );
   }
 
-  const hasContent = nodeEntry?.data != null;
+  const hasContent = findNodeData(nodeEntries, node.file) != null;
 
   return (
     <div style={panelStyle}>

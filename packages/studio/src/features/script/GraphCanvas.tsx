@@ -32,14 +32,12 @@ export function GraphCanvas({ graph, nodeEntries, selectedNodeId, onSelect, onEn
     const baseFlow = mapGraphToFlow(graph);
 
     const nodes: GraphCanvasFlowNode[] = baseFlow.nodes.map((node) => {
-      const entry = findNodeData(graph, nodeEntries, node.id);
-
       return {
         ...node,
         selected: node.id === selectedNodeId,
         data: {
           ...node.data,
-          hasContent: entry?.data != null,
+          hasContent: findNodeData(nodeEntries, node.data.fileId) != null,
         },
       };
     });
