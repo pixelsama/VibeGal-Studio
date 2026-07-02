@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "vitest run src/**/*.test.ts",
+    "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
     "postinstall": "node -e \"require('fs').copyFileSync(require.resolve('esbuild-wasm/esbuild.wasm'),'public/esbuild.wasm')\" || node scripts/copy-wasm.mjs"
