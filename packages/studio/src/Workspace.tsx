@@ -103,31 +103,38 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
-      {/* 顶栏 */}
-      <header style={topBarStyle}>
-        <button onClick={onBack} style={backBtnStyle}>← 项目列表</button>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#d4dae2" }}>{project.meta.name}</div>
-        <div style={{ flex: 1 }} />
-        <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
-        <label style={{ fontSize: 12, color: "#7a8290", marginRight: 6 }}>渲染层</label>
-        <select
-          value={rendererId}
-          onChange={(e) => handleRendererChange(e.target.value)}
-          style={selectStyle}
-        >
-          {project.rendererIds.length === 0 && <option value="">（无）</option>}
-          {project.rendererIds.map((id) => (
-            <option key={id} value={id}>{id}</option>
-          ))}
-        </select>
-      </header>
+      {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
+      <header data-tauri-drag-region style={titleBarStyle}>
+        {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          <NavBtn onClick={onBack} label="返回项目列表" ariaLabel="返回">‹</NavBtn>
+          <NavBtn disabled label="前进（暂未接入）" ariaLabel="前进">›</NavBtn>
+        </div>
 
-      {/* 工作台标签栏 */}
-      <div style={tabBarStyle}>
-        <TabBtn active={workspace === "render"} onClick={() => setWorkspace("render")}>Render</TabBtn>
-        <TabBtn active={workspace === "script"} onClick={() => setWorkspace("script")}>Script</TabBtn>
-        <TabBtn active={workspace === "assets"} onClick={() => setWorkspace("assets")}>Assets</TabBtn>
-      </div>
+        {/* 居中：工作台切换，窗口水平绝对居中 */}
+        <div data-tauri-drag-region style={centerGroupStyle}>
+          <TabBtn active={workspace === "render"} onClick={() => setWorkspace("render")}>Render</TabBtn>
+          <TabBtn active={workspace === "script"} onClick={() => setWorkspace("script")}>Script</TabBtn>
+          <TabBtn active={workspace === "assets"} onClick={() => setWorkspace("assets")}>Assets</TabBtn>
+        </div>
+
+        {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <span style={projectNameStyle}>{project.meta.name}</span>
+          <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
+          <label style={{ fontSize: 12, color: "#7a8290" }}>渲染层</label>
+          <select
+            value={rendererId}
+            onChange={(e) => handleRendererChange(e.target.value)}
+            style={selectStyle}
+          >
+            {project.rendererIds.length === 0 && <option value="">（无）</option>}
+            {project.rendererIds.map((id) => (
+              <option key={id} value={id}>{id}</option>
+            ))}
+          </select>
+        </div>
+      </header>
 
       {/* 内容区 */}
       <div style={{ flex: 1, overflow: "hidden" }}>
@@ -182,29 +189,77 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick} style={{
-      padding: "8px 20px", background: active ? "#1a1f29" : "transparent",
-      border: "none", borderBottom: active ? "2px solid #3a6ea5" : "2px solid transparent",
-      color: active ? "#9fc8e3" : "#7a8290", cursor: "pointer", fontSize: 13,
+      padding: "0 14px", height: 30, background: active ? "#1a1f29" : "transparent",
+      border: "none", borderRadius: 6, color: active ? "#9fc8e3" : "#7a8290",
+      cursor: "pointer", fontSize: 13,
     }}>
       {children}
     </button>
   );
 }
 
-const topBarStyle: React.CSSProperties = {
-  display: "flex", alignItems: "center", gap: 12,
-  padding: "10px 16px", borderBottom: "1px solid #232a38", background: "#0e1116",
+function NavBtn({ onClick, disabled, children, label, ariaLabel }: {
+  onClick?: () => void; disabled?: boolean; children: React.ReactNode; label: string; ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={label}
+      style={disabled ? { ...navBtnStyle, opacity: 0.35, cursor: "not-allowed" } : navBtnStyle}
+    >
+      {children}
+    </button>
+  );
+}
+
+const titleBarStyle: React.CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  height: 38,
+  // 左侧 88px 为 macOS 红绿灯避让（约 70px）+ 一点间距；右 12px
+  padding: "0 12px 0 88px",
+  borderBottom: "1px solid #232a38",
+  background: "#0e1116",
 };
-const backBtnStyle: React.CSSProperties = {
-  padding: "6px 12px", background: "transparent", border: "1px solid #2a3242",
-  borderRadius: 6, color: "#a0a8b4", cursor: "pointer", fontSize: 13,
+const centerGroupStyle: React.CSSProperties = {
+  position: "absolute",
+  left: "50%",
+  top: "50%",
+  transform: "translate(-50%, -50%)",
+  display: "flex",
+  gap: 2,
+};
+const navBtnStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "transparent",
+  border: "1px solid #2a3242",
+  borderRadius: 6,
+  color: "#a0a8b4",
+  fontSize: 18,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+const projectNameStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#7a8290",
+  maxWidth: 200,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 const selectStyle: React.CSSProperties = {
   padding: "6px 10px", background: "#1a1f29", border: "1px solid #2a3242",
   borderRadius: 6, color: "#d4dae2", fontSize: 13,
-};
-const tabBarStyle: React.CSSProperties = {
-  display: "flex", borderBottom: "1px solid #232a38", background: "#0b0e14",
 };
 const syncButtonStyle: React.CSSProperties = {
   display: "inline-flex",
