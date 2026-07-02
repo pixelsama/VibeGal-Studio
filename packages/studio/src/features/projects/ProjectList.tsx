@@ -12,6 +12,8 @@ interface Props {
 export function ProjectList({ onOpen }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
+  const [newProjectName, setNewProjectName] = useState("");
 
   const openDirectory = useCallback(async (dir: string) => {
     const target = dir.trim();
@@ -60,13 +62,20 @@ export function ProjectList({ onOpen }: Props) {
   const handleNew = async () => {
     const parentDir = await pickDirectory();
     if (!parentDir) return;
-    const name = window.prompt("项目名称（将作为文件夹名）");
-    const projectName = name?.trim();
+    setError(null);
+    setNewProjectParent(parentDir);
+    setNewProjectName("");
+  };
+
+  const handleCreateProject = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newProjectParent) return;
+    const projectName = newProjectName.trim();
     if (!projectName) return;
     setLoading(true);
     setError(null);
     try {
-      onOpen(await createProject(parentDir, projectName));
+      onOpen(await createProject(newProjectParent, projectName));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -89,6 +98,35 @@ export function ProjectList({ onOpen }: Props) {
 
         {error && <div style={errorStyle}>{error}</div>}
 
+        {newProjectParent && (
+          <form onSubmit={handleCreateProject} style={newProjectFormStyle}>
+            <div style={formHeaderStyle}>新建项目</div>
+            <div style={parentPathStyle}>{newProjectParent}</div>
+            <div style={formRowStyle}>
+              <input
+                autoFocus
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="项目名称"
+                style={inputStyle}
+                disabled={loading}
+              />
+              <button type="submit" style={primaryBtn} disabled={!newProjectName.trim() || loading}>创建</button>
+              <button
+                type="button"
+                style={btnStyle}
+                disabled={loading}
+                onClick={() => {
+                  setNewProjectParent(null);
+                  setNewProjectName("");
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        )}
+
         <div style={emptyStyle}>
           {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 GalStudio 项目，会先询问是否添加工程文件。"}
         </div>
@@ -107,6 +145,27 @@ const titleStyle: React.CSSProperties = { fontSize: 32, margin: "0 0 4px", fontW
 const subtitleStyle: React.CSSProperties = { margin: 0, color: "#7a8290", fontSize: 14 };
 const sectionStyle: React.CSSProperties = {};
 const workspaceRow: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" };
+const newProjectFormStyle: React.CSSProperties = {
+  padding: 16,
+  background: "#141922",
+  border: "1px solid #2a3242",
+  borderRadius: 8,
+  marginBottom: 16,
+};
+const formHeaderStyle: React.CSSProperties = { fontSize: 15, fontWeight: 600, marginBottom: 6 };
+const parentPathStyle: React.CSSProperties = { fontSize: 12, color: "#7a8290", marginBottom: 12, wordBreak: "break-all" };
+const formRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const inputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 220,
+  padding: "8px 12px",
+  background: "#1a1f29",
+  border: "1px solid #2a3242",
+  borderRadius: 6,
+  color: "#d4dae2",
+  fontFamily: "inherit",
+  fontSize: 14,
+};
 const btnStyle: React.CSSProperties = {
   padding: "8px 14px", background: "#1a1f29", border: "1px solid #2a3242",
   borderRadius: 6, color: "#d4dae2", cursor: "pointer", fontSize: 14,
