@@ -10,7 +10,6 @@ interface Props {
 }
 
 export function ProjectList({ onOpen }: Props) {
-  const [projectDir, setProjectDir] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +54,6 @@ export function ProjectList({ onOpen }: Props) {
   const handlePickProject = async () => {
     const dir = await pickDirectory();
     if (!dir) return;
-    setProjectDir(dir);
     await openDirectory(dir);
   };
 
@@ -85,14 +83,7 @@ export function ProjectList({ onOpen }: Props) {
 
       <section style={sectionStyle}>
         <div style={workspaceRow}>
-          <input
-            value={projectDir}
-            onChange={(e) => setProjectDir(e.target.value)}
-            placeholder="项目目录路径"
-            style={inputStyle}
-          />
-          <button onClick={handlePickProject} style={btnStyle} disabled={loading}>选择并打开…</button>
-          <button onClick={() => openDirectory(projectDir)} style={btnStyle} disabled={!projectDir || loading}>打开</button>
+          <button onClick={handlePickProject} style={btnStyle} disabled={loading}>打开项目…</button>
           <button onClick={handleNew} style={primaryBtn} disabled={loading}>+ 新建项目</button>
         </div>
 
@@ -116,11 +107,6 @@ const titleStyle: React.CSSProperties = { fontSize: 32, margin: "0 0 4px", fontW
 const subtitleStyle: React.CSSProperties = { margin: 0, color: "#7a8290", fontSize: 14 };
 const sectionStyle: React.CSSProperties = {};
 const workspaceRow: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" };
-const inputStyle: React.CSSProperties = {
-  flex: 1, minWidth: 240, padding: "8px 12px",
-  background: "#1a1f29", border: "1px solid #2a3242", borderRadius: 6,
-  color: "#d4dae2", fontFamily: "inherit", fontSize: 14,
-};
 const btnStyle: React.CSSProperties = {
   padding: "8px 14px", background: "#1a1f29", border: "1px solid #2a3242",
   borderRadius: 6, color: "#d4dae2", cursor: "pointer", fontSize: 14,
