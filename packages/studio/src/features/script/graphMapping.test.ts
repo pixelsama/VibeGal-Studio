@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
-import { NODE_TYPE, findNode, findNodeData, mapGraphToFlow } from "./graphMapping";
+import type { GraphIssue, NodeEntry, ProjectGraph } from "../../lib/types";
+import { NODE_TYPE, findNode, findNodeData, issueTargetsNode, mapGraphToFlow } from "./graphMapping";
 
 const sampleGraph: ProjectGraph = {
   version: 1,
@@ -86,6 +86,42 @@ describe("graphMapping", () => {
     });
 
     expect(flow).toEqual({ nodes: [], edges: [] });
+  });
+
+  it("issueTargetsNode returns nodeId for selection", () => {
+    const nodeIssue: GraphIssue = {
+      severity: "warn",
+      code: "missing_node_file",
+      message: "节点文件缺失",
+      nodeId: "first-meeting",
+    };
+    const edgeIssue: GraphIssue = {
+      severity: "warn",
+      code: "dangling_edge",
+      message: "边缺少端点",
+      edgeId: "prologue__missing",
+    };
+
+    expect(issueTargetsNode(nodeIssue)).toBe("first-meeting");
+    expect(issueTargetsNode(edgeIssue)).toBeNull();
+  });
+
+  it("mapGraphToFlow marks suspicious edges from issues", () => {
+    const flow = mapGraphToFlow(sampleGraph, {
+      graphIssues: [
+        {
+          severity: "warn",
+          code: "dangling_edge",
+          message: "边的端点不存在",
+          edgeId: "prologue__first-meeting",
+        },
+      ],
+    });
+
+    expect(flow.edges[0].data).toMatchObject({
+      condition: null,
+      suspicious: true,
+    });
   });
 
   it("findNode returns node by id", () => {

@@ -21,6 +21,7 @@ interface Props {
 }
 
 type WorkspaceId = "render" | "script" | "assets";
+type SyncState = "synced" | "syncing" | "error";
 
 interface ProjectChangedPayload {
   projectPath: string;
@@ -31,6 +32,7 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
   const [workspace, setWorkspace] = useState<WorkspaceId>("render");
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [syncState, setSyncState] = useState<SyncState>("synced");
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
 
   // 切换渲染层：更新本地 + 持久化到 gal.project.json
@@ -44,13 +46,16 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
   }, [project]);
 
   const refreshProject = useCallback(async (rendererChanged = false) => {
+    setSyncState("syncing");
     try {
       if (rendererChanged) clearRendererCache();
       const fresh = await openProject(project.path);
       onProjectChanged(fresh);
       setRefreshKey((k) => k + 1);
+      setSyncState("synced");
     } catch (e) {
       console.warn("刷新项目失败:", e);
+      setSyncState("error");
     }
   }, [project.path, onProjectChanged]);
 
@@ -69,6 +74,7 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
       try {
         const stopListening = await listen<ProjectChangedPayload>("project_changed", (event) => {
           if (disposed || event.payload.projectPath !== project.path) return;
+          setSyncState("syncing");
           void refreshProject(event.payload.rendererChanged);
         });
         if (disposed) {
@@ -102,6 +108,7 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
         <button onClick={onBack} style={backBtnStyle}>← 项目列表</button>
         <div style={{ fontSize: 14, fontWeight: 600, color: "#d4dae2" }}>{project.meta.name}</div>
         <div style={{ flex: 1 }} />
+        <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
         <label style={{ fontSize: 12, color: "#7a8290", marginRight: 6 }}>渲染层</label>
         <select
           value={rendererId}
@@ -141,6 +148,37 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
   );
 }
 
+function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => void }) {
+  const config = {
+    synced: { label: "已同步", dot: "#4caf7a", cursor: "default" },
+    syncing: { label: "同步中...", dot: "#d49b4d", cursor: "default" },
+    error: { label: "刷新失败（点击重试）", dot: "#d66a6a", cursor: "pointer" },
+  }[state];
+
+  return (
+    <button
+      type="button"
+      onClick={state === "error" ? onRetry : undefined}
+      disabled={state !== "error"}
+      style={{
+        ...syncButtonStyle,
+        cursor: config.cursor,
+        color: state === "error" ? "#e0a0a0" : "#a0a8b4",
+      }}
+      title={state === "error" ? "重新打开项目并保留当前工作台" : undefined}
+    >
+      <span
+        style={{
+          ...syncDotStyle,
+          background: config.dot,
+          boxShadow: state === "syncing" ? "0 0 0 3px rgba(212, 155, 77, 0.14)" : undefined,
+        }}
+      />
+      {config.label}
+    </button>
+  );
+}
+
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick} style={{
@@ -167,4 +205,20 @@ const selectStyle: React.CSSProperties = {
 };
 const tabBarStyle: React.CSSProperties = {
   display: "flex", borderBottom: "1px solid #232a38", background: "#0b0e14",
+};
+const syncButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  padding: "5px 9px",
+  borderRadius: 999,
+  border: "1px solid #2a3242",
+  background: "#141922",
+  fontSize: 12,
+};
+const syncDotStyle: React.CSSProperties = {
+  width: 8,
+  height: 8,
+  borderRadius: 999,
+  flexShrink: 0,
 };

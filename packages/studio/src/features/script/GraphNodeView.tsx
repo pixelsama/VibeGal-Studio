@@ -6,6 +6,7 @@ export interface GraphCanvasNodeData extends Record<string, unknown> {
   fileId: string;
   isEntry: boolean;
   hasContent: boolean;
+  duplicateNodeId?: boolean;
 }
 
 type GraphNodeViewNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
@@ -15,8 +16,10 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
     <div
       style={{
         ...nodeStyle,
-        borderColor: selected ? "#9fc8e3" : "#232a38",
-        boxShadow: selected ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px rgba(0, 0, 0, 0.24)" : "none",
+        borderColor: data.duplicateNodeId ? "#d66a6a" : selected ? "#9fc8e3" : "#232a38",
+        boxShadow: data.duplicateNodeId
+          ? "0 0 0 1px rgba(214, 106, 106, 0.25), 0 8px 18px rgba(0, 0, 0, 0.24)"
+          : selected ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px rgba(0, 0, 0, 0.24)" : "none",
       }}
     >
       <Handle type="target" position={Position.Left} style={hiddenHandleStyle} />
@@ -28,9 +31,9 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
       </div>
       <div style={metaStyle}>{data.fileId}</div>
       <div style={statusRowStyle}>
-        <span style={{ ...statusDotStyle, background: data.hasContent ? "#4caf7a" : "#d49b4d" }} />
-        <span style={{ color: data.hasContent ? "#93d3b0" : "#e0b676" }}>
-          {data.hasContent ? "已有内容" : "文件缺失"}
+        <span style={{ ...statusDotStyle, background: data.duplicateNodeId ? "#d66a6a" : data.hasContent ? "#4caf7a" : "#d49b4d" }} />
+        <span style={{ color: data.duplicateNodeId ? "#e0a0a0" : data.hasContent ? "#93d3b0" : "#e0b676" }}>
+          {data.duplicateNodeId ? "ID 重复" : data.hasContent ? "已有内容" : "文件缺失"}
         </span>
       </div>
     </div>

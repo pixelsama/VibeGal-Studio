@@ -3,6 +3,7 @@ import { deleteFile, saveFile, saveGraph } from "../../lib/tauri";
 import type { ProjectData, ProjectGraph } from "../../lib/types";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
+import { GraphIssuesPanel } from "./GraphIssuesPanel";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
 import { NodeOutline } from "./NodeOutline";
@@ -38,7 +39,9 @@ const EMPTY_GRAPH = {
 export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, onSaved }: Props) {
   const [view, setView] = useState<ScriptView>("graph");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const incomingGraph = useMemo(() => project.graph ?? EMPTY_GRAPH, [project.graph]);
+  const graphReport = useMemo(() => project.graphReport ?? { graphIssues: [] }, [project.graphReport]);
   const [graph, setGraph] = useState<ProjectGraph>(incomingGraph);
   const [savingGraph, setSavingGraph] = useState(false);
   const [graphStatus, setGraphStatus] = useState("");
@@ -98,10 +101,17 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
 
   const handleSelect = (id: string) => {
     setSelectedNodeId(id);
+    setSelectedEdgeId(null);
+  };
+
+  const handleSelectEdge = (id: string) => {
+    setSelectedEdgeId(id);
+    setSelectedNodeId(null);
   };
 
   const handleEnter = (id: string) => {
     setSelectedNodeId(id);
+    setSelectedEdgeId(null);
     setView("node");
   };
 
@@ -114,6 +124,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
       await saveFile(project.path, `content/${file}`, "[]");
       const next = addNode(graph, { id, title: id, file, position: defaultPosition(graph) });
       setSelectedNodeId(id);
+      setSelectedEdgeId(null);
       setView("graph");
       await persistGraph(next);
     } catch (error) {
@@ -154,6 +165,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
     setGraph(next);
     if (selectedNodeId === nodeId) {
       setSelectedNodeId(null);
+      setSelectedEdgeId(null);
       setView("graph");
     }
     if (removedFile) {
@@ -169,7 +181,40 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
   const handleDeleteEdge = (edgeId: string) => {
     const next = removeEdge(graph, edgeId);
     if (next.edges.length === graph.edges.length) return;
+    if (selectedEdgeId === edgeId) setSelectedEdgeId(null);
     void persistGraph(next);
+  };
+
+  const handleCreateAiTask = async () => {
+    if (!selectedNode) return;
+    const prompt = [
+      "# GalStudio AI Task",
+      "",
+      "请扩展当前选中的叙事节点，保持节点文件为 Instruction[] JSON 格式。",
+      "",
+      `- nodeId: ${selectedNode.id}`,
+      `- title: ${selectedNode.title}`,
+      `- file: content/${selectedNode.file}`,
+      `- project: ${project.path}`,
+      "",
+      "要求：",
+      "- 只在 content/ 下写入节点或 graph.json 相关文件。",
+      "- 不要使用越界路径。",
+      "- 节点内容必须是 packages/engine/src/schema.ts 定义的 t 判别联合指令数组。",
+      "- 如需新增节点，同时更新 content/graph.json 的 nodes/edges。",
+      "",
+    ].join("\n");
+
+    setSavingGraph(true);
+    setGraphStatus("");
+    try {
+      await saveFile(project.path, "content/.gal/ai-task.md", prompt);
+      setGraphStatus("AI 占位任务已写入 content/.gal/ai-task.md");
+    } catch (error) {
+      setGraphStatus(`写入 AI 占位任务失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSavingGraph(false);
+    }
   };
 
   return (
@@ -201,6 +246,15 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
                       固化图结构
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={handleCreateAiTask}
+                    disabled={savingGraph || !selectedNode}
+                    title={selectedNode ? "写入 content/.gal/ai-task.md，供外部 AI coding agent 接手" : "先选择一个节点"}
+                    style={selectedNode ? secondaryButtonStyle : disabledButtonStyle}
+                  >
+                    让 AI 扩展此节点
+                  </button>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
@@ -215,9 +269,12 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
                 </div>
                 <GraphCanvas
                   graph={graph}
+                  graphReport={graphReport}
                   nodeEntries={project.nodes}
                   selectedNodeId={selectedNodeId}
+                  selectedEdgeId={selectedEdgeId}
                   onSelect={handleSelect}
+                  onSelectEdge={handleSelectEdge}
                   onEnter={handleEnter}
                   onMoveNode={handleMoveNode}
                   onConnect={handleConnect}
@@ -227,15 +284,32 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
               </div>
             </div>
             <div style={inspectorPaneStyle}>
-              <NodeInspector
-                graph={graph}
-                nodeEntries={project.nodes}
-                selectedNodeId={selectedNodeId}
-                onEnter={handleEnter}
-                onRename={handleRenameNode}
-                onMaterialize={handleMaterialize}
-                saving={savingGraph}
-              />
+              <div style={inspectorStackStyle}>
+                <div style={inspectorMainStyle}>
+                  <NodeInspector
+                    graph={graph}
+                    nodeEntries={project.nodes}
+                    selectedNodeId={selectedNodeId}
+                    onEnter={handleEnter}
+                    onRename={handleRenameNode}
+                    onMaterialize={handleMaterialize}
+                    saving={savingGraph}
+                  />
+                </div>
+                <div style={issuesPanelStyle}>
+                  <GraphIssuesPanel
+                    issues={graphReport.graphIssues}
+                    onSelectNode={(id) => {
+                      setView("graph");
+                      handleSelect(id);
+                    }}
+                    onSelectEdge={(id) => {
+                      setView("graph");
+                      handleSelectEdge(id);
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -325,6 +399,14 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
+const disabledButtonStyle: React.CSSProperties = {
+  ...secondaryButtonStyle,
+  borderColor: "#2a3242",
+  background: "#141922",
+  color: "#596274",
+  cursor: "not-allowed",
+};
+
 const toolbarSpacerStyle: React.CSSProperties = {
   flex: 1,
 };
@@ -337,4 +419,24 @@ const inspectorPaneStyle: React.CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   borderLeft: "1px solid #232a38",
+};
+
+const inspectorStackStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+};
+
+const inspectorMainStyle: React.CSSProperties = {
+  flex: "1 1 52%",
+  minHeight: 0,
+  overflow: "hidden",
+};
+
+const issuesPanelStyle: React.CSSProperties = {
+  flex: "1 1 48%",
+  minHeight: 180,
+  overflow: "hidden",
 };

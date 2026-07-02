@@ -51,6 +51,20 @@ export interface NodeEntry {
   data: unknown | null;
 }
 
+export type GraphIssueSeverity = "error" | "warn";
+
+export interface GraphIssue {
+  severity: GraphIssueSeverity;
+  code: string;
+  message: string;
+  nodeId?: string;
+  edgeId?: string;
+}
+
+export interface GraphReport {
+  graphIssues: GraphIssue[];
+}
+
 /** 打开项目后拿到的完整数据 */
 export interface ProjectData {
   path: string;
@@ -66,4 +80,6 @@ export interface ProjectData {
   graph?: ProjectGraph;
   /** 各节点的指令数据（按 graph.nodes 的 file 读取） */
   nodes?: NodeEntry[];
+  /** 图结构一致性报告；问题不阻断项目加载 */
+  graphReport?: GraphReport;
 }

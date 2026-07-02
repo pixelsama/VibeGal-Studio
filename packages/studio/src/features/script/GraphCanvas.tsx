@@ -14,15 +14,18 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphReport, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 
 interface GraphCanvasProps {
   graph: ProjectGraph;
+  graphReport?: GraphReport;
   nodeEntries?: NodeEntry[];
   selectedNodeId: string | null;
+  selectedEdgeId: string | null;
   onSelect: (id: string) => void;
+  onSelectEdge: (id: string) => void;
   onEnter: (id: string) => void;
   onMoveNode: (id: string, position: { x: number; y: number }) => void;
   onConnect: (from: string, to: string) => void;
@@ -36,9 +39,12 @@ const nodeTypes = { [NODE_TYPE]: GraphNodeView } satisfies NodeTypes;
 
 export function GraphCanvas({
   graph,
+  graphReport,
   nodeEntries,
   selectedNodeId,
+  selectedEdgeId,
   onSelect,
+  onSelectEdge,
   onEnter,
   onMoveNode,
   onConnect,
@@ -50,7 +56,7 @@ export function GraphCanvas({
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
 
   const flow = useMemo(() => {
-    const baseFlow = mapGraphToFlow(graph);
+    const baseFlow = mapGraphToFlow(graph, graphReport);
 
     const nodes: GraphCanvasFlowNode[] = baseFlow.nodes.map((node) => {
       return {
@@ -63,13 +69,23 @@ export function GraphCanvas({
       };
     });
 
-    const edges = baseFlow.edges.map((edge) => ({
-      ...edge,
-      style: { stroke: "#3a6ea5", strokeWidth: 1.5 },
-    }));
+    const edges = baseFlow.edges.map((edge) => {
+      const suspicious = Boolean(edge.data?.suspicious);
+      const selected = edge.id === selectedEdgeId;
+      return {
+        ...edge,
+        selected,
+        animated: suspicious,
+        style: {
+          stroke: suspicious ? "#d66a6a" : selected ? "#9fc8e3" : "#3a6ea5",
+          strokeWidth: suspicious || selected ? 2.5 : 1.5,
+          strokeDasharray: suspicious ? "6 4" : undefined,
+        },
+      };
+    });
 
     return { nodes, edges };
-  }, [graph, nodeEntries, selectedNodeId]);
+  }, [graph, graphReport, nodeEntries, selectedEdgeId, selectedNodeId]);
 
   useEffect(() => {
     setFlowNodes(flow.nodes);
@@ -133,6 +149,7 @@ export function GraphCanvas({
           for (const edge of edges) onDeleteEdge(edge.id);
         }}
         onNodeClick={(_, node) => onSelect(node.id)}
+        onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
         onNodeDoubleClick={(_, node) => onEnter(node.id)}
         proOptions={{ hideAttribution: false }}
       >
@@ -142,7 +159,7 @@ export function GraphCanvas({
           style={{ background: "#141922", border: "1px solid #232a38", borderRadius: 8 }}
         />
         <MiniMap
-          nodeColor={(node) => (node.id === selectedNodeId ? "#9fc8e3" : "#3a6ea5")}
+          nodeColor={(node) => (node.data.duplicateNodeId ? "#d66a6a" : node.id === selectedNodeId ? "#9fc8e3" : "#3a6ea5")}
           maskColor="rgba(0, 0, 0, 0.6)"
           style={{ background: "#10151d", border: "1px solid #232a38" }}
         />

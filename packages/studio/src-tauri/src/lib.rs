@@ -81,6 +81,31 @@ pub struct NodeEntry {
     pub data: Option<serde_json::Value>,
 }
 
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphIssueSeverity {
+    #[serde(rename = "error")]
+    Error,
+    #[serde(rename = "warn")]
+    Warn,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct GraphIssue {
+    pub severity: GraphIssueSeverity,
+    pub code: String,
+    pub message: String,
+    #[serde(rename = "nodeId", skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    #[serde(rename = "edgeId", skip_serializing_if = "Option::is_none")]
+    pub edge_id: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct GraphReport {
+    #[serde(rename = "graphIssues")]
+    pub graph_issues: Vec<GraphIssue>,
+}
+
 #[derive(Deserialize)]
 pub struct ProjectGraphInput {
     pub version: u32,
@@ -123,6 +148,8 @@ pub struct ProjectData {
     pub graph: Option<ProjectGraph>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nodes: Option<Vec<NodeEntry>>,
+    #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]
+    pub graph_report: Option<GraphReport>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -324,6 +351,9 @@ fn open_project(path: String) -> Result<ProjectData, String> {
 
     let renderer_ids = list_renderer_ids(&project_path);
     let (graph, nodes) = load_project_graph_data(&content_root, &chapters)?;
+    let graph_report = GraphReport {
+        graph_issues: validate_graph(&graph, &nodes),
+    };
 
     Ok(ProjectData {
         path: project_path.to_string_lossy().into_owned(),
@@ -336,7 +366,109 @@ fn open_project(path: String) -> Result<ProjectData, String> {
         renderer_ids,
         graph: Some(graph),
         nodes: Some(nodes),
+        graph_report: Some(graph_report),
     })
+}
+
+fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIssue> {
+    let mut issues = vec![];
+    let mut seen_node_ids = HashSet::new();
+    let mut duplicate_node_ids = HashSet::new();
+
+    for node in &graph.nodes {
+        if !seen_node_ids.insert(node.id.clone()) {
+            duplicate_node_ids.insert(node.id.clone());
+        }
+    }
+    let mut duplicate_node_ids = duplicate_node_ids.into_iter().collect::<Vec<_>>();
+    duplicate_node_ids.sort();
+    for node_id in duplicate_node_ids {
+        issues.push(GraphIssue {
+            severity: GraphIssueSeverity::Error,
+            code: "duplicate_node_id".to_string(),
+            message: format!("节点 id 重复：{node_id}"),
+            node_id: Some(node_id),
+            edge_id: None,
+        });
+    }
+
+    for (index, node) in graph.nodes.iter().enumerate() {
+        let missing_file = nodes_data
+            .get(index)
+            .map(|entry| entry.data.is_none())
+            .unwrap_or(true);
+        if missing_file {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "missing_node_file".to_string(),
+                message: format!("节点「{}」的文件 {} 不存在", node.title, node.file),
+                node_id: Some(node.id.clone()),
+                edge_id: None,
+            });
+        }
+    }
+
+    if graph.entry_node_id.is_empty() {
+        if !graph.nodes.is_empty() {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "empty_entry".to_string(),
+                message: "未设置入口节点".to_string(),
+                node_id: None,
+                edge_id: None,
+            });
+        }
+    } else if !seen_node_ids.contains(&graph.entry_node_id) {
+        issues.push(GraphIssue {
+            severity: GraphIssueSeverity::Error,
+            code: "missing_entry_node".to_string(),
+            message: format!("入口节点 {} 不存在", graph.entry_node_id),
+            node_id: Some(graph.entry_node_id.clone()),
+            edge_id: None,
+        });
+    }
+
+    let mut seen_edge_ids = HashSet::new();
+    let mut duplicate_edge_ids = HashSet::new();
+    for edge in &graph.edges {
+        if !seen_edge_ids.insert(edge.id.clone()) {
+            duplicate_edge_ids.insert(edge.id.clone());
+        }
+
+        let mut missing = vec![];
+        if !seen_node_ids.contains(&edge.from) {
+            missing.push(edge.from.as_str());
+        }
+        if !seen_node_ids.contains(&edge.to) && edge.to != edge.from {
+            missing.push(edge.to.as_str());
+        }
+        if !missing.is_empty() {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "dangling_edge".to_string(),
+                message: format!(
+                    "边的端点不存在：edge {} 引用了缺失节点 {}",
+                    edge.id,
+                    missing.join(", ")
+                ),
+                node_id: None,
+                edge_id: Some(edge.id.clone()),
+            });
+        }
+    }
+    let mut duplicate_edge_ids = duplicate_edge_ids.into_iter().collect::<Vec<_>>();
+    duplicate_edge_ids.sort();
+    for edge_id in duplicate_edge_ids {
+        issues.push(GraphIssue {
+            severity: GraphIssueSeverity::Warn,
+            code: "duplicate_edge_id".to_string(),
+            message: format!("边 id 重复：{edge_id}"),
+            node_id: None,
+            edge_id: Some(edge_id),
+        });
+    }
+
+    issues
 }
 
 fn load_project_graph_data(
@@ -1218,6 +1350,155 @@ mod tests {
         }
     }
 
+    fn graph_node(id: &str, file: &str) -> GraphNode {
+        GraphNode {
+            id: id.to_string(),
+            title: id.to_string(),
+            file: file.to_string(),
+            position: GraphPosition { x: 0.0, y: 0.0 },
+        }
+    }
+
+    fn graph_edge(id: &str, from: &str, to: &str) -> GraphEdge {
+        GraphEdge {
+            id: id.to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
+            condition: serde_json::Value::Null,
+        }
+    }
+
+    fn valid_project_graph() -> ProjectGraph {
+        ProjectGraph {
+            version: 1,
+            entry_node_id: "prologue".to_string(),
+            nodes: vec![
+                graph_node("prologue", "nodes/prologue.json"),
+                graph_node("ending", "nodes/ending.json"),
+            ],
+            edges: vec![graph_edge("prologue__ending", "prologue", "ending")],
+            synthetic: false,
+        }
+    }
+
+    fn present_node_entries(graph: &ProjectGraph) -> Vec<NodeEntry> {
+        graph
+            .nodes
+            .iter()
+            .map(|node| NodeEntry {
+                rel_path: node.file.clone(),
+                data: Some(serde_json::json!([])),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn validate_graph_flags_dangling_edge() {
+        let mut graph = valid_project_graph();
+        graph.edges = vec![graph_edge("prologue__missing", "prologue", "missing")];
+        let entries = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "dangling_edge");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
+        assert_eq!(issues[0].edge_id.as_deref(), Some("prologue__missing"));
+        assert!(issues[0].message.contains("missing"));
+    }
+
+    #[test]
+    fn validate_graph_flags_missing_node_file() {
+        let graph = valid_project_graph();
+        let entries = vec![
+            NodeEntry {
+                rel_path: "nodes/prologue.json".to_string(),
+                data: Some(serde_json::json!([])),
+            },
+            NodeEntry {
+                rel_path: "nodes/ending.json".to_string(),
+                data: None,
+            },
+        ];
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "missing_node_file");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
+        assert_eq!(issues[0].node_id.as_deref(), Some("ending"));
+        assert!(issues[0].message.contains("nodes/ending.json"));
+    }
+
+    #[test]
+    fn validate_graph_flags_duplicate_node_ids() {
+        let mut graph = valid_project_graph();
+        graph
+            .nodes
+            .push(graph_node("prologue", "nodes/prologue-copy.json"));
+        let entries = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "duplicate_node_id");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
+        assert_eq!(issues[0].node_id.as_deref(), Some("prologue"));
+    }
+
+    #[test]
+    fn validate_graph_flags_missing_entry_node() {
+        let mut graph = valid_project_graph();
+        graph.entry_node_id = "missing-entry".to_string();
+        let entries = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "missing_entry_node");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
+        assert_eq!(issues[0].node_id.as_deref(), Some("missing-entry"));
+    }
+
+    #[test]
+    fn validate_graph_flags_empty_entry_when_nodes_exist() {
+        let mut graph = valid_project_graph();
+        graph.entry_node_id = "".to_string();
+        let entries = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "empty_entry");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
+    }
+
+    #[test]
+    fn validate_graph_flags_duplicate_edge_id() {
+        let mut graph = valid_project_graph();
+        graph
+            .edges
+            .push(graph_edge("prologue__ending", "ending", "prologue"));
+        let entries = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "duplicate_edge_id");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
+        assert_eq!(issues[0].edge_id.as_deref(), Some("prologue__ending"));
+    }
+
+    #[test]
+    fn validate_graph_clean_graph_has_no_issues() {
+        let graph = valid_project_graph();
+        let entries = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &entries);
+
+        assert!(issues.is_empty());
+    }
+
     #[test]
     fn save_graph_writes_graph_json() {
         let root = unique_temp_dir("save-graph");
@@ -1618,6 +1899,66 @@ mod tests {
         assert!(nodes[0].data.is_some());
         assert_eq!(nodes[1].rel_path, "nodes/missing.json");
         assert!(nodes[1].data.is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_includes_graph_report() {
+        let root = unique_temp_dir("graph-report");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "prologue",
+                "nodes": [
+                    {
+                        "id": "prologue",
+                        "title": "Prologue",
+                        "file": "nodes/prologue.json",
+                        "position": { "x": 0, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[("nodes/prologue.json", serde_json::json!([]))],
+        );
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let report = opened.graph_report.unwrap();
+
+        assert!(report.graph_issues.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_graph_does_not_block_loading() {
+        let root = unique_temp_dir("graph-report-error");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "missing-entry",
+                "nodes": [
+                    {
+                        "id": "prologue",
+                        "title": "Prologue",
+                        "file": "nodes/prologue.json",
+                        "position": { "x": 0, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[("nodes/prologue.json", serde_json::json!([]))],
+        );
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let issues = opened.graph_report.unwrap().graph_issues;
+
+        assert!(issues.iter().any(|issue| {
+            issue.code == "missing_entry_node" && issue.severity == GraphIssueSeverity::Error
+        }));
         let _ = fs::remove_dir_all(&root);
     }
 
