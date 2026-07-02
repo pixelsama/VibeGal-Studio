@@ -29,7 +29,7 @@ interface GraphCanvasProps {
   onEnter: (id: string) => void;
   onMoveNode: (id: string, position: { x: number; y: number }) => void;
   onConnect: (from: string, to: string) => void;
-  onDeleteNode: (id: string) => void;
+  onDeleteNodes: (ids: string[]) => void;
   onDeleteEdge: (id: string) => void;
 }
 
@@ -48,7 +48,7 @@ export function GraphCanvas({
   onEnter,
   onMoveNode,
   onConnect,
-  onDeleteNode,
+  onDeleteNodes,
   onDeleteEdge,
 }: GraphCanvasProps) {
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<GraphCanvasFlowNode, Edge> | null>(null);
@@ -143,7 +143,7 @@ export function GraphCanvas({
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         onNodesDelete={(nodes) => {
-          for (const node of nodes) onDeleteNode(node.id);
+          onDeleteNodes(nodes.map((node) => node.id));
         }}
         onEdgesDelete={(edges) => {
           for (const edge of edges) onDeleteEdge(edge.id);

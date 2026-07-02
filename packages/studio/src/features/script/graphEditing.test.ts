@@ -8,6 +8,7 @@ import {
   moveNode,
   removeEdge,
   removeNode,
+  removeNodes,
   renameNode,
 } from "./graphEditing";
 
@@ -71,6 +72,21 @@ describe("graphEditing", () => {
     const result = removeNode(sampleGraph, "missing");
 
     expect(result.removedFile).toBeNull();
+    expect(result.graph).toBe(sampleGraph);
+  });
+
+  it("removeNodes removes multiple nodes and all related edges in one graph update", () => {
+    const result = removeNodes(sampleGraph, ["node", "ending"]);
+
+    expect(result.removedFiles).toEqual(["nodes/node.json", "nodes/ending.json"]);
+    expect(result.graph.nodes.map((node) => node.id)).toEqual(["node_2"]);
+    expect(result.graph.edges).toEqual([]);
+  });
+
+  it("removeNodes ignores missing nodes and preserves graph when none match", () => {
+    const result = removeNodes(sampleGraph, ["missing", "also_missing"]);
+
+    expect(result.removedFiles).toEqual([]);
     expect(result.graph).toBe(sampleGraph);
   });
 

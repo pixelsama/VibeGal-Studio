@@ -14,7 +14,7 @@ import {
   generateNodeId,
   moveNode,
   removeEdge,
-  removeNode,
+  removeNodes,
   renameNode,
 } from "./graphEditing";
 import { findNode, findNodeData } from "./graphMapping";
@@ -77,8 +77,10 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
         await saveGraph(project.path, next);
         setGraphStatus("图结构已保存");
         onSaved();
+        return true;
       } catch (error) {
         setGraphStatus(`保存图结构失败: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
       } finally {
         setSavingGraph(false);
       }
@@ -155,27 +157,36 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
     void persistGraph(next);
   };
 
-  const handleDeleteNode = async (nodeId: string) => {
-    const node = findNode(graph, nodeId);
-    const label = node?.title ?? nodeId;
-    if (!window.confirm(`确定删除节点「${label}」？`)) return;
+  const handleDeleteNodes = async (nodeIds: string[]) => {
+    const uniqueIds = Array.from(new Set(nodeIds));
+    const nodes = uniqueIds.map((id) => findNode(graph, id)).filter((node) => node != null);
+    if (nodes.length === 0) return;
 
-    const { graph: next, removedFile } = removeNode(graph, nodeId);
+    const label =
+      nodes.length === 1
+        ? `节点「${nodes[0].title}」`
+        : `${nodes.length} 个节点`;
+    if (!window.confirm(`确定删除${label}？`)) return;
+
+    const { graph: next, removedFiles } = removeNodes(graph, uniqueIds);
     if (next === graph) return;
     setGraph(next);
-    if (selectedNodeId === nodeId) {
+    if (selectedNodeId && uniqueIds.includes(selectedNodeId)) {
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
       setView("graph");
     }
-    if (removedFile) {
+
+    const saved = await persistGraph(next);
+    if (!saved) return;
+
+    for (const removedFile of removedFiles) {
       try {
         await deleteFile(project.path, removedFile);
       } catch (error) {
         console.warn("删除节点文件失败（图已更新）:", error);
       }
     }
-    await persistGraph(next);
   };
 
   const handleDeleteEdge = (edgeId: string) => {
@@ -278,7 +289,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
                   onEnter={handleEnter}
                   onMoveNode={handleMoveNode}
                   onConnect={handleConnect}
-                  onDeleteNode={handleDeleteNode}
+                  onDeleteNodes={handleDeleteNodes}
                   onDeleteEdge={handleDeleteEdge}
                 />
               </div>

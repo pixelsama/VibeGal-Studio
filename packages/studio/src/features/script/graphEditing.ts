@@ -22,16 +22,22 @@ export function addNode(
 }
 
 export function removeNode(graph: ProjectGraph, nodeId: string): { graph: ProjectGraph; removedFile: string | null } {
-  const removed = graph.nodes.find((node) => node.id === nodeId);
-  if (!removed) return { graph, removedFile: null };
+  const result = removeNodes(graph, [nodeId]);
+  return { graph: result.graph, removedFile: result.removedFiles[0] ?? null };
+}
+
+export function removeNodes(graph: ProjectGraph, nodeIds: string[]): { graph: ProjectGraph; removedFiles: string[] } {
+  const ids = new Set(nodeIds);
+  const removed = graph.nodes.filter((node) => ids.has(node.id));
+  if (removed.length === 0) return { graph, removedFiles: [] };
 
   return {
     graph: {
       ...graph,
-      nodes: graph.nodes.filter((node) => node.id !== nodeId),
-      edges: graph.edges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId),
+      nodes: graph.nodes.filter((node) => !ids.has(node.id)),
+      edges: graph.edges.filter((edge) => !ids.has(edge.from) && !ids.has(edge.to)),
     },
-    removedFile: removed.file,
+    removedFiles: removed.map((node) => node.file),
   };
 }
 
