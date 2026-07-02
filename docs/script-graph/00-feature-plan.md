@@ -115,10 +115,12 @@ Each node file stores local story instructions:
 
 ```json
 [
-  { "type": "say", "speaker": "hero", "text": "..." },
-  { "type": "choice", "choices": [] }
+  { "t": "bg", "id": "school_gate", "trans": "fade", "ms": 800 },
+  { "t": "say", "who": "hero", "text": "..." }
 ]
 ```
+
+Node files reuse the existing engine `Instruction[]` schema (`t` discriminator, e.g. `say` uses `who`). They do not introduce a new `{ type, speaker }` format.
 
 This makes each node a natural AI coding boundary. An external agent can safely modify one node without rewriting the entire story.
 
