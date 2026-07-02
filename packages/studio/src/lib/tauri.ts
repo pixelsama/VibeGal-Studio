@@ -38,3 +38,12 @@ export async function saveFile(projectPath: string, relPath: string, content: st
 export async function saveProjectMeta(projectPath: string, meta: ProjectMeta): Promise<void> {
   await invoke("save_project_meta", { projectPath, meta });
 }
+
+/** 读取一个渲染层目录的所有 .ts/.tsx 源码（供前端运行时编译） */
+export interface RendererFile {
+  path: string;
+  content: string;
+}
+export async function readRendererFiles(projectPath: string, rendererId: string): Promise<RendererFile[]> {
+  return invoke<RendererFile[]>("read_renderer_files", { projectPath, rendererId });
+}

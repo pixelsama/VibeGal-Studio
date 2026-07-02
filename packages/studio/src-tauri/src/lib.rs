@@ -239,6 +239,46 @@ fn save_file(project_path: String, rel_path: String, content: String) -> Result<
     fs::write(&safe_target, content).map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
 }
 
+/// 读取一个渲染层目录下的所有源码文件（.ts/.tsx），供前端运行时编译。
+/// 返回 { 相对路径: 源码 } 的列表。递归读取。
+#[tauri::command]
+fn read_renderer_files(project_path: String, renderer_id: String) -> Result<Vec<RendererFile>, String> {
+    let project_root = Path::new(&project_path);
+    let renderer_dir = project_root.join("renderers").join(&renderer_id);
+    // 边界校验：renderer_dir 必须在项目内
+    ensure_within(project_root, &renderer_dir)?;
+
+    let mut files = vec![];
+    collect_source_files(&renderer_dir, &renderer_dir, &mut files)?;
+    Ok(files)
+}
+
+#[derive(Serialize, Clone)]
+pub struct RendererFile {
+    /// 相对渲染层目录的路径（如 "index.tsx"、"Stage.tsx"），用作模块标识
+    pub path: String,
+    pub content: String,
+}
+
+/// 递归收集目录下所有 .ts/.tsx 文件
+fn collect_source_files(base: &Path, dir: &Path, out: &mut Vec<RendererFile>) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败 {}: {}", dir.display(), e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_source_files(base, &path, out)?;
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if ext == "ts" || ext == "tsx" {
+                let rel = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                let content = fs::read_to_string(&path)
+                    .map_err(|e| format!("读取文件失败 {}: {}", path.display(), e))?;
+                out.push(RendererFile { path: rel, content });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 更新 gal.project.json
 #[tauri::command]
 fn save_project_meta(project_path: String, meta: ProjectMeta) -> Result<(), String> {
@@ -334,6 +374,7 @@ pub fn run() {
             create_project,
             save_file,
             save_project_meta,
+            read_renderer_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

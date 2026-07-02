@@ -12,8 +12,10 @@
   "dependencies": {
     "@galstudio/engine": "workspace:*",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-fs": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "es-module-shims": "^2.8.1",
+    "esbuild-wasm": "^0.28.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zod": "^4.4.3"
