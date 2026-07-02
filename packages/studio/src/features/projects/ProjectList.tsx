@@ -96,22 +96,28 @@ export function ProjectList({ onOpen }: Props) {
           <button onClick={handleNew} style={primaryBtn} disabled={loading}>+ 新建项目</button>
         </div>
 
-        {error && <div style={errorStyle}>{error}</div>}
+        {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
 
-        {newProjectParent && (
-          <form onSubmit={handleCreateProject} style={newProjectFormStyle}>
-            <div style={formHeaderStyle}>新建项目</div>
+        <div style={emptyStyle}>
+          {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 GalStudio 项目，会先询问是否添加工程文件。"}
+        </div>
+      </section>
+
+      {newProjectParent && (
+        <div style={modalOverlayStyle}>
+          <form onSubmit={handleCreateProject} style={modalStyle}>
+            <div style={modalHeaderStyle}>新建项目</div>
             <div style={parentPathStyle}>{newProjectParent}</div>
-            <div style={formRowStyle}>
-              <input
-                autoFocus
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="项目名称"
-                style={inputStyle}
-                disabled={loading}
-              />
-              <button type="submit" style={primaryBtn} disabled={!newProjectName.trim() || loading}>创建</button>
+            <input
+              autoFocus
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              placeholder="项目名称"
+              style={inputStyle}
+              disabled={loading}
+            />
+            {error && <div style={modalErrorStyle}>{error}</div>}
+            <div style={modalActionsStyle}>
               <button
                 type="button"
                 style={btnStyle}
@@ -119,18 +125,16 @@ export function ProjectList({ onOpen }: Props) {
                 onClick={() => {
                   setNewProjectParent(null);
                   setNewProjectName("");
+                  setError(null);
                 }}
               >
                 取消
               </button>
+              <button type="submit" style={primaryBtn} disabled={!newProjectName.trim() || loading}>创建</button>
             </div>
           </form>
-        )}
-
-        <div style={emptyStyle}>
-          {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 GalStudio 项目，会先询问是否添加工程文件。"}
         </div>
-      </section>
+      )}
     </div>
   );
 }
@@ -145,19 +149,28 @@ const titleStyle: React.CSSProperties = { fontSize: 32, margin: "0 0 4px", fontW
 const subtitleStyle: React.CSSProperties = { margin: 0, color: "#7a8290", fontSize: 14 };
 const sectionStyle: React.CSSProperties = {};
 const workspaceRow: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" };
-const newProjectFormStyle: React.CSSProperties = {
-  padding: 16,
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  display: "grid",
+  placeItems: "center",
+  padding: 24,
+  background: "rgba(4, 7, 12, 0.68)",
+  zIndex: 20,
+};
+const modalStyle: React.CSSProperties = {
+  width: "min(480px, 100%)",
+  padding: 20,
   background: "#141922",
   border: "1px solid #2a3242",
   borderRadius: 8,
-  marginBottom: 16,
+  boxShadow: "0 24px 80px rgba(0, 0, 0, 0.45)",
 };
-const formHeaderStyle: React.CSSProperties = { fontSize: 15, fontWeight: 600, marginBottom: 6 };
+const modalHeaderStyle: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 8 };
 const parentPathStyle: React.CSSProperties = { fontSize: 12, color: "#7a8290", marginBottom: 12, wordBreak: "break-all" };
-const formRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
 const inputStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 220,
+  width: "100%",
+  boxSizing: "border-box",
   padding: "8px 12px",
   background: "#1a1f29",
   border: "1px solid #2a3242",
@@ -166,6 +179,7 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
   fontSize: 14,
 };
+const modalActionsStyle: React.CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 };
 const btnStyle: React.CSSProperties = {
   padding: "8px 14px", background: "#1a1f29", border: "1px solid #2a3242",
   borderRadius: 6, color: "#d4dae2", cursor: "pointer", fontSize: 14,
@@ -177,4 +191,5 @@ const errorStyle: React.CSSProperties = {
   padding: "10px 14px", background: "#3a1a1a", border: "1px solid #6a2a2a",
   borderRadius: 6, color: "#e0a0a0", fontSize: 13, marginBottom: 16, whiteSpace: "pre-wrap",
 };
+const modalErrorStyle: React.CSSProperties = { ...errorStyle, marginTop: 12, marginBottom: 0 };
 const emptyStyle: React.CSSProperties = { color: "#6a7280", fontSize: 14, padding: 24, textAlign: "center" };
