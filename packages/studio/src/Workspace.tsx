@@ -2,13 +2,14 @@
  * Workspace —— 打开项目后的工作台。
  *
  * 顶部：项目名 + 渲染层切换 + 返回
- * 内容区：预览 / 编辑 两个标签
+ * 内容区：Render / Script / Assets 三工作台
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { ProjectData } from "./lib/types";
 import { Preview } from "./features/preview/Preview";
-import { ScriptEditor } from "./features/editor/ScriptEditor";
+import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
+import { AssetsPlaceholder } from "./features/assets/AssetsPlaceholder";
 import { openProject, saveProjectMeta, unwatchProject, watchProject } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
 
@@ -19,7 +20,7 @@ interface Props {
   onProjectChanged: (p: ProjectData) => void;
 }
 
-type Tab = "preview" | "editor";
+type WorkspaceId = "render" | "script" | "assets";
 
 interface ProjectChangedPayload {
   projectPath: string;
@@ -27,7 +28,7 @@ interface ProjectChangedPayload {
 }
 
 export function Workspace({ project, onBack, onProjectChanged }: Props) {
-  const [tab, setTab] = useState<Tab>("preview");
+  const [workspace, setWorkspace] = useState<WorkspaceId>("render");
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
@@ -114,20 +115,27 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
         </select>
       </header>
 
-      {/* 标签栏 */}
+      {/* 工作台标签栏 */}
       <div style={tabBarStyle}>
-        <TabBtn active={tab === "preview"} onClick={() => setTab("preview")}>预览</TabBtn>
-        <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>编辑</TabBtn>
+        <TabBtn active={workspace === "render"} onClick={() => setWorkspace("render")}>Render</TabBtn>
+        <TabBtn active={workspace === "script"} onClick={() => setWorkspace("script")}>Script</TabBtn>
+        <TabBtn active={workspace === "assets"} onClick={() => setWorkspace("assets")}>Assets</TabBtn>
       </div>
 
       {/* 内容区 */}
       <div style={{ flex: 1, overflow: "hidden" }}>
-        {tab === "preview" && (
+        {workspace === "render" && (
           <Preview key={`${rendererId}-${refreshKey}`} project={project} rendererId={rendererId} />
         )}
-        {tab === "editor" && (
-          <ScriptEditor project={project} onSaved={handleSaved} />
+        {workspace === "script" && (
+          <ScriptWorkspace
+            project={project}
+            rendererId={rendererId}
+            refreshKey={refreshKey}
+            onSaved={handleSaved}
+          />
         )}
+        {workspace === "assets" && <AssetsPlaceholder />}
       </div>
     </div>
   );
