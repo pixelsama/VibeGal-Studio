@@ -1,10 +1,17 @@
 // GalStudio Tauri 后端 —— 文件系统操作。
 // 所有磁盘读写集中在这里；前端通过 invoke 调用，不直接碰文件系统。
 
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use tauri::Manager;
+use std::sync::{
+    mpsc::{self, RecvTimeoutError, Sender},
+    Mutex,
+};
+use std::time::{Duration, Instant};
+use tauri::{Emitter, Manager};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProjectMeta {
@@ -43,6 +50,77 @@ pub struct ProjectData {
     #[serde(rename = "rendererIds")]
     pub renderer_ids: Vec<String>,
 }
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ProjectChangedPayload {
+    #[serde(rename = "projectPath")]
+    pub project_path: String,
+    #[serde(rename = "rendererChanged")]
+    pub renderer_changed: bool,
+}
+
+impl ProjectChangedPayload {
+    fn new(project_path: String, renderer_changed: bool) -> Self {
+        Self {
+            project_path,
+            renderer_changed,
+        }
+    }
+
+    fn merge(&mut self, other: ProjectChangedPayload) {
+        self.renderer_changed |= other.renderer_changed;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectWatchKind {
+    ProjectMeta,
+    Content,
+    Renderer,
+}
+
+#[derive(Default)]
+struct ProjectDebounceState {
+    pending: Option<ProjectChangedPayload>,
+    last_event_at: Option<Instant>,
+}
+
+impl ProjectDebounceState {
+    fn record(&mut self, payload: ProjectChangedPayload, now: Instant) {
+        match &mut self.pending {
+            Some(pending) => pending.merge(payload),
+            None => self.pending = Some(payload),
+        }
+        self.last_event_at = Some(now);
+    }
+
+    fn due(&mut self, now: Instant, delay: Duration) -> Option<ProjectChangedPayload> {
+        let last_event_at = self.last_event_at?;
+        if now.duration_since(last_event_at) < delay {
+            return None;
+        }
+        self.last_event_at = None;
+        self.pending.take()
+    }
+}
+
+enum WatchSignal {
+    Changed { renderer_changed: bool },
+    Stop,
+}
+
+struct ProjectWatchHandle {
+    _watcher: RecommendedWatcher,
+    stop_tx: Sender<WatchSignal>,
+}
+
+#[derive(Default)]
+struct ProjectWatchers {
+    active: Mutex<HashMap<String, ProjectWatchHandle>>,
+}
+
+const PROJECT_CHANGED_EVENT: &str = "project_changed";
+const PROJECT_WATCH_DEBOUNCE: Duration = Duration::from_millis(300);
 
 fn read_project_meta(project_path: &Path) -> Result<ProjectMeta, String> {
     let meta_file = project_path.join("gal.project.json");
@@ -226,6 +304,87 @@ fn initialize_project(path: String, app_handle: tauri::AppHandle) -> Result<Proj
     let default_renderer_dir = default_renderer_dir(&app_handle)?;
     initialize_project_root(&project_path, &name, &default_renderer_dir)?;
     open_project(project_path.to_string_lossy().into_owned())
+}
+
+/// 监听项目目录内的数据/渲染层变化，debounce 后向前端发 project_changed 事件。
+#[tauri::command]
+fn watch_project(
+    project_path: String,
+    app_handle: tauri::AppHandle,
+    watchers: tauri::State<'_, ProjectWatchers>,
+) -> Result<(), String> {
+    let root = canonical_project_root(Path::new(&project_path))?;
+    let root_key = root.to_string_lossy().into_owned();
+
+    let mut active = watchers
+        .active
+        .lock()
+        .map_err(|_| "项目监听器状态已损坏".to_string())?;
+    if active.contains_key(&root_key) {
+        return Ok(());
+    }
+
+    let (tx, rx) = mpsc::channel::<WatchSignal>();
+    let event_tx = tx.clone();
+    let event_root = root.clone();
+    let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
+        let Ok(event) = result else {
+            return;
+        };
+        let mut relevant = false;
+        let mut renderer_changed = false;
+        for path in event.paths {
+            match classify_project_watch_path(&event_root, &path) {
+                Some(ProjectWatchKind::Renderer) => {
+                    relevant = true;
+                    renderer_changed = true;
+                }
+                Some(ProjectWatchKind::Content | ProjectWatchKind::ProjectMeta) => {
+                    relevant = true;
+                }
+                None => {}
+            }
+        }
+        if relevant {
+            let _ = event_tx.send(WatchSignal::Changed { renderer_changed });
+        }
+    })
+    .map_err(|e| format!("创建项目监听器失败: {}", e))?;
+
+    watcher
+        .watch(&root, RecursiveMode::Recursive)
+        .map_err(|e| format!("监听项目目录失败 {}: {}", root.display(), e))?;
+
+    let worker_root = root_key.clone();
+    std::thread::spawn(move || run_project_watch_debouncer(app_handle, worker_root, rx));
+
+    active.insert(
+        root_key,
+        ProjectWatchHandle {
+            _watcher: watcher,
+            stop_tx: tx,
+        },
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn unwatch_project(
+    project_path: String,
+    watchers: tauri::State<'_, ProjectWatchers>,
+) -> Result<(), String> {
+    let root = Path::new(&project_path)
+        .canonicalize()
+        .map_err(|e| format!("无法定位项目目录 {}: {}", project_path, e))?;
+    let root_key = root.to_string_lossy().into_owned();
+    let mut active = watchers
+        .active
+        .lock()
+        .map_err(|_| "项目监听器状态已损坏".to_string())?;
+    if let Some(handle) = active.remove(&root_key) {
+        let _ = handle.stop_tx.send(WatchSignal::Stop);
+    }
+    Ok(())
 }
 
 fn initialize_project_root(
@@ -432,6 +591,61 @@ fn ensure_existing_path_within(base_canon: &Path, target: &Path) -> Result<(), S
     Ok(())
 }
 
+fn run_project_watch_debouncer(
+    app_handle: tauri::AppHandle,
+    project_path: String,
+    rx: mpsc::Receiver<WatchSignal>,
+) {
+    let mut state = ProjectDebounceState::default();
+    loop {
+        let timeout = state
+            .last_event_at
+            .map(|last_event_at| {
+                let elapsed = Instant::now().duration_since(last_event_at);
+                PROJECT_WATCH_DEBOUNCE.saturating_sub(elapsed)
+            })
+            .unwrap_or(PROJECT_WATCH_DEBOUNCE);
+
+        match rx.recv_timeout(timeout) {
+            Ok(WatchSignal::Changed { renderer_changed }) => {
+                state.record(
+                    ProjectChangedPayload::new(project_path.clone(), renderer_changed),
+                    Instant::now(),
+                );
+            }
+            Ok(WatchSignal::Stop) | Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                if let Some(payload) = state.due(Instant::now(), PROJECT_WATCH_DEBOUNCE) {
+                    let _ = app_handle.emit(PROJECT_CHANGED_EVENT, payload);
+                }
+            }
+        }
+    }
+}
+
+fn classify_project_watch_path(root: &Path, path: &Path) -> Option<ProjectWatchKind> {
+    let rel = path.strip_prefix(root).ok()?;
+    let mut normal_components = rel.components().filter_map(|component| match component {
+        Component::Normal(part) => part.to_str(),
+        _ => None,
+    });
+    let first = normal_components.next()?;
+
+    if matches!(first, ".git" | "node_modules" | "dist" | "target") {
+        return None;
+    }
+    if first == "gal.project.json" {
+        return Some(ProjectWatchKind::ProjectMeta);
+    }
+    if first == "content" {
+        return Some(ProjectWatchKind::Content);
+    }
+    if first == "renderers" {
+        return Some(ProjectWatchKind::Renderer);
+    }
+    None
+}
+
 fn read_json(path: &Path) -> Result<serde_json::Value, String> {
     let text =
         fs::read_to_string(path).map_err(|e| format!("读取失败 ({}): {}", path.display(), e))?;
@@ -527,6 +741,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(ProjectWatchers::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -543,6 +758,8 @@ pub fn run() {
             open_project,
             create_project,
             initialize_project,
+            watch_project,
+            unwatch_project,
             save_file,
             save_project_meta,
             read_renderer_files,
@@ -665,5 +882,64 @@ mod tests {
         );
         assert!(!project.join("gal.project.json").exists());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_watch_filter_only_accepts_project_data_and_renderer_paths() {
+        let root = Path::new("/tmp/story");
+
+        assert_eq!(
+            classify_project_watch_path(root, &root.join("content/chapters/ch01.json")),
+            Some(ProjectWatchKind::Content)
+        );
+        assert_eq!(
+            classify_project_watch_path(root, &root.join("renderers/default/index.tsx")),
+            Some(ProjectWatchKind::Renderer)
+        );
+        assert_eq!(
+            classify_project_watch_path(root, &root.join("gal.project.json")),
+            Some(ProjectWatchKind::ProjectMeta)
+        );
+        assert_eq!(
+            classify_project_watch_path(root, &root.join("node_modules/pkg/index.js")),
+            None
+        );
+        assert_eq!(
+            classify_project_watch_path(root, &root.join("README.md")),
+            None
+        );
+    }
+
+    #[test]
+    fn debounce_state_coalesces_changes_until_quiet_window() {
+        let root = "/tmp/story".to_string();
+        let mut state = ProjectDebounceState::default();
+        let start = std::time::Instant::now();
+        let delay = std::time::Duration::from_millis(250);
+
+        state.record(ProjectChangedPayload::new(root.clone(), false), start);
+        assert_eq!(
+            state.due(start + std::time::Duration::from_millis(249), delay),
+            None
+        );
+
+        state.record(
+            ProjectChangedPayload::new(root.clone(), true),
+            start + std::time::Duration::from_millis(100),
+        );
+        assert_eq!(
+            state.due(start + std::time::Duration::from_millis(300), delay),
+            None
+        );
+
+        let payload = state
+            .due(start + std::time::Duration::from_millis(351), delay)
+            .unwrap();
+        assert_eq!(payload.project_path, root);
+        assert!(payload.renderer_changed);
+        assert_eq!(
+            state.due(start + std::time::Duration::from_millis(700), delay),
+            None
+        );
     }
 }

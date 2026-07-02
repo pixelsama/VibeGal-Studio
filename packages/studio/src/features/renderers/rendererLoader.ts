@@ -11,6 +11,7 @@ import { readRendererFiles } from "../../lib/tauri";
 import { compileRenderer } from "./runtimeCompiler";
 
 const cache = new Map<string, RendererManifest>();
+let rendererCacheVersion = 0;
 
 function toViteUrl(absPath: string): string {
   const cleaned = absPath.replace(/^file:\/\//, "");
@@ -27,7 +28,7 @@ export async function loadRenderer(projectPath: string, rendererId: string): Pro
   if (import.meta.env.DEV) {
     // dev：走 Vite /@fs 即时编译
     const indexAbs = `${projectPath}/renderers/${rendererId}/index.tsx`;
-    const url = toViteUrl(indexAbs);
+    const url = `${toViteUrl(indexAbs)}?v=${rendererCacheVersion}`;
     const mod = await import(/* @vite-ignore */ url);
     manifest = mod.default;
   } else {
@@ -51,4 +52,5 @@ export async function loadAllRenderers(projectPath: string, rendererIds: string[
 
 export function clearRendererCache() {
   cache.clear();
+  rendererCacheVersion += 1;
 }

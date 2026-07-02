@@ -34,6 +34,16 @@ export async function initializeProject(path: string): Promise<ProjectData> {
   return invoke<ProjectData>("initialize_project", { path });
 }
 
+/** 开始监听项目目录变化，后端会 debounce 后发 project_changed 事件 */
+export async function watchProject(projectPath: string): Promise<void> {
+  await invoke("watch_project", { projectPath });
+}
+
+/** 停止监听项目目录变化 */
+export async function unwatchProject(projectPath: string): Promise<void> {
+  await invoke("unwatch_project", { projectPath });
+}
+
 /** 保存单个文件（相对项目根的路径） */
 export async function saveFile(projectPath: string, relPath: string, content: string): Promise<void> {
   await invoke("save_file", { projectPath, relPath, content });
