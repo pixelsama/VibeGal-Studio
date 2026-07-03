@@ -375,33 +375,16 @@ export function ScriptWorkspace({
               </div>
             </div>
             <div style={inspectorPaneStyle}>
-              <div style={inspectorStackStyle}>
-                <div style={inspectorMainStyle}>
-                  <NodeInspector
-                    graph={graph}
-                    nodeEntries={project.nodes}
-                    selectedNodeId={selectedNodeId}
-                    onEnter={handleEnter}
-                    onRename={handleRenameNode}
-                    onMaterialize={handleMaterialize}
-                    onSetEntry={handleSetEntry}
-                    saving={savingGraph}
-                  />
-                </div>
-                <div style={issuesPanelStyle}>
-                  <GraphIssuesPanel
-                    issues={graphReport.graphIssues}
-                    onSelectNode={(id) => {
-                      onOpenGraph();
-                      handleSelect(id);
-                    }}
-                    onSelectEdge={(id) => {
-                      onOpenGraph();
-                      handleSelectEdge(id);
-                    }}
-                  />
-                </div>
-              </div>
+              <NodeInspector
+                graph={graph}
+                nodeEntries={project.nodes}
+                selectedNodeId={selectedNodeId}
+                onEnter={handleEnter}
+                onRename={handleRenameNode}
+                onMaterialize={handleMaterialize}
+                onSetEntry={handleSetEntry}
+                saving={savingGraph}
+              />
             </div>
           </div>
         ) : (
@@ -417,6 +400,17 @@ export function ScriptWorkspace({
           )
         )}
       </div>
+      <GraphIssuesPanel
+        issues={graphReport.graphIssues}
+        onSelectNode={(id) => {
+          onOpenGraph();
+          handleSelect(id);
+        }}
+        onSelectEdge={(id) => {
+          onOpenGraph();
+          handleSelectEdge(id);
+        }}
+      />
 
       {/* Phase 7：自绘弹窗（替换 window.confirm / prompt） */}
       {confirm && (
@@ -442,6 +436,7 @@ export function ScriptWorkspace({
 }
 
 const containerStyle: React.CSSProperties = {
+  position: "relative",
   display: "flex",
   flexDirection: "column",
   width: "100%",
@@ -523,24 +518,4 @@ const inspectorPaneStyle: React.CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   borderLeft: "1px solid #232a38",
-};
-
-const inspectorStackStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  width: "100%",
-  height: "100%",
-  minHeight: 0,
-};
-
-const inspectorMainStyle: React.CSSProperties = {
-  flex: "1 1 52%",
-  minHeight: 0,
-  overflow: "hidden",
-};
-
-const issuesPanelStyle: React.CSSProperties = {
-  flex: "1 1 48%",
-  minHeight: 180,
-  overflow: "hidden",
 };
