@@ -18,6 +18,7 @@ import type { GraphReport, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { flowPositionFromClientPoint, flowPositionFromViewportCenter } from "./canvasMenu";
 
 interface GraphCanvasProps {
   graph: ProjectGraph;
@@ -156,11 +157,13 @@ export function GraphCanvas({
   const handlePaneContextMenu = (event: React.MouseEvent | MouseEvent) => {
     event.preventDefault();
     if (!flowInstance) return;
-    const bounds = wrapperRef.current?.getBoundingClientRect();
     const clientX = "clientX" in event ? event.clientX : 0;
     const clientY = "clientY" in event ? event.clientY : 0;
     // 屏幕坐标 → 画布坐标，新建节点落在右键处
-    const canvasPos = flowInstance.screenToFlowPosition({ x: clientX - (bounds?.left ?? 0), y: clientY - (bounds?.top ?? 0) });
+    const canvasPos = flowPositionFromClientPoint(
+      { x: clientX, y: clientY },
+      flowInstance.screenToFlowPosition,
+    );
 
     const items: ContextMenuItem[] = [];
     if (onCreateNodeAt) {
@@ -219,8 +222,8 @@ export function GraphCanvas({
     if (!flowInstance || !onCreateNodeAt) return;
     const bounds = wrapperRef.current?.getBoundingClientRect();
     if (!bounds) return;
-    // 视口中心（相对画布 DOM）→ 画布流坐标
-    const center = flowInstance.screenToFlowPosition({ x: bounds.width / 2, y: bounds.height / 2 });
+    // 视口中心 client 坐标 → 画布流坐标
+    const center = flowPositionFromViewportCenter(bounds, flowInstance.screenToFlowPosition);
     onCreateNodeAt({ x: Math.round(center.x), y: Math.round(center.y) });
   };
 

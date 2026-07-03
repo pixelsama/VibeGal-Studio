@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { clampMenuPosition } from "./canvasMenu";
+import {
+  clampMenuPosition,
+  flowPositionFromClientPoint,
+  flowPositionFromViewportCenter,
+} from "./canvasMenu";
 
 const VIEWPORT = { width: 1280, height: 820 };
 
@@ -35,5 +39,36 @@ describe("clampMenuPosition", () => {
     // 右边放得下（500+160 < 800），x 不变；y 钳到 600-240-4
     expect(result.x).toBe(500);
     expect(result.y).toBe(600 - 240 - 4);
+  });
+});
+
+describe("flow coordinate helpers", () => {
+  it("passes client coordinates directly to React Flow screenToFlowPosition", () => {
+    const calls: { x: number; y: number }[] = [];
+    const screenToFlowPosition = (point: { x: number; y: number }) => {
+      calls.push(point);
+      return { x: point.x + 10, y: point.y + 20 };
+    };
+
+    expect(flowPositionFromClientPoint({ x: 510, y: 220 }, screenToFlowPosition)).toEqual({
+      x: 520,
+      y: 240,
+    });
+    expect(calls).toEqual([{ x: 510, y: 220 }]);
+  });
+
+  it("converts viewport center to client coordinates before calling React Flow", () => {
+    const calls: { x: number; y: number }[] = [];
+    const screenToFlowPosition = (point: { x: number; y: number }) => {
+      calls.push(point);
+      return point;
+    };
+
+    const bounds = { left: 100, top: 80, width: 400, height: 200 };
+    expect(flowPositionFromViewportCenter(bounds, screenToFlowPosition)).toEqual({
+      x: 300,
+      y: 180,
+    });
+    expect(calls).toEqual([{ x: 300, y: 180 }]);
   });
 });

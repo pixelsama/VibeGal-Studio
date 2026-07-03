@@ -30,11 +30,16 @@ export function removeNodes(graph: ProjectGraph, nodeIds: string[]): { graph: Pr
   const ids = new Set(nodeIds);
   const removed = graph.nodes.filter((node) => ids.has(node.id));
   if (removed.length === 0) return { graph, removedFiles: [] };
+  const nextNodes = graph.nodes.filter((node) => !ids.has(node.id));
+  const nextEntryNodeId = nextNodes.some((node) => node.id === graph.entryNodeId)
+    ? graph.entryNodeId
+    : (nextNodes[0]?.id ?? "");
 
   return {
     graph: {
       ...graph,
-      nodes: graph.nodes.filter((node) => !ids.has(node.id)),
+      entryNodeId: nextEntryNodeId,
+      nodes: nextNodes,
       edges: graph.edges.filter((edge) => !ids.has(edge.from) && !ids.has(edge.to)),
     },
     removedFiles: removed.map((node) => node.file),
@@ -92,7 +97,7 @@ export function setEntryNode(graph: ProjectGraph, nodeId: string): ProjectGraph 
 }
 
 /**
- * 复制一个节点：生成新 id、新 file、错开位置，复制入边（原图指向源节点的边，新节点也会有一条）。
+ * 复制一个节点：生成新 id、新 file、错开位置。
  * Phase 7 节点右键「复制」。
  *
  * 返回 { graph, newNode }：调用方需要根据 newNode.file 创建磁盘文件（内容复制自源节点）。

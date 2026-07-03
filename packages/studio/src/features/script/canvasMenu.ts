@@ -15,6 +15,40 @@ export interface Viewport {
   height: number;
 }
 
+export interface CanvasBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export type ScreenToFlowPosition = (point: { x: number; y: number }) => { x: number; y: number };
+
+/**
+ * React Flow 的 screenToFlowPosition 接收 client/screen 坐标，并会在内部减去画布 DOM 偏移。
+ * 这里保留一个小包装，避免调用处误把相对画布坐标传进去导致二次偏移。
+ */
+export function flowPositionFromClientPoint(
+  clientPoint: { x: number; y: number },
+  screenToFlowPosition: ScreenToFlowPosition,
+): { x: number; y: number } {
+  return screenToFlowPosition(clientPoint);
+}
+
+/** 当前画布视口中心对应的 flow 坐标。 */
+export function flowPositionFromViewportCenter(
+  bounds: CanvasBounds,
+  screenToFlowPosition: ScreenToFlowPosition,
+): { x: number; y: number } {
+  return flowPositionFromClientPoint(
+    {
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+    },
+    screenToFlowPosition,
+  );
+}
+
 /**
  * 把一个理想菜单落点（鼠标坐标）钳制到视口内，保证菜单完整可见。
  *

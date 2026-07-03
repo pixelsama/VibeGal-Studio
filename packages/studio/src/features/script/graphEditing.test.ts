@@ -83,7 +83,21 @@ describe("graphEditing", () => {
 
     expect(result.removedFiles).toEqual(["nodes/node.json", "nodes/ending.json"]);
     expect(result.graph.nodes.map((node) => node.id)).toEqual(["node_2"]);
+    expect(result.graph.entryNodeId).toBe("node_2");
     expect(result.graph.edges).toEqual([]);
+  });
+
+  it("removeNodes preserves entry when it is not removed", () => {
+    const result = removeNodes(sampleGraph, ["node_2"]);
+
+    expect(result.graph.entryNodeId).toBe("node");
+  });
+
+  it("removeNodes clears entry when all nodes are removed", () => {
+    const result = removeNodes(sampleGraph, ["node", "node_2", "ending"]);
+
+    expect(result.graph.nodes).toEqual([]);
+    expect(result.graph.entryNodeId).toBe("");
   });
 
   it("removeNodes ignores missing nodes and preserves graph when none match", () => {
