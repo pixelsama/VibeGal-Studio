@@ -12,7 +12,9 @@ New project creation chooses a parent directory, asks for a project folder name,
 
 GalStudio's job is to visualize, edit, validate, hot-reload, and preview Galgame project data.
 
-External AI coding ergonomics are welcome and important, but they should be achieved through clear data contracts, stable file layouts, schema documentation, validation reports, hot reload, copyable issue details, and predictable persistence.
+External AI coding ergonomics are welcome and important, but they should be achieved through clear data contracts, stable file layouts, schema documentation, validation reports, hot reload, CLI validation commands, machine-readable errors, and predictable persistence.
+
+Prefer Agent-operable workflows over user copy/paste workflows. For example, a CLI command such as `galstudio validate <project-path> --format json` should let an external Agent check a project, receive structured errors with a non-zero exit code, fix files, and rerun validation without asking the user to shuttle issue text between apps.
 
 Do not add in-app AI integration. The app should not expose AI buttons, AI task prompts, prompt handoff files, AI connectors, model/provider settings, token storage, or agent session management.
 

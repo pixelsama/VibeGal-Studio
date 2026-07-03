@@ -249,14 +249,14 @@ Tasks:
 - Document graph and node schemas.
 - Add validation errors that identify exact broken node/edge references.
 - Add a visible refresh/status indicator for external file changes.
-- Improve external AI coding ergonomics through stable schemas, predictable persistence, and copyable issue context.
+- Improve external AI coding ergonomics through stable schemas, predictable persistence, and CLI validation with machine-readable errors.
 - Explicitly avoid in-app AI buttons, prompt generation, provider settings, token storage, or Agent session management.
 
 Verification:
 
 - Invalid graph data produces actionable errors.
 - External generation of a new node file plus graph edge appears without reopening the project.
-- A user can hand an external Agent the schema and issue details without first creating an in-app AI task.
+- An external Agent can run a validation command, receive structured errors, fix files, and rerun validation without user copy/paste.
 
 ## Open Design Questions
 

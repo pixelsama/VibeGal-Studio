@@ -179,13 +179,14 @@ GalStudio 已具备流程图地基：
 
 - 为 `graph.json` 和节点文件生成 JSON Schema 或 Zod schema 导出，供外部工具校验。
 - 在文档中补充“外部工具/Agent 直接改文件”的安全操作范式。
-- issues 面板增加“复制问题详情”，方便用户把 node id、edge id、文件路径和错误码交给外部工具处理。
+- 增加 CLI 校验命令，例如 `galstudio validate <project-path> --format json`，让外部 Agent 能直接读取结构化错误并自主迭代。
+- CLI 校验失败时使用非零退出码，错误中包含 node id、edge id、文件路径、JSON path 和稳定错误码。
 - 保持图文件格式稳定，减少外部 Agent 修改后的 diff 噪音。
 - 继续禁止应用内 AI 按钮、prompt 生成、provider 设置、token 存储或 Agent 会话管理。
 
 测试：
 
-- schema 导出和 issue 详情格式用纯函数测试覆盖，避免遗漏关键路径安全约束。
+- schema 导出、CLI 输出格式和退出码用测试覆盖，避免遗漏关键路径安全约束。
 
 ### Phase 12: 后续大功能候选
 
