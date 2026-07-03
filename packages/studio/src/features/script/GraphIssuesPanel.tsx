@@ -23,8 +23,8 @@ export function GraphIssuesPanel({ issues, onSelectNode, onSelectEdge }: GraphIs
         onClick={() => setDialogOpen(true)}
         style={indicatorButtonStyle(hasIssues, hasErrors)}
       >
-        <span style={indicatorIconStyle}>{hasIssues ? "!" : "✓"}</span>
-        {hasIssues && <span style={indicatorBadgeStyle(hasErrors)}>{issues.length}</span>}
+        <span style={indicatorIconStyle(hasIssues)}>{hasIssues ? "!" : "✓"}</span>
+        {hasIssues && <span style={indicatorCountStyle}>{issues.length}</span>}
       </button>
       {dialogOpen && (
         <GraphIssuesDialog
@@ -188,55 +188,44 @@ function IssueCard({
 
 const indicatorShellStyle: React.CSSProperties = {
   position: "absolute",
-  right: 18,
-  bottom: 18,
+  right: 10,
+  bottom: 10,
   zIndex: 30,
 };
 
 function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSSProperties {
-  const color = !hasIssues ? "#4caf7a" : hasErrors ? "#d66a6a" : "#d49b4d";
-  const background = !hasIssues ? "#11231a" : hasErrors ? "#271616" : "#241d12";
+  const color = !hasIssues ? "#7ab38a" : hasErrors ? "#e0a0a0" : "#e0b676";
   return {
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    border: `1px solid ${color}`,
-    background,
+    gap: 5,
+    minWidth: hasIssues ? 34 : 24,
+    height: 22,
+    padding: hasIssues ? "0 7px" : 0,
+    borderRadius: 6,
+    border: "1px solid #232a38",
+    background: "#0e1116",
     color,
-    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
     cursor: "pointer",
+    opacity: hasIssues ? 1 : 0.72,
   };
 }
 
-const indicatorIconStyle: React.CSSProperties = {
-  fontSize: 22,
-  fontWeight: 800,
+function indicatorIconStyle(hasIssues: boolean): React.CSSProperties {
+  return {
+    fontSize: hasIssues ? 13 : 12,
+    fontWeight: 700,
+    lineHeight: 1,
+  };
+}
+
+const indicatorCountStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
   lineHeight: 1,
 };
-
-function indicatorBadgeStyle(hasErrors: boolean): React.CSSProperties {
-  return {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    minWidth: 18,
-    height: 18,
-    padding: "0 5px",
-    borderRadius: 999,
-    border: "1px solid #0b0e14",
-    background: hasErrors ? "#d66a6a" : "#d49b4d",
-    color: "#0b0e14",
-    fontSize: 11,
-    fontWeight: 800,
-    lineHeight: "18px",
-    textAlign: "center",
-    boxSizing: "border-box",
-  };
-}
 
 const overlayStyle: React.CSSProperties = {
   position: "fixed",
