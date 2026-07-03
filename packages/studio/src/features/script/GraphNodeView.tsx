@@ -39,8 +39,8 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
           : "none",
       }}
     >
-      <Handle type="target" position={Position.Left} style={hiddenHandleStyle} />
-      <Handle type="source" position={Position.Right} style={hiddenHandleStyle} />
+      <Handle type="target" position={Position.Left} style={connectionHandleStyle} />
+      <Handle type="source" position={Position.Right} style={connectionHandleStyle} />
 
       <div style={headerStyle}>
         {data.isEntry && <span style={entryBadgeStyle}>起</span>}
@@ -121,10 +121,10 @@ const connStyle: React.CSSProperties = {
   fontSize: 11,
 };
 
-const hiddenHandleStyle = {
-  width: 8,
-  height: 8,
-  opacity: 0,
-  background: "transparent",
-  border: "none",
+const connectionHandleStyle: React.CSSProperties = {
+  width: 9,
+  height: 9,
+  background: "#0e1116",
+  border: "1px solid #3a6ea5",
+  boxShadow: "0 0 0 2px rgba(58, 110, 165, 0.16)",
 };

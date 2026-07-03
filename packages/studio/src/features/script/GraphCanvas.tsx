@@ -240,6 +240,8 @@ export function GraphCanvas({
         fitView
         nodesDraggable
         nodesConnectable
+        nodeClickDistance={6}
+        connectOnClick={false}
         elementsSelectable
         deleteKeyCode={["Backspace", "Delete"]}
         onInit={(instance) => setFlowInstance(instance)}

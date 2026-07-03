@@ -7,8 +7,24 @@ vi.mock("@xyflow/react", async () => {
   const React = await import("react");
 
   return {
-    ReactFlow: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement("div", { "data-testid": "react-flow" }, children),
+    ReactFlow: ({
+      children,
+      connectOnClick,
+      nodeClickDistance,
+    }: {
+      children?: React.ReactNode;
+      connectOnClick?: boolean;
+      nodeClickDistance?: number;
+    }) =>
+      React.createElement(
+        "div",
+        {
+          "data-testid": "react-flow",
+          "data-connect-on-click": String(connectOnClick),
+          "data-node-click-distance": nodeClickDistance,
+        },
+        children,
+      ),
     Background: () => React.createElement("div", { "data-testid": "background" }),
     Controls: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", { "data-testid": "graph-controls" }, children),
@@ -54,5 +70,25 @@ describe("GraphCanvas", () => {
     expect(html).toContain('data-testid="graph-controls"');
     expect(html).toContain('data-control-title="定位入口节点"');
     expect(html).not.toContain('title="在视口中心新建节点"');
+  });
+
+  it("keeps node selection tolerant to slight pointer movement", () => {
+    const html = renderToStaticMarkup(
+      <GraphCanvas
+        graph={graph}
+        selectedNodeId={null}
+        selectedEdgeId={null}
+        onSelect={noop}
+        onSelectEdge={noop}
+        onEnter={noop}
+        onMoveNode={noop}
+        onConnect={noop}
+        onDeleteNodes={noop}
+        onDeleteEdge={noop}
+      />,
+    );
+
+    expect(html).toContain('data-node-click-distance="6"');
+    expect(html).toContain('data-connect-on-click="false"');
   });
 });
