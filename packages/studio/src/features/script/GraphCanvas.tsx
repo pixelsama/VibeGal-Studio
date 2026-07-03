@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
   Background,
+  ControlButton,
   Controls,
   MiniMap,
   ReactFlow,
@@ -18,7 +19,7 @@ import type { GraphReport, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
-import { flowPositionFromClientPoint, flowPositionFromViewportCenter } from "./canvasMenu";
+import { flowPositionFromClientPoint } from "./canvasMenu";
 
 interface GraphCanvasProps {
   graph: ProjectGraph;
@@ -80,7 +81,6 @@ export function GraphCanvas({
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const flow = useMemo(() => {
     const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries);
@@ -217,26 +217,20 @@ export function GraphCanvas({
     setMenu({ anchor: { x: clientX, y: clientY }, items });
   };
 
-  // Phase 7：右下固定创建按钮 —— 新节点落在当前视口中心
-  const handleQuickCreate = () => {
-    if (!flowInstance || !onCreateNodeAt) return;
-    const bounds = wrapperRef.current?.getBoundingClientRect();
-    if (!bounds) return;
-    // 视口中心 client 坐标 → 画布流坐标
-    const center = flowPositionFromViewportCenter(bounds, flowInstance.screenToFlowPosition);
-    onCreateNodeAt({ x: Math.round(center.x), y: Math.round(center.y) });
-  };
-
   const handleLocateEntry = () => {
     if (!flowInstance || !graph.entryNodeId) return;
     const entry = flowNodes.find((n) => n.id === graph.entryNodeId);
     if (entry) {
       onSelect(entry.id);
+      void flowInstance.setCenter(entry.position.x + 120, entry.position.y + 48, {
+        zoom: Math.max(flowInstance.getZoom(), 0.85),
+        duration: 250,
+      });
     }
   };
 
   return (
-    <div ref={wrapperRef} style={canvasShellStyle} onContextMenu={(e) => e.preventDefault()}>
+    <div style={canvasShellStyle} onContextMenu={(e) => e.preventDefault()}>
       {flowNodes.length === 0 && <div style={emptyStateStyle}>暂无节点</div>}
       <ReactFlow<GraphCanvasFlowNode, Edge>
         nodes={flowNodes}
@@ -277,7 +271,18 @@ export function GraphCanvas({
         <Controls
           showInteractive={false}
           style={{ background: "#141922", border: "1px solid #232a38", borderRadius: 8 }}
-        />
+        >
+          {graph.entryNodeId && (
+            <ControlButton
+              type="button"
+              onClick={handleLocateEntry}
+              title="定位入口节点"
+              aria-label="定位入口节点"
+            >
+              <span style={entryLocatorIconStyle}>⌂</span>
+            </ControlButton>
+          )}
+        </Controls>
         <MiniMap
           nodeColor={(node) =>
             node.data.duplicateNodeId ? "#d66a6a" : node.id === selectedNodeId ? "#9fc8e3" : "#3a6ea5"
@@ -286,30 +291,6 @@ export function GraphCanvas({
           style={{ background: "#10151d", border: "1px solid #232a38" }}
         />
       </ReactFlow>
-
-      {/* Phase 7：右下固定创建按钮 */}
-      {onCreateNodeAt && (
-        <button
-          type="button"
-          onClick={handleQuickCreate}
-          title="在视口中心新建节点"
-          style={createButtonStyle}
-        >
-          +
-        </button>
-      )}
-
-      {/* Phase 7：定位入口按钮（左下） */}
-      {graph.entryNodeId && (
-        <button
-          type="button"
-          onClick={handleLocateEntry}
-          title="定位到入口节点"
-          style={locateEntryButtonStyle}
-        >
-          ⌂
-        </button>
-      )}
 
       {/* Phase 7：右键菜单 */}
       {menu && <ContextMenu anchor={menu.anchor} items={menu.items} onClose={() => setMenu(null)} />}
@@ -339,36 +320,8 @@ const emptyStateStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-const createButtonStyle: React.CSSProperties = {
-  position: "absolute",
-  right: 20,
-  bottom: 20,
-  zIndex: 5,
-  width: 44,
-  height: 44,
-  borderRadius: 999,
-  border: "1px solid #3a6ea5",
-  background: "#3a6ea5",
-  color: "#fff",
-  fontSize: 24,
-  lineHeight: 1,
-  cursor: "pointer",
-  boxShadow: "0 6px 18px rgba(0, 0, 0, 0.4)",
-};
-
-const locateEntryButtonStyle: React.CSSProperties = {
-  position: "absolute",
-  left: 20,
-  bottom: 20,
-  zIndex: 5,
-  width: 36,
-  height: 36,
-  borderRadius: 999,
-  border: "1px solid #2a3242",
-  background: "#141922",
+const entryLocatorIconStyle: React.CSSProperties = {
   color: "#9fc8e3",
   fontSize: 18,
   lineHeight: 1,
-  cursor: "pointer",
-  boxShadow: "0 6px 18px rgba(0, 0, 0, 0.4)",
 };
