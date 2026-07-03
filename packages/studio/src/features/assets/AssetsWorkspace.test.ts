@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { AssetCard, DanglingCard } from "./AssetCard";
 import { AssetsToolbar } from "./AssetsToolbar";
-import { CharacterEditor, safeAssetFileStem } from "./CharacterEditor";
+import { CharacterEditor, safeAssetFileStem, spriteExprNameForImport } from "./CharacterEditor";
 import {
   applyAssetRegistrations,
   canMutateAssets,
@@ -229,6 +229,35 @@ describe("read-only asset UI", () => {
 
     expect(html).toContain("disabled");
     expect(html).toContain("manifest 结构异常");
+  });
+});
+
+describe("character sprite import UI", () => {
+  it("keeps choose image clickable when expression name is empty", () => {
+    const html = renderToStaticMarkup(createElement(CharacterEditor, {
+      projectPath: "/project",
+      manifest: {
+        characters: { h: { name: "h", color: "#fff", sprites: {} } },
+        backgrounds: {},
+        audio: { bgm: {}, sfx: {}, voice: {} },
+      },
+      onChange: () => {},
+    }));
+
+    expect(html).toContain(">选择图片</button>");
+    expect(html).not.toContain("disabled=\"\"");
+  });
+
+  it("uses default as the first sprite expression when no name is typed", () => {
+    expect(spriteExprNameForImport("", "hero.png", {})).toBe("default");
+  });
+
+  it("falls back to a unique file-derived expression when default already exists", () => {
+    expect(spriteExprNameForImport("", "hero smile.png", { default: "old.png" })).toBe("hero_smile");
+    expect(spriteExprNameForImport("", "hero smile.png", {
+      default: "old.png",
+      hero_smile: "one.png",
+    })).toBe("hero_smile_2");
   });
 });
 

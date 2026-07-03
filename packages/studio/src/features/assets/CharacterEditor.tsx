@@ -69,13 +69,13 @@ export function CharacterEditor({ projectPath, manifest, onChange, disabled = fa
   async function addSpriteExpr(id: string, expr: string) {
     if (disabled) return;
     const char = manifest.characters[id];
-    const normalizedExpr = expr.trim();
-    if (!char || !normalizedExpr) return;
+    if (!char) return;
     // 弹出文件选择器导入真实图片，避免写入占位路径制造 missing_asset。
     const files = await pickAssetFiles("character");
     if (files.length === 0) return;
     const src = files[0];
     const fileName = src.split(/[/\\]/).pop() ?? "sprite.png";
+    const normalizedExpr = spriteExprNameForImport(expr, fileName, char.sprites);
     const destRel = `assets/characters/${safeAssetFileStem(id)}_${safeAssetFileStem(normalizedExpr)}${extOf(fileName)}`;
     setBusy(true);
     try {
@@ -390,7 +390,7 @@ function SpriteExprAddForm({
       <input
         type="text"
         value={draft}
-        placeholder="表情名（如 happy）"
+        placeholder="表情名（留空为 default）"
         onChange={(e) => onDraftChange(e.target.value)}
         disabled={disabled}
         style={fieldInputStyle}
@@ -398,14 +398,48 @@ function SpriteExprAddForm({
       <button
         type="button"
         style={{ ...smallBtnStyle, opacity: busy || disabled ? 0.5 : 1, cursor: busy || disabled ? "not-allowed" : "pointer" }}
-        disabled={disabled || busy || !draft.trim()}
-        onClick={() => onAdd(draft.trim())}
-        title={disabled ? "manifest 结构异常，修复后才能导入角色图片" : "选择并导入一张角色图片"}
+        disabled={disabled || busy}
+        onClick={() => onAdd(draft)}
+        title={disabled ? "manifest 结构异常，修复后才能导入角色图片" : "选择图片；表情名留空时会自动生成"}
       >
         {busy ? "导入中…" : "选择图片"}
       </button>
     </div>
   );
+}
+
+export function spriteExprNameForImport(
+  draft: string,
+  fileName: string,
+  sprites: Record<string, string>,
+): string {
+  const typed = draft.trim();
+  if (typed) return typed;
+
+  if (!Object.prototype.hasOwnProperty.call(sprites, "default")) {
+    return "default";
+  }
+
+  return uniqueSpriteExprName(safeAssetFileStem(fileStem(fileName)), sprites);
+}
+
+function fileStem(fileName: string): string {
+  const file = fileName.split(/[/\\]/).pop() ?? fileName;
+  const dot = file.lastIndexOf(".");
+  return dot > 0 ? file.slice(0, dot) : file;
+}
+
+function uniqueSpriteExprName(base: string, sprites: Record<string, string>): string {
+  const seed = base.trim() || "sprite";
+  if (!Object.prototype.hasOwnProperty.call(sprites, seed)) return seed;
+
+  let index = 2;
+  let candidate = `${seed}_${index}`;
+  while (Object.prototype.hasOwnProperty.call(sprites, candidate)) {
+    index += 1;
+    candidate = `${seed}_${index}`;
+  }
+  return candidate;
 }
 
 export function safeAssetFileStem(value: string): string {
