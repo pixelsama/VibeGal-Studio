@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "default": 1,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "entryNodeId": {
+      "type": "string"
+    },
+    "nodes": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "position": {
+            "default": {
+              "x": 0,
+              "y": 0
+            },
+            "type": "object",
+            "properties": {
+              "x": {
+                "default": 0,
+                "type": "number"
+              },
+              "y": {
+                "default": 0,
+                "type": "number"
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "file"
+        ]
+      }
+    },
+    "edges": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          },
+          "condition": {
+            "default": null,
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to"
+        ]
+      }
+    }
+  },
+  "required": [
+    "entryNodeId"
+  ]
+}

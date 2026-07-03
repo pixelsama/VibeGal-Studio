@@ -22,6 +22,7 @@ import {
   setEntryNode,
 } from "./graphEditing";
 import { findNode, findNodeData } from "./graphMapping";
+import { autoLayoutGraph } from "./graphLayout";
 import "@xyflow/react/dist/style.css";
 
 interface Props {
@@ -296,6 +297,20 @@ export function ScriptWorkspace({
     void persistGraph(next);
   };
 
+  // Phase 9：自动排布（确定性分层）后一次性落盘
+  const handleAutoLayout = () => {
+    const next = autoLayoutGraph(graph);
+    if (
+      next.nodes.every((node, idx) => {
+        const previous = graph.nodes[idx]?.position;
+        return previous && node.position.x === previous.x && node.position.y === previous.y;
+      })
+    ) {
+      return;
+    }
+    void persistGraph(next);
+  };
+
   return (
     <div style={containerStyle}>
       <Breadcrumb
@@ -355,6 +370,7 @@ export function ScriptWorkspace({
                   onCreateSuccessor={handleCreateSuccessor}
                   onRenameNode={handleRenameNodeDialog}
                   onSetEntry={handleSetEntry}
+                  onAutoLayout={handleAutoLayout}
                 />
               </div>
             </div>

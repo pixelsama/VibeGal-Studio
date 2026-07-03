@@ -19,12 +19,22 @@ import type {
   WaitInstruction,
   EffectInstruction,
   TransitionInstruction,
+  ProjectGraphSchema,
+  GraphNodeSchema,
+  GraphEdgeSchema,
+  GraphPositionSchema,
 } from "./schema";
 
 export type Instruction = z.infer<typeof InstructionSchema>;
 export type Chapter = z.infer<typeof ChapterSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type Meta = z.infer<typeof MetaSchema>;
+
+// Phase 11：脚本图结构类型（供外部工具/Agent 校验）
+export type GraphPosition = z.infer<typeof GraphPositionSchema>;
+export type GraphNodeData = z.infer<typeof GraphNodeSchema>;
+export type GraphEdgeData = z.infer<typeof GraphEdgeSchema>;
+export type ProjectGraphData = z.infer<typeof ProjectGraphSchema>;
 
 // 便于在 interpreter 的 switch 里精确收窄
 export type BgInstr = z.infer<typeof BgInstruction>;

@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Instruction } from "@galstudio/engine";
 import { saveFile } from "../../lib/tauri";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { useNodePreview } from "./useNodePreview";
+import {
+  defaultInstruction,
+  insertInstructionAt,
+  summarizeInstructions,
+  type InsertableKind,
+} from "./instructions";
 
 interface NodeEditorProps {
   project: ProjectData;
@@ -15,6 +22,36 @@ interface NodeEditorProps {
 function serializeNodeData(nodeData: unknown | null): string {
   return nodeData == null ? "[]" : JSON.stringify(nodeData, null, 2);
 }
+
+/** 在 pretty-printed JSON 数组里定位第 index 个对象起始字符偏移（找不到返回 null）。 */
+function matchInstructionStart(jsonText: string, index: number): number | null {
+  let count = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < jsonText.length; i += 1) {
+    const ch = jsonText[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") {
+      if (count === index) return i;
+      count += 1;
+    }
+  }
+  return null;
+}
+
+const INSERT_BUTTONS: { kind: InsertableKind; label: string }[] = [
+  { kind: "narrate", label: "旁白" },
+  { kind: "say", label: "台词" },
+  { kind: "bg", label: "背景" },
+  { kind: "bgm", label: "BGM" },
+  { kind: "wait", label: "等待" },
+];
 
 export function NodeEditor({ project, rendererId, node, nodeData, onSaved }: NodeEditorProps) {
   const incomingText = useMemo(() => serializeNodeData(nodeData), [nodeData]);
@@ -74,6 +111,51 @@ export function NodeEditor({ project, rendererId, node, nodeData, onSaved }: Nod
     setStatus("已载入外部更新。");
   };
 
+  // Phase 10：块级只读大纲（say/narrate/bg/bgm）。text 非法 JSON 时静默返回空。
+  const outline = useMemo(() => {
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) return [];
+      return summarizeInstructions(parsed as Instruction[]);
+    } catch {
+      return [];
+    }
+  }, [text]);
+
+  // Phase 10：插入按钮 —— 解析 text → 插入末尾 → 重新序列化
+  const handleInsert = (kind: InsertableKind) => {
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        setStatus("插入失败: 节点内容不是 JSON 数组");
+        return;
+      }
+      const next = insertInstructionAt(parsed as Instruction[], (parsed as Instruction[]).length, defaultInstruction(kind));
+      const nextText = JSON.stringify(next, null, 2);
+      setText(nextText);
+      setDirty(true);
+      setStatus("");
+    } catch (error) {
+      setStatus(`插入失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  // Phase 10：点击大纲项 → 定位 textarea 到对应指令的 JSON 行
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handleLocate = (index: number) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    // pretty JSON 每条指令占若干行；用正则找第 index 个对象起始位置
+    const match = matchInstructionStart(text, index);
+    if (match == null) return;
+    ta.focus();
+    ta.setSelectionRange(match, match);
+    // 滚动到选中处
+    const lineHeight = 21; // 与 textareaStyle lineHeight 1.6 * 13px ≈ 20.8
+    const line = text.slice(0, match).split("\n").length - 1;
+    ta.scrollTop = Math.max(0, line * lineHeight - ta.clientHeight / 2);
+  };
+
   return (
     <div style={containerStyle}>
       <div style={editorPaneStyle}>
@@ -98,7 +180,43 @@ export function NodeEditor({ project, rendererId, node, nodeData, onSaved }: Nod
             {saving ? "保存中…" : "保存"}
           </button>
         </div>
+        {/* Phase 10：插入按钮条 + 只读块级大纲 */}
+        <div style={asideStyle}>
+          <div style={insertBarStyle}>
+            {INSERT_BUTTONS.map((btn) => (
+              <button
+                key={btn.kind}
+                type="button"
+                onClick={() => handleInsert(btn.kind)}
+                title={`在末尾插入一条${btn.label}指令`}
+                style={insertBtnStyle}
+              >
+                + {btn.label}
+              </button>
+            ))}
+          </div>
+          <div style={outlineStyle}>
+            <div style={outlineTitleStyle}>大纲（say / narrate / bg / bgm）</div>
+            {outline.length === 0 ? (
+              <div style={outlineEmptyStyle}>暂无可摘要指令</div>
+            ) : (
+              outline.map((item) => (
+                <button
+                  key={`${item.index}-${item.kind}`}
+                  type="button"
+                  onClick={() => handleLocate(item.index)}
+                  style={outlineItemStyle}
+                  title="点击定位到 JSON"
+                >
+                  <span style={{ ...outlineKindStyle, ...kindColor(item.kind) }}>{item.kind}</span>
+                  <span style={outlineLabelStyle}>{item.label}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={(event) => {
             setText(event.target.value);
@@ -266,3 +384,89 @@ const textareaStyle: React.CSSProperties = {
   fontSize: 13,
   lineHeight: 1.6,
 };
+
+// Phase 10 样式
+const asideStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  borderBottom: "1px solid #232a38",
+  background: "#0e1116",
+  maxHeight: 220,
+  flexShrink: 0,
+};
+
+const insertBarStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+  padding: "8px 12px",
+  borderBottom: "1px solid #161b24",
+};
+
+const insertBtnStyle: React.CSSProperties = {
+  padding: "5px 10px",
+  borderRadius: 6,
+  border: "1px solid #2a3242",
+  background: "#141922",
+  color: "#a0a8b4",
+  cursor: "pointer",
+  fontSize: 12,
+};
+
+const outlineStyle: React.CSSProperties = {
+  overflowY: "auto",
+  padding: "8px 12px",
+};
+
+const outlineTitleStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "#7a8290",
+  textTransform: "uppercase",
+  marginBottom: 6,
+};
+
+const outlineEmptyStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#596274",
+  padding: "4px 0",
+};
+
+const outlineItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  padding: "6px 8px",
+  border: "none",
+  background: "transparent",
+  borderRadius: 6,
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const outlineKindStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  padding: "2px 6px",
+  borderRadius: 4,
+  flexShrink: 0,
+  textTransform: "uppercase",
+};
+
+const outlineLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#d4dae2",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+function kindColor(kind: "say" | "narrate" | "bg" | "bgm"): React.CSSProperties {
+  const map: Record<string, React.CSSProperties> = {
+    say: { background: "#2a3a5a", color: "#9fc8e3" },
+    narrate: { background: "#2f4538", color: "#93d3b0" },
+    bg: { background: "#3a2f45", color: "#c8a0e0" },
+    bgm: { background: "#45382f", color: "#e0b676" },
+  };
+  return map[kind] ?? {};
+}

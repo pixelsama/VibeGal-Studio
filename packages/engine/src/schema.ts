@@ -122,3 +122,37 @@ export const MetaSchema = z.object({
   autoAdvanceMs: z.number().int().nonnegative().default(1200),
   chapterGapMs: z.number().int().nonnegative().default(1500),
 });
+
+// ──────────────────────────────────────────────
+// graph：脚本图结构（content/graph.json + content/nodes/*.json）
+// Phase 11：补 graph 的 zod schema，供外部工具/Agent 校验与 JSON Schema 导出。
+// 字段与 studio lib/types.ts 的 ProjectGraph + Rust lib.rs 的 ProjectGraph 对齐。
+// ──────────────────────────────────────────────
+
+export const GraphPositionSchema = z.object({
+  x: z.number().default(0),
+  y: z.number().default(0),
+}).default({ x: 0, y: 0 });
+
+export const GraphNodeSchema = z.object({
+  id: z.string().min(1),
+  // Rust loader accepts missing title and falls back to id.
+  title: z.string().optional(),
+  file: z.string().min(1), // 相对 content 根，如 "nodes/prologue.json"
+  position: GraphPositionSchema,
+});
+
+export const GraphEdgeSchema = z.object({
+  id: z.string().min(1),
+  from: z.string().min(1),
+  to: z.string().min(1),
+  // 当前固定 null；分支条件留作后续扩展。用 unknown+nullable 保留任意 JSON。
+  condition: z.unknown().nullable().default(null),
+});
+
+export const ProjectGraphSchema = z.object({
+  version: z.number().int().nonnegative().default(1),
+  entryNodeId: z.string(), // 空串 = 未设置入口
+  nodes: z.array(GraphNodeSchema).default([]),
+  edges: z.array(GraphEdgeSchema).default([]),
+});

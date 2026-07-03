@@ -10,13 +10,15 @@
   },
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "export-schemas": "tsx scripts/export-schemas.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
+    "tsx": "^4.22.4",
     "vitest": "^4.1.9"
   },
   "peerDependencies": {

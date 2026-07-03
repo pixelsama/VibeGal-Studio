@@ -57,6 +57,8 @@ export interface GraphIssue {
   severity: GraphIssueSeverity;
   code: string;
   message: string;
+  file?: string;
+  jsonPath?: string;
   nodeId?: string;
   edgeId?: string;
 }

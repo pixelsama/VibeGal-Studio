@@ -49,33 +49,56 @@ function IssueGroup({
       {issues.map((issue, index) => {
         const targetLabel = issue.nodeId ? `node ${issue.nodeId}` : issue.edgeId ? `edge ${issue.edgeId}` : issue.code;
         return (
-          <button
+          <IssueCard
             key={`${issue.code}-${issue.nodeId ?? issue.edgeId ?? index}`}
-            type="button"
-            onClick={() => {
-              if (issue.nodeId) onSelectNode(issue.nodeId);
-              else if (issue.edgeId) onSelectEdge(issue.edgeId);
-            }}
-            style={{
-              ...issueButtonStyle,
-              borderColor: issue.severity === "error" ? "#5a2b2b" : "#594823",
-            }}
-          >
-            <span
-              style={{
-                ...severityDotStyle,
-                background: issue.severity === "error" ? "#d66a6a" : "#d49b4d",
-              }}
-            />
-            <span style={issueTextStyle}>
-              <span style={issueCodeStyle}>{issue.code}</span>
-              <span>{issue.message}</span>
-              <span style={targetStyle}>{targetLabel}</span>
-            </span>
-          </button>
+            issue={issue}
+            targetLabel={targetLabel}
+            onSelectNode={onSelectNode}
+            onSelectEdge={onSelectEdge}
+          />
         );
       })}
     </section>
+  );
+}
+
+function IssueCard({
+  issue,
+  targetLabel,
+  onSelectNode,
+  onSelectEdge,
+}: {
+  issue: GraphIssue;
+  targetLabel: string;
+  onSelectNode: (id: string) => void;
+  onSelectEdge: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (issue.nodeId) onSelectNode(issue.nodeId);
+        else if (issue.edgeId) onSelectEdge(issue.edgeId);
+      }}
+      style={{
+        ...issueButtonStyle,
+        borderColor: issue.severity === "error" ? "#5a2b2b" : "#594823",
+      }}
+    >
+      <span
+        style={{
+          ...severityDotStyle,
+          background: issue.severity === "error" ? "#d66a6a" : "#d49b4d",
+        }}
+      />
+      <span style={issueTextStyle}>
+        <span style={issueCodeStyle}>{issue.code}</span>
+        <span>{issue.message}</span>
+        {issue.file && <span style={targetStyle}>{issue.file}</span>}
+        {issue.jsonPath && <span style={targetStyle}>{issue.jsonPath}</span>}
+        <span style={targetStyle}>{targetLabel}</span>
+      </span>
+    </button>
   );
 }
 
@@ -159,6 +182,7 @@ const issueTextStyle: React.CSSProperties = {
   minWidth: 0,
   fontSize: 12,
   lineHeight: 1.35,
+  flex: 1,
 };
 
 const issueCodeStyle: React.CSSProperties = {

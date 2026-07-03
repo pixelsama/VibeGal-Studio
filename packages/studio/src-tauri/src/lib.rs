@@ -94,6 +94,10 @@ pub struct GraphIssue {
     pub severity: GraphIssueSeverity,
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(rename = "jsonPath", skip_serializing_if = "Option::is_none")]
+    pub json_path: Option<String>,
     #[serde(rename = "nodeId", skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
     #[serde(rename = "edgeId", skip_serializing_if = "Option::is_none")]
@@ -227,7 +231,7 @@ const GRAPH_LAYOUT_GAP_X: f64 = 260.0;
 const GRAPH_LAYOUT_GAP_Y: f64 = 160.0;
 const GRAPH_LAYOUT_MARGIN: f64 = 80.0;
 
-fn read_project_meta(project_path: &Path) -> Result<ProjectMeta, String> {
+pub fn read_project_meta(project_path: &Path) -> Result<ProjectMeta, String> {
     let meta_file = project_path.join("gal.project.json");
     let text = fs::read_to_string(&meta_file).map_err(|e| {
         format!(
@@ -287,7 +291,16 @@ fn list_renderer_ids(project_path: &Path) -> Vec<String> {
 /// 打开项目：读 gal.project.json + content + 渲染层列表
 #[tauri::command]
 fn open_project(path: String) -> Result<ProjectData, String> {
-    let project_path = canonical_project_root(Path::new(&path))?;
+    open_project_inner(&path)
+}
+
+/// 供 CLI 直接调用的项目打开入口（无 #[tauri::command] 宏，可跨 crate 调）。
+pub fn open_project_for_cli(path: &str) -> Result<ProjectData, String> {
+    open_project_inner(path)
+}
+
+fn open_project_inner(path: &str) -> Result<ProjectData, String> {
+    let project_path = canonical_project_root(Path::new(path))?;
     let meta = read_project_meta(&project_path)?;
 
     let content_dir = project_path.join("content");
@@ -370,7 +383,7 @@ fn open_project(path: String) -> Result<ProjectData, String> {
     })
 }
 
-fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIssue> {
+pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIssue> {
     let mut issues = vec![];
     let mut seen_node_ids = HashSet::new();
     let mut duplicate_node_ids = HashSet::new();
@@ -387,6 +400,8 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
             severity: GraphIssueSeverity::Error,
             code: "duplicate_node_id".to_string(),
             message: format!("节点 id 重复：{node_id}"),
+            file: Some("content/graph.json".to_string()),
+            json_path: Some("$.nodes".to_string()),
             node_id: Some(node_id),
             edge_id: None,
         });
@@ -402,6 +417,8 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
                 severity: GraphIssueSeverity::Warn,
                 code: "missing_node_file".to_string(),
                 message: format!("节点「{}」的文件 {} 不存在", node.title, node.file),
+                file: Some(format!("content/{}", node.file)),
+                json_path: Some(format!("$.nodes[{index}].file")),
                 node_id: Some(node.id.clone()),
                 edge_id: None,
             });
@@ -414,6 +431,8 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
                 severity: GraphIssueSeverity::Warn,
                 code: "empty_entry".to_string(),
                 message: "未设置入口节点".to_string(),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some("$.entryNodeId".to_string()),
                 node_id: None,
                 edge_id: None,
             });
@@ -423,6 +442,8 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
             severity: GraphIssueSeverity::Error,
             code: "missing_entry_node".to_string(),
             message: format!("入口节点 {} 不存在", graph.entry_node_id),
+            file: Some("content/graph.json".to_string()),
+            json_path: Some("$.entryNodeId".to_string()),
             node_id: Some(graph.entry_node_id.clone()),
             edge_id: None,
         });
@@ -430,7 +451,7 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
 
     let mut seen_edge_ids = HashSet::new();
     let mut duplicate_edge_ids = HashSet::new();
-    for edge in &graph.edges {
+    for (index, edge) in graph.edges.iter().enumerate() {
         if !seen_edge_ids.insert(edge.id.clone()) {
             duplicate_edge_ids.insert(edge.id.clone());
         }
@@ -451,6 +472,8 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
                     edge.id,
                     missing.join(", ")
                 ),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some(format!("$.edges[{index}]")),
                 node_id: None,
                 edge_id: Some(edge.id.clone()),
             });
@@ -463,6 +486,8 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
             severity: GraphIssueSeverity::Warn,
             code: "duplicate_edge_id".to_string(),
             message: format!("边 id 重复：{edge_id}"),
+            file: Some("content/graph.json".to_string()),
+            json_path: Some("$.edges".to_string()),
             node_id: None,
             edge_id: Some(edge_id),
         });
@@ -471,7 +496,7 @@ fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIs
     issues
 }
 
-fn load_project_graph_data(
+pub fn load_project_graph_data(
     content_root: &Path,
     chapters: &[ChapterEntry],
 ) -> Result<(ProjectGraph, Vec<NodeEntry>), String> {
@@ -1006,7 +1031,7 @@ fn save_project_meta(project_path: String, meta: ProjectMeta) -> Result<(), Stri
 
 // ── 工具函数 ──────────────────────────────────────
 
-fn canonical_project_root(project_path: &Path) -> Result<PathBuf, String> {
+pub fn canonical_project_root(project_path: &Path) -> Result<PathBuf, String> {
     let root = project_path
         .canonicalize()
         .map_err(|e| format!("无法定位项目目录 {}: {}", project_path.display(), e))?;
@@ -1404,6 +1429,8 @@ mod tests {
         assert_eq!(issues[0].code, "dangling_edge");
         assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
         assert_eq!(issues[0].edge_id.as_deref(), Some("prologue__missing"));
+        assert_eq!(issues[0].file.as_deref(), Some("content/graph.json"));
+        assert_eq!(issues[0].json_path.as_deref(), Some("$.edges[0]"));
         assert!(issues[0].message.contains("missing"));
     }
 
@@ -1427,6 +1454,8 @@ mod tests {
         assert_eq!(issues[0].code, "missing_node_file");
         assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
         assert_eq!(issues[0].node_id.as_deref(), Some("ending"));
+        assert_eq!(issues[0].file.as_deref(), Some("content/nodes/ending.json"));
+        assert_eq!(issues[0].json_path.as_deref(), Some("$.nodes[1].file"));
         assert!(issues[0].message.contains("nodes/ending.json"));
     }
 
