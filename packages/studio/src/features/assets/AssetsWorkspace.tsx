@@ -20,6 +20,7 @@ import {
   pickAssetFiles,
   saveManifest,
 } from "../../lib/tauri";
+import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
 import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
 import { AssetsToolbar } from "./AssetsToolbar";
@@ -32,10 +33,18 @@ import { baseName } from "./assetPreview";
 interface AssetsWorkspaceProps {
   project: ProjectData;
   refreshKey: number;
+  sidebarCollapsed: boolean;
+  onSidebarCollapsedChange: (collapsed: boolean) => void;
   onSaved: () => void | Promise<void>;
 }
 
-export function AssetsWorkspace({ project, refreshKey, onSaved }: AssetsWorkspaceProps) {
+export function AssetsWorkspace({
+  project,
+  refreshKey,
+  sidebarCollapsed,
+  onSidebarCollapsedChange,
+  onSaved,
+}: AssetsWorkspaceProps) {
   const [section, setSection] = useState<AssetSection>("overview");
   const [search, setSearch] = useState("");
   const [draftManifest, setDraftManifest] = useState<Manifest | null>(null);
@@ -172,7 +181,15 @@ export function AssetsWorkspace({ project, refreshKey, onSaved }: AssetsWorkspac
 
   return (
     <div style={rootStyle}>
-      <AssetsSidebar active={section} onSelect={setSection} />
+      <CollapsibleSidebar
+        title="资产"
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={onSidebarCollapsedChange}
+        expandedWidth={132}
+        collapsedLabel="资产"
+      >
+        <AssetsSidebar active={section} onSelect={setSection} />
+      </CollapsibleSidebar>
       <div style={mainStyle}>
         {manifestInvalid && (
           <div style={invalidBannerStyle}>

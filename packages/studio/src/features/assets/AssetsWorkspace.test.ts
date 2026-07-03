@@ -10,6 +10,7 @@ import { AssetCard, DanglingCard } from "./AssetCard";
 import { AssetsToolbar } from "./AssetsToolbar";
 import { CharacterEditor, safeAssetFileStem, spriteExprNameForImport } from "./CharacterEditor";
 import {
+  AssetsWorkspace,
   applyAssetRegistrations,
   canMutateAssets,
   countRefs,
@@ -17,7 +18,7 @@ import {
   removeAllRefsToPath,
   removeManifestEntry,
 } from "./AssetsWorkspace";
-import type { Manifest } from "../../lib/types";
+import type { Manifest, ProjectData } from "../../lib/types";
 
 const base: Manifest = {
   characters: {
@@ -182,6 +183,27 @@ describe("asset mutation guards", () => {
 });
 
 describe("read-only asset UI", () => {
+  it("keeps asset categories visible inside the expanded collapsible sidebar", () => {
+    const project: ProjectData = {
+      path: "/project",
+      meta: { name: "T", activeRendererId: "default", createdAt: "0" },
+      content: { manifest: base, meta: {}, chapters: [] },
+      rendererIds: ["default"],
+    };
+
+    const html = renderToStaticMarkup(createElement(AssetsWorkspace, {
+      project,
+      refreshKey: 0,
+      sidebarCollapsed: false,
+      onSidebarCollapsedChange: () => {},
+      onSaved: () => {},
+    }));
+
+    expect(html).toContain("aria-label=\"资产\"");
+    expect(html).toContain("总览");
+    expect(html).toContain("背景");
+  });
+
   it("disables import controls when the manifest is invalid", () => {
     const html = renderToStaticMarkup(createElement(AssetsToolbar, {
       section: "background",

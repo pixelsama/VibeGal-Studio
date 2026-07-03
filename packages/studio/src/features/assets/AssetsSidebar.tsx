@@ -54,12 +54,11 @@ export function AssetsSidebar({ active, onSelect }: AssetsSidebarProps) {
 const sidebarStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  width: 132,
-  flexShrink: 0,
+  width: "100%",
+  height: "100%",
+  boxSizing: "border-box",
   padding: "10px 8px",
   gap: 2,
-  background: "#0e1116",
-  borderRight: "1px solid #232a38",
   overflowY: "auto",
 };
 

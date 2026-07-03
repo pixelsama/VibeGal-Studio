@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deleteFile, saveFile, saveGraph } from "../../lib/tauri";
 import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "../../lib/types";
+import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
 import { NodeInspector } from "./NodeInspector";
@@ -28,6 +29,8 @@ interface Props {
   project: ProjectData;
   rendererId: string;
   refreshKey: number;
+  outlineCollapsed: boolean;
+  onOutlineCollapsedChange: (collapsed: boolean) => void;
   location: ScriptWorkspaceLocation;
   focusRequest?: GraphIssueFocusRequest | null;
   onOpenGraph: () => void;
@@ -51,6 +54,8 @@ export function ScriptWorkspace({
   project,
   rendererId,
   refreshKey: _refreshKey,
+  outlineCollapsed,
+  onOutlineCollapsedChange,
   location,
   focusRequest,
   onOpenGraph,
@@ -336,12 +341,20 @@ export function ScriptWorkspace({
         {view === "graph" ? (
           <div style={graphLayoutStyle}>
             <div style={outlinePaneStyle}>
-              <NodeOutline
-                graph={graph}
-                nodeEntries={project.nodes}
-                selectedNodeId={selectedNodeId}
-                onSelect={handleSelect}
-              />
+              <CollapsibleSidebar
+                title="节点"
+                collapsed={outlineCollapsed}
+                onCollapsedChange={onOutlineCollapsedChange}
+                expandedWidth={280}
+                collapsedLabel="节点"
+              >
+                <NodeOutline
+                  graph={graph}
+                  nodeEntries={project.nodes}
+                  selectedNodeId={selectedNodeId}
+                  onSelect={handleSelect}
+                />
+              </CollapsibleSidebar>
             </div>
             <div style={canvasPaneStyle}>
               <div style={canvasColumnStyle}>
@@ -455,7 +468,7 @@ const contentStyle: React.CSSProperties = {
 
 const graphLayoutStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(240px, 280px) minmax(0, 1fr) minmax(280px, 340px)",
+  gridTemplateColumns: "auto minmax(0, 1fr) minmax(280px, 340px)",
   width: "100%",
   height: "100%",
 };

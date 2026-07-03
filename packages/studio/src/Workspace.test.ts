@@ -1,5 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
 import { graphFocusTargetFromIssue, shouldStartWindowDrag } from "./Workspace";
+import { Workspace } from "./Workspace";
+import type { ProjectData } from "./lib/types";
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ startDragging: vi.fn() }),
+}));
+
+vi.mock("./features/preview/Preview", () => ({
+  Preview: ({ rendererId }: { rendererId: string }) => createElement("div", { "data-preview-renderer": rendererId }),
+}));
+
+vi.mock("./features/script/ScriptWorkspace", () => ({
+  ScriptWorkspace: () => createElement("div", { "data-testid": "script-workspace" }),
+}));
+
+vi.mock("./features/assets/AssetsWorkspace", () => ({
+  AssetsWorkspace: () => createElement("div", { "data-testid": "assets-workspace" }),
+}));
+
+vi.mock("./features/common/StatusPanel", () => ({
+  StatusPanel: () => createElement("div", { "data-testid": "status-panel" }),
+}));
 
 function targetWithClosest(result: Element | null): EventTarget {
   return {
@@ -43,5 +71,36 @@ describe("graphFocusTargetFromIssue", () => {
   it("ignores non-graph issues", () => {
     expect(graphFocusTargetFromIssue({ source: "asset", nodeId: "intro" }, 1)).toBeNull();
     expect(graphFocusTargetFromIssue({ source: "manifest" }, 1)).toBeNull();
+  });
+});
+
+const project: ProjectData = {
+  path: "/project",
+  meta: { name: "Galgame-test", activeRendererId: "default", createdAt: "0" },
+  content: {
+    manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
+    meta: {},
+    chapters: [],
+  },
+  rendererIds: ["default", "mobile"],
+};
+
+describe("Workspace renderer chrome", () => {
+  it("shows the current renderer as read-only title bar text instead of a select", () => {
+    const html = renderToStaticMarkup(createElement(Workspace, {
+      project,
+      location: { type: "workspace", workspace: "render" },
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+    }));
+
+    expect(html).toContain("当前渲染层");
+    expect(html).toContain("default");
+    expect(html).not.toContain("<select");
   });
 });

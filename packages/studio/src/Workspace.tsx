@@ -12,6 +12,8 @@ import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
 import { StatusPanel } from "./features/common/StatusPanel";
+import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
+import { RendererSidebar } from "./features/renderers/RendererSidebar";
 import { openProject, saveProjectMeta, unwatchProject, watchProject } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
@@ -71,6 +73,9 @@ export function Workspace({
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncState, setSyncState] = useState<SyncState>("synced");
+  const [renderSidebarCollapsed, setRenderSidebarCollapsed] = useState(false);
+  const [assetsSidebarCollapsed, setAssetsSidebarCollapsed] = useState(false);
+  const [scriptOutlineCollapsed, setScriptOutlineCollapsed] = useState(false);
   const [graphIssueFocus, setGraphIssueFocus] = useState<GraphIssueFocusRequest | null>(null);
   const graphIssueFocusRequestIdRef = useRef(0);
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
@@ -151,6 +156,7 @@ export function Workspace({
   }, []);
 
   const report = project.projectReport ?? { projectIssues: [] };
+  const rendererStatusText = rendererId || "无渲染层";
 
   const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string }) => {
     const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1);
@@ -181,30 +187,40 @@ export function Workspace({
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={projectNameStyle}>{project.meta.name}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
-          <label style={{ fontSize: 12, color: "#7a8290" }}>渲染层</label>
-          <select
-            value={rendererId}
-            onChange={(e) => handleRendererChange(e.target.value)}
-            style={selectStyle}
-          >
-            {project.rendererIds.length === 0 && <option value="">（无）</option>}
-            {project.rendererIds.map((id) => (
-              <option key={id} value={id}>{id}</option>
-            ))}
-          </select>
+          <span style={rendererLabelStyle}>当前渲染层</span>
+          <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
         </div>
       </header>
 
       {/* 内容区 */}
       <div style={{ flex: 1, overflow: "hidden" }}>
         {workspace === "render" && (
-          <Preview key={`${rendererId}-${refreshKey}`} project={project} rendererId={rendererId} />
+          <div style={renderWorkspaceStyle}>
+            <CollapsibleSidebar
+              title="渲染层"
+              collapsed={renderSidebarCollapsed}
+              onCollapsedChange={setRenderSidebarCollapsed}
+              expandedWidth={180}
+              collapsedLabel="渲染层"
+            >
+              <RendererSidebar
+                rendererIds={project.rendererIds}
+                activeRendererId={rendererId}
+                onSelect={handleRendererChange}
+              />
+            </CollapsibleSidebar>
+            <div style={previewPaneStyle}>
+              <Preview key={`${rendererId}-${refreshKey}`} project={project} rendererId={rendererId} />
+            </div>
+          </div>
         )}
         {workspace === "script" && (
           <ScriptWorkspace
             project={project}
             rendererId={rendererId}
             refreshKey={refreshKey}
+            outlineCollapsed={scriptOutlineCollapsed}
+            onOutlineCollapsedChange={setScriptOutlineCollapsed}
             location={location.type === "script-node" ? { view: "node", nodeId: location.nodeId } : { view: "graph" }}
             focusRequest={graphIssueFocus}
             onOpenGraph={() => onNavigate({ type: "script-graph" })}
@@ -214,7 +230,13 @@ export function Workspace({
           />
         )}
         {workspace === "assets" && (
-          <AssetsWorkspace project={project} refreshKey={refreshKey} onSaved={handleSaved} />
+          <AssetsWorkspace
+            project={project}
+            refreshKey={refreshKey}
+            sidebarCollapsed={assetsSidebarCollapsed}
+            onSidebarCollapsedChange={setAssetsSidebarCollapsed}
+            onSaved={handleSaved}
+          />
         )}
       </div>
 
@@ -358,9 +380,34 @@ const projectNameStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 };
-const selectStyle: React.CSSProperties = {
-  padding: "6px 10px", background: "#1a1f29", border: "1px solid #2a3242",
-  borderRadius: 6, color: "#d4dae2", fontSize: 13,
+const rendererLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#7a8290",
+};
+const rendererStatusStyle: React.CSSProperties = {
+  maxWidth: 140,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  padding: "5px 9px",
+  borderRadius: 6,
+  border: "1px solid #2a3242",
+  background: "#141922",
+  color: "#d4dae2",
+  fontSize: 13,
+};
+const renderWorkspaceStyle: React.CSSProperties = {
+  display: "flex",
+  width: "100%",
+  height: "100%",
+  minWidth: 0,
+  overflow: "hidden",
+  background: "#0b0e14",
+};
+const previewPaneStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  overflow: "hidden",
 };
 const syncButtonStyle: React.CSSProperties = {
   display: "inline-flex",

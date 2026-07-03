@@ -18,7 +18,6 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
 
   return (
     <div style={panelStyle}>
-      <div style={titleStyle}>节点</div>
       <div style={listStyle}>
         {orderedNodes.length === 0 ? (
           <div style={emptyStyle}>暂无节点</div>
@@ -62,16 +61,7 @@ const panelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   height: "100%",
-  background: "#0e1116",
-  borderRight: "1px solid #232a38",
-};
-
-const titleStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  borderBottom: "1px solid #232a38",
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#d4dae2",
+  background: "transparent",
 };
 
 const listStyle: React.CSSProperties = {
