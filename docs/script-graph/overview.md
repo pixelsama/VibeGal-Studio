@@ -19,7 +19,7 @@
 - **格式 = `Instruction[]`**，沿用 `packages/engine/src/schema.ts` 的 `t` 判别联合（`bg`/`bgm`/`sfx`/`voice`/`char`/`say`/`narrate`/`wait`/`effect`/`transition`）。
 - **否决**早期草案里的 `{ "type": "say", "speaker": ... }`。那只是示意，不是契约。
 - 好处：`validateContent`、`NovelPlayer`、`InstructionSchema`、`useProjectPlayer` 全部零改写复用；
-  外部 AI agent 写节点时可直接参考既有 schema，且预览/校验链路天然打通。
+  外部工具/Agent 写节点时可直接参考既有 schema，且预览/校验链路天然打通。
 
 ### 🟡 1.2 节点粒度由作者决定（推荐场景级）
 
@@ -236,7 +236,7 @@ pub struct NodeEntry {
   `content/` 递归 watch 覆盖。
 - `project_changed` 事件触发后，前端 `refreshProject()` 重新 `openProject()`，自动拿到最新
   `graph` + `nodes`，图视图/节点编辑器/单节点预览随之刷新（靠 `refreshKey` remount）。
-- 外部 AI 新建节点文件 + 改 graph.json 的场景：一次 debounce 合并 → 一次 `project_changed`
+- 外部工具/Agent 新建节点文件 + 改 graph.json 的场景：一次 debounce 合并 → 一次 `project_changed`
   → 一次全量刷新。无需重开项目。
 
 ---

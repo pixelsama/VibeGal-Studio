@@ -122,7 +122,7 @@ Each node file stores local story instructions:
 
 Node files reuse the existing engine `Instruction[]` schema (`t` discriminator, e.g. `say` uses `who`). They do not introduce a new `{ type, speaker }` format.
 
-This makes each node a natural AI coding boundary. An external agent can safely modify one node without rewriting the entire story.
+This makes each node a natural external editing boundary. An external Agent can safely modify one node file without rewriting the entire story.
 
 ## Compatibility
 
@@ -146,7 +146,7 @@ The existing watcher/debounce behavior should include the graph files:
 - `renderers/`
 - `gal.project.json`
 
-External AI updates should refresh the graph, selected node, preview, and renderer list without requiring the user to reopen the project.
+External file updates should refresh the graph, selected node, preview, and renderer list without requiring the user to reopen the project.
 
 ## Implementation Phases
 
@@ -238,23 +238,25 @@ Verification:
 - `graph.json` persists edits.
 - Reloading the project restores node positions and edges.
 
-### Phase 6: AI-Friendly Operations
+### Phase 6: External Data Operations
 
 Requirement:
 
-The graph/node structure is easy for external AI coding agents to modify safely.
+The graph/node structure is easy for external tools and Agents to modify safely, while GalStudio remains a data editor rather than an AI client.
 
 Tasks:
 
 - Document graph and node schemas.
 - Add validation errors that identify exact broken node/edge references.
 - Add a visible refresh/status indicator for external file changes.
-- Consider a command palette action: "Ask AI to expand selected node" as a future integration point.
+- Improve external AI coding ergonomics through stable schemas, predictable persistence, and copyable issue context.
+- Explicitly avoid in-app AI buttons, prompt generation, provider settings, token storage, or Agent session management.
 
 Verification:
 
 - Invalid graph data produces actionable errors.
 - External generation of a new node file plus graph edge appears without reopening the project.
+- A user can hand an external Agent the schema and issue details without first creating an in-app AI task.
 
 ## Open Design Questions
 

@@ -1,6 +1,6 @@
 # Node and Graph Schema
 
-本文档面向外部 AI coding agent，说明 GalStudio 图模式项目的可写文件、数据格式和路径安全约定。
+本文档面向外部工具/Agent 与人工编辑，说明 GalStudio 图模式项目的可写文件、数据格式和路径安全约定。
 
 ## 文件布局
 

@@ -5,7 +5,7 @@
  * 组件层（src/components/*）只允许 import 本文件里的类型，不允许 import
  * interpreter/player/useNovel 的内部实现，以保证组件可被整体替换。
  *
- * AI 想换一整套界面时，只需要读懂下面这些字段，重写 components/ 即可，
+ * 外部工具想换一整套界面时，只需要读懂下面这些字段，重写 components/ 即可，
  * 引擎与剧本一行都不用动。
  */
 

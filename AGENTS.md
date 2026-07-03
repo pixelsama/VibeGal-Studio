@@ -8,9 +8,19 @@ Opening a directory should treat that directory itself as the project root. If i
 
 New project creation chooses a parent directory, asks for a project folder name, creates the child directory, initializes it, and opens it.
 
+## Product Boundary: No In-App AI
+
+GalStudio's job is to visualize, edit, validate, hot-reload, and preview Galgame project data.
+
+External AI coding ergonomics are welcome and important, but they should be achieved through clear data contracts, stable file layouts, schema documentation, validation reports, hot reload, copyable issue details, and predictable persistence.
+
+Do not add in-app AI integration. The app should not expose AI buttons, AI task prompts, prompt handoff files, AI connectors, model/provider settings, token storage, or agent session management.
+
+AI-assisted workflows happen outside GalStudio: an external Agent reads and writes the project files directly, usually from Codex, Claude Code, or another coding environment. GalStudio should respond to those file changes through watchers, validation reports, and normal editing UI.
+
 ## Hot Reload Expectations
 
-External tools and AI coding agents are expected to modify project files while GalStudio is open. The app should be sensitive to those changes and refresh quickly.
+External tools and Agents may modify project files while GalStudio is open. The app should be sensitive to those changes and refresh quickly.
 
 Use native file watching plus debounce for project updates. Do not replace this with high-frequency full-directory polling.
 
@@ -38,7 +48,7 @@ renderers/
 
 `openProject()` discovers renderer IDs by scanning these directories. The Workspace dropdown switches renderer layers and persists `activeRendererId` in `gal.project.json`.
 
-AI-created renderer layers should follow the same directory contract; GalStudio should not need a special registration file for them.
+Externally created renderer layers should follow the same directory contract; GalStudio should not need a special registration file for them.
 
 ## Engineering Notes
 

@@ -1,18 +1,25 @@
-# Phase 6 — AI 友好操作（AI-Friendly Operations）规格
+# Phase 6 — 外部数据操作（External Data Operations）规格
 
 > 前置：Phase 2（数据契约）、Phase 5（图编辑/写入）。
 > 已读 [overview.md](./overview.md)（§1.6 热重载、§5 热重载约定）。
-> 本阶段面向**外部 AI coding agent** 友好性：可操作的校验错误 + 外部刷新指示 + 未来集成点。
+> 本阶段面向外部工具/Agent 直接编辑项目数据的工作流：可操作的校验错误 + 外部刷新指示 + schema 文档。
 > 后端扩展 `open_project` 输出校验问题（叠加式，不阻断加载），前端展示。
+
+GalStudio 的产品边界是项目数据的可视化、编辑、校验和热重载。外部 Agent 可以直接修改 `content/` 与
+`renderers/` 下的项目文件；GalStudio 不内置 AI 调用、不生成 AI 任务文件、不提供 AI 连接入口。
+
+这不是“不服务 AI coding”。相反，外部 AI coding 体验是一等目标；增强方式应落在清晰的数据契约、稳定的文件布局、
+schema 文档、校验报告、热重载、可复制的问题详情和可预测的落盘行为上，而不是在编辑器内增加一个需要用户再回到
+Codex/Claude Code 的中转按钮。
 
 ## 1. 需求
 
 1. 图/节点数据有问题时，给出**精确、可操作**的错误（指到具体 node id / edge id / 字段）。
-2. 外部 AI 改动文件后，界面有**可见的刷新/同步状态指示**。
-3. 预留「请 AI 扩展选中节点」命令集成的钩子（本期只占位，不接真实 AI）。
-4. 文档化 graph/节点 schema（供外部 agent 参考）。
+2. 外部工具/Agent 改动文件后，界面有**可见的刷新/同步状态指示**。
+3. 文档化 graph/节点 schema（供外部工具/Agent 和人工编辑参考）。
+4. 提供有利于外部 AI coding 的机器可读/可复制上下文，但不提供任何应用内 AI 协作入口；外部 Agent 的工作方式是直接改项目数据文件。
 
-校验是**非致命**的：坏图仍能加载（带 issues），让用户/agent 看到「哪里坏」而不是黑屏报错。
+校验是**非致命**的：坏图仍能加载（带 issues），让用户或外部工具看到「哪里坏」而不是黑屏报错。
 
 ## 2. 后端：`graphIssues` 扩展（`lib.rs`）
 
@@ -134,25 +141,33 @@ export interface GraphReport { graphIssues: GraphIssue[]; }
 | `error` | `refreshProject` 抛错 | 红点「刷新失败（点击重试）」 |
 
 实现：`Workspace` 加 `const [syncState, setSyncState] = useState<"synced"|"syncing"|"error">("synced")`，
-在 `refreshProject` 前后置位。这让外部 AI 改动文件时用户**看得见**「同步中→已同步」跳变（AGENTS.md 热重载可见性要求）。
+在 `refreshProject` 前后置位。这让外部工具/Agent 改动文件时用户**看得见**「同步中→已同步」跳变（AGENTS.md 热重载可见性要求）。
 
-### 3.5 命令面板占位：「请 AI 扩展选中节点」
+### 3.5 明确不做：应用内 AI 协作
 
-本期**不接真实 AI**，只留集成点：
+GalStudio 不实现以下能力：
 
-- 工具栏/节点右键菜单加「✨ 让 AI 扩展此节点」（仅 DEV 或有配置时启用，否则灰显 + tooltip「即将支持」）。
-- 点击后：把当前节点 id/file/标题 + 一段占位 prompt **复制到剪贴板**或写入 `content/.gal/ai-task.md`，
-  作为后续接入真实 AI agent 的协议占位。
-- spec 中明确标注此为 **future integration point**，不在本期实现 AI 调用。
+- 不在工具栏、右键菜单或命令面板提供“让 AI 扩展/生成/修复”的入口。
+- 不写入 `content/.gal/ai-task.md` 或类似的 AI 任务文件。
+- 不连接远程/本地 AI 服务，不保存 AI token，不管理 Agent 会话。
 
-## 4. 文档化 schema（供外部 agent）
+需要 AI 或脚本自动化时，由外部 Agent 直接读写项目数据文件；GalStudio 通过 watcher、schema 文档和 issues 面板反馈结果。
+
+推荐增强方向：
+
+- issues 面板的每条问题都能暴露稳定 code、nodeId、edgeId、相关文件路径和人类可读 message。
+- 文档和 schema 能让外部 Agent 不需要打开应用源码，也能知道怎么新增/修改/删除节点。
+- 图编辑落盘保持格式稳定，减少外部 diff 噪音。
+- 外部改动后尽快刷新，同时尽量保留当前视角、选中节点和错误定位。
+
+## 4. 文档化 schema（供外部工具/Agent）
 
 在 `docs/script-graph/` 新增 `node-and-graph-schema.md`（本 spec 的产出之一，或并入 overview）：
 
 - graph.json 字段表（id/title/file/position/condition/version/entryNodeId）。
 - 节点文件 = `Instruction[]`，链接到 `packages/engine/src/schema.ts` 的 `t` 判别联合。
 - 一份最小完整示例（graph.json + 一个 node json）。
-- 「外部 agent 操作流程」：改 graph.json + 写 nodes/<id>.json → 保存 → GalStudio 自动热重载；
+- 「外部工具/Agent 操作流程」：改 graph.json + 写 nodes/<id>.json → 保存 → GalStudio 自动热重载；
   越界/非法路径会被拒；坏数据进 issues 不崩。
 
 > 本 phase spec 的 §5 即承担此文档职责；如需独立文件，实现时拆出。
@@ -191,8 +206,8 @@ export interface GraphReport { graphIssues: GraphIssue[]; }
 3. 外部删一个节点文件 + 改 graph.json → 顶栏状态点跳「同步中…→已同步」，issues 更新。
 4. `entryNodeId` 指向不存在节点 → issues 列 `missing_entry_node`（error），但图仍加载、不崩。
 5. 合法图 → issues 面板显示「✓ 图结构正常」。
-6. 「让 AI 扩展此节点」在无 AI 配置时灰显并提示「即将支持」；有配置/DEV 时能产出占位任务。
-7. `docs` 中存在面向外部 agent 的 schema 说明。
+6. 工具栏、右键菜单和命令面板不出现任何内置 AI 协作入口，也不会写入 AI 任务文件。
+7. `docs` 中存在面向外部工具/Agent 的 schema 说明。
 
 ## 7. 边界情况
 
@@ -206,14 +221,13 @@ export interface GraphReport { graphIssues: GraphIssue[]; }
 
 ## 8. 不在本期范围
 
-- 真实 AI agent 调用（仅占位）。
 - 自动修复建议（点击 issue 直接修）。
 - schema 的严格 JSON Schema（.json schema 文件）——本期用 markdown 文档化即可。
 - issues 的本地化多语言（本期中文 message）。
 
 ---
 
-## 9. 外部 Agent 操作速查（供 AI coding agent）
+## 9. 外部 Agent 操作速查
 
 | 想做的事 | 操作 |
 |---------|------|

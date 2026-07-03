@@ -296,38 +296,6 @@ export function ScriptWorkspace({
     void persistGraph(next);
   };
 
-  const handleCreateAiTask = async () => {
-    if (!selectedNode) return;
-    const prompt = [
-      "# GalStudio AI Task",
-      "",
-      "请扩展当前选中的叙事节点，保持节点文件为 Instruction[] JSON 格式。",
-      "",
-      `- nodeId: ${selectedNode.id}`,
-      `- title: ${selectedNode.title}`,
-      `- file: content/${selectedNode.file}`,
-      `- project: ${project.path}`,
-      "",
-      "要求：",
-      "- 只在 content/ 下写入节点或 graph.json 相关文件。",
-      "- 不要使用越界路径。",
-      "- 节点内容必须是 packages/engine/src/schema.ts 定义的 t 判别联合指令数组。",
-      "- 如需新增节点，同时更新 content/graph.json 的 nodes/edges。",
-      "",
-    ].join("\n");
-
-    setSavingGraph(true);
-    setGraphStatus("");
-    try {
-      await saveFile(project.path, "content/.gal/ai-task.md", prompt);
-      setGraphStatus("AI 占位任务已写入 content/.gal/ai-task.md");
-    } catch (error) {
-      setGraphStatus(`写入 AI 占位任务失败: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setSavingGraph(false);
-    }
-  };
-
   return (
     <div style={containerStyle}>
       <Breadcrumb
@@ -357,15 +325,6 @@ export function ScriptWorkspace({
                       固化图结构
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleCreateAiTask}
-                    disabled={savingGraph || !selectedNode}
-                    title={selectedNode ? "写入 content/.gal/ai-task.md，供外部 AI coding agent 接手" : "先选择一个节点"}
-                    style={selectedNode ? secondaryButtonStyle : disabledButtonStyle}
-                  >
-                    让 AI 扩展此节点
-                  </button>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
@@ -534,14 +493,6 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
-};
-
-const disabledButtonStyle: React.CSSProperties = {
-  ...secondaryButtonStyle,
-  borderColor: "#2a3242",
-  background: "#141922",
-  color: "#596274",
-  cursor: "not-allowed",
 };
 
 const toolbarSpacerStyle: React.CSSProperties = {

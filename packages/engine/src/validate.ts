@@ -1,6 +1,6 @@
 /**
  * 运行时校验：在剧本/资源加载时跑一次。
- * TS 不会校验 JSON，所以 AI 生成或小工具改过的数据必须在这里兜底，
+ * TS 不会校验 JSON，所以外部工具生成或手工改过的数据必须在这里兜底，
  * 报错要指明是哪个文件、第几条指令、什么 id 出了问题。
  */
 import {
@@ -60,7 +60,7 @@ export function validateMeta(raw: unknown, file = "meta.json"): ValidationIssue[
 
 /**
  * 校验剧本里引用的所有 id 是否在 manifest 中存在。
- * 这是 AI 生成剧本最容易踩的坑：拼错角色 id、用了不存在的表情。
+ * 这是外部生成剧本最容易踩的坑：拼错角色 id、用了不存在的表情。
  */
 export function validateReferences(
   chapter: unknown,

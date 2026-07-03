@@ -82,11 +82,11 @@ GalStudio 已具备流程图地基：
 ## 4. 迁移原则
 
 1. React Flow 继续作为画布核心。
-2. `graph.json` 继续是人工与 AI 都可读写的真实源。
+2. `graph.json` 继续是人工与外部工具/Agent 都可读写的真实源。
 3. 节点文件继续复用 `Instruction[]`，不引入 `{ type, speaker }` 新格式。
 4. 预览仍以「选中节点」为最小播放单元，整图播放后续再做。
 5. 所有图编辑动作先走纯函数 reducer，再落盘，保持可测试。
-6. 外部 AI 改文件后，UI 要快速刷新并尽量保留用户当前视角和选中态。
+6. 外部工具/Agent 改文件后，UI 要快速刷新并尽量保留用户当前视角和选中态。
 
 ## 5. 建议实施路线
 
@@ -134,7 +134,7 @@ GalStudio 已具备流程图地基：
 
 ### Phase 9: 自动排布与布局持久化
 
-目标：解决 AI 或用户批量新增节点后画布混乱的问题。
+目标：解决用户或外部工具/Agent 批量新增节点后画布混乱的问题。
 
 任务：
 
@@ -170,25 +170,22 @@ GalStudio 已具备流程图地基：
 - `insertInstructionAt()` 单测。
 - 非法 JSON 不写盘。
 
-### Phase 11: AI 协作协议增强
+### Phase 11: 外部数据协作增强
 
-目标：让外部 AI coding agent 更容易安全地改图。
+目标：让外部工具/Agent 更容易安全地改图，同时保持 GalStudio 不接入 AI 的产品边界。这里的重点是降低外部 AI coding
+出错概率，而不是在编辑器里增加一个需要用户再切回 Codex/Claude Code 的中转操作。
 
 任务：
 
-- 「让 AI 扩展此节点」生成更具体任务：
-  - 当前 node id/title/file。
-  - 当前入边/出边。
-  - 可用 assets/characters/audio id 摘要。
-  - 指令 schema 速查。
-  - 要求保存后不要改 renderer，除非任务明确要求。
-- 支持「让 AI 新增后续节点」任务，自动给出建议 id/file/edge。
-- 为 `graph.json` 和节点文件生成 JSON Schema 或 Zod schema 导出，供 agent 校验。
-- issues 面板增加「复制修复提示」。
+- 为 `graph.json` 和节点文件生成 JSON Schema 或 Zod schema 导出，供外部工具校验。
+- 在文档中补充“外部工具/Agent 直接改文件”的安全操作范式。
+- issues 面板增加“复制问题详情”，方便用户把 node id、edge id、文件路径和错误码交给外部工具处理。
+- 保持图文件格式稳定，减少外部 Agent 修改后的 diff 噪音。
+- 继续禁止应用内 AI 按钮、prompt 生成、provider 设置、token 存储或 Agent 会话管理。
 
 测试：
 
-- AI task prompt 纯函数快照测试，避免遗漏关键路径安全约束。
+- schema 导出和 issue 详情格式用纯函数测试覆盖，避免遗漏关键路径安全约束。
 
 ### Phase 12: 后续大功能候选
 
@@ -250,6 +247,6 @@ Script Graph 的目标布局：
 - 它们不改变数据协议，风险低。
 - 能显著改善用户直觉：在哪里新建、怎么连接、哪里有问题。
 - 纯函数测试比例高，符合当前项目 TDD 方式。
-- 对 AI 协作很友好，AI 改出坏图时用户能马上看到并定位。
+- 对外部自动化很友好：外部工具改出坏图时，用户能马上看到并定位。
 
 完成 Phase 7 + Phase 8 后，GalStudio 的 Script Graph 就会从「数据可视化」进入「可日常使用的剧情流程工具」阶段。
