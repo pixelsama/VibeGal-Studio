@@ -17,7 +17,7 @@ import {
   type NovelState,
   type RendererProps,
 } from "@galstudio/engine";
-import type { ProjectData } from "../../lib/types";
+import type { GraphNode, NodeEntry, ProjectData, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 
 export interface ProjectPlayerResult {
@@ -35,6 +35,43 @@ export interface ProjectPlayerResult {
   rendererProps: RendererProps;
 }
 
+export function buildProjectPreviewContent(project: ProjectData) {
+  return {
+    meta: project.content.meta,
+    manifest: project.content.manifest,
+    chapters: graphPreviewChapters(project.graph, project.nodes),
+  };
+}
+
+function graphPreviewChapters(graph: ProjectGraph | undefined, nodeEntries: NodeEntry[] | undefined) {
+  if (!graph || !nodeEntries) return [];
+  const entryByPath = new Map(nodeEntries.map((entry) => [entry.relPath, entry]));
+  return orderGraphNodesForPreview(graph).flatMap((node) => {
+    const data = entryByPath.get(node.file)?.data;
+    return data == null ? [] : [{ file: node.file, data }];
+  });
+}
+
+function orderGraphNodesForPreview(graph: ProjectGraph): GraphNode[] {
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const ordered: GraphNode[] = [];
+  const visited = new Set<string>();
+  let current = nodeById.get(graph.entryNodeId);
+
+  while (current && !visited.has(current.id)) {
+    ordered.push(current);
+    visited.add(current.id);
+    const nextEdge = graph.edges.find((edge) => edge.from === current?.id && nodeById.has(edge.to) && !visited.has(edge.to));
+    current = nextEdge ? nodeById.get(nextEdge.to) : undefined;
+  }
+
+  for (const node of graph.nodes) {
+    if (!visited.has(node.id)) ordered.push(node);
+  }
+
+  return ordered;
+}
+
 export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const [state, setState] = useState<NovelState>(createInitialState);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +83,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     let audio: AudioEngine | null = null;
     try {
       // 用引擎的校验器解析项目数据（应用 Zod 默认值 + 引用检查）
-      const validated = validateContent({
-        meta: project.content.meta,
-        manifest: project.content.manifest,
-        chapters: project.content.chapters.map((c) => ({ file: c.relPath, data: c.data })),
-      });
+      const validated = validateContent(buildProjectPreviewContent(project));
 
       const chapters = validated.chapters as Instruction[][];
       player = new NovelPlayer({ meta: validated.meta as Meta, manifest: validated.manifest as Manifest });

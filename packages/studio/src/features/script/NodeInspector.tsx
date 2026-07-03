@@ -8,7 +8,6 @@ interface NodeInspectorProps {
   selectedNodeId: string | null;
   onEnter: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  onMaterialize: () => void;
   onSetEntry?: (id: string) => void;
   saving?: boolean;
 }
@@ -19,7 +18,6 @@ export function NodeInspector({
   selectedNodeId,
   onEnter,
   onRename,
-  onMaterialize,
   onSetEntry,
   saving = false,
 }: NodeInspectorProps) {
@@ -35,13 +33,6 @@ export function NodeInspector({
       <div style={panelStyle}>
         <div style={panelTitleStyle}>Inspector</div>
         <div style={emptyStyle}>选择一个节点查看属性</div>
-        {graph.synthetic && (
-          <div style={emptyActionStyle}>
-            <button type="button" onClick={onMaterialize} disabled={saving} style={secondaryButtonStyle}>
-              固化图结构
-            </button>
-          </div>
-        )}
       </div>
     );
   }
@@ -74,7 +65,6 @@ export function NodeInspector({
             />
           </label>
           <div style={statusTextStyle(hasContent)}>{hasContent ? "✓ 已有内容" : "⚠ 文件缺失"}</div>
-          {graph.synthetic && <div style={hintStyle}>合成图，当前尚未落盘。</div>}
         </section>
 
         <section style={sectionStyle}>
@@ -91,11 +81,6 @@ export function NodeInspector({
         {!isEntry && onSetEntry && (
           <button type="button" onClick={() => onSetEntry(node.id)} disabled={saving} style={secondaryButtonStyle}>
             设为入口节点
-          </button>
-        )}
-        {graph.synthetic && (
-          <button type="button" onClick={onMaterialize} disabled={saving} style={secondaryButtonStyle}>
-            固化图结构
           </button>
         )}
       </div>
@@ -166,11 +151,6 @@ const titleInputStyle: React.CSSProperties = {
   outline: "none",
 };
 
-const hintStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#7a8290",
-};
-
 const fieldRowStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -215,10 +195,6 @@ const emptyStyle: React.CSSProperties = {
   padding: 16,
   color: "#7a8290",
   fontSize: 13,
-};
-
-const emptyActionStyle: React.CSSProperties = {
-  padding: "0 16px 16px",
 };
 
 const statusTextStyle = (hasContent: boolean): React.CSSProperties => ({

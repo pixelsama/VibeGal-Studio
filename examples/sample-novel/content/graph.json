@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entryNodeId": "prologue",
+  "nodes": [
+    {
+      "id": "prologue",
+      "title": "序章",
+      "file": "nodes/prologue.json",
+      "position": { "x": 120, "y": 120 }
+    }
+  ],
+  "edges": []
+}

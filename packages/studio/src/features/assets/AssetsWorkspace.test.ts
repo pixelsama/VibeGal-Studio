@@ -187,7 +187,7 @@ describe("read-only asset UI", () => {
     const project: ProjectData = {
       path: "/project",
       meta: { name: "T", activeRendererId: "default", createdAt: "0" },
-      content: { manifest: base, meta: {}, chapters: [] },
+      content: { manifest: base, meta: {} },
       rendererIds: ["default"],
     };
 

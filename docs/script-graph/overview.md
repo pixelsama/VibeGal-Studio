@@ -24,8 +24,8 @@
 ### 🟡 1.2 节点粒度由作者决定（推荐场景级）
 
 不强制「节点 = 章节」或「节点 = 场景」。一个节点就是一段 `Instruction[]`，长短随意。
-- **迁移约定**：从既有 `meta.chapters` 合成线性图时，按 **1 章 = 1 节点**（见 Phase 2）。
-- 创作时作者可把一章拆成多个节点，也可把多章合一个节点。
+- 线性故事也用图表达：把节点按顺序连成 `start -> scene-a -> ending` 即可。
+- 旧 `content/meta.json` 的 `chapters` 字段和 `content/chapters/` 目录不再作为剧本入口，也不会被合成为图。
 
 ### 🔒 1.3 预览只播放「选中节点」
 
@@ -61,15 +61,13 @@
 content/
   manifest.json          # 已有，资源表（不动）
   meta.json              # 已有，全局播放参数（不动）
-  chapters/              # 已有，旧章节（兼容保留）
-    ch01.json
-  graph.json             # 【新】叙事结构图（可选）
-  nodes/                 # 【新】节点指令文件目录（可选）
+  graph.json             # 叙事结构图（必需）
+  nodes/                 # 节点指令文件目录
     prologue.json
     first_meeting.json
 ```
 
-`graph.json` 与 `nodes/` 都是**可选**的。判据见 §2.3。
+`graph.json` 是项目剧本入口。节点文件由 `graph.nodes[].file` 引用，路径相对 `content/`。
 
 ### 2.2 `graph.json` schema
 
@@ -95,17 +93,15 @@ content/
 - `edge.condition`：当前恒为 `null`，保留位。
 - `entryNodeId`：起点节点 id，必须在 `nodes` 中存在。
 
-### 2.3 判据：图模式 vs 旧章节模式（非破坏式）
+### 2.3 打开项目时的图入口判定
 
-打开项目时后端按以下顺序判定，**绝不擅自改写既有项目文件**：
+打开项目时后端按以下顺序处理，**绝不擅自改写既有项目文件**：
 
-1. `content/graph.json` 存在 → **图模式**：加载图 + 按 `node.file` 读节点文件。
-2. `graph.json` 缺失但 `content/meta.json` 有 `chapters` → **合成模式**：在内存合成线性图
-   （1 章 = 1 节点，id = 文件名 stem 去重，位置自动网格铺排，entry = 首节点，线性 edges），
-   **不写盘**。`project.graph.synthetic = true` 标记。
-3. 两者都没有 → 空图（`nodes: []`）。
+1. `content/graph.json` 存在 → 加载图 + 按 `node.file` 读节点文件。
+2. `content/graph.json` 缺失 → 返回空图，并把 `missing_graph` error 放进 `graphReport`/`projectReport`。
+3. `content/meta.json` 含 `chapters` 或存在 `content/chapters/` → 把 `legacy_chapters_not_supported` error 放进 `graphReport`/`projectReport`。
 
-「转为图项目」的显式落盘动作留作后续（见 Phase 5 的「固化」操作），不在打开时触发。
+旧章节结构不再被读取、解析路径或合成为图。外部 Agent 应创建 `content/graph.json` 和 `content/nodes/*.json` 来修复项目。
 
 ### 2.4 `open_project()` 响应扩展
 
@@ -116,10 +112,9 @@ content/
 export interface ProjectData {
   path: string;
   meta: ProjectMeta;
-  content: { manifest: unknown; meta: unknown; chapters: { relPath: string; data: unknown }[] };
+  content: { manifest: unknown; meta: unknown };
   rendererIds: string[];
-  // ── 新增 ──
-  graph?: ProjectGraph;        // 图结构；合成模式下 synthetic=true
+  graph?: ProjectGraph;        // 图结构；来自 content/graph.json，缺失时为空图+报告 issue
   nodes?: NodeEntry[];          // 各节点的指令数据（按 graph.nodes 的 file 读取）
 }
 ```
@@ -157,8 +152,6 @@ export interface ProjectGraph {
   entryNodeId: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
-  /** true = 内存从 chapters 合成，graph.json 不存在 */
-  synthetic?: boolean;
 }
 
 /** 单个节点的指令数据（open_project 已读好的） */
@@ -197,7 +190,6 @@ pub struct ProjectGraph {
     pub entry_node_id: String,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
-    pub synthetic: bool,
 }
 
 #[derive(Serialize, Clone)]

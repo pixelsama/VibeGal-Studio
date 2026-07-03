@@ -133,7 +133,6 @@ export const ManifestSchema = z.strictObject({
 
 export const MetaSchema = z.object({
   title: z.string().default(""),
-  chapters: z.array(z.string()).default([]), // 相对 content 根的路径
   typingSpeedCps: z.number().positive().default(30), // 每秒字符数
   autoAdvanceMs: z.number().int().nonnegative().default(1200),
   chapterGapMs: z.number().int().nonnegative().default(1500),

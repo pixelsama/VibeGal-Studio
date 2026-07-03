@@ -6,13 +6,6 @@
       "default": "",
       "type": "string"
     },
-    "chapters": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
     "typingSpeedCps": {
       "default": 30,
       "type": "number",

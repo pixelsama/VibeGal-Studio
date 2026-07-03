@@ -12,7 +12,6 @@ const project: ProjectData = {
   content: {
     manifest: {},
     meta: {},
-    chapters: [{ relPath: "chapters/ch01.json", data: [{ t: "say", text: "old" }] }],
   },
   rendererIds: ["default"],
 };

@@ -32,17 +32,9 @@ pub struct ProjectListItem {
 }
 
 #[derive(Serialize, Clone)]
-pub struct ChapterEntry {
-    #[serde(rename = "relPath")]
-    pub rel_path: String,
-    pub data: serde_json::Value,
-}
-
-#[derive(Serialize, Clone)]
 pub struct ProjectContent {
     pub manifest: serde_json::Value,
     pub meta: serde_json::Value,
-    pub chapters: Vec<ChapterEntry>,
 }
 
 #[derive(Serialize, Clone)]
@@ -74,7 +66,6 @@ pub struct ProjectGraph {
     pub entry_node_id: String,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
-    pub synthetic: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -266,10 +257,6 @@ struct ProjectWatchers {
 
 const PROJECT_CHANGED_EVENT: &str = "project_changed";
 const PROJECT_WATCH_DEBOUNCE: Duration = Duration::from_millis(300);
-const GRAPH_LAYOUT_COLS: usize = 3;
-const GRAPH_LAYOUT_GAP_X: f64 = 260.0;
-const GRAPH_LAYOUT_GAP_Y: f64 = 160.0;
-const GRAPH_LAYOUT_MARGIN: f64 = 80.0;
 
 pub fn read_project_meta(project_path: &Path) -> Result<ProjectMeta, String> {
     let meta_file = project_path.join("gal.project.json");
@@ -350,63 +337,11 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let manifest = read_json(&content_dir.join("manifest.json"))?;
     let meta_json = read_json(&content_dir.join("meta.json"))?;
 
-    // 章节加载顺序：优先遵循 meta.chapters 契约（决定加载哪些 + 顺序）；
-    // 仅当 meta 没声明 chapters 时，才 fallback 到扫描 chapters/ 目录。
-    let mut chapters = vec![];
-    let meta_chapters: Vec<String> = meta_json
-        .get("chapters")
-        .and_then(|c| c.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    if !meta_chapters.is_empty() {
-        // 按 meta 声明的顺序逐个读取（meta 里写的是相对 content 根的路径，如 "chapters/ch01.json"）
-        for rel in &meta_chapters {
-            let path = resolve_relative_under(&content_root, rel)?;
-            if path.exists() {
-                let data = read_json(&path)?;
-                chapters.push(ChapterEntry {
-                    rel_path: rel.clone(),
-                    data,
-                });
-            } else {
-                log::warn!("meta.chapters 声明了 {} 但文件不存在，已跳过", rel);
-            }
-        }
-    } else {
-        // fallback：扫描 chapters/ 目录（草稿/废弃文件也会被载入，仅为兼容）
-        let chapters_dir = content_dir.join("chapters");
-        if chapters_dir.is_dir() {
-            if let Ok(entries) = fs::read_dir(&chapters_dir) {
-                let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-                paths.sort();
-                for p in paths {
-                    if p.extension().and_then(|e| e.to_str()) == Some("json") {
-                        let rel = p
-                            .strip_prefix(&content_root)
-                            .unwrap_or(&p)
-                            .to_string_lossy()
-                            .replace('\\', "/");
-                        let data = read_json(&p)?;
-                        chapters.push(ChapterEntry {
-                            rel_path: rel,
-                            data,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
     let renderer_ids = list_renderer_ids(&project_path);
-    let (graph, nodes) = load_project_graph_data(&content_root, &chapters)?;
-    let graph_report = GraphReport {
-        graph_issues: validate_graph(&graph, &nodes),
-    };
+    let (graph, nodes, mut graph_issues) = load_project_graph_data(&content_root)?;
+    graph_issues.extend(legacy_chapter_layout_issues(&content_root, &meta_json));
+    graph_issues.extend(validate_graph(&graph, &nodes));
+    let graph_report = GraphReport { graph_issues };
     let asset_report = AssetReport {
         asset_issues: validate_assets(&content_root, &manifest),
     };
@@ -414,8 +349,18 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     // 全局聚合：图结构 + 资产 + manifest 结构三类问题汇总成一个报告
     let manifest_issues = validate_manifest_structure(&manifest);
     let mut project_issues: Vec<ProjectIssue> = vec![];
-    project_issues.extend(graph_report.graph_issues.iter().map(|i| graph_issue_to_project(i, "graph")));
-    project_issues.extend(asset_report.asset_issues.iter().map(|i| graph_issue_to_project(i, "asset")));
+    project_issues.extend(
+        graph_report
+            .graph_issues
+            .iter()
+            .map(|i| graph_issue_to_project(i, "graph")),
+    );
+    project_issues.extend(
+        asset_report
+            .asset_issues
+            .iter()
+            .map(|i| graph_issue_to_project(i, "asset")),
+    );
     project_issues.extend(manifest_issues);
     // 组内排序：error 优先于 warn（source 内稳定）
     project_issues.sort_by_key(|i| (i.source.clone(), i.severity != GraphIssueSeverity::Error));
@@ -427,7 +372,6 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         content: ProjectContent {
             manifest,
             meta: meta_json,
-            chapters,
         },
         renderer_ids,
         graph: Some(graph),
@@ -616,10 +560,7 @@ fn collect_asset_files(
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let size = entry
-                .metadata()
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let kind = AssetKind::from_rel_path(&rel);
             out.push(AssetEntry {
                 rel_path: rel,
@@ -682,7 +623,10 @@ fn collect_manifest_asset_paths(manifest: &serde_json::Value) -> Vec<(String, St
             if let Some(sprites) = char_val.get("sprites").and_then(|v| v.as_object()) {
                 for (expr, path) in sprites {
                     if let Some(p) = path.as_str() {
-                        out.push((p.to_string(), format!("characters.{char_id}.sprites.{expr}")));
+                        out.push((
+                            p.to_string(),
+                            format!("characters.{char_id}.sprites.{expr}"),
+                        ));
                     }
                 }
             }
@@ -714,10 +658,8 @@ pub fn validate_assets(content_root: &Path, manifest: &serde_json::Value) -> Vec
 
     // 磁盘文件集合（路径已归一化为相对 content 根）
     let disk_entries = list_asset_entries(content_root).unwrap_or_default();
-    let mut disk_paths: std::collections::HashSet<String> = disk_entries
-        .iter()
-        .map(|e| e.rel_path.clone())
-        .collect();
+    let mut disk_paths: std::collections::HashSet<String> =
+        disk_entries.iter().map(|e| e.rel_path.clone()).collect();
 
     // manifest 声明的路径
     let declared = collect_manifest_asset_paths(manifest);
@@ -739,7 +681,10 @@ pub fn validate_assets(content_root: &Path, manifest: &serde_json::Value) -> Vec
                 issues.push(GraphIssue {
                     severity: GraphIssueSeverity::Error,
                     code: "missing_asset".to_string(),
-                    message: format!("manifest 声明了资源但文件不存在：{}（{}）", normalized, source),
+                    message: format!(
+                        "manifest 声明了资源但文件不存在：{}（{}）",
+                        normalized, source
+                    ),
                     file: Some(format!("content/{}", normalized)),
                     json_path: Some(format!("$.{source}")),
                     node_id: None,
@@ -880,7 +825,11 @@ pub fn validate_manifest_structure(manifest: &serde_json::Value) -> Vec<ProjectI
             code: "manifest_invalid_audio".to_string(),
             message: format!(
                 "manifest.audio 含未知字段（可能是旧 flat 格式）：{}",
-                unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+                unknown
+                    .iter()
+                    .map(|k| k.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             file: Some("content/manifest.json".to_string()),
             json_path: Some("$.audio".to_string()),
@@ -908,14 +857,68 @@ fn graph_issue_to_project(issue: &GraphIssue, source: &str) -> ProjectIssue {
 
 pub fn load_project_graph_data(
     content_root: &Path,
-    chapters: &[ChapterEntry],
-) -> Result<(ProjectGraph, Vec<NodeEntry>), String> {
+) -> Result<(ProjectGraph, Vec<NodeEntry>, Vec<GraphIssue>), String> {
     let graph_path = content_root.join("graph.json");
     if graph_path.is_file() {
-        load_graph_file(content_root, &graph_path)
+        let (graph, nodes) = load_graph_file(content_root, &graph_path)?;
+        Ok((graph, nodes, vec![]))
     } else {
-        Ok(synthesize_graph_from_chapters(chapters))
+        Ok((empty_project_graph(), vec![], vec![missing_graph_issue()]))
     }
+}
+
+fn empty_project_graph() -> ProjectGraph {
+    ProjectGraph {
+        version: 1,
+        entry_node_id: String::new(),
+        nodes: vec![],
+        edges: vec![],
+    }
+}
+
+fn missing_graph_issue() -> GraphIssue {
+    GraphIssue {
+        severity: GraphIssueSeverity::Error,
+        code: "missing_graph".to_string(),
+        message: "缺少 content/graph.json：GalStudio 项目必须以脚本图作为剧本入口。".to_string(),
+        file: Some("content/graph.json".to_string()),
+        json_path: Some("$".to_string()),
+        node_id: None,
+        edge_id: None,
+    }
+}
+
+fn legacy_chapter_layout_issues(
+    content_root: &Path,
+    meta_json: &serde_json::Value,
+) -> Vec<GraphIssue> {
+    if meta_json.get("chapters").is_some() {
+        return vec![GraphIssue {
+            severity: GraphIssueSeverity::Error,
+            code: "legacy_chapters_not_supported".to_string(),
+            message:
+                "旧章节项目不再兼容：请创建 content/graph.json，并把剧情写入 content/nodes/*.json。"
+                    .to_string(),
+            file: Some("content/meta.json".to_string()),
+            json_path: Some("$.chapters".to_string()),
+            node_id: None,
+            edge_id: None,
+        }];
+    }
+
+    if content_root.join("chapters").exists() {
+        return vec![GraphIssue {
+            severity: GraphIssueSeverity::Error,
+            code: "legacy_chapters_not_supported".to_string(),
+            message: "旧章节目录不再作为剧本入口：请创建 content/graph.json，并把剧情写入 content/nodes/*.json。".to_string(),
+            file: Some("content/chapters".to_string()),
+            json_path: None,
+            node_id: None,
+            edge_id: None,
+        }];
+    }
+
+    vec![]
 }
 
 fn load_graph_file(
@@ -1002,67 +1005,9 @@ fn load_graph_file(
             entry_node_id,
             nodes: graph_nodes,
             edges: graph_edges,
-            synthetic: false,
         },
         node_entries,
     ))
-}
-
-fn synthesize_graph_from_chapters(chapters: &[ChapterEntry]) -> (ProjectGraph, Vec<NodeEntry>) {
-    let mut used_ids = HashSet::new();
-    let mut graph_nodes = vec![];
-    let mut graph_edges = vec![];
-    let mut prev_id: Option<String> = None;
-
-    for (index, chapter) in chapters.iter().enumerate() {
-        let stem = Path::new(&chapter.rel_path)
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.is_empty())
-            .unwrap_or("chapter");
-        let id = ensure_unique_graph_id(stem, &mut used_ids);
-        let position = auto_layout_graph_position(index);
-
-        if let Some(prev) = prev_id {
-            graph_edges.push(GraphEdge {
-                id: format!("{}__{}", prev, id),
-                from: prev,
-                to: id.clone(),
-                condition: serde_json::Value::Null,
-            });
-        }
-        prev_id = Some(id.clone());
-
-        graph_nodes.push(GraphNode {
-            id,
-            title: stem.to_string(),
-            file: chapter.rel_path.clone(),
-            position,
-        });
-    }
-
-    let entry_node_id = graph_nodes
-        .first()
-        .map(|node| node.id.clone())
-        .unwrap_or_default();
-    let node_entries = chapters
-        .iter()
-        .map(|chapter| NodeEntry {
-            rel_path: chapter.rel_path.clone(),
-            data: Some(chapter.data.clone()),
-        })
-        .collect();
-
-    (
-        ProjectGraph {
-            version: 1,
-            entry_node_id,
-            nodes: graph_nodes,
-            edges: graph_edges,
-            synthetic: true,
-        },
-        node_entries,
-    )
 }
 
 fn required_string<'a>(value: &'a serde_json::Value, field: &str) -> Result<&'a str, String> {
@@ -1078,26 +1023,6 @@ fn required_string_field<'a>(
         .get(key)
         .and_then(|field_value| field_value.as_str())
         .ok_or_else(|| format!("graph.json 缺少必填字段 {}", label))
-}
-
-fn ensure_unique_graph_id(base: &str, used: &mut HashSet<String>) -> String {
-    let mut candidate = base.to_string();
-    let mut suffix = 2;
-    while used.contains(&candidate) {
-        candidate = format!("{}_{}", base, suffix);
-        suffix += 1;
-    }
-    used.insert(candidate.clone());
-    candidate
-}
-
-fn auto_layout_graph_position(index: usize) -> GraphPosition {
-    let row = index / GRAPH_LAYOUT_COLS;
-    let col = index % GRAPH_LAYOUT_COLS;
-    GraphPosition {
-        x: GRAPH_LAYOUT_MARGIN + col as f64 * GRAPH_LAYOUT_GAP_X,
-        y: GRAPH_LAYOUT_MARGIN + row as f64 * GRAPH_LAYOUT_GAP_Y,
-    }
 }
 
 /// 在 parent_dir 下创建新项目：建目录结构 + 复制默认渲染层模板 + 写 gal.project.json
@@ -1236,9 +1161,9 @@ fn initialize_project_root(
 ) -> Result<(), String> {
     ensure_initialization_targets_available(project_path, default_renderer_dir)?;
 
-    // 创建目录骨架（资源放在 content/assets/，与 manifest 的相对路径解析契约一致）
-    fs::create_dir_all(project_path.join("content/chapters"))
-        .map_err(|e| format!("创建 content/chapters 失败: {}", e))?;
+    // 创建目录骨架（资源放在 content/assets/，节点放在 content/nodes/）
+    fs::create_dir_all(project_path.join("content/nodes"))
+        .map_err(|e| format!("创建 content/nodes 失败: {}", e))?;
     fs::create_dir_all(project_path.join("content/assets"))
         .map_err(|e| format!("创建 content/assets 失败: {}", e))?;
     fs::create_dir_all(project_path.join("renderers/default"))
@@ -1254,12 +1179,31 @@ fn initialize_project_root(
 
     let meta = serde_json::json!({
         "title": &name,
-        "chapters": [],
         "typingSpeedCps": 30,
         "autoAdvanceMs": 1200,
         "chapterGapMs": 1500
     });
     write_json(&project_path.join("content/meta.json"), &meta)?;
+
+    let graph = serde_json::json!({
+        "version": 1,
+        "entryNodeId": "start",
+        "nodes": [
+            {
+                "id": "start",
+                "title": "开始",
+                "file": "nodes/start.json",
+                "position": { "x": 120, "y": 120 }
+            }
+        ],
+        "edges": []
+    });
+    write_json(&project_path.join("content/graph.json"), &graph)?;
+
+    let start_node = serde_json::json!([
+        { "t": "narrate", "text": "新的故事从这里开始。" }
+    ]);
+    write_json(&project_path.join("content/nodes/start.json"), &start_node)?;
 
     // 复制默认渲染层模板（从打包的 app resource）
     copy_dir_all(
@@ -1412,10 +1356,7 @@ fn import_asset(
     // 目标必须在 content 内（防越界）
     let dest = resolve_relative_under(&content_root, &dest_rel_path)?;
     if dest.exists() {
-        return Err(format!(
-            "目标文件已存在，未覆盖（{}）",
-            dest.display()
-        ));
+        return Err(format!("目标文件已存在，未覆盖（{}）", dest.display()));
     }
 
     // 源文件必须存在且可读
@@ -1430,8 +1371,14 @@ fn import_asset(
         ensure_existing_path_within(&content_root, parent)?;
     }
 
-    fs::copy(source, &dest)
-        .map_err(|e| format!("拷贝文件失败 ({} → {}): {}", source.display(), dest.display(), e))?;
+    fs::copy(source, &dest).map_err(|e| {
+        format!(
+            "拷贝文件失败 ({} → {}): {}",
+            source.display(),
+            dest.display(),
+            e
+        )
+    })?;
     Ok(())
 }
 
@@ -1805,6 +1752,8 @@ fn ensure_initialization_targets_available(
         project_path.join("gal.project.json"),
         project_path.join("content/manifest.json"),
         project_path.join("content/meta.json"),
+        project_path.join("content/graph.json"),
+        project_path.join("content/nodes/start.json"),
     ] {
         ensure_can_create_file(&path)?;
     }
@@ -1924,7 +1873,7 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
-    fn write_minimal_project(project: &Path, chapters_value: serde_json::Value) {
+    fn write_minimal_project(project: &Path) {
         write_text(
             &project.join("gal.project.json"),
             r#"{"name":"Test","activeRendererId":"default","createdAt":"0"}"#,
@@ -1933,6 +1882,20 @@ mod tests {
             &project.join("content/manifest.json"),
             r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
         );
+        write_json(
+            &project.join("content/meta.json"),
+            &serde_json::json!({
+                "title": "Test",
+                "typingSpeedCps": 30,
+                "autoAdvanceMs": 1200,
+                "chapterGapMs": 1500
+            }),
+        )
+        .unwrap();
+    }
+
+    fn write_legacy_chapter_project(project: &Path, chapters_value: serde_json::Value) {
+        write_minimal_project(project);
         write_json(
             &project.join("content/meta.json"),
             &serde_json::json!({
@@ -1951,7 +1914,7 @@ mod tests {
         graph_json: serde_json::Value,
         nodes: &[(&str, serde_json::Value)],
     ) {
-        write_minimal_project(project, serde_json::json!([]));
+        write_minimal_project(project);
         write_json(&project.join("content/graph.json"), &graph_json).unwrap();
         for (rel_path, data) in nodes {
             write_json(&project.join("content").join(rel_path), data).unwrap();
@@ -1963,7 +1926,7 @@ mod tests {
         graph_json: serde_json::Value,
         node_files: &[(&str, &str)],
     ) {
-        write_minimal_project(project, serde_json::json!([]));
+        write_minimal_project(project);
         write_json(&project.join("content/graph.json"), &graph_json).unwrap();
         for (rel_path, text) in node_files {
             write_text(&project.join("content").join(rel_path), text);
@@ -2024,7 +1987,6 @@ mod tests {
                 graph_node("ending", "nodes/ending.json"),
             ],
             edges: vec![graph_edge("prologue__ending", "prologue", "ending")],
-            synthetic: false,
         }
     }
 
@@ -2154,7 +2116,7 @@ mod tests {
     fn save_graph_writes_graph_json() {
         let root = unique_temp_dir("save-graph");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!([]));
+        write_minimal_project(&project);
         write_text(&project.join("content/nodes/prologue.json"), "[]");
         write_text(&project.join("content/nodes/ending.json"), "[]");
 
@@ -2252,7 +2214,7 @@ mod tests {
     fn delete_file_removes_target_under_content() {
         let root = unique_temp_dir("delete-file");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!([]));
+        write_minimal_project(&project);
         let target = project.join("content/nodes/a.json");
         write_text(&target, "[]");
 
@@ -2270,7 +2232,7 @@ mod tests {
     fn delete_file_is_idempotent_for_missing_file() {
         let root = unique_temp_dir("delete-file-missing");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!([]));
+        write_minimal_project(&project);
 
         let result = delete_file(
             project.to_string_lossy().into_owned(),
@@ -2285,7 +2247,7 @@ mod tests {
     fn delete_file_rejects_path_traversal() {
         let root = unique_temp_dir("delete-file-escape");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!([]));
+        write_minimal_project(&project);
         write_text(&root.join("outside.json"), "keep");
 
         let result = delete_file(
@@ -2319,7 +2281,7 @@ mod tests {
     fn save_graph_then_open_project_roundtrip() {
         let root = unique_temp_dir("save-graph-roundtrip");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!([]));
+        write_minimal_project(&project);
         write_text(
             &project.join("content/nodes/prologue.json"),
             r#"[{"t":"wait","ms":1}]"#,
@@ -2337,7 +2299,6 @@ mod tests {
 
         let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
         let graph = opened.graph.unwrap();
-        assert!(!graph.synthetic);
         assert_eq!(graph.entry_node_id, "prologue");
         assert_eq!(graph.nodes.len(), 2);
         assert_eq!(graph.nodes[0].file, "nodes/prologue.json");
@@ -2395,7 +2356,6 @@ mod tests {
         let graph = opened.graph.unwrap();
         let nodes = opened.nodes.unwrap();
 
-        assert!(!graph.synthetic);
         assert_eq!(graph.entry_node_id, "prologue");
         assert_eq!(graph.nodes.len(), 2);
         assert_eq!(graph.edges.len(), 1);
@@ -2408,76 +2368,55 @@ mod tests {
     }
 
     #[test]
-    fn open_project_synthesizes_linear_graph_from_chapters() {
-        let root = unique_temp_dir("synthetic-linear");
+    fn open_project_reports_legacy_chapters_without_synthesizing_graph() {
+        let root = unique_temp_dir("legacy-chapters-report");
         let project = root.join("project");
-        write_minimal_project(
-            &project,
-            serde_json::json!([
-                "chapters/ch01.json",
-                "chapters/ch02.json",
-                "chapters/ch03.json"
-            ]),
-        );
-        write_text(
-            &project.join("content/chapters/ch01.json"),
-            r#"[{"t":"wait","ms":1}]"#,
-        );
-        write_text(
-            &project.join("content/chapters/ch02.json"),
-            r#"[{"t":"wait","ms":2}]"#,
-        );
-        write_text(
-            &project.join("content/chapters/ch03.json"),
-            r#"[{"t":"wait","ms":3}]"#,
-        );
+        write_legacy_chapter_project(&project, serde_json::json!(["chapters/ch01.json"]));
+        write_text(&project.join("content/chapters/ch01.json"), "[]");
 
         let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
         let graph = opened.graph.unwrap();
-        let nodes = opened.nodes.unwrap();
+        let report = opened
+            .project_report
+            .expect("open_project 应返回 project_report");
 
-        assert!(graph.synthetic);
-        assert_eq!(graph.version, 1);
-        assert_eq!(graph.entry_node_id, "ch01");
-        assert_eq!(
-            graph
-                .nodes
-                .iter()
-                .map(|node| node.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["ch01", "ch02", "ch03"]
-        );
-        assert_eq!(
-            graph
-                .edges
-                .iter()
-                .map(|edge| (edge.id.as_str(), edge.from.as_str(), edge.to.as_str()))
-                .collect::<Vec<_>>(),
-            vec![
-                ("ch01__ch02", "ch01", "ch02"),
-                ("ch02__ch03", "ch02", "ch03")
-            ]
-        );
-        assert_eq!(nodes.len(), 3);
-        assert!(nodes.iter().all(|node| node.data.is_some()));
+        assert!(graph.nodes.is_empty(), "旧 chapters 不应再被合成图节点");
+        assert!(graph.edges.is_empty(), "旧 chapters 不应再被合成图连线");
+        let issue = report
+            .project_issues
+            .iter()
+            .find(|issue| issue.source == "graph" && issue.code == "legacy_chapters_not_supported")
+            .expect("旧 chapters 应进入全局项目错误");
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
+        assert_eq!(issue.file.as_deref(), Some("content/meta.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.chapters"));
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn open_project_synthesizes_graph_even_when_no_chapters() {
-        let root = unique_temp_dir("synthetic-empty");
+    fn open_project_reports_missing_graph_when_graph_json_is_absent() {
+        let root = unique_temp_dir("missing-graph");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!([]));
+        write_minimal_project(&project);
 
         let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
         let graph = opened.graph.unwrap();
         let nodes = opened.nodes.unwrap();
+        let report = opened
+            .project_report
+            .expect("open_project 应返回 project_report");
 
-        assert!(graph.synthetic);
         assert_eq!(graph.entry_node_id, "");
         assert!(graph.nodes.is_empty());
         assert!(graph.edges.is_empty());
         assert!(nodes.is_empty());
+        assert!(
+            report
+                .project_issues
+                .iter()
+                .any(|issue| issue.source == "graph" && issue.code == "missing_graph"),
+            "缺少 graph.json 应进入项目错误"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -2641,59 +2580,7 @@ mod tests {
     }
 
     #[test]
-    fn synthesized_graph_assigns_unique_node_ids() {
-        let root = unique_temp_dir("synthetic-unique");
-        let project = root.join("project");
-        write_minimal_project(
-            &project,
-            serde_json::json!(["chapters/a/ch01.json", "chapters/b/ch01.json"]),
-        );
-        write_text(&project.join("content/chapters/a/ch01.json"), "[]");
-        write_text(&project.join("content/chapters/b/ch01.json"), "[]");
-
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
-        let graph = opened.graph.unwrap();
-
-        assert_eq!(graph.nodes[0].id, "ch01");
-        assert_eq!(graph.nodes[1].id, "ch01_2");
-        assert_eq!(graph.edges[0].id, "ch01__ch01_2");
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn synthesized_graph_auto_layout_is_deterministic() {
-        let root = unique_temp_dir("synthetic-layout");
-        let project = root.join("project");
-        write_minimal_project(
-            &project,
-            serde_json::json!([
-                "chapters/ch01.json",
-                "chapters/ch02.json",
-                "chapters/ch03.json",
-                "chapters/ch04.json"
-            ]),
-        );
-        for chapter in ["ch01", "ch02", "ch03", "ch04"] {
-            write_text(
-                &project.join(format!("content/chapters/{chapter}.json")),
-                "[]",
-            );
-        }
-
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
-        let graph = opened.graph.unwrap();
-
-        assert_eq!(graph.nodes[0].position.x, 80.0);
-        assert_eq!(graph.nodes[0].position.y, 80.0);
-        assert_eq!(graph.nodes[2].position.x, 600.0);
-        assert_eq!(graph.nodes[2].position.y, 80.0);
-        assert_eq!(graph.nodes[3].position.x, 80.0);
-        assert_eq!(graph.nodes[3].position.y, 240.0);
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn open_project_graph_mode_does_not_mutate_disk() {
+    fn open_project_does_not_create_graph_json_when_reporting_missing_or_legacy_graph() {
         let root = unique_temp_dir("graph-no-mutate");
         let graph_project = root.join("graph-project");
         write_graph_project(
@@ -2715,21 +2602,18 @@ mod tests {
         );
         let graph_before = fs::read_to_string(graph_project.join("content/graph.json")).unwrap();
 
-        let synthetic_project = root.join("synthetic-project");
-        write_minimal_project(
-            &synthetic_project,
-            serde_json::json!(["chapters/ch01.json"]),
-        );
-        write_text(&synthetic_project.join("content/chapters/ch01.json"), "[]");
+        let legacy_project = root.join("legacy-project");
+        write_legacy_chapter_project(&legacy_project, serde_json::json!(["chapters/ch01.json"]));
+        write_text(&legacy_project.join("content/chapters/ch01.json"), "[]");
 
         open_project(graph_project.to_string_lossy().into_owned()).unwrap();
-        open_project(synthetic_project.to_string_lossy().into_owned()).unwrap();
+        open_project(legacy_project.to_string_lossy().into_owned()).unwrap();
 
         assert_eq!(
             fs::read_to_string(graph_project.join("content/graph.json")).unwrap(),
             graph_before
         );
-        assert!(!synthetic_project.join("content/graph.json").exists());
+        assert!(!legacy_project.join("content/graph.json").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -2751,15 +2635,19 @@ mod tests {
     }
 
     #[test]
-    fn open_project_rejects_meta_chapter_paths_outside_content_dir() {
+    fn open_project_reports_legacy_chapter_paths_without_resolving_them() {
         let root = unique_temp_dir("chapter-escape");
         let project = root.join("project");
-        write_minimal_project(&project, serde_json::json!(["../../outside.json"]));
+        write_legacy_chapter_project(&project, serde_json::json!(["../../outside.json"]));
         write_text(&root.join("outside.json"), "[]");
 
-        let result = open_project(project.to_string_lossy().into_owned());
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let issues = opened.project_report.unwrap().project_issues;
 
-        assert!(result.is_err());
+        assert!(issues.iter().any(|issue| {
+            issue.source == "graph" && issue.code == "legacy_chapters_not_supported"
+        }));
+        assert!(root.join("outside.json").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -2776,7 +2664,9 @@ mod tests {
         assert!(project.join("gal.project.json").is_file());
         assert!(project.join("content/manifest.json").is_file());
         assert!(project.join("content/meta.json").is_file());
-        assert!(project.join("content/chapters").is_dir());
+        assert!(project.join("content/graph.json").is_file());
+        assert!(project.join("content/nodes/start.json").is_file());
+        assert!(!project.join("content/chapters").exists());
         assert!(project.join("content/assets").is_dir());
         assert_eq!(
             fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
@@ -2785,6 +2675,9 @@ mod tests {
         let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
         assert_eq!(opened.meta.name, "Existing Story");
         assert_eq!(opened.renderer_ids, vec!["default".to_string()]);
+        let graph = opened.graph.expect("新项目应有 graph.json");
+        assert_eq!(graph.entry_node_id, "start");
+        assert_eq!(graph.nodes[0].file, "nodes/start.json");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -2812,7 +2705,7 @@ mod tests {
         let root = Path::new("/tmp/story");
 
         assert_eq!(
-            classify_project_watch_path(root, &root.join("content/chapters/ch01.json")),
+            classify_project_watch_path(root, &root.join("content/nodes/start.json")),
             Some(ProjectWatchKind::Content)
         );
         assert_eq!(
@@ -2870,7 +2763,7 @@ mod tests {
 
     /// 写一个 content/assets/ 下有文件的空项目（无图、无章节）。
     fn write_asset_project(project: &Path, manifest_json: &str, asset_files: &[&str]) {
-        write_minimal_project(project, serde_json::json!([]));
+        write_minimal_project(project);
         write_text(&project.join("content/manifest.json"), manifest_json);
         for rel in asset_files {
             write_text(&project.join("content").join(rel), "fake");
@@ -2880,7 +2773,11 @@ mod tests {
     #[test]
     fn list_assets_returns_empty_when_no_assets() {
         let dir = unique_temp_dir("list-assets-empty");
-        write_asset_project(&dir, r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#, &[]);
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[],
+        );
 
         let entries = list_assets(dir.to_string_lossy().to_string()).unwrap();
         assert!(entries.is_empty());
@@ -2988,11 +2885,17 @@ mod tests {
             &["assets/backgrounds/gone.png"],
         );
 
-        delete_asset(dir.to_string_lossy().to_string(), "assets/backgrounds/gone.png".to_string())
-            .unwrap();
+        delete_asset(
+            dir.to_string_lossy().to_string(),
+            "assets/backgrounds/gone.png".to_string(),
+        )
+        .unwrap();
         // 再次删除已不存在的文件也应成功
-        delete_asset(dir.to_string_lossy().to_string(), "assets/backgrounds/gone.png".to_string())
-            .unwrap();
+        delete_asset(
+            dir.to_string_lossy().to_string(),
+            "assets/backgrounds/gone.png".to_string(),
+        )
+        .unwrap();
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -3015,7 +2918,10 @@ mod tests {
                         color: "#9fc8e3".to_string(),
                         sprites: {
                             let mut s = std::collections::HashMap::new();
-                            s.insert("default".to_string(), "assets/characters/hero.svg".to_string());
+                            s.insert(
+                                "default".to_string(),
+                                "assets/characters/hero.svg".to_string(),
+                            );
                             s
                         },
                     },
@@ -3030,7 +2936,10 @@ mod tests {
             audio: ManifestAudioRegistryInput {
                 bgm: {
                     let mut m = std::collections::HashMap::new();
-                    m.insert("theme".to_string(), "assets/audio/bgm/theme.mp3".to_string());
+                    m.insert(
+                        "theme".to_string(),
+                        "assets/audio/bgm/theme.mp3".to_string(),
+                    );
                     m
                 },
                 sfx: std::collections::HashMap::new(),
@@ -3043,7 +2952,10 @@ mod tests {
         let written = fs::read_to_string(dir.join("content/manifest.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(parsed["characters"]["hero"]["name"], "主角");
-        assert_eq!(parsed["audio"]["bgm"]["theme"], "assets/audio/bgm/theme.mp3");
+        assert_eq!(
+            parsed["audio"]["bgm"]["theme"],
+            "assets/audio/bgm/theme.mp3"
+        );
         // 三张子表都应存在（即使为空）
         assert!(parsed["audio"]["sfx"].is_object());
         assert!(parsed["audio"]["voice"].is_object());
@@ -3057,7 +2969,10 @@ mod tests {
         write_asset_project(
             &dir,
             r#"{"characters":{},"backgrounds":{"sky":"assets/backgrounds/sky.png","ghost":"assets/backgrounds/ghost.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
-            &["assets/backgrounds/sky.png", "assets/backgrounds/orphan.png"],
+            &[
+                "assets/backgrounds/sky.png",
+                "assets/backgrounds/orphan.png",
+            ],
         );
 
         let content_root = dir.join("content").canonicalize().unwrap();
@@ -3065,8 +2980,14 @@ mod tests {
         let issues = validate_assets(&content_root, &manifest);
 
         let codes: Vec<_> = issues.iter().map(|i| i.code.as_str()).collect();
-        assert!(codes.contains(&"missing_asset"), "应检出悬空引用 ghost: {codes:?}");
-        assert!(codes.contains(&"orphan_asset"), "应检出孤儿文件 orphan.png: {codes:?}");
+        assert!(
+            codes.contains(&"missing_asset"),
+            "应检出悬空引用 ghost: {codes:?}"
+        );
+        assert!(
+            codes.contains(&"orphan_asset"),
+            "应检出孤儿文件 orphan.png: {codes:?}"
+        );
 
         let missing = issues.iter().find(|i| i.code == "missing_asset").unwrap();
         assert_eq!(missing.severity, GraphIssueSeverity::Error);
@@ -3144,7 +3065,10 @@ mod tests {
         });
         let issues = validate_manifest_structure(&manifest);
         let codes: Vec<_> = issues.iter().map(|i| i.code.as_str()).collect();
-        assert!(codes.iter().all(|c| *c == "manifest_invalid_audio"), "应检出 audio 结构错误: {codes:?}");
+        assert!(
+            codes.iter().all(|c| *c == "manifest_invalid_audio"),
+            "应检出 audio 结构错误: {codes:?}"
+        );
         assert_eq!(issues[0].source, "manifest");
         assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
     }
@@ -3179,9 +3103,15 @@ mod tests {
         write_text(&dir.join("content/nodes/a.json"), "[]");
 
         let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
-        let report = data.project_report.expect("open_project 应返回 project_report");
+        let report = data
+            .project_report
+            .expect("open_project 应返回 project_report");
 
-        let sources: Vec<_> = report.project_issues.iter().map(|i| i.source.as_str()).collect();
+        let sources: Vec<_> = report
+            .project_issues
+            .iter()
+            .map(|i| i.source.as_str())
+            .collect();
         assert!(sources.contains(&"graph"), "应含图结构问题: {sources:?}");
         assert!(sources.contains(&"asset"), "应含资产问题: {sources:?}");
         // manifest 格式正确 → 不应有 manifest source
@@ -3212,9 +3142,16 @@ mod tests {
         let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
         let report = data.project_report.expect("应有 project_report");
         assert!(
-            report.project_issues.iter().any(|i| i.source == "manifest" && i.code == "manifest_invalid_audio"),
+            report
+                .project_issues
+                .iter()
+                .any(|i| i.source == "manifest" && i.code == "manifest_invalid_audio"),
             "应含 manifest 结构错误: {:?}",
-            report.project_issues.iter().map(|i| &i.code).collect::<Vec<_>>()
+            report
+                .project_issues
+                .iter()
+                .map(|i| &i.code)
+                .collect::<Vec<_>>()
         );
         let _ = fs::remove_dir_all(&dir);
     }

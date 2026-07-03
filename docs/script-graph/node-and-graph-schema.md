@@ -17,7 +17,9 @@ content/
 renderers/
 ```
 
-`content/graph.json` 和 `content/nodes/*.json` 是图模式的核心文件。保存后 GalStudio 会通过项目 watcher 自动刷新，无需重启应用。
+`content/graph.json` 和 `content/nodes/*.json` 是项目剧本的核心文件。线性故事也用一串节点和边表达。保存后 GalStudio 会通过项目 watcher 自动刷新，无需重启应用。
+
+旧的 `content/meta.json` `chapters` 字段和 `content/chapters/` 目录不再作为剧本入口。它们存在时会进入项目错误面板，外部 Agent 不应读取、生成或修补这些旧结构。
 
 ## graph.json
 

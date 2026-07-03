@@ -39,8 +39,6 @@ export interface ProjectGraph {
   entryNodeId: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
-  /** true = 内存从 chapters 合成，graph.json 不存在 */
-  synthetic?: boolean;
 }
 
 /** 单个节点的指令数据（open_project 已读好的） */
@@ -165,11 +163,10 @@ export interface ProjectData {
     /** manifest.json，结构由 engine 的 ManifestSchema 定义；这里窄化为 Manifest */
     manifest: Manifest;
     meta: unknown;
-    chapters: { relPath: string; data: unknown }[];
   };
   /** 项目内可用的渲染层 id 列表（= renderers/ 子目录名） */
   rendererIds: string[];
-  /** 图结构；合成模式下 synthetic=true */
+  /** 图结构；项目剧本入口来自 content/graph.json */
   graph?: ProjectGraph;
   /** 各节点的指令数据（按 graph.nodes 的 file 读取） */
   nodes?: NodeEntry[];

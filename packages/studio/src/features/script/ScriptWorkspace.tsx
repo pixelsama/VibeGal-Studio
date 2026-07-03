@@ -187,10 +187,6 @@ export function ScriptWorkspace({
     }
   };
 
-  const handleMaterialize = async () => {
-    await persistGraph({ ...graph, synthetic: false });
-  };
-
   const handleRenameNode = (id: string, title: string) => {
     const next = renameNode(graph, id, title);
     void persistGraph(next);
@@ -362,11 +358,6 @@ export function ScriptWorkspace({
                   <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={primaryButtonStyle}>
                     + 新建节点
                   </button>
-                  {graph.synthetic && (
-                    <button type="button" onClick={handleMaterialize} disabled={savingGraph} style={secondaryButtonStyle}>
-                      固化图结构
-                    </button>
-                  )}
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
@@ -408,7 +399,6 @@ export function ScriptWorkspace({
                 selectedNodeId={selectedNodeId}
                 onEnter={handleEnter}
                 onRename={handleRenameNode}
-                onMaterialize={handleMaterialize}
                 onSetEntry={handleSetEntry}
                 saving={savingGraph}
               />
@@ -506,17 +496,6 @@ const primaryButtonStyle: React.CSSProperties = {
   border: "1px solid #3a6ea5",
   background: "#3a6ea5",
   color: "#fff",
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid #3a6ea5",
-  background: "#1a2431",
-  color: "#9fc8e3",
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,

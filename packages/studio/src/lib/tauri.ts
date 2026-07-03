@@ -81,8 +81,7 @@ export async function saveFile(projectPath: string, relPath: string, content: st
 
 /** 保存图结构到 content/graph.json */
 export async function saveGraph(projectPath: string, graph: ProjectGraph): Promise<void> {
-  const { synthetic: _synthetic, ...payload } = graph;
-  await invoke("save_graph", { projectPath, graph: payload });
+  await invoke("save_graph", { projectPath, graph });
 }
 
 /** 删除 content/ 下的单个文件（relPath 相对 content 根） */

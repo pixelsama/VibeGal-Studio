@@ -43,7 +43,6 @@ const project: ProjectData = {
   content: {
     manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
     meta: {},
-    chapters: [],
   },
   rendererIds: ["default"],
   graph,

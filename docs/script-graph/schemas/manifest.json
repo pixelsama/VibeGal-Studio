@@ -80,11 +80,13 @@
             "type": "string"
           }
         }
-      }
+      },
+      "additionalProperties": false
     }
   },
   "required": [
     "characters",
     "backgrounds"
-  ]
+  ],
+  "additionalProperties": false
 }

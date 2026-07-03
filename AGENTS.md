@@ -4,6 +4,8 @@
 
 GalStudio is a data-driven galgame project editor and live viewer. A project is a directory that contains `gal.project.json`, `content/`, and `renderers/`.
 
+The script source of truth is graph-first: `content/graph.json` describes the flow, and each graph node points at a `content/nodes/*.json` file containing an `Instruction[]`. Linear stories are represented as linear graph nodes and edges. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized; they should surface as project issues instead of silently driving the UI.
+
 Opening a directory should treat that directory itself as the project root. If it is not yet a GalStudio project, ask before adding project files.
 
 New project creation chooses a parent directory, asks for a project folder name, creates the child directory, initializes it, and opens it.

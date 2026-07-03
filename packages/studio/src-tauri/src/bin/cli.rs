@@ -82,7 +82,10 @@ fn infer_open_error_location(message: &str) -> (Option<String>, Option<String>) 
         );
     }
     if message.contains("manifest.json") {
-        return (Some("content/manifest.json".to_string()), Some("$".to_string()));
+        return (
+            Some("content/manifest.json".to_string()),
+            Some("$".to_string()),
+        );
     }
     if message.contains("meta.json") {
         return (Some("content/meta.json".to_string()), Some("$".to_string()));
@@ -249,7 +252,7 @@ mod tests {
         );
         write_text(
             &root.join("content/meta.json"),
-            r#"{"title":"T","chapters":[],"typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500}"#,
+            r#"{"title":"T","typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500}"#,
         );
         if let Some(graph) = graph_json {
             write_text(&root.join("content/graph.json"), graph);
@@ -348,9 +351,15 @@ mod tests {
         assert!(!output.ok);
         assert_eq!(output.project_path, "missing-project");
         assert_eq!(output.graph_issues.len(), 1);
-        assert_eq!(output.graph_issues[0].severity, app_lib::GraphIssueSeverity::Error);
+        assert_eq!(
+            output.graph_issues[0].severity,
+            app_lib::GraphIssueSeverity::Error
+        );
         assert_eq!(output.graph_issues[0].code, "open_project_failed");
-        assert_eq!(output.graph_issues[0].file.as_deref(), Some("gal.project.json"));
+        assert_eq!(
+            output.graph_issues[0].file.as_deref(),
+            Some("gal.project.json")
+        );
         assert_eq!(output.graph_issues[0].json_path.as_deref(), Some("$"));
     }
 
