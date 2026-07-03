@@ -1,0 +1,83 @@
+/**
+ * AssetsSidebar —— 资产页左侧分类边栏。
+ *
+ * 顶部导航已在项目顶部（Render/Script/Assets），资产页内部用左侧边栏
+ * 做资产类型切换，避免双层顶部 Tab。
+ */
+import type { AssetKind } from "../../lib/types";
+
+/** 边栏可选的分类项。"overview" = 总览（不过滤），其余对应 AssetKind。 */
+export type AssetSection = "overview" | AssetKind;
+
+export const SECTIONS: { id: AssetSection; label: string }[] = [
+  { id: "overview", label: "总览" },
+  { id: "background", label: "背景" },
+  { id: "character", label: "角色" },
+  { id: "bgm", label: "BGM" },
+  { id: "sfx", label: "音效" },
+  { id: "voice", label: "语音" },
+];
+
+interface AssetsSidebarProps {
+  active: AssetSection;
+  onSelect: (section: AssetSection) => void;
+}
+
+export function AssetsSidebar({ active, onSelect }: AssetsSidebarProps) {
+  return (
+    <nav style={sidebarStyle} aria-label="资产分类">
+      {SECTIONS.map((section, index) => {
+        const isActive = section.id === active;
+        const showDivider = index === 1 || index === 3;
+        return (
+          <div key={section.id}>
+            {showDivider && <div style={dividerStyle} />}
+            <button
+              type="button"
+              onClick={() => onSelect(section.id)}
+              style={{
+                ...itemStyle,
+                color: isActive ? "#e8edf5" : "#7a8290",
+                background: isActive ? "#1a2230" : "transparent",
+              }}
+              aria-current={isActive ? "page" : undefined}
+            >
+              {section.label}
+            </button>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+const sidebarStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: 132,
+  flexShrink: 0,
+  padding: "10px 8px",
+  gap: 2,
+  background: "#0e1116",
+  borderRight: "1px solid #232a38",
+  overflowY: "auto",
+};
+
+const itemStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  fontSize: 13,
+  padding: "7px 10px",
+  borderRadius: 6,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "#7a8290",
+  cursor: "pointer",
+};
+
+const dividerStyle: React.CSSProperties = {
+  height: 1,
+  margin: "6px 4px",
+  background: "#232a38",
+};

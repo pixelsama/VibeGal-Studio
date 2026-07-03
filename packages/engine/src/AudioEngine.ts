@@ -64,7 +64,10 @@ export class AudioEngine {
   }
 
   private resolveAudioId(id: string): string | null {
-    const rel = this.manifest.audio[id];
+    // audio 拆成 bgm/sfx/voice 三张子表；同一个 id 不应在多张表间重名，
+    // 所以按 bgm → sfx → voice 顺序查找即可解析到路径。
+    const { bgm, sfx, voice } = this.manifest.audio;
+    const rel = bgm[id] ?? sfx[id] ?? voice[id];
     return rel ? resolveAsset(this.contentBase, rel) : null;
   }
 

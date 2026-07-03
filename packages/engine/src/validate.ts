@@ -78,10 +78,16 @@ export function validateReferences(
           issues.push({ level: "error", file, index, message: `引用了不存在的 background id: "${instr.id}"` });
         break;
       case "bgm":
+        if (!(instr.id in manifest.audio.bgm))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 bgm id: "${instr.id}"` });
+        break;
       case "sfx":
+        if (!(instr.id in manifest.audio.sfx))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 sfx id: "${instr.id}"` });
+        break;
       case "voice":
-        if (!(instr.id in manifest.audio))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 audio id: "${instr.id}"` });
+        if (!(instr.id in manifest.audio.voice))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 voice id: "${instr.id}"` });
         break;
       case "char":
       case "say": {

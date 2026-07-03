@@ -21,19 +21,19 @@ export const BgInstruction = z.object({
 
 export const BgmInstruction = z.object({
   t: z.literal("bgm"),
-  id: z.string(), // 引用 manifest.audio 的 key
+  id: z.string(), // 引用 manifest.audio.bgm 的 key
   fade: z.number().int().nonnegative().default(1500),
   loop: z.boolean().default(true),
 });
 
 export const SfxInstruction = z.object({
   t: z.literal("sfx"),
-  id: z.string(),
+  id: z.string(), // 引用 manifest.audio.sfx 的 key
 });
 
 export const VoiceInstruction = z.object({
   t: z.literal("voice"),
-  id: z.string(),
+  id: z.string(), // 引用 manifest.audio.voice 的 key
 });
 
 export const CharInstruction = z.object({
@@ -96,9 +96,25 @@ export const ChapterSchema = z.array(InstructionSchema);
 
 // ──────────────────────────────────────────────
 // manifest：资源表。剧本只引用 id，路径集中在这里。
+//
+// audio 按用途拆成三张子表（bgm / sfx / voice），与指令类型
+// （BgmInstruction / SfxInstruction / VoiceInstruction）一一对应。
+// 这样资产页可按子表分类浏览，引用校验也能精确到子类。
+//
+// .strict()：遇到未知字段（如旧 flat audio 的 audio.bgm_main）直接报错，
+// 而非静默丢弃。这样旧格式项目会得到清晰的 manifest_invalid_audio 错误，
+// 而不是数据被无声清空。错误通过 projectReport 进全局问题面板，不阻断加载。
 // ──────────────────────────────────────────────
 
-export const ManifestSchema = z.object({
+const AudioRegistrySchema = z
+  .strictObject({
+    bgm: z.record(z.string(), z.string()).default({}),
+    sfx: z.record(z.string(), z.string()).default({}),
+    voice: z.record(z.string(), z.string()).default({}),
+  })
+  .default({ bgm: {}, sfx: {}, voice: {} });
+
+export const ManifestSchema = z.strictObject({
   characters: z.record(
     z.string(),
     z.object({
@@ -108,7 +124,7 @@ export const ManifestSchema = z.object({
     }),
   ),
   backgrounds: z.record(z.string(), z.string()), // id → 路径
-  audio: z.record(z.string(), z.string()), // id → 路径
+  audio: AudioRegistrySchema, // 三类音频 id → 路径
 });
 
 // ──────────────────────────────────────────────

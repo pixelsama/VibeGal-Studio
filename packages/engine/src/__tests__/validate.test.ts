@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { validateContent } from "../validate";
+import { validateContent, validateManifest } from "../validate";
 
 const manifest = {
   characters: {
     p: { name: "主角", color: "#fff", sprites: { default: "a.svg" } },
   },
   backgrounds: { bg1: "bg.svg" },
-  audio: { bgm1: "bgm.mp3", sfx1: "sfx.mp3" },
+  audio: { bgm: { bgm1: "bgm.mp3" }, sfx: { sfx1: "sfx.mp3" }, voice: {} },
 };
 
 describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => {
@@ -64,5 +64,30 @@ describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => 
         chapters: [{ file: "c.json", data: [{ t: "say", who: "ghost", expr: "default", text: "…" }] }],
       }),
     ).toThrow(/ghost/);
+  });
+});
+
+describe("validateManifest: strict 拒绝旧 flat audio", () => {
+  it("旧 flat audio（audio.bgm_main）应被 manifest 校验报错，而非静默清空", () => {
+    // 旧格式：audio 是扁平 id→path，没有 bgm/sfx/voice 子表
+    const oldManifest = {
+      characters: {},
+      backgrounds: {},
+      audio: { bgm_main: "bgm.mp3", sfx_boom: "sfx.mp3" },
+    };
+    const issues = validateManifest(oldManifest);
+    expect(issues.length).toBeGreaterThan(0);
+    // 错误应提及未知键（bgm_main/sfx_boom）
+    const joined = issues.map((i) => i.message).join(" ");
+    expect(joined).toMatch(/bgm_main|sfx_boom|unrecognised|unrecognized|Unknown/i);
+  });
+
+  it("新格式（bgm/sfx/voice 子表）应通过校验", () => {
+    const issues = validateManifest({
+      characters: {},
+      backgrounds: {},
+      audio: { bgm: { theme: "bgm.mp3" }, sfx: {}, voice: {} },
+    });
+    expect(issues).toEqual([]);
   });
 });

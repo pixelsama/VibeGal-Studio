@@ -110,6 +110,39 @@ pub struct GraphReport {
     pub graph_issues: Vec<GraphIssue>,
 }
 
+/// 资产一致性报告：磁盘文件 ↔ manifest 声明之间的不一致。
+/// 复用 GraphIssue（severity/code/message/file/jsonPath），与 graphReport 同构。
+#[derive(Serialize, Clone)]
+pub struct AssetReport {
+    #[serde(rename = "assetIssues")]
+    pub asset_issues: Vec<GraphIssue>,
+}
+
+/// 全局项目问题：汇总图结构、资产、manifest 三类问题。
+/// source 字段标记问题来源（"graph" | "asset" | "manifest"），与前端 ProjectIssueSource 对齐。
+/// 全局 StatusPanel 按来源分组展示，绿勾=全项目无问题。
+#[derive(Serialize, Clone, Debug)]
+pub struct ProjectIssue {
+    pub severity: GraphIssueSeverity,
+    pub source: String,
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(rename = "jsonPath", skip_serializing_if = "Option::is_none")]
+    pub json_path: Option<String>,
+    #[serde(rename = "nodeId", skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    #[serde(rename = "edgeId", skip_serializing_if = "Option::is_none")]
+    pub edge_id: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ProjectReport {
+    #[serde(rename = "projectIssues")]
+    pub project_issues: Vec<ProjectIssue>,
+}
+
 #[derive(Deserialize)]
 pub struct ProjectGraphInput {
     pub version: u32,
@@ -154,6 +187,10 @@ pub struct ProjectData {
     pub nodes: Option<Vec<NodeEntry>>,
     #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]
     pub graph_report: Option<GraphReport>,
+    #[serde(rename = "assetReport", skip_serializing_if = "Option::is_none")]
+    pub asset_report: Option<AssetReport>,
+    #[serde(rename = "projectReport", skip_serializing_if = "Option::is_none")]
+    pub project_report: Option<ProjectReport>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -367,6 +404,19 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let graph_report = GraphReport {
         graph_issues: validate_graph(&graph, &nodes),
     };
+    let asset_report = AssetReport {
+        asset_issues: validate_assets(&content_root, &manifest),
+    };
+
+    // 全局聚合：图结构 + 资产 + manifest 结构三类问题汇总成一个报告
+    let manifest_issues = validate_manifest_structure(&manifest);
+    let mut project_issues: Vec<ProjectIssue> = vec![];
+    project_issues.extend(graph_report.graph_issues.iter().map(|i| graph_issue_to_project(i, "graph")));
+    project_issues.extend(asset_report.asset_issues.iter().map(|i| graph_issue_to_project(i, "asset")));
+    project_issues.extend(manifest_issues);
+    // 组内排序：error 优先于 warn（source 内稳定）
+    project_issues.sort_by_key(|i| (i.source.clone(), i.severity != GraphIssueSeverity::Error));
+    let project_report = ProjectReport { project_issues };
 
     Ok(ProjectData {
         path: project_path.to_string_lossy().into_owned(),
@@ -380,6 +430,8 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         graph: Some(graph),
         nodes: Some(nodes),
         graph_report: Some(graph_report),
+        asset_report: Some(asset_report),
+        project_report: Some(project_report),
     })
 }
 
@@ -494,6 +546,361 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
     }
 
     issues
+}
+
+// ──────────────────────────────────────────────
+// 资产一致性校验（磁盘文件 ↔ manifest 声明）
+// ──────────────────────────────────────────────
+
+/// 资产 kind，由 content/assets/ 下的目录前缀推断。
+/// 序列化成小写字符串，与前端 AssetKind 对齐。
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AssetKind {
+    Background,
+    Character,
+    Bgm,
+    Sfx,
+    Voice,
+    Unknown,
+}
+
+impl AssetKind {
+    /// 由 content 根的相对路径（如 "assets/audio/bgm/x.mp3"）推断 kind。
+    fn from_rel_path(rel: &str) -> AssetKind {
+        let lower = rel.replace('\\', "/");
+        if lower.starts_with("assets/backgrounds/") {
+            AssetKind::Background
+        } else if lower.starts_with("assets/characters/") {
+            AssetKind::Character
+        } else if lower.starts_with("assets/audio/bgm/") {
+            AssetKind::Bgm
+        } else if lower.starts_with("assets/audio/sfx/") {
+            AssetKind::Sfx
+        } else if lower.starts_with("assets/audio/voice/") {
+            AssetKind::Voice
+        } else {
+            AssetKind::Unknown
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
+pub struct AssetEntry {
+    /// 相对 content 根的路径，如 "assets/backgrounds/ocean.svg"
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    pub size: u64,
+    pub kind: AssetKind,
+}
+
+/// 递归收集 content/assets/ 下的所有文件。
+/// rel 路径相对 content 根（与 manifest 引用路径一致），并归一化斜杠。
+fn collect_asset_files(
+    content_root: &Path,
+    dir: &Path,
+    out: &mut Vec<AssetEntry>,
+) -> Result<(), String> {
+    let entries =
+        fs::read_dir(dir).map_err(|e| format!("读取目录失败 {}: {}", dir.display(), e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_asset_files(content_root, &path, out)?;
+        } else {
+            let rel = path
+                .strip_prefix(content_root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let size = entry
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let kind = AssetKind::from_rel_path(&rel);
+            out.push(AssetEntry {
+                rel_path: rel,
+                size,
+                kind,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 扫描 content/assets/ 下的所有文件，返回资产清单。
+fn list_asset_entries(content_root: &Path) -> Result<Vec<AssetEntry>, String> {
+    let assets_dir = content_root.join("assets");
+    if !assets_dir.is_dir() {
+        return Ok(vec![]);
+    }
+    let mut entries = vec![];
+    collect_asset_files(content_root, &assets_dir, &mut entries)?;
+    // 稳定排序：先按 kind，再按路径，便于 UI 展示与测试断言。
+    entries.sort_by(|a, b| {
+        a.kind
+            .as_str()
+            .cmp(b.kind.as_str())
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
+    });
+    Ok(entries)
+}
+
+impl AssetKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            AssetKind::Background => "background",
+            AssetKind::Character => "character",
+            AssetKind::Bgm => "bgm",
+            AssetKind::Sfx => "sfx",
+            AssetKind::Voice => "voice",
+            AssetKind::Unknown => "unknown",
+        }
+    }
+}
+
+/// 收集 manifest 中声明的所有资产路径（相对 content 根）。
+/// 返回 (路径, 来源描述)，用于在悬空引用里指明是谁声明的。
+fn collect_manifest_asset_paths(manifest: &serde_json::Value) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = vec![];
+
+    // backgrounds: id → path
+    if let Some(obj) = manifest.get("backgrounds").and_then(|v| v.as_object()) {
+        for (id, path) in obj {
+            if let Some(p) = path.as_str() {
+                out.push((p.to_string(), format!("backgrounds.{id}")));
+            }
+        }
+    }
+
+    // characters.<id>.sprites.<expr> → path
+    if let Some(obj) = manifest.get("characters").and_then(|v| v.as_object()) {
+        for (char_id, char_val) in obj {
+            if let Some(sprites) = char_val.get("sprites").and_then(|v| v.as_object()) {
+                for (expr, path) in sprites {
+                    if let Some(p) = path.as_str() {
+                        out.push((p.to_string(), format!("characters.{char_id}.sprites.{expr}")));
+                    }
+                }
+            }
+        }
+    }
+
+    // audio.{bgm,sfx,voice}.<id> → path
+    if let Some(audio) = manifest.get("audio") {
+        for sub in ["bgm", "sfx", "voice"] {
+            if let Some(obj) = audio.get(sub).and_then(|v| v.as_object()) {
+                for (id, path) in obj {
+                    if let Some(p) = path.as_str() {
+                        out.push((p.to_string(), format!("audio.{sub}.{id}")));
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// 校验资产一致性：磁盘文件 ↔ manifest 声明。
+/// - missing_asset (error)：manifest 声明了但磁盘文件不存在（悬空引用）
+/// - orphan_asset (error)：磁盘有文件但 manifest 没登记（剧本引用不到）
+/// - duplicate_asset_ref (warn)：同一文件被多个 manifest 条目声明
+pub fn validate_assets(content_root: &Path, manifest: &serde_json::Value) -> Vec<GraphIssue> {
+    let mut issues = vec![];
+
+    // 磁盘文件集合（路径已归一化为相对 content 根）
+    let disk_entries = list_asset_entries(content_root).unwrap_or_default();
+    let mut disk_paths: std::collections::HashSet<String> = disk_entries
+        .iter()
+        .map(|e| e.rel_path.clone())
+        .collect();
+
+    // manifest 声明的路径
+    let declared = collect_manifest_asset_paths(manifest);
+
+    // 1. 悬空引用 + 重复声明检测
+    let mut seen_path_to_sources: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for (path, source) in &declared {
+        let normalized = path.replace('\\', "/");
+        seen_path_to_sources
+            .entry(normalized.clone())
+            .or_default()
+            .push(source.clone());
+
+        if !disk_paths.remove(&normalized) {
+            // remove 返回 false：要么根本不存在（悬空），要么该路径已被消费过（重复）
+            if !disk_entries.iter().any(|e| e.rel_path == normalized) {
+                // 文件确实不在磁盘上
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Error,
+                    code: "missing_asset".to_string(),
+                    message: format!("manifest 声明了资源但文件不存在：{}（{}）", normalized, source),
+                    file: Some(format!("content/{}", normalized)),
+                    json_path: Some(format!("$.{source}")),
+                    node_id: None,
+                    edge_id: None,
+                });
+            }
+        }
+    }
+
+    // 重复声明：同一文件被多个 manifest 条目引用
+    for (path, sources) in &seen_path_to_sources {
+        if sources.len() > 1 {
+            let mut sorted = sources.clone();
+            sorted.sort();
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "duplicate_asset_ref".to_string(),
+                message: format!(
+                    "资源被多个 manifest 条目引用：{}（{}）",
+                    path,
+                    sorted.join(", ")
+                ),
+                file: Some(format!("content/{}", path)),
+                json_path: None,
+                node_id: None,
+                edge_id: None,
+            });
+        }
+    }
+
+    // 2. 孤儿文件：disk_paths 经过上面的 remove 后，剩下的就是没被任何 manifest 声明的
+    let mut orphans: Vec<String> = disk_paths.into_iter().collect();
+    orphans.sort();
+    for orphan in orphans {
+        issues.push(GraphIssue {
+            severity: GraphIssueSeverity::Error,
+            code: "orphan_asset".to_string(),
+            message: format!("磁盘文件未被 manifest 登记剧本无法引用：{}", orphan),
+            file: Some(format!("content/{}", orphan)),
+            json_path: None,
+            node_id: None,
+            edge_id: None,
+        });
+    }
+
+    issues
+}
+
+// ──────────────────────────────────────────────
+// manifest 结构校验（对应前端 Zod 的 .strict()）
+// 非阻断：不阻止项目加载，问题进 projectReport。
+// ──────────────────────────────────────────────
+
+/// 校验 manifest 的结构合法性。与 engine ManifestSchema 的 .strict() 等价。
+/// 重点检查 audio 必须是含 bgm/sfx/voice 三子表的对象，
+/// 旧 flat audio（audio: { bgm_main: ... }）会被检为 manifest_invalid_audio。
+pub fn validate_manifest_structure(manifest: &serde_json::Value) -> Vec<ProjectIssue> {
+    let mut issues = vec![];
+    let obj = match manifest.as_object() {
+        Some(o) => o,
+        None => {
+            issues.push(ProjectIssue {
+                severity: GraphIssueSeverity::Error,
+                source: "manifest".to_string(),
+                code: "manifest_not_object".to_string(),
+                message: "manifest.json 不是一个 JSON 对象".to_string(),
+                file: Some("content/manifest.json".to_string()),
+                json_path: Some("$".to_string()),
+                node_id: None,
+                edge_id: None,
+            });
+            return issues;
+        }
+    };
+
+    // audio 必须存在且是含 bgm/sfx/voice 三子表的对象
+    let audio = match obj.get("audio") {
+        Some(a) => a,
+        None => {
+            issues.push(ProjectIssue {
+                severity: GraphIssueSeverity::Error,
+                source: "manifest".to_string(),
+                code: "manifest_missing_audio".to_string(),
+                message: "manifest 缺少 audio 字段".to_string(),
+                file: Some("content/manifest.json".to_string()),
+                json_path: Some("$.audio".to_string()),
+                node_id: None,
+                edge_id: None,
+            });
+            return issues;
+        }
+    };
+
+    let audio_obj = match audio.as_object() {
+        Some(o) => o,
+        None => {
+            issues.push(ProjectIssue {
+                severity: GraphIssueSeverity::Error,
+                source: "manifest".to_string(),
+                code: "manifest_invalid_audio".to_string(),
+                message: "manifest.audio 不是对象".to_string(),
+                file: Some("content/manifest.json".to_string()),
+                json_path: Some("$.audio".to_string()),
+                node_id: None,
+                edge_id: None,
+            });
+            return issues;
+        }
+    };
+
+    // 三张子表必须存在
+    for sub in ["bgm", "sfx", "voice"] {
+        if !audio_obj.contains_key(sub) {
+            issues.push(ProjectIssue {
+                severity: GraphIssueSeverity::Error,
+                source: "manifest".to_string(),
+                code: "manifest_invalid_audio".to_string(),
+                message: format!("manifest.audio 缺少 {sub} 子表"),
+                file: Some("content/manifest.json".to_string()),
+                json_path: Some(format!("$.audio.{sub}")),
+                node_id: None,
+                edge_id: None,
+            });
+        }
+    }
+
+    // 未知 key（旧 flat audio 的 id 会落在这里，如 audio.bgm_main）
+    let known: std::collections::HashSet<&str> = ["bgm", "sfx", "voice"].iter().copied().collect();
+    let mut unknown: Vec<&String> = audio_obj
+        .keys()
+        .filter(|k| !known.contains(k.as_str()))
+        .collect();
+    unknown.sort();
+    if !unknown.is_empty() {
+        issues.push(ProjectIssue {
+            severity: GraphIssueSeverity::Error,
+            source: "manifest".to_string(),
+            code: "manifest_invalid_audio".to_string(),
+            message: format!(
+                "manifest.audio 含未知字段（可能是旧 flat 格式）：{}",
+                unknown.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+            file: Some("content/manifest.json".to_string()),
+            json_path: Some("$.audio".to_string()),
+            node_id: None,
+            edge_id: None,
+        });
+    }
+
+    issues
+}
+
+/// 把 GraphIssue 映射成 ProjectIssue（补 source 字段，保留 nodeId/edgeId 供 UI 定位）。
+fn graph_issue_to_project(issue: &GraphIssue, source: &str) -> ProjectIssue {
+    ProjectIssue {
+        severity: issue.severity.clone(),
+        source: source.to_string(),
+        code: issue.code.clone(),
+        message: issue.message.clone(),
+        file: issue.file.clone(),
+        json_path: issue.json_path.clone(),
+        node_id: issue.node_id.clone(),
+        edge_id: issue.edge_id.clone(),
+    }
 }
 
 pub fn load_project_graph_data(
@@ -838,7 +1245,7 @@ fn initialize_project_root(
     let manifest = serde_json::json!({
         "characters": {},
         "backgrounds": {},
-        "audio": {}
+        "audio": { "bgm": {}, "sfx": {}, "voice": {} }
     });
     write_json(&project_path.join("content/manifest.json"), &manifest)?;
 
@@ -965,6 +1372,160 @@ fn delete_file(project_path: String, rel_path: String) -> Result<(), String> {
             .map_err(|e| format!("删除文件失败 ({}): {}", target.display(), e))?;
     }
     Ok(())
+}
+
+// ──────────────────────────────────────────────
+// 资产管理命令（list / import / delete / save_manifest）
+// 路径一律相对 content 根，与 manifest 引用路径一致。
+// ──────────────────────────────────────────────
+
+/// 列出 content/assets/ 下的所有资产文件（递归），含 kind 推断与大小。
+#[tauri::command]
+fn list_assets(project_path: String) -> Result<Vec<AssetEntry>, String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    list_asset_entries(&content_root)
+}
+
+/// 导入资产：把外部文件拷贝进 content/assets/。
+/// - source_abs_path：来自对话框的外部文件绝对路径
+/// - dest_rel_path：目标相对 content 根的路径，如 "assets/audio/bgm/battle.mp3"
+/// 不静默覆盖已有文件（符合 AGENTS.md 保守用户文件原则）。
+#[tauri::command]
+fn import_asset(
+    project_path: String,
+    source_abs_path: String,
+    dest_rel_path: String,
+) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+
+    // 目标必须在 content 内（防越界）
+    let dest = resolve_relative_under(&content_root, &dest_rel_path)?;
+    if dest.exists() {
+        return Err(format!(
+            "目标文件已存在，未覆盖（{}）",
+            dest.display()
+        ));
+    }
+
+    // 源文件必须存在且可读
+    let source = Path::new(&source_abs_path);
+    if !source.is_file() {
+        return Err(format!("源文件不存在或不可读：{}", source.display()));
+    }
+
+    // 建父目录后再校验父目录仍在 content 内（防符号链接逃逸）
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+        ensure_existing_path_within(&content_root, parent)?;
+    }
+
+    fs::copy(source, &dest)
+        .map_err(|e| format!("拷贝文件失败 ({} → {}): {}", source.display(), dest.display(), e))?;
+    Ok(())
+}
+
+/// 删除 content/ 下的资产文件。路径相对 content 根，幂等（缺失视为已删除）。
+/// 注意：此命令只删文件，manifest 条目的移除由 save_manifest 统一负责（单一写入点）。
+#[tauri::command]
+fn delete_asset(project_path: String, rel_path: String) -> Result<(), String> {
+    // 语义与 delete_file 完全一致（都是 content 根相对路径删文件）；
+    // 单独命名是为了在前端语义上区分「删资产」与「删节点文件」。
+    delete_file(project_path, rel_path)
+}
+
+// ── save_manifest 的输入类型 ──
+
+#[derive(Deserialize, Clone)]
+pub struct ManifestCharacterInput {
+    pub name: String,
+    #[serde(default = "default_color")]
+    pub color: String,
+    pub sprites: std::collections::HashMap<String, String>,
+}
+
+fn default_color() -> String {
+    "#ffffff".to_string()
+}
+
+#[derive(Deserialize, Clone, Default)]
+pub struct ManifestAudioRegistryInput {
+    #[serde(default)]
+    pub bgm: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub sfx: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub voice: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ManifestInput {
+    #[serde(default)]
+    pub characters: std::collections::HashMap<String, ManifestCharacterInput>,
+    #[serde(default)]
+    pub backgrounds: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub audio: ManifestAudioRegistryInput,
+}
+
+/// 保存 content/manifest.json。镜像 save_graph 的模式：
+/// 类型化输入 → 字段校验 → canonical JSON → 写盘。
+#[tauri::command]
+fn save_manifest(project_path: String, manifest: ManifestInput) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+
+    // 基本校验：角色名不能空
+    for (id, char) in &manifest.characters {
+        if id.is_empty() {
+            return Err("角色 id 不能为空".to_string());
+        }
+        if char.name.is_empty() {
+            return Err(format!("角色 {id} 的 name 不能为空"));
+        }
+    }
+
+    // 序列化成 canonical JSON（characters/bgs 用 json! 构造保证对象形态）
+    let characters: serde_json::Value = {
+        let mut map = serde_json::Map::new();
+        for (id, char) in &manifest.characters {
+            map.insert(
+                id.clone(),
+                serde_json::json!({
+                    "name": char.name,
+                    "color": char.color,
+                    "sprites": char.sprites,
+                }),
+            );
+        }
+        serde_json::Value::Object(map)
+    };
+
+    let value = serde_json::json!({
+        "characters": characters,
+        "backgrounds": manifest.backgrounds,
+        "audio": {
+            "bgm": manifest.audio.bgm,
+            "sfx": manifest.audio.sfx,
+            "voice": manifest.audio.voice,
+        },
+    });
+
+    let manifest_path = content_dir.join("manifest.json");
+    if manifest_path.exists() {
+        ensure_existing_path_within(&content_root, &manifest_path)?;
+    }
+    write_json(&manifest_path, &value)
 }
 
 /// 读取一个渲染层目录下的所有源码文件（.ts/.tsx），供前端运行时编译。
@@ -1277,6 +1838,10 @@ pub fn run() {
             delete_file,
             save_project_meta,
             read_renderer_files,
+            list_assets,
+            import_asset,
+            delete_asset,
+            save_manifest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1309,7 +1874,7 @@ mod tests {
         );
         write_text(
             &project.join("content/manifest.json"),
-            r#"{"characters":{},"backgrounds":{},"audio":{}}"#,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
         );
         write_json(
             &project.join("content/meta.json"),
@@ -2242,5 +2807,358 @@ mod tests {
             state.due(start + std::time::Duration::from_millis(700), delay),
             None
         );
+    }
+
+    // ── 资产命令测试 ──
+
+    /// 写一个 content/assets/ 下有文件的空项目（无图、无章节）。
+    fn write_asset_project(project: &Path, manifest_json: &str, asset_files: &[&str]) {
+        write_minimal_project(project, serde_json::json!([]));
+        write_text(&project.join("content/manifest.json"), manifest_json);
+        for rel in asset_files {
+            write_text(&project.join("content").join(rel), "fake");
+        }
+    }
+
+    #[test]
+    fn list_assets_returns_empty_when_no_assets() {
+        let dir = unique_temp_dir("list-assets-empty");
+        write_asset_project(&dir, r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#, &[]);
+
+        let entries = list_assets(dir.to_string_lossy().to_string()).unwrap();
+        assert!(entries.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_assets_classifies_kind_by_path() {
+        let dir = unique_temp_dir("list-assets-kind");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[
+                "assets/backgrounds/sky.png",
+                "assets/characters/hero_default.png",
+                "assets/audio/bgm/theme.mp3",
+                "assets/audio/sfx/boom.wav",
+                "assets/audio/voice/v01.mp3",
+                "assets/misc/unknown.bin",
+            ],
+        );
+
+        let entries = list_assets(dir.to_string_lossy().to_string()).unwrap();
+        let kinds: Vec<_> = entries.iter().map(|e| e.kind.clone()).collect();
+        assert!(kinds.contains(&AssetKind::Background));
+        assert!(kinds.contains(&AssetKind::Character));
+        assert!(kinds.contains(&AssetKind::Bgm));
+        assert!(kinds.contains(&AssetKind::Sfx));
+        assert!(kinds.contains(&AssetKind::Voice));
+        assert!(kinds.contains(&AssetKind::Unknown));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_asset_copies_file_and_creates_dirs() {
+        let dir = unique_temp_dir("import-asset");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[],
+        );
+        // 准备一个外部源文件
+        let src = dir.join("_src_sample.png");
+        write_text(&src, "png-bytes");
+
+        import_asset(
+            dir.to_string_lossy().to_string(),
+            src.to_string_lossy().to_string(),
+            "assets/backgrounds/imported.png".to_string(),
+        )
+        .unwrap();
+
+        let copied = dir.join("content/assets/backgrounds/imported.png");
+        assert!(copied.is_file());
+        assert_eq!(fs::read_to_string(&copied).unwrap(), "png-bytes");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_asset_rejects_traversal() {
+        let dir = unique_temp_dir("import-traversal");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[],
+        );
+        let src = dir.join("_src.png");
+        write_text(&src, "x");
+
+        let result = import_asset(
+            dir.to_string_lossy().to_string(),
+            src.to_string_lossy().to_string(),
+            "../../etc/evil.png".to_string(),
+        );
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_asset_rejects_existing_target() {
+        let dir = unique_temp_dir("import-exists");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/exists.png"],
+        );
+        let src = dir.join("_src.png");
+        write_text(&src, "x");
+
+        let result = import_asset(
+            dir.to_string_lossy().to_string(),
+            src.to_string_lossy().to_string(),
+            "assets/backgrounds/exists.png".to_string(),
+        );
+        assert!(result.is_err(), "不应静默覆盖已有文件");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_asset_is_idempotent() {
+        let dir = unique_temp_dir("delete-asset");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/gone.png"],
+        );
+
+        delete_asset(dir.to_string_lossy().to_string(), "assets/backgrounds/gone.png".to_string())
+            .unwrap();
+        // 再次删除已不存在的文件也应成功
+        delete_asset(dir.to_string_lossy().to_string(), "assets/backgrounds/gone.png".to_string())
+            .unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_manifest_roundtrip() {
+        let dir = unique_temp_dir("save-manifest");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[],
+        );
+
+        let manifest = ManifestInput {
+            characters: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "hero".to_string(),
+                    ManifestCharacterInput {
+                        name: "主角".to_string(),
+                        color: "#9fc8e3".to_string(),
+                        sprites: {
+                            let mut s = std::collections::HashMap::new();
+                            s.insert("default".to_string(), "assets/characters/hero.svg".to_string());
+                            s
+                        },
+                    },
+                );
+                m
+            },
+            backgrounds: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("sky".to_string(), "assets/backgrounds/sky.png".to_string());
+                m
+            },
+            audio: ManifestAudioRegistryInput {
+                bgm: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("theme".to_string(), "assets/audio/bgm/theme.mp3".to_string());
+                    m
+                },
+                sfx: std::collections::HashMap::new(),
+                voice: std::collections::HashMap::new(),
+            },
+        };
+
+        save_manifest(dir.to_string_lossy().to_string(), manifest).unwrap();
+
+        let written = fs::read_to_string(dir.join("content/manifest.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(parsed["characters"]["hero"]["name"], "主角");
+        assert_eq!(parsed["audio"]["bgm"]["theme"], "assets/audio/bgm/theme.mp3");
+        // 三张子表都应存在（即使为空）
+        assert!(parsed["audio"]["sfx"].is_object());
+        assert!(parsed["audio"]["voice"].is_object());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_assets_flags_orphan_and_dangling() {
+        let dir = unique_temp_dir("validate-assets");
+        // manifest 声明了 sky（存在）和 ghost（不存在）；磁盘上还有一个未登记的 orphan.png
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{"sky":"assets/backgrounds/sky.png","ghost":"assets/backgrounds/ghost.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/sky.png", "assets/backgrounds/orphan.png"],
+        );
+
+        let content_root = dir.join("content").canonicalize().unwrap();
+        let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+        let issues = validate_assets(&content_root, &manifest);
+
+        let codes: Vec<_> = issues.iter().map(|i| i.code.as_str()).collect();
+        assert!(codes.contains(&"missing_asset"), "应检出悬空引用 ghost: {codes:?}");
+        assert!(codes.contains(&"orphan_asset"), "应检出孤儿文件 orphan.png: {codes:?}");
+
+        let missing = issues.iter().find(|i| i.code == "missing_asset").unwrap();
+        assert_eq!(missing.severity, GraphIssueSeverity::Error);
+        let orphan = issues.iter().find(|i| i.code == "orphan_asset").unwrap();
+        assert_eq!(orphan.severity, GraphIssueSeverity::Error);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_assets_clean_when_consistent() {
+        let dir = unique_temp_dir("validate-assets-clean");
+        // 磁盘和 manifest 完全一致 → 无问题
+        write_asset_project(
+            &dir,
+            r##"{"characters":{"hero":{"name":"主角","color":"#fff","sprites":{"default":"assets/characters/hero.svg"}}},"backgrounds":{"sky":"assets/backgrounds/sky.png"},"audio":{"bgm":{"theme":"assets/audio/bgm/theme.mp3"},"sfx":{},"voice":{}}}"##,
+            &[
+                "assets/characters/hero.svg",
+                "assets/backgrounds/sky.png",
+                "assets/audio/bgm/theme.mp3",
+            ],
+        );
+
+        let content_root = dir.join("content").canonicalize().unwrap();
+        let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+        let issues = validate_assets(&content_root, &manifest);
+        assert!(issues.is_empty(), "一致时应无问题: {issues:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_assets_flags_duplicate_ref() {
+        let dir = unique_temp_dir("validate-assets-dup");
+        // 同一文件被两个 background id 引用
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{"a":"assets/backgrounds/sky.png","b":"assets/backgrounds/sky.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/sky.png"],
+        );
+
+        let content_root = dir.join("content").canonicalize().unwrap();
+        let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+        let issues = validate_assets(&content_root, &manifest);
+
+        let dup = issues.iter().find(|i| i.code == "duplicate_asset_ref");
+        assert!(dup.is_some(), "应检出重复引用: {issues:?}");
+        assert_eq!(dup.unwrap().severity, GraphIssueSeverity::Warn);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_project_includes_asset_report() {
+        let dir = unique_temp_dir("open-asset-report");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/orphan.png"],
+        );
+
+        let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
+        let report = data.asset_report.expect("open_project 应返回 asset_report");
+        // orphan.png 没在 manifest 登记 → 应有 orphan_asset 问题
+        assert!(report.asset_issues.iter().any(|i| i.code == "orphan_asset"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── 全局报告聚合 + manifest 结构校验测试 ──
+
+    #[test]
+    fn validate_manifest_structure_flags_flat_audio() {
+        // 旧 flat audio：audio: { bgm_main: ... }，缺少 bgm/sfx/voice 子表
+        let manifest = serde_json::json!({
+            "characters": {},
+            "backgrounds": {},
+            "audio": { "bgm_main": "x.mp3" }
+        });
+        let issues = validate_manifest_structure(&manifest);
+        let codes: Vec<_> = issues.iter().map(|i| i.code.as_str()).collect();
+        assert!(codes.iter().all(|c| *c == "manifest_invalid_audio"), "应检出 audio 结构错误: {codes:?}");
+        assert_eq!(issues[0].source, "manifest");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
+    }
+
+    #[test]
+    fn validate_manifest_structure_clean_for_new_format() {
+        let manifest = serde_json::json!({
+            "characters": {},
+            "backgrounds": {},
+            "audio": { "bgm": {}, "sfx": {}, "voice": {} }
+        });
+        let issues = validate_manifest_structure(&manifest);
+        assert!(issues.is_empty(), "新格式应无结构问题: {issues:?}");
+    }
+
+    #[test]
+    fn open_project_aggregates_project_report() {
+        let dir = unique_temp_dir("aggregate-report");
+        // 制造三类问题：
+        // - graph: 入口指向不存在节点（missing_entry_node, error）
+        // - asset: 孤儿文件（orphan_asset, error）
+        // - manifest: 格式正确（无问题）
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/orphan.png"],
+        );
+        write_text(
+            &dir.join("content/graph.json"),
+            r#"{"version":1,"entryNodeId":"ghost","nodes":[{"id":"a","title":"A","file":"nodes/a.json","position":{"x":0,"y":0}}],"edges":[]}"#,
+        );
+        write_text(&dir.join("content/nodes/a.json"), "[]");
+
+        let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
+        let report = data.project_report.expect("open_project 应返回 project_report");
+
+        let sources: Vec<_> = report.project_issues.iter().map(|i| i.source.as_str()).collect();
+        assert!(sources.contains(&"graph"), "应含图结构问题: {sources:?}");
+        assert!(sources.contains(&"asset"), "应含资产问题: {sources:?}");
+        // manifest 格式正确 → 不应有 manifest source
+        assert!(!sources.contains(&"manifest"), "manifest 正确时不应有问题");
+
+        // 每个 issue 都应有 source 字段
+        assert!(report.project_issues.iter().all(|i| !i.source.is_empty()));
+        let graph_issue = report
+            .project_issues
+            .iter()
+            .find(|i| i.source == "graph" && i.code == "missing_entry_node")
+            .expect("应保留 missing_entry_node");
+        assert_eq!(graph_issue.node_id.as_deref(), Some("ghost"));
+        assert_eq!(graph_issue.edge_id, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_project_report_includes_manifest_error() {
+        let dir = unique_temp_dir("report-manifest-err");
+        // 旧 flat audio manifest → manifest 结构错误应进 project_report
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm_main":"x.mp3"}}"#,
+            &[],
+        );
+
+        let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
+        let report = data.project_report.expect("应有 project_report");
+        assert!(
+            report.project_issues.iter().any(|i| i.source == "manifest" && i.code == "manifest_invalid_audio"),
+            "应含 manifest 结构错误: {:?}",
+            report.project_issues.iter().map(|i| &i.code).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }

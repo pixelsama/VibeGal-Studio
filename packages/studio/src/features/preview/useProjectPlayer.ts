@@ -18,6 +18,7 @@ import {
   type RendererProps,
 } from "@galstudio/engine";
 import type { ProjectData } from "../../lib/types";
+import { EMPTY_MANIFEST } from "../../lib/types";
 
 export interface ProjectPlayerResult {
   state: NovelState;
@@ -101,7 +102,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
 
   const rendererProps: RendererProps = {
     state,
-    manifest: manifest ?? { characters: {}, backgrounds: {}, audio: {} },
+    manifest: manifest ?? EMPTY_MANIFEST,
     contentBase,
     onAdvance: advance,
     onToggleAuto: toggleAuto,

@@ -21,7 +21,7 @@ const manifest: Manifest = {
     },
   },
   backgrounds: { ocean: "o.svg", night: "n.svg" },
-  audio: { bgm1: "bgm1.mp3", sfx1: "sfx.mp3" },
+  audio: { bgm: { bgm1: "bgm1.mp3" }, sfx: { sfx1: "sfx.mp3" }, voice: {} },
 };
 
 const deps = { manifest };

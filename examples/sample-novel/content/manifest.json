@@ -14,7 +14,12 @@
     "ocean_night": "assets/backgrounds/ocean_night.svg"
   },
   "audio": {
-    "bgm_main": "assets/audio/bgm_main.mp3",
-    "sfx_boom": "assets/audio/sfx_boom.mp3"
+    "bgm": {
+      "bgm_main": "assets/audio/bgm/bgm_main.mp3"
+    },
+    "sfx": {
+      "sfx_boom": "assets/audio/sfx/sfx_boom.mp3"
+    },
+    "voice": {}
   }
 }

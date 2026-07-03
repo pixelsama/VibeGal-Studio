@@ -43,18 +43,48 @@
       }
     },
     "audio": {
-      "type": "object",
-      "propertyNames": {
-        "type": "string"
+      "default": {
+        "bgm": {},
+        "sfx": {},
+        "voice": {}
       },
-      "additionalProperties": {
-        "type": "string"
+      "type": "object",
+      "properties": {
+        "bgm": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "sfx": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "voice": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
       }
     }
   },
   "required": [
     "characters",
-    "backgrounds",
-    "audio"
+    "backgrounds"
   ]
 }

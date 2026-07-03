@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deleteFile, saveFile, saveGraph } from "../../lib/tauri";
-import type { ProjectData, ProjectGraph } from "../../lib/types";
+import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "../../lib/types";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
-import { GraphIssuesPanel } from "./GraphIssuesPanel";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
 import { NodeOutline } from "./NodeOutline";
@@ -30,6 +29,7 @@ interface Props {
   rendererId: string;
   refreshKey: number;
   location: ScriptWorkspaceLocation;
+  focusRequest?: GraphIssueFocusRequest | null;
   onOpenGraph: () => void;
   onOpenNode: (nodeId: string) => void;
   onReplaceWithGraph: () => void;
@@ -52,6 +52,7 @@ export function ScriptWorkspace({
   rendererId,
   refreshKey: _refreshKey,
   location,
+  focusRequest,
   onOpenGraph,
   onOpenNode,
   onReplaceWithGraph,
@@ -99,6 +100,19 @@ export function ScriptWorkspace({
     if (findNode(graph, selectedNodeId)) return;
     setSelectedNodeId(null);
   }, [graph, location, onReplaceWithGraph, selectedNodeId]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (focusRequest.nodeId && findNode(graph, focusRequest.nodeId)) {
+      setSelectedNodeId(focusRequest.nodeId);
+      setSelectedEdgeId(null);
+      return;
+    }
+    if (focusRequest.edgeId && graph.edges.some((edge) => edge.id === focusRequest.edgeId)) {
+      setSelectedEdgeId(focusRequest.edgeId);
+      setSelectedNodeId(null);
+    }
+  }, [focusRequest, graph]);
 
   const persistGraph = useCallback(
     async (next: ProjectGraph) => {
@@ -400,17 +414,6 @@ export function ScriptWorkspace({
           )
         )}
       </div>
-      <GraphIssuesPanel
-        issues={graphReport.graphIssues}
-        onSelectNode={(id) => {
-          onOpenGraph();
-          handleSelect(id);
-        }}
-        onSelectEdge={(id) => {
-          onOpenGraph();
-          handleSelectEdge(id);
-        }}
-      />
 
       {/* Phase 7：自绘弹窗（替换 window.confirm / prompt） */}
       {confirm && (

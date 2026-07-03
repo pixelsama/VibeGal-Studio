@@ -44,8 +44,12 @@ struct ValidateOutput {
     ok: bool,
     #[serde(rename = "projectPath")]
     project_path: String,
+    #[serde(rename = "projectIssues")]
+    project_issues: Vec<app_lib::ProjectIssue>,
     #[serde(rename = "graphIssues")]
     graph_issues: Vec<app_lib::GraphIssue>,
+    #[serde(rename = "assetIssues")]
+    asset_issues: Vec<app_lib::GraphIssue>,
 }
 
 fn build_open_error_output(path: &str, message: &str) -> ValidateOutput {
@@ -53,6 +57,7 @@ fn build_open_error_output(path: &str, message: &str) -> ValidateOutput {
     ValidateOutput {
         ok: false,
         project_path: path.to_string(),
+        project_issues: vec![],
         graph_issues: vec![app_lib::GraphIssue {
             severity: app_lib::GraphIssueSeverity::Error,
             code: "open_project_failed".to_string(),
@@ -62,6 +67,7 @@ fn build_open_error_output(path: &str, message: &str) -> ValidateOutput {
             node_id: None,
             edge_id: None,
         }],
+        asset_issues: vec![],
     }
 }
 
@@ -101,81 +107,42 @@ fn run_validate(path: &str, format: OutputFormat) -> i32 {
         }
     };
 
-    let report = match project.graph_report {
-        Some(report) => report,
-        None => {
-            // 没有 graph_report（理论上不会发生，open_project 总会算），按无问题处理
-            match format {
-                OutputFormat::Json => print_json(&ValidateOutput {
-                    ok: true,
-                    project_path: project.path.clone(),
-                    graph_issues: vec![],
-                }),
-                OutputFormat::Text => println!("✓ 图结构正常（无图数据可校验）"),
-            }
-            return 0;
-        }
-    };
+    let graph_issues: Vec<app_lib::GraphIssue> = project
+        .graph_report
+        .map(|r| r.graph_issues)
+        .unwrap_or_default();
+    let asset_issues: Vec<app_lib::GraphIssue> = project
+        .asset_report
+        .map(|r| r.asset_issues)
+        .unwrap_or_default();
+    let project_issues: Vec<app_lib::ProjectIssue> = project
+        .project_report
+        .map(|r| r.project_issues)
+        .unwrap_or_default();
 
-    let has_error = report
-        .graph_issues
+    // 用聚合的 project_issues 判定退出码（含 manifest 结构错误）
+    let has_error = project_issues
         .iter()
-        .any(|issue| issue.severity == app_lib::GraphIssueSeverity::Error);
-    let ok = report.graph_issues.is_empty();
+        .any(|i| i.severity == app_lib::GraphIssueSeverity::Error);
+    let ok = project_issues.is_empty();
 
     match format {
         OutputFormat::Json => {
             let output = ValidateOutput {
                 ok,
                 project_path: project.path.clone(),
-                graph_issues: report.graph_issues.clone(),
+                project_issues,
+                graph_issues,
+                asset_issues,
             };
             print_json(&output);
         }
         OutputFormat::Text => {
-            // text 格式：人类可读逐条列出
             if ok {
-                println!("✓ 图结构正常");
+                println!("✓ 项目正常");
             } else {
-                let errors = report
-                    .graph_issues
-                    .iter()
-                    .filter(|i| i.severity == app_lib::GraphIssueSeverity::Error);
-                let warns = report
-                    .graph_issues
-                    .iter()
-                    .filter(|i| i.severity == app_lib::GraphIssueSeverity::Warn);
-
-                for issue in errors {
-                    println!("[error] {} (code={})", issue.message, issue.code);
-                    if let Some(file) = &issue.file {
-                        println!("    file: {file}");
-                    }
-                    if let Some(json_path) = &issue.json_path {
-                        println!("    jsonPath: {json_path}");
-                    }
-                    if let Some(id) = &issue.node_id {
-                        println!("    nodeId: {id}");
-                    }
-                    if let Some(id) = &issue.edge_id {
-                        println!("    edgeId: {id}");
-                    }
-                }
-                for issue in warns {
-                    println!("[warn]  {} (code={})", issue.message, issue.code);
-                    if let Some(file) = &issue.file {
-                        println!("    file: {file}");
-                    }
-                    if let Some(json_path) = &issue.json_path {
-                        println!("    jsonPath: {json_path}");
-                    }
-                    if let Some(id) = &issue.node_id {
-                        println!("    nodeId: {id}");
-                    }
-                    if let Some(id) = &issue.edge_id {
-                        println!("    edgeId: {id}");
-                    }
-                }
+                // 按来源分组打印（图结构 / 资产 / manifest）
+                print_project_sections(&project_issues);
             }
         }
     }
@@ -186,6 +153,69 @@ fn run_validate(path: &str, format: OutputFormat) -> i32 {
         2
     } else {
         0
+    }
+}
+
+/// source id → 中文标签
+fn source_label(source: &str) -> &str {
+    match source {
+        "graph" => "图结构",
+        "asset" => "资产",
+        "manifest" => "manifest",
+        _ => source,
+    }
+}
+
+/// 文本格式：按来源分组打印全局问题，组内 error 优先。
+fn print_project_sections(issues: &[app_lib::ProjectIssue]) {
+    // 按出现顺序保留 source 分组
+    let mut order: Vec<String> = vec![];
+    let mut groups: std::collections::HashMap<String, Vec<&app_lib::ProjectIssue>> =
+        std::collections::HashMap::new();
+    for issue in issues {
+        let label = source_label(&issue.source).to_string();
+        if !groups.contains_key(&label) {
+            order.push(label.clone());
+        }
+        groups.entry(label).or_default().push(issue);
+    }
+
+    for label in order {
+        let group = &groups[&label];
+        if group.is_empty() {
+            continue;
+        }
+        println!("── {label} ──");
+        // 组内 error 优先
+        let errors = group
+            .iter()
+            .filter(|i| i.severity == app_lib::GraphIssueSeverity::Error);
+        let warns = group
+            .iter()
+            .filter(|i| i.severity == app_lib::GraphIssueSeverity::Warn);
+        for issue in errors {
+            println!("[error] {} (code={})", issue.message, issue.code);
+            print_issue_detail(issue);
+        }
+        for issue in warns {
+            println!("[warn]  {} (code={})", issue.message, issue.code);
+            print_issue_detail(issue);
+        }
+    }
+}
+
+fn print_issue_detail(issue: &app_lib::ProjectIssue) {
+    if let Some(file) = &issue.file {
+        println!("    file: {file}");
+    }
+    if let Some(json_path) = &issue.json_path {
+        println!("    jsonPath: {json_path}");
+    }
+    if let Some(id) = &issue.node_id {
+        println!("    nodeId: {id}");
+    }
+    if let Some(id) = &issue.edge_id {
+        println!("    edgeId: {id}");
     }
 }
 
@@ -215,7 +245,7 @@ mod tests {
         );
         write_text(
             &root.join("content/manifest.json"),
-            r#"{"characters":{},"backgrounds":{},"audio":{}}"#,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
         );
         write_text(
             &root.join("content/meta.json"),

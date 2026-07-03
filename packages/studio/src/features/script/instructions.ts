@@ -43,9 +43,12 @@ export function summarizeInstructions(
       case "bg":
         summaries.push({ index, kind: "bg", label: `背景 ${assetName(manifest?.backgrounds?.[instruction.id], instruction.id)}` });
         break;
-      case "bgm":
-        summaries.push({ index, kind: "bgm", label: `BGM ${assetName(manifest?.audio?.[instruction.id], instruction.id)}` });
+      case "bgm": {
+        // audio 拆成 bgm/sfx/voice 三张子表，bgm 指令只查 bgm 表
+        const path = manifest?.audio?.bgm?.[instruction.id];
+        summaries.push({ index, kind: "bgm", label: `BGM ${assetName(path, instruction.id)}` });
         break;
+      }
     }
   });
   return summaries;

@@ -12,6 +12,7 @@ import {
   type RendererProps,
 } from "@galstudio/engine";
 import type { GraphNode, ProjectData } from "../../lib/types";
+import { EMPTY_MANIFEST } from "../../lib/types";
 import type { ProjectPlayerResult } from "../preview/useProjectPlayer";
 
 export function buildNodePreviewContent(project: ProjectData, node: GraphNode | null, nodeData: unknown | null) {
@@ -90,7 +91,7 @@ export function useNodePreview(
 
   const rendererProps: RendererProps = {
     state,
-    manifest: manifest ?? { characters: {}, backgrounds: {}, audio: {} },
+    manifest: manifest ?? EMPTY_MANIFEST,
     contentBase,
     onAdvance: advance,
     onToggleAuto: toggleAuto,

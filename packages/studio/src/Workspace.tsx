@@ -4,13 +4,14 @@
  * 顶部：项目名 + 渲染层切换 + 返回
  * 内容区：Render / Script / Assets 三工作台
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { ProjectData } from "./lib/types";
+import type { GraphIssueFocusRequest, ProjectData } from "./lib/types";
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
-import { AssetsPlaceholder } from "./features/assets/AssetsPlaceholder";
+import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
+import { StatusPanel } from "./features/common/StatusPanel";
 import { openProject, saveProjectMeta, unwatchProject, watchProject } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
@@ -34,6 +35,16 @@ type WindowDragMouseEvent = Pick<React.MouseEvent<HTMLElement>, "button" | "targ
 interface ProjectChangedPayload {
   projectPath: string;
   rendererChanged: boolean;
+}
+
+export function graphFocusTargetFromIssue(
+  issue: { source?: string; nodeId?: string; edgeId?: string },
+  requestId: number,
+): GraphIssueFocusRequest | null {
+  if (issue.source !== "graph") return null;
+  if (issue.nodeId) return { requestId, nodeId: issue.nodeId };
+  if (issue.edgeId) return { requestId, edgeId: issue.edgeId };
+  return null;
 }
 
 const windowDragIgnoreSelector = [
@@ -60,6 +71,8 @@ export function Workspace({
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncState, setSyncState] = useState<SyncState>("synced");
+  const [graphIssueFocus, setGraphIssueFocus] = useState<GraphIssueFocusRequest | null>(null);
+  const graphIssueFocusRequestIdRef = useRef(0);
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
   const workspace = workspaceFromLocation(location) ?? "render";
 
@@ -137,8 +150,18 @@ export function Workspace({
     });
   }, []);
 
+  const report = project.projectReport ?? { projectIssues: [] };
+
+  const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string }) => {
+    const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1);
+    if (!next) return;
+    graphIssueFocusRequestIdRef.current = next.requestId;
+    setGraphIssueFocus(next);
+    onNavigate({ type: "script-graph" });
+  }, [onNavigate]);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
       {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
@@ -183,14 +206,40 @@ export function Workspace({
             rendererId={rendererId}
             refreshKey={refreshKey}
             location={location.type === "script-node" ? { view: "node", nodeId: location.nodeId } : { view: "graph" }}
+            focusRequest={graphIssueFocus}
             onOpenGraph={() => onNavigate({ type: "script-graph" })}
             onOpenNode={(nodeId) => onNavigate({ type: "script-node", nodeId })}
             onReplaceWithGraph={() => onReplaceLocation({ type: "script-graph" })}
             onSaved={handleSaved}
           />
         )}
-        {workspace === "assets" && <AssetsPlaceholder />}
+        {workspace === "assets" && (
+          <AssetsWorkspace project={project} refreshKey={refreshKey} onSaved={handleSaved} />
+        )}
       </div>
+
+      {/* 全局状态指示器：汇总图结构 + 资产 + manifest 三类问题。
+          绿勾=全项目无问题，红图标=有某处问题，点开按来源分组。 */}
+      <StatusPanel
+        issues={report.projectIssues}
+        okLabel="项目正常"
+        notOkLabel={(n) => `项目有 ${n} 个问题`}
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+        emptyDescription="项目正常"
+        sourceLabel={(s) => (s === "graph" ? "图结构" : s === "asset" ? "资产" : s === "manifest" ? "manifest" : s)}
+        issueExtra={(issue) =>
+          issue.source === "graph"
+            ? issue.nodeId
+              ? `node ${issue.nodeId}`
+              : issue.edgeId
+                ? `edge ${issue.edgeId}`
+                : null
+            : null
+        }
+        isIssueClickable={(issue) => issue.source === "graph" && Boolean(issue.nodeId || issue.edgeId)}
+        onIssueClick={handleProjectIssueClick}
+      />
     </div>
   );
 }

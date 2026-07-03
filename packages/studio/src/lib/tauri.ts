@@ -6,12 +6,42 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { ProjectData, ProjectGraph, ProjectListItem, ProjectMeta } from "./types";
+import type {
+  AssetEntry,
+  AssetKind,
+  Manifest,
+  ProjectData,
+  ProjectGraph,
+  ProjectListItem,
+  ProjectMeta,
+} from "./types";
 
 /** 弹出「选择文件夹」对话框，返回用户选的绝对路径 */
 export async function pickDirectory(): Promise<string | null> {
   const selected = await openDialog({ directory: true, multiple: false });
   return typeof selected === "string" ? selected : null;
+}
+
+/** 按资产 kind 选择对应的文件类型过滤器（用于导入对话框） */
+const ASSET_FILTERS: Record<Exclude<AssetKind, "unknown">, { name: string; extensions: string[] }> = {
+  background: { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"] },
+  character: { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"] },
+  bgm: { name: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
+  sfx: { name: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
+  voice: { name: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
+};
+
+/**
+ * 弹出「选择文件」对话框，按 kind 过滤扩展名，可多选。
+ * 返回用户选中的绝对路径列表（取消则空数组）。
+ */
+export async function pickAssetFiles(kind: Exclude<AssetKind, "unknown">): Promise<string[]> {
+  const selected = await openDialog({
+    multiple: true,
+    filters: [ASSET_FILTERS[kind]],
+  });
+  if (selected === null) return [];
+  return Array.isArray(selected) ? selected : [selected];
 }
 
 /** 扫描某个工作区目录下的所有项目（含 gal.project.json 的子目录） */
@@ -72,4 +102,37 @@ export interface RendererFile {
 }
 export async function readRendererFiles(projectPath: string, rendererId: string): Promise<RendererFile[]> {
   return invoke<RendererFile[]>("read_renderer_files", { projectPath, rendererId });
+}
+
+// ──────────────────────────────────────────────
+// 资产管理
+// ──────────────────────────────────────────────
+
+/** 列出 content/assets/ 下的所有资产文件（递归扫描，含 kind 推断与大小） */
+export async function listAssets(projectPath: string): Promise<AssetEntry[]> {
+  return invoke<AssetEntry[]>("list_assets", { projectPath });
+}
+
+/**
+ * 导入资产：把外部文件拷贝进 content/assets/。
+ * - sourceAbsPath：对话框返回的外部文件绝对路径
+ * - destRelPath：目标相对 content 根的路径（前端按 kind 拼好子目录）
+ * 目标已存在时会报错（后端不静默覆盖）。
+ */
+export async function importAsset(
+  projectPath: string,
+  sourceAbsPath: string,
+  destRelPath: string,
+): Promise<void> {
+  await invoke("import_asset", { projectPath, sourceAbsPath, destRelPath });
+}
+
+/** 删除 content/ 下的资产文件（relPath 相对 content 根，幂等）。只删文件，不改 manifest。 */
+export async function deleteAsset(projectPath: string, relPath: string): Promise<void> {
+  await invoke("delete_asset", { projectPath, relPath });
+}
+
+/** 保存 content/manifest.json（整体覆盖，类型化输入） */
+export async function saveManifest(projectPath: string, manifest: Manifest): Promise<void> {
+  await invoke("save_manifest", { projectPath, manifest });
 }
