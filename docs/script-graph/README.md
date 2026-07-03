@@ -15,6 +15,7 @@
 | [04-node-instruction-editor.spec.md](./04-node-instruction-editor.spec.md) | 节点内指令流编辑器 | Phase 4 |
 | [05-graph-editing.spec.md](./05-graph-editing.spec.md) | 节点增/删/连线/重命名/移位 | Phase 5 |
 | [06-ai-operations.spec.md](./06-ai-operations.spec.md) | 校验、可操作错误、外部刷新指示 | Phase 6 |
+| [07-e2g-flowchart-inspired-plan.md](./07-e2g-flowchart-inspired-plan.md) | 借鉴 Everything2Galgame 后的流程图增强计划 | Phase 7+ |
 
 ## 如何阅读
 
