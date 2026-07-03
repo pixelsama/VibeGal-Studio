@@ -1,25 +1,42 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { NODE_TYPE } from "./graphMapping";
+import { NODE_TYPE, type GraphNodeStatus } from "./graphMapping";
 
 export interface GraphCanvasNodeData extends Record<string, unknown> {
   title: string;
   fileId: string;
   isEntry: boolean;
-  hasContent: boolean;
+  status: GraphNodeStatus;
+  incoming: number;
+  outgoing: number;
   duplicateNodeId?: boolean;
+  hasContent?: boolean;
 }
 
 type GraphNodeViewNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
 
+/** 状态 → 颜色 / 文案。颜色语义对齐 plan：红=缺文件/重复，绿=正常/终点，黄=分支/孤立/警告，蓝=入口。 */
+const STATUS_STYLE: Record<GraphNodeStatus, { dot: string; text: string; border: string; label: string }> = {
+  duplicate: { dot: "#d66a6a", text: "#e0a0a0", border: "#d66a6a", label: "ID 重复" },
+  "missing-file": { dot: "#d66a6a", text: "#e0a0a0", border: "#d49b4d", label: "文件缺失" },
+  entry: { dot: "#3a6ea5", text: "#9fc8e3", border: "#3a6ea5", label: "起点" },
+  orphan: { dot: "#d49b4d", text: "#e0b676", border: "#594823", label: "未连接" },
+  ending: { dot: "#4caf7a", text: "#93d3b0", border: "#2f5942", label: "终点" },
+  branch: { dot: "#d49b4d", text: "#e0b676", border: "#594823", label: "分支" },
+  normal: { dot: "#4caf7a", text: "#93d3b0", border: "#232a38", label: "已有内容" },
+};
+
 export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) {
+  const status = STATUS_STYLE[data.status];
+  const accent = selected ? "#9fc8e3" : status.border;
+
   return (
     <div
       style={{
         ...nodeStyle,
-        borderColor: data.duplicateNodeId ? "#d66a6a" : selected ? "#9fc8e3" : "#232a38",
-        boxShadow: data.duplicateNodeId
-          ? "0 0 0 1px rgba(214, 106, 106, 0.25), 0 8px 18px rgba(0, 0, 0, 0.24)"
-          : selected ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px rgba(0, 0, 0, 0.24)" : "none",
+        borderColor: accent,
+        boxShadow: selected
+          ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px rgba(0, 0, 0, 0.24)"
+          : "none",
       }}
     >
       <Handle type="target" position={Position.Left} style={hiddenHandleStyle} />
@@ -31,10 +48,10 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
       </div>
       <div style={metaStyle}>{data.fileId}</div>
       <div style={statusRowStyle}>
-        <span style={{ ...statusDotStyle, background: data.duplicateNodeId ? "#d66a6a" : data.hasContent ? "#4caf7a" : "#d49b4d" }} />
-        <span style={{ color: data.duplicateNodeId ? "#e0a0a0" : data.hasContent ? "#93d3b0" : "#e0b676" }}>
-          {data.duplicateNodeId ? "ID 重复" : data.hasContent ? "已有内容" : "文件缺失"}
-        </span>
+        <span style={{ ...statusDotStyle, background: status.dot }} />
+        <span style={{ color: status.text }}>{status.label}</span>
+        <span style={{ flex: 1 }} />
+        <span style={connStyle}>↑{data.incoming} ↓{data.outgoing}</span>
       </div>
     </div>
   );
@@ -96,6 +113,12 @@ const statusDotStyle: React.CSSProperties = {
   height: 8,
   borderRadius: 999,
   flexShrink: 0,
+};
+
+const connStyle: React.CSSProperties = {
+  color: "#7a8290",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 11,
 };
 
 const hiddenHandleStyle = {

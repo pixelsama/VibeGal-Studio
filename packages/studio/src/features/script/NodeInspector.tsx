@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { NodeEntry, ProjectGraph } from "../../lib/types";
-import { findNode, findNodeData } from "./graphMapping";
+import { findNode, findNodeData, summarizeNodeConnections } from "./graphMapping";
 
 interface NodeInspectorProps {
   graph: ProjectGraph;
@@ -9,6 +9,7 @@ interface NodeInspectorProps {
   onEnter: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onMaterialize: () => void;
+  onSetEntry?: (id: string) => void;
   saving?: boolean;
 }
 
@@ -19,6 +20,7 @@ export function NodeInspector({
   onEnter,
   onRename,
   onMaterialize,
+  onSetEntry,
   saving = false,
 }: NodeInspectorProps) {
   const node = findNode(graph, selectedNodeId);
@@ -45,6 +47,8 @@ export function NodeInspector({
   }
 
   const hasContent = findNodeData(nodeEntries, node.file) != null;
+  const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
+  const isEntry = node.id === graph.entryNodeId;
 
   return (
     <div style={panelStyle}>
@@ -76,13 +80,19 @@ export function NodeInspector({
         <section style={sectionStyle}>
           <Field label="ID" value={node.id} mono />
           <Field label="文件" value={node.file} mono />
-          <Field label="入口" value={node.id === graph.entryNodeId ? "是" : "否"} />
+          <Field label="入口" value={isEntry ? "是" : "否"} />
           <Field label="位置" value={`x ${node.position.x} / y ${node.position.y}`} mono />
+          <Field label="连接" value={`入 ${incoming} / 出 ${outgoing}`} mono />
         </section>
 
         <button type="button" onClick={() => onEnter(node.id)} style={actionButtonStyle}>
           进入编辑
         </button>
+        {!isEntry && onSetEntry && (
+          <button type="button" onClick={() => onSetEntry(node.id)} disabled={saving} style={secondaryButtonStyle}>
+            设为入口节点
+          </button>
+        )}
         {graph.synthetic && (
           <button type="button" onClick={onMaterialize} disabled={saving} style={secondaryButtonStyle}>
             固化图结构

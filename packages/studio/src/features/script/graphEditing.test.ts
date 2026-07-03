@@ -3,13 +3,16 @@ import type { ProjectGraph } from "../../lib/types";
 import {
   addNode,
   connectNodes,
+  createSuccessor,
   defaultPosition,
+  duplicateNode,
   generateNodeId,
   moveNode,
   removeEdge,
   removeNode,
   removeNodes,
   renameNode,
+  setEntryNode,
 } from "./graphEditing";
 
 const sampleGraph: ProjectGraph = {
@@ -140,5 +143,82 @@ describe("graphEditing", () => {
     expect(next.x).toBeGreaterThanOrEqual(0);
     expect(next.y).toBeGreaterThanOrEqual(0);
     expect(sampleGraph.nodes.some((node) => node.position.x === next.x && node.position.y === next.y)).toBe(false);
+  });
+});
+
+// ── Phase 8: setEntryNode ──────────────────────────────────────
+
+describe("setEntryNode", () => {
+  it("sets entryNodeId to an existing node", () => {
+    const next = setEntryNode(sampleGraph, "ending");
+    expect(next.entryNodeId).toBe("ending");
+  });
+
+  it("returns same graph when nodeId does not exist", () => {
+    expect(setEntryNode(sampleGraph, "missing")).toBe(sampleGraph);
+  });
+
+  it("returns same graph when already the entry", () => {
+    expect(setEntryNode(sampleGraph, "node")).toBe(sampleGraph);
+  });
+});
+
+// ── Phase 7: duplicateNode ─────────────────────────────────────
+
+describe("duplicateNode", () => {
+  it("creates a copy with new id/file and offset position", () => {
+    const { graph, newNode } = duplicateNode(sampleGraph, "node");
+
+    expect(newNode).not.toBeNull();
+    expect(newNode!.id).toBe("node_3");
+    expect(newNode!.file).toBe("nodes/node_3.json");
+    expect(newNode!.title).toBe("Node 副本");
+    expect(newNode!.position).toEqual({ x: 100 + 40, y: 120 + 60 });
+    expect(graph.nodes).toHaveLength(sampleGraph.nodes.length + 1);
+    expect(graph.nodes.at(-1)).toBe(newNode);
+  });
+
+  it("returns null newNode when source missing", () => {
+    const { graph, newNode } = duplicateNode(sampleGraph, "missing");
+    expect(newNode).toBeNull();
+    expect(graph).toBe(sampleGraph);
+  });
+
+  it("preserves directory when deriving duplicate file", () => {
+    const nested: ProjectGraph = {
+      version: 1,
+      entryNodeId: "a",
+      nodes: [{ id: "a", title: "A", file: "nodes/act1/a.json", position: { x: 0, y: 0 } }],
+      edges: [],
+    };
+    const { newNode } = duplicateNode(nested, "a");
+    expect(newNode!.file).toBe("nodes/act1/a_2.json");
+  });
+});
+
+// ── Phase 7: createSuccessor ───────────────────────────────────
+
+describe("createSuccessor", () => {
+  it("creates a new node connected from source", () => {
+    const { graph, newNode } = createSuccessor(sampleGraph, "ending");
+
+    expect(newNode).not.toBeNull();
+    expect(newNode!.id).toBe("ending_2");
+    expect(newNode!.file).toBe("nodes/ending_2.json");
+    expect(newNode!.position).toEqual({ x: 620 + 260, y: 120 });
+    // 新增一条 ending -> ending_2 的边
+    expect(graph.edges.at(-1)).toEqual({
+      id: "ending__ending_2",
+      from: "ending",
+      to: "ending_2",
+      condition: null,
+    });
+    expect(graph.nodes).toHaveLength(sampleGraph.nodes.length + 1);
+  });
+
+  it("returns null newNode when source missing", () => {
+    const { graph, newNode } = createSuccessor(sampleGraph, "missing");
+    expect(newNode).toBeNull();
+    expect(graph).toBe(sampleGraph);
   });
 });

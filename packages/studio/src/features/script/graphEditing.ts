@@ -80,6 +80,84 @@ export function removeEdge(graph: ProjectGraph, edgeId: string): ProjectGraph {
   };
 }
 
+/**
+ * 设置入口节点。nodeId 必须存在于图中。
+ * 这是 Phase 8「设置入口节点」reducer：避免 entryNodeId 悬空只能靠手改 JSON。
+ */
+export function setEntryNode(graph: ProjectGraph, nodeId: string): ProjectGraph {
+  const exists = graph.nodes.some((node) => node.id === nodeId);
+  if (!exists) return graph;
+  if (graph.entryNodeId === nodeId) return graph;
+  return { ...graph, entryNodeId: nodeId };
+}
+
+/**
+ * 复制一个节点：生成新 id、新 file、错开位置，复制入边（原图指向源节点的边，新节点也会有一条）。
+ * Phase 7 节点右键「复制」。
+ *
+ * 返回 { graph, newNode }：调用方需要根据 newNode.file 创建磁盘文件（内容复制自源节点）。
+ * 不复制出边——复制出的节点默认是「接续」状态，由作者决定连向哪里。
+ */
+export function duplicateNode(
+  graph: ProjectGraph,
+  sourceId: string,
+): { graph: ProjectGraph; newNode: GraphNode | null } {
+  const source = graph.nodes.find((node) => node.id === sourceId);
+  if (!source) return { graph, newNode: null };
+
+  const newId = generateNodeId(graph, source.id);
+  const newFile = deriveDuplicateFile(source.file, newId);
+  const newNode: GraphNode = {
+    id: newId,
+    title: `${source.title} 副本`,
+    file: newFile,
+    position: {
+      x: source.position.x + 40,
+      y: source.position.y + 60,
+    },
+  };
+
+  return { graph: { ...graph, nodes: [...graph.nodes, newNode] }, newNode };
+}
+
+/**
+ * 创建一个后续节点：新建节点 + 从源节点连一条边到它。
+ * Phase 7 节点右键「创建后续节点」。
+ *
+ * 返回 { graph, newNode }：调用方根据 newNode.file 建空文件。
+ */
+export function createSuccessor(
+  graph: ProjectGraph,
+  sourceId: string,
+): { graph: ProjectGraph; newNode: GraphNode | null } {
+  const source = graph.nodes.find((node) => node.id === sourceId);
+  if (!source) return { graph, newNode: null };
+
+  const newId = generateNodeId(graph, source.id);
+  const newNode: GraphNode = {
+    id: newId,
+    title: newId,
+    file: `nodes/${newId}.json`,
+    position: {
+      x: source.position.x + 260,
+      y: source.position.y,
+    },
+  };
+  const nextGraph = connectNodes(
+    { ...graph, nodes: [...graph.nodes, newNode] },
+    source.id,
+    newId,
+  );
+  return { graph: nextGraph, newNode };
+}
+
+/** 由源 file 派生副本 file：nodes/x.json + id x_copy → nodes/x_copy.json。 */
+function deriveDuplicateFile(sourceFile: string, newId: string): string {
+  const lastSlash = sourceFile.lastIndexOf("/");
+  const dir = lastSlash >= 0 ? sourceFile.slice(0, lastSlash + 1) : "";
+  return `${dir}${newId}.json`;
+}
+
 export function generateNodeId(graph: ProjectGraph, base: string): string {
   const normalized = normalizeNodeId(base);
   const used = new Set(graph.nodes.map((node) => node.id));

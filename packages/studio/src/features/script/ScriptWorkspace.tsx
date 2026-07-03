@@ -7,15 +7,19 @@ import { GraphIssuesPanel } from "./GraphIssuesPanel";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
 import { NodeOutline } from "./NodeOutline";
+import { ConfirmDialog, PromptDialog } from "./Dialogs";
 import {
   addNode,
   connectNodes,
+  createSuccessor,
   defaultPosition,
+  duplicateNode,
   generateNodeId,
   moveNode,
   removeEdge,
   removeNodes,
   renameNode,
+  setEntryNode,
 } from "./graphEditing";
 import { findNode, findNodeData } from "./graphMapping";
 import "@xyflow/react/dist/style.css";
@@ -60,6 +64,8 @@ export function ScriptWorkspace({
   const [graph, setGraph] = useState<ProjectGraph>(incomingGraph);
   const [savingGraph, setSavingGraph] = useState(false);
   const [graphStatus, setGraphStatus] = useState("");
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; onConfirm: (v: string) => void } | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
@@ -142,14 +148,14 @@ export function ScriptWorkspace({
     onOpenNode(id);
   };
 
-  const handleCreateNode = async () => {
+  const handleCreateNode = async (position?: { x: number; y: number }) => {
     const id = generateNodeId(graph, "node");
     const file = `nodes/${id}.json`;
     setSavingGraph(true);
     setGraphStatus("");
     try {
       await saveFile(project.path, `content/${file}`, "[]");
-      const next = addNode(graph, { id, title: id, file, position: defaultPosition(graph) });
+      const next = addNode(graph, { id, title: id, file, position: position ?? defaultPosition(graph) });
       setSelectedNodeId(id);
       setSelectedEdgeId(null);
       onOpenGraph();
@@ -182,7 +188,7 @@ export function ScriptWorkspace({
     void persistGraph(next);
   };
 
-  const handleDeleteNodes = async (nodeIds: string[]) => {
+  const handleDeleteNodes = (nodeIds: string[]) => {
     const uniqueIds = Array.from(new Set(nodeIds));
     const nodes = uniqueIds.map((id) => findNode(graph, id)).filter((node) => node != null);
     if (nodes.length === 0) return;
@@ -191,8 +197,13 @@ export function ScriptWorkspace({
       nodes.length === 1
         ? `节点「${nodes[0].title}」`
         : `${nodes.length} 个节点`;
-    if (!window.confirm(`确定删除${label}？`)) return;
+    setConfirm({
+      message: `确定删除${label}？节点文件也会被删除。`,
+      onConfirm: () => void performDeleteNodes(uniqueIds),
+    });
+  };
 
+  const performDeleteNodes = async (uniqueIds: string[]) => {
     const { graph: next, removedFiles } = removeNodes(graph, uniqueIds);
     if (next === graph) return;
     setGraph(next);
@@ -218,6 +229,70 @@ export function ScriptWorkspace({
     const next = removeEdge(graph, edgeId);
     if (next.edges.length === graph.edges.length) return;
     if (selectedEdgeId === edgeId) setSelectedEdgeId(null);
+    void persistGraph(next);
+  };
+
+  // Phase 7：复制节点 —— 复制图结构 + 复制源节点文件内容到新文件
+  const handleDuplicateNode = async (nodeId: string) => {
+    const source = findNode(graph, nodeId);
+    if (!source) return;
+    const { graph: next, newNode } = duplicateNode(graph, nodeId);
+    if (!newNode) return;
+
+    setSavingGraph(true);
+    setGraphStatus("");
+    try {
+      const sourceData = findNodeData(project.nodes, source.file);
+      const content = sourceData == null ? "[]" : JSON.stringify(sourceData, null, 2);
+      await saveFile(project.path, `content/${newNode.file}`, content);
+      setSelectedNodeId(newNode.id);
+      setSelectedEdgeId(null);
+      await persistGraph(next);
+    } catch (error) {
+      setGraphStatus(`复制节点失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSavingGraph(false);
+    }
+  };
+
+  // Phase 7：创建后续节点 —— 建空文件 + 连边
+  const handleCreateSuccessor = async (nodeId: string) => {
+    const { graph: next, newNode } = createSuccessor(graph, nodeId);
+    if (!newNode) return;
+
+    setSavingGraph(true);
+    setGraphStatus("");
+    try {
+      await saveFile(project.path, `content/${newNode.file}`, "[]");
+      setSelectedNodeId(newNode.id);
+      setSelectedEdgeId(null);
+      await persistGraph(next);
+    } catch (error) {
+      setGraphStatus(`创建后续节点失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSavingGraph(false);
+    }
+  };
+
+  // Phase 7：重命名（走 PromptDialog）
+  const handleRenameNodeDialog = (nodeId: string) => {
+    const node = findNode(graph, nodeId);
+    if (!node) return;
+    setPrompt({
+      title: "重命名节点",
+      label: "标题",
+      initialValue: node.title,
+      onConfirm: (value) => {
+        const next = renameNode(graph, nodeId, value);
+        void persistGraph(next);
+      },
+    });
+  };
+
+  // Phase 8：设为入口节点
+  const handleSetEntry = (nodeId: string) => {
+    const next = setEntryNode(graph, nodeId);
+    if (next === graph) return;
     void persistGraph(next);
   };
 
@@ -274,7 +349,7 @@ export function ScriptWorkspace({
             <div style={canvasPaneStyle}>
               <div style={canvasColumnStyle}>
                 <div style={toolbarStyle}>
-                  <button type="button" onClick={handleCreateNode} disabled={savingGraph} style={primaryButtonStyle}>
+                  <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={primaryButtonStyle}>
                     + 新建节点
                   </button>
                   {graph.synthetic && (
@@ -316,6 +391,11 @@ export function ScriptWorkspace({
                   onConnect={handleConnect}
                   onDeleteNodes={handleDeleteNodes}
                   onDeleteEdge={handleDeleteEdge}
+                  onCreateNodeAt={(position) => handleCreateNode(position)}
+                  onDuplicateNode={handleDuplicateNode}
+                  onCreateSuccessor={handleCreateSuccessor}
+                  onRenameNode={handleRenameNodeDialog}
+                  onSetEntry={handleSetEntry}
                 />
               </div>
             </div>
@@ -329,6 +409,7 @@ export function ScriptWorkspace({
                     onEnter={handleEnter}
                     onRename={handleRenameNode}
                     onMaterialize={handleMaterialize}
+                    onSetEntry={handleSetEntry}
                     saving={savingGraph}
                   />
                 </div>
@@ -361,6 +442,26 @@ export function ScriptWorkspace({
           )
         )}
       </div>
+
+      {/* Phase 7：自绘弹窗（替换 window.confirm / prompt） */}
+      {confirm && (
+        <ConfirmDialog
+          message={confirm.message}
+          danger
+          confirmLabel="删除"
+          onConfirm={confirm.onConfirm}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+      {prompt && (
+        <PromptDialog
+          title={prompt.title}
+          label={prompt.label}
+          initialValue={prompt.initialValue}
+          onConfirm={prompt.onConfirm}
+          onClose={() => setPrompt(null)}
+        />
+      )}
     </div>
   );
 }

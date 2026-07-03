@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -17,6 +17,7 @@ import {
 import type { GraphReport, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 interface GraphCanvasProps {
   graph: ProjectGraph;
@@ -31,11 +32,28 @@ interface GraphCanvasProps {
   onConnect: (from: string, to: string) => void;
   onDeleteNodes: (ids: string[]) => void;
   onDeleteEdge: (id: string) => void;
+  /** Phase 7：在指定画布坐标创建节点。 */
+  onCreateNodeAt?: (position: { x: number; y: number }) => void;
+  /** Phase 7：节点右键 - 复制。 */
+  onDuplicateNode?: (id: string) => void;
+  /** Phase 7：节点右键 - 创建后续节点。 */
+  onCreateSuccessor?: (id: string) => void;
+  /** Phase 7：节点右键 - 重命名（走 PromptDialog）。 */
+  onRenameNode?: (id: string) => void;
+  /** Phase 7：节点右键 - 设为入口。 */
+  onSetEntry?: (id: string) => void;
+  /** Phase 7：空白右键 - 自动排布。 */
+  onAutoLayout?: () => void;
 }
 
 type GraphCanvasFlowNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
 
 const nodeTypes = { [NODE_TYPE]: GraphNodeView } satisfies NodeTypes;
+
+interface CanvasMenuState {
+  anchor: { x: number; y: number };
+  items: ContextMenuItem[];
+}
 
 export function GraphCanvas({
   graph,
@@ -50,13 +68,21 @@ export function GraphCanvas({
   onConnect,
   onDeleteNodes,
   onDeleteEdge,
+  onCreateNodeAt,
+  onDuplicateNode,
+  onCreateSuccessor,
+  onRenameNode,
+  onSetEntry,
+  onAutoLayout,
 }: GraphCanvasProps) {
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<GraphCanvasFlowNode, Edge> | null>(null);
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
+  const [menu, setMenu] = useState<CanvasMenuState | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const flow = useMemo(() => {
-    const baseFlow = mapGraphToFlow(graph, graphReport);
+    const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries);
 
     const nodes: GraphCanvasFlowNode[] = baseFlow.nodes.map((node) => {
       return {
@@ -92,6 +118,7 @@ export function GraphCanvas({
     setFlowEdges(flow.edges);
   }, [flow.edges, flow.nodes]);
 
+  // 定位到选中节点（保留原有行为）
   useEffect(() => {
     if (!flowInstance || !selectedNodeId) return;
     const node = flowNodes.find((candidate) => candidate.id === selectedNodeId);
@@ -125,8 +152,88 @@ export function GraphCanvas({
     onConnect(connection.source, connection.target);
   };
 
+  // Phase 7：空白处右键 → 新建节点 / 自动排布 / 重置视图
+  const handlePaneContextMenu = (event: React.MouseEvent | MouseEvent) => {
+    event.preventDefault();
+    if (!flowInstance) return;
+    const bounds = wrapperRef.current?.getBoundingClientRect();
+    const clientX = "clientX" in event ? event.clientX : 0;
+    const clientY = "clientY" in event ? event.clientY : 0;
+    // 屏幕坐标 → 画布坐标，新建节点落在右键处
+    const canvasPos = flowInstance.screenToFlowPosition({ x: clientX - (bounds?.left ?? 0), y: clientY - (bounds?.top ?? 0) });
+
+    const items: ContextMenuItem[] = [];
+    if (onCreateNodeAt) {
+      items.push({
+        key: "create",
+        label: "在此新建节点",
+        onSelect: () => onCreateNodeAt({ x: Math.round(canvasPos.x), y: Math.round(canvasPos.y) }),
+      });
+    }
+    if (onAutoLayout) {
+      items.push({
+        key: "auto-layout",
+        label: "自动排布",
+        onSelect: () => onAutoLayout(),
+      });
+    }
+    items.push({ key: "fit", label: "重置视图", onSelect: () => flowInstance.fitView({ duration: 250 }) });
+
+    setMenu({ anchor: { x: clientX, y: clientY }, items });
+  };
+
+  // Phase 7：节点右键 → 进入 / 重命名 / 复制 / 后续 / 删除
+  const handleNodeContextMenu = (event: React.MouseEvent, node: GraphCanvasFlowNode) => {
+    event.preventDefault();
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+
+    const items: ContextMenuItem[] = [
+      { key: "enter", label: "进入编辑", onSelect: () => onEnter(node.id) },
+    ];
+    if (onRenameNode) {
+      items.push({ key: "rename", label: "重命名", onSelect: () => onRenameNode(node.id) });
+    }
+    if (onDuplicateNode) {
+      items.push({ key: "duplicate", label: "复制节点", onSelect: () => onDuplicateNode(node.id) });
+    }
+    if (onCreateSuccessor) {
+      items.push({ key: "successor", label: "创建后续节点", onSelect: () => onCreateSuccessor(node.id) });
+    }
+    if (onSetEntry && node.id !== graph.entryNodeId) {
+      items.push({ key: "set-entry", label: "设为入口节点", onSelect: () => onSetEntry(node.id) });
+    }
+    items.push({
+      key: "delete",
+      label: "删除节点",
+      danger: true,
+      dividerBefore: true,
+      onSelect: () => onDeleteNodes([node.id]),
+    });
+
+    setMenu({ anchor: { x: clientX, y: clientY }, items });
+  };
+
+  // Phase 7：右下固定创建按钮 —— 新节点落在当前视口中心
+  const handleQuickCreate = () => {
+    if (!flowInstance || !onCreateNodeAt) return;
+    const bounds = wrapperRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    // 视口中心（相对画布 DOM）→ 画布流坐标
+    const center = flowInstance.screenToFlowPosition({ x: bounds.width / 2, y: bounds.height / 2 });
+    onCreateNodeAt({ x: Math.round(center.x), y: Math.round(center.y) });
+  };
+
+  const handleLocateEntry = () => {
+    if (!flowInstance || !graph.entryNodeId) return;
+    const entry = flowNodes.find((n) => n.id === graph.entryNodeId);
+    if (entry) {
+      onSelect(entry.id);
+    }
+  };
+
   return (
-    <div style={canvasShellStyle}>
+    <div ref={wrapperRef} style={canvasShellStyle} onContextMenu={(e) => e.preventDefault()}>
       {flowNodes.length === 0 && <div style={emptyStateStyle}>暂无节点</div>}
       <ReactFlow<GraphCanvasFlowNode, Edge>
         nodes={flowNodes}
@@ -148,9 +255,19 @@ export function GraphCanvas({
         onEdgesDelete={(edges) => {
           for (const edge of edges) onDeleteEdge(edge.id);
         }}
-        onNodeClick={(_, node) => onSelect(node.id)}
-        onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
+        onNodeClick={(_, node) => {
+          onSelect(node.id);
+          setMenu(null);
+        }}
+        onEdgeClick={(_, edge) => {
+          onSelectEdge(edge.id);
+          setMenu(null);
+        }}
+        onPaneClick={() => setMenu(null)}
+        onMoveStart={() => setMenu(null)}
         onNodeDoubleClick={(_, node) => onEnter(node.id)}
+        onPaneContextMenu={handlePaneContextMenu}
+        onNodeContextMenu={handleNodeContextMenu}
         proOptions={{ hideAttribution: false }}
       >
         <Background color="#1f2734" gap={24} />
@@ -159,11 +276,40 @@ export function GraphCanvas({
           style={{ background: "#141922", border: "1px solid #232a38", borderRadius: 8 }}
         />
         <MiniMap
-          nodeColor={(node) => (node.data.duplicateNodeId ? "#d66a6a" : node.id === selectedNodeId ? "#9fc8e3" : "#3a6ea5")}
+          nodeColor={(node) =>
+            node.data.duplicateNodeId ? "#d66a6a" : node.id === selectedNodeId ? "#9fc8e3" : "#3a6ea5"
+          }
           maskColor="rgba(0, 0, 0, 0.6)"
           style={{ background: "#10151d", border: "1px solid #232a38" }}
         />
       </ReactFlow>
+
+      {/* Phase 7：右下固定创建按钮 */}
+      {onCreateNodeAt && (
+        <button
+          type="button"
+          onClick={handleQuickCreate}
+          title="在视口中心新建节点"
+          style={createButtonStyle}
+        >
+          +
+        </button>
+      )}
+
+      {/* Phase 7：定位入口按钮（左下） */}
+      {graph.entryNodeId && (
+        <button
+          type="button"
+          onClick={handleLocateEntry}
+          title="定位到入口节点"
+          style={locateEntryButtonStyle}
+        >
+          ⌂
+        </button>
+      )}
+
+      {/* Phase 7：右键菜单 */}
+      {menu && <ContextMenu anchor={menu.anchor} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }
@@ -188,4 +334,38 @@ const emptyStateStyle: React.CSSProperties = {
   color: "#a0a8b4",
   fontSize: 13,
   pointerEvents: "none",
+};
+
+const createButtonStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 20,
+  bottom: 20,
+  zIndex: 5,
+  width: 44,
+  height: 44,
+  borderRadius: 999,
+  border: "1px solid #3a6ea5",
+  background: "#3a6ea5",
+  color: "#fff",
+  fontSize: 24,
+  lineHeight: 1,
+  cursor: "pointer",
+  boxShadow: "0 6px 18px rgba(0, 0, 0, 0.4)",
+};
+
+const locateEntryButtonStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 20,
+  bottom: 20,
+  zIndex: 5,
+  width: 36,
+  height: 36,
+  borderRadius: 999,
+  border: "1px solid #2a3242",
+  background: "#141922",
+  color: "#9fc8e3",
+  fontSize: 18,
+  lineHeight: 1,
+  cursor: "pointer",
+  boxShadow: "0 6px 18px rgba(0, 0, 0, 0.4)",
 };
