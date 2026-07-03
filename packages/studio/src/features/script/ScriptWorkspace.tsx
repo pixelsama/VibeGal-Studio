@@ -24,10 +24,16 @@ interface Props {
   project: ProjectData;
   rendererId: string;
   refreshKey: number;
+  location: ScriptWorkspaceLocation;
+  onOpenGraph: () => void;
+  onOpenNode: (nodeId: string) => void;
+  onReplaceWithGraph: () => void;
   onSaved: () => void;
 }
 
-type ScriptView = "graph" | "node";
+export type ScriptWorkspaceLocation =
+  | { view: "graph" }
+  | { view: "node"; nodeId: string };
 
 const EMPTY_GRAPH = {
   version: 1,
@@ -36,8 +42,17 @@ const EMPTY_GRAPH = {
   edges: [],
 } satisfies ProjectGraph;
 
-export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, onSaved }: Props) {
-  const [view, setView] = useState<ScriptView>("graph");
+export function ScriptWorkspace({
+  project,
+  rendererId,
+  refreshKey: _refreshKey,
+  location,
+  onOpenGraph,
+  onOpenNode,
+  onReplaceWithGraph,
+  onSaved,
+}: Props) {
+  const view = location.view;
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const incomingGraph = useMemo(() => project.graph ?? EMPTY_GRAPH, [project.graph]);
@@ -46,7 +61,8 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
   const [savingGraph, setSavingGraph] = useState(false);
   const [graphStatus, setGraphStatus] = useState("");
   const positionSaveTimerRef = useRef<number | null>(null);
-  const selectedNode = useMemo(() => findNode(graph, selectedNodeId), [graph, selectedNodeId]);
+  const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
+  const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
 
   useEffect(() => {
     setGraph(incomingGraph);
@@ -62,11 +78,20 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
   }, []);
 
   useEffect(() => {
+    if (location.view === "node") {
+      if (findNode(graph, location.nodeId)) {
+        setSelectedNodeId(location.nodeId);
+        return;
+      }
+      setSelectedNodeId(null);
+      onReplaceWithGraph();
+      return;
+    }
+
     if (!selectedNodeId) return;
     if (findNode(graph, selectedNodeId)) return;
     setSelectedNodeId(null);
-    setView("graph");
-  }, [graph, selectedNodeId]);
+  }, [graph, location, onReplaceWithGraph, selectedNodeId]);
 
   const persistGraph = useCallback(
     async (next: ProjectGraph) => {
@@ -114,7 +139,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
   const handleEnter = (id: string) => {
     setSelectedNodeId(id);
     setSelectedEdgeId(null);
-    setView("node");
+    onOpenNode(id);
   };
 
   const handleCreateNode = async () => {
@@ -127,7 +152,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
       const next = addNode(graph, { id, title: id, file, position: defaultPosition(graph) });
       setSelectedNodeId(id);
       setSelectedEdgeId(null);
-      setView("graph");
+      onOpenGraph();
       await persistGraph(next);
     } catch (error) {
       setGraphStatus(`新建节点失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -174,7 +199,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
     if (selectedNodeId && uniqueIds.includes(selectedNodeId)) {
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
-      setView("graph");
+      onReplaceWithGraph();
     }
 
     const saved = await persistGraph(next);
@@ -233,7 +258,7 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
       <Breadcrumb
         view={view}
         selectedNodeTitle={selectedNode?.title ?? null}
-        onBackToGraph={() => setView("graph")}
+        onBackToGraph={onOpenGraph}
       />
       <div style={contentStyle}>
         {view === "graph" ? (
@@ -311,11 +336,11 @@ export function ScriptWorkspace({ project, rendererId, refreshKey: _refreshKey, 
                   <GraphIssuesPanel
                     issues={graphReport.graphIssues}
                     onSelectNode={(id) => {
-                      setView("graph");
+                      onOpenGraph();
                       handleSelect(id);
                     }}
                     onSelectEdge={(id) => {
-                      setView("graph");
+                      onOpenGraph();
                       handleSelectEdge(id);
                     }}
                   />

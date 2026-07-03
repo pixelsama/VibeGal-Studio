@@ -7,9 +7,11 @@ import type { ProjectData } from "../../lib/types";
 
 interface Props {
   onOpen: (project: ProjectData) => void;
+  canGoForward?: boolean;
+  onForward?: () => void;
 }
 
-export function ProjectList({ onOpen }: Props) {
+export function ProjectList({ onOpen, canGoForward = false, onForward }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
@@ -85,6 +87,11 @@ export function ProjectList({ onOpen }: Props) {
 
   return (
     <div style={pageStyle}>
+      <div style={navOverlayStyle}>
+        <NavButton disabled label="后退" ariaLabel="后退">‹</NavButton>
+        <NavButton onClick={onForward} disabled={!canGoForward} label="前进到上一个项目工作台" ariaLabel="前进">›</NavButton>
+      </div>
+
       <header style={headerStyle}>
         <h1 style={titleStyle}>GalStudio</h1>
         <p style={subtitleStyle}>galgame 开发工具</p>
@@ -139,6 +146,27 @@ export function ProjectList({ onOpen }: Props) {
   );
 }
 
+function NavButton({ onClick, disabled, children, label, ariaLabel }: {
+  onClick?: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+  label: string;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={label}
+      style={disabled ? { ...navButtonStyle, opacity: 0.35, cursor: "not-allowed" } : navButtonStyle}
+    >
+      {children}
+    </button>
+  );
+}
+
 const pageStyle: React.CSSProperties = {
   padding: "48px 64px",
   maxWidth: 900,
@@ -149,6 +177,28 @@ const titleStyle: React.CSSProperties = { fontSize: 32, margin: "0 0 4px", fontW
 const subtitleStyle: React.CSSProperties = { margin: 0, color: "#7a8290", fontSize: 14 };
 const sectionStyle: React.CSSProperties = {};
 const workspaceRow: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" };
+const navOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  top: 10,
+  left: 88,
+  display: "flex",
+  gap: 4,
+  zIndex: 10,
+};
+const navButtonStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "transparent",
+  border: "1px solid #2a3242",
+  borderRadius: 6,
+  color: "#a0a8b4",
+  fontSize: 18,
+  lineHeight: 1,
+  cursor: "pointer",
+};
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,

@@ -13,15 +13,21 @@ import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsPlaceholder } from "./features/assets/AssetsPlaceholder";
 import { openProject, saveProjectMeta, unwatchProject, watchProject } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
+import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
 
 interface Props {
   project: ProjectData;
+  location: Exclude<NavigationLocation, { type: "project-list" }>;
+  canGoBack: boolean;
+  canGoForward: boolean;
   onBack: () => void;
+  onForward: () => void;
+  onNavigate: (next: NavigationLocation) => void;
+  onReplaceLocation: (next: NavigationLocation) => void;
   /** 项目被刷新后（编辑保存触发）通知上层更新 */
   onProjectChanged: (p: ProjectData) => void;
 }
 
-type WorkspaceId = "render" | "script" | "assets";
 type SyncState = "synced" | "syncing" | "error";
 type WindowDragMouseEvent = Pick<React.MouseEvent<HTMLElement>, "button" | "target">;
 
@@ -40,12 +46,22 @@ const windowDragIgnoreSelector = [
   "[data-window-drag='ignore']",
 ].join(",");
 
-export function Workspace({ project, onBack, onProjectChanged }: Props) {
-  const [workspace, setWorkspace] = useState<WorkspaceId>("render");
+export function Workspace({
+  project,
+  location,
+  canGoBack,
+  canGoForward,
+  onBack,
+  onForward,
+  onNavigate,
+  onReplaceLocation,
+  onProjectChanged,
+}: Props) {
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncState, setSyncState] = useState<SyncState>("synced");
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
+  const workspace = workspaceFromLocation(location) ?? "render";
 
   // 切换渲染层：更新本地 + 持久化到 gal.project.json
   const handleRendererChange = useCallback(async (id: string) => {
@@ -127,15 +143,15 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <NavBtn onClick={onBack} label="返回项目列表" ariaLabel="返回">‹</NavBtn>
-          <NavBtn disabled label="前进（暂未接入）" ariaLabel="前进">›</NavBtn>
+          <NavBtn onClick={onBack} disabled={!canGoBack} label="后退" ariaLabel="后退">‹</NavBtn>
+          <NavBtn onClick={onForward} disabled={!canGoForward} label="前进" ariaLabel="前进">›</NavBtn>
         </div>
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
         <div data-tauri-drag-region style={centerGroupStyle}>
-          <TabBtn active={workspace === "render"} onClick={() => setWorkspace("render")}>Render</TabBtn>
-          <TabBtn active={workspace === "script"} onClick={() => setWorkspace("script")}>Script</TabBtn>
-          <TabBtn active={workspace === "assets"} onClick={() => setWorkspace("assets")}>Assets</TabBtn>
+          <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>Render</TabBtn>
+          <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>Script</TabBtn>
+          <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>Assets</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
@@ -166,6 +182,10 @@ export function Workspace({ project, onBack, onProjectChanged }: Props) {
             project={project}
             rendererId={rendererId}
             refreshKey={refreshKey}
+            location={location.type === "script-node" ? { view: "node", nodeId: location.nodeId } : { view: "graph" }}
+            onOpenGraph={() => onNavigate({ type: "script-graph" })}
+            onOpenNode={(nodeId) => onNavigate({ type: "script-node", nodeId })}
+            onReplaceWithGraph={() => onReplaceLocation({ type: "script-graph" })}
             onSaved={handleSaved}
           />
         )}
