@@ -156,8 +156,8 @@ GalStudio 不实现以下能力：
 推荐增强方向：
 
 - issues 面板的每条问题都能暴露稳定 code、nodeId、edgeId、相关文件路径和人类可读 message。
-- 文档和 schema 能让外部 Agent 不需要打开应用源码，也能知道怎么新增/修改/删除节点。
-- 提供 Agent 可直接调用的 CLI，例如 `galstudio validate <project-path> --format json`。
+- 新项目根目录的 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json` 能让外部 Agent 不需要打开应用源码，也能知道怎么新增/修改/删除节点。
+- 提供 Agent 可直接调用的 CLI，例如当前真实命令 `galstudio-cli validate <project-path> --format json`。
 - CLI 校验失败时使用非零退出码，并向 stdout 输出结构化 JSON：`severity`、`code`、`message`、`nodeId`、`edgeId`、`file`、`jsonPath`。
 - CLI 不要求 GalStudio UI 正在运行；它应复用后端项目加载、路径安全和图校验逻辑，避免出现 UI 与 CLI 两套规则。
 - 图编辑落盘保持格式稳定，减少外部 diff 噪音。
@@ -165,15 +165,13 @@ GalStudio 不实现以下能力：
 
 ## 4. 文档化 schema（供外部工具/Agent）
 
-在 `docs/script-graph/` 新增 `node-and-graph-schema.md`（本 spec 的产出之一，或并入 overview）：
+在 `docs/script-graph/` 维护 `node-and-graph-schema.md`，并在新建/初始化项目时把速查文档和 schema 快照复制到项目内：
 
 - graph.json 字段表（id/title/file/position/condition/version/entryNodeId）。
-- 节点文件 = `Instruction[]`，链接到 `packages/engine/src/schema.ts` 的 `t` 判别联合。
+- 节点文件 = `Instruction[]`，项目内 `.galstudio/schemas/nodeFile.json` 描述 `t` 判别联合。
 - 一份最小完整示例（graph.json + 一个 node json）。
 - 「外部工具/Agent 操作流程」：改 graph.json + 写 nodes/<id>.json → 保存 → GalStudio 自动热重载；
   越界/非法路径会被拒；坏数据进 issues 不崩。
-
-> 本 phase spec 的 §5 即承担此文档职责；如需独立文件，实现时拆出。
 
 ## 5. 测试清单（TDD）
 
@@ -218,7 +216,7 @@ GalStudio 不实现以下能力：
 3. 外部删一个节点文件 + 改 graph.json → 顶栏状态点跳「同步中…→已同步」，issues 更新。
 4. `entryNodeId` 指向不存在节点 → issues 列 `missing_entry_node`（error），但图仍加载、不崩。
 5. 合法图 → issues 面板显示「✓ 图结构正常」。
-6. `galstudio validate <project-path> --format json` 能在 UI 未启动时校验项目；有问题时非零退出并返回结构化错误。
+6. `galstudio-cli validate <project-path> --format json` 能在 UI 未启动时校验项目；有问题时非零退出并返回结构化错误。
 7. 工具栏、右键菜单和命令面板不出现任何内置 AI 协作入口，也不会写入 AI 任务文件。
 8. `docs` 中存在面向外部工具/Agent 的 schema 说明。
 

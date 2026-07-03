@@ -16,6 +16,157 @@ use tauri::{Emitter, Manager};
 
 const MAX_ASSET_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
 
+const PROJECT_AGENTS_MD: &str = r#"# GalStudio Project Agent Instructions
+
+This directory is a GalStudio project. Treat the project root as the workspace root.
+
+## Writable Project Files
+
+- `content/graph.json` is the script graph entry point.
+- `content/nodes/*.json` are node script files. Each node file is an `Instruction[]` JSON array, not an object wrapper.
+- `content/manifest.json` defines character, background, and audio ids used by instructions.
+- `content/meta.json` stores global playback settings.
+- `renderers/<id>/index.tsx` is a renderer layer entry file.
+
+## Script Graph Rules
+
+- Linear stories are represented as graph nodes connected by edges.
+- Add a node by writing `content/nodes/<id>.json`, then adding a matching item to `content/graph.json` under `nodes`.
+- Node `file` values are relative to `content/`, for example `nodes/start.json`.
+- Do not use absolute paths, parent-directory traversal, or Windows drive paths in project data.
+- Keep `edge.condition` as `null` unless GalStudio documents branch semantics.
+
+## Legacy Chapter Rules
+
+- Do not create, repair, or read `content/chapters/`.
+- Do not add `chapters` to `content/meta.json`.
+- Legacy chapter data is unsupported and will appear in the GalStudio project error panel.
+
+## Renderer Rules
+
+- A renderer layer lives in `renderers/<id>/`.
+- Its entry file must be `renderers/<id>/index.tsx`.
+- Renderer ids should be filesystem-safe plain names.
+
+## Validation
+
+Run this from the project root after edits:
+
+```bash
+galstudio-cli validate . --format json
+```
+
+The command returns structured JSON issues and a non-zero exit code when the project has errors or warnings.
+
+## Local Reference
+
+- Read `.galstudio/README.md` for project format notes.
+- Read `.galstudio/schemas/*.json` for local JSON Schema snapshots.
+- Do not casually edit `.galstudio/schemas`; they are generated from the GalStudio product schema.
+"#;
+
+const PROJECT_README_MD: &str = r#"# GalStudio Project Format
+
+This project is self-describing for external tools and Agents. You do not need the GalStudio source repository to edit project data.
+
+## Layout
+
+```text
+gal.project.json
+AGENTS.md
+.galstudio/
+  README.md
+  schemas/
+    graph.json
+    nodeFile.json
+    manifest.json
+    meta.json
+content/
+  manifest.json
+  meta.json
+  graph.json
+  nodes/
+    start.json
+renderers/
+  default/
+    index.tsx
+```
+
+## Script Data
+
+`content/graph.json` is the required script entry point. Each graph node points to a node file through `nodes[].file`, relative to `content/`.
+
+Node files under `content/nodes/*.json` contain an `Instruction[]` JSON array.
+
+Minimal graph:
+
+```json
+{
+  "version": 1,
+  "entryNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "title": "开始",
+      "file": "nodes/start.json",
+      "position": { "x": 120, "y": 120 }
+    }
+  ],
+  "edges": []
+}
+```
+
+Minimal node file:
+
+```json
+[
+  { "t": "narrate", "text": "新的故事从这里开始。" }
+]
+```
+
+## Schemas
+
+Local JSON Schema snapshots are in `.galstudio/schemas/`:
+
+- `graph.json` validates `content/graph.json`.
+- `nodeFile.json` validates each `content/nodes/*.json` file.
+- `manifest.json` validates `content/manifest.json`.
+- `meta.json` validates `content/meta.json`.
+
+These files are copied from the GalStudio product at project initialization time.
+
+## Validation
+
+Run from the project root:
+
+```bash
+galstudio-cli validate . --format json
+```
+
+## Legacy Chapters
+
+Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead.
+"#;
+
+const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
+    (
+        "graph.json",
+        include_str!("../../../../docs/script-graph/schemas/graph.json"),
+    ),
+    (
+        "nodeFile.json",
+        include_str!("../../../../docs/script-graph/schemas/nodeFile.json"),
+    ),
+    (
+        "manifest.json",
+        include_str!("../../../../docs/script-graph/schemas/manifest.json"),
+    ),
+    (
+        "meta.json",
+        include_str!("../../../../docs/script-graph/schemas/meta.json"),
+    ),
+];
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProjectMeta {
     pub name: String,
@@ -1204,6 +1355,7 @@ fn initialize_project_root(
         { "t": "narrate", "text": "新的故事从这里开始。" }
     ]);
     write_json(&project_path.join("content/nodes/start.json"), &start_node)?;
+    write_project_self_description(project_path)?;
 
     // 复制默认渲染层模板（从打包的 app resource）
     copy_dir_all(
@@ -1736,6 +1888,25 @@ fn write_json(path: &Path, value: &serde_json::Value) -> Result<(), String> {
     fs::write(path, text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
 }
 
+fn write_text_file(path: &Path, text: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+    fs::write(path, text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
+}
+
+fn write_project_self_description(project_path: &Path) -> Result<(), String> {
+    write_text_file(&project_path.join("AGENTS.md"), PROJECT_AGENTS_MD)?;
+    write_text_file(
+        &project_path.join(".galstudio/README.md"),
+        PROJECT_README_MD,
+    )?;
+    for (name, text) in PROJECT_SCHEMA_FILES {
+        write_text_file(&project_path.join(".galstudio/schemas").join(name), text)?;
+    }
+    Ok(())
+}
+
 fn default_renderer_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(app_handle
         .path()
@@ -1754,6 +1925,12 @@ fn ensure_initialization_targets_available(
         project_path.join("content/meta.json"),
         project_path.join("content/graph.json"),
         project_path.join("content/nodes/start.json"),
+        project_path.join("AGENTS.md"),
+        project_path.join(".galstudio/README.md"),
+        project_path.join(".galstudio/schemas/graph.json"),
+        project_path.join(".galstudio/schemas/nodeFile.json"),
+        project_path.join(".galstudio/schemas/manifest.json"),
+        project_path.join(".galstudio/schemas/meta.json"),
     ] {
         ensure_can_create_file(&path)?;
     }
@@ -2668,6 +2845,50 @@ mod tests {
         assert!(project.join("content/nodes/start.json").is_file());
         assert!(!project.join("content/chapters").exists());
         assert!(project.join("content/assets").is_dir());
+        assert!(project.join("AGENTS.md").is_file());
+        assert!(project.join(".galstudio/README.md").is_file());
+        for schema_name in ["graph", "nodeFile", "manifest", "meta"] {
+            let schema_path = project.join(format!(".galstudio/schemas/{schema_name}.json"));
+            assert!(schema_path.is_file(), "missing schema {}", schema_name);
+            let schema: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(schema_path).unwrap()).unwrap();
+            assert!(
+                schema.get("type").is_some(),
+                "schema {} should be valid JSON Schema",
+                schema_name
+            );
+        }
+        let graph_schema: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(project.join(".galstudio/schemas/graph.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(graph_schema["properties"].get("entryNodeId").is_some());
+        assert!(graph_schema["properties"].get("nodes").is_some());
+        let node_schema: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(project.join(".galstudio/schemas/nodeFile.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(node_schema["type"], "array");
+        let manifest_schema: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(project.join(".galstudio/schemas/manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(manifest_schema["properties"].get("characters").is_some());
+        assert!(manifest_schema["properties"].get("backgrounds").is_some());
+        assert!(manifest_schema["properties"].get("audio").is_some());
+        let meta_schema: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(project.join(".galstudio/schemas/meta.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(meta_schema["properties"].get("title").is_some());
+        assert!(meta_schema["properties"].get("typingSpeedCps").is_some());
+        let agent_instructions = fs::read_to_string(project.join("AGENTS.md")).unwrap();
+        assert!(agent_instructions.contains("content/graph.json"));
+        assert!(agent_instructions.contains("content/nodes/*.json"));
+        assert!(agent_instructions.contains("Instruction[]"));
+        assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
+        assert!(agent_instructions.contains("galstudio-cli validate . --format json"));
+        assert!(agent_instructions.contains("content/chapters/"));
         assert_eq!(
             fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
             "export default {};"
@@ -2697,6 +2918,44 @@ mod tests {
             "keep me"
         );
         assert!(!project.join("gal.project.json").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn initialize_project_root_does_not_overwrite_self_description_files() {
+        let root = unique_temp_dir("init-self-description-conflict");
+        let renderer_template = root.join("template");
+        let project = root.join("story");
+        write_text(&renderer_template.join("index.tsx"), "export default {};");
+        write_text(&project.join("AGENTS.md"), "keep me");
+
+        let result = initialize_project_root(&project, "story", &renderer_template);
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(project.join("AGENTS.md")).unwrap(),
+            "keep me"
+        );
+        assert!(!project.join("gal.project.json").exists());
+
+        let project_with_schema = root.join("story-with-schema");
+        write_text(
+            &project_with_schema.join(".galstudio/schemas/graph.json"),
+            "{}",
+        );
+
+        let result = initialize_project_root(
+            &project_with_schema,
+            "story-with-schema",
+            &renderer_template,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(project_with_schema.join(".galstudio/schemas/graph.json")).unwrap(),
+            "{}"
+        );
+        assert!(!project_with_schema.join("gal.project.json").exists());
         let _ = fs::remove_dir_all(&root);
     }
 

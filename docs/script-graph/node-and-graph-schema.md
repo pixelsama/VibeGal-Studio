@@ -8,6 +8,14 @@
 
 ```text
 gal.project.json
+AGENTS.md
+.galstudio/
+  README.md
+  schemas/
+    graph.json
+    nodeFile.json
+    manifest.json
+    meta.json
 content/
   manifest.json
   meta.json
@@ -18,6 +26,8 @@ renderers/
 ```
 
 `content/graph.json` 和 `content/nodes/*.json` 是项目剧本的核心文件。线性故事也用一串节点和边表达。保存后 GalStudio 会通过项目 watcher 自动刷新，无需重启应用。
+
+新建/初始化项目会把 Agent 指令和 schema 快照写进项目根目录。外部 Agent 的首选入口是项目内 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json`，不需要依赖 GalStudio 源码仓库路径。
 
 旧的 `content/meta.json` `chapters` 字段和 `content/chapters/` 目录不再作为剧本入口。它们存在时会进入项目错误面板，外部 Agent 不应读取、生成或修补这些旧结构。
 
@@ -78,7 +88,7 @@ renderers/
 ]
 ```
 
-指令 schema 的唯一来源是 [packages/engine/src/schema.ts](../../packages/engine/src/schema.ts)。当前可用的 `t` 判别值：
+指令 schema 会随新项目复制到 `.galstudio/schemas/nodeFile.json`。当前可用的 `t` 判别值：
 
 | `t` | 用途 | 常用字段 |
 | --- | --- | --- |
@@ -107,7 +117,7 @@ renderers/
 修改节点剧情：
 
 1. 直接编辑对应的 `content/nodes/<id>.json`。
-2. 保持 JSON 为数组，数组项必须符合 `packages/engine/src/schema.ts`。
+2. 保持 JSON 为数组，数组项必须符合 `.galstudio/schemas/nodeFile.json`。
 
 删除节点：
 

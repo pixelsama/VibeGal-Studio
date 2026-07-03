@@ -58,6 +58,14 @@
 ### 2.1 磁盘结构
 
 ```text
+AGENTS.md                 # 项目根 Agent 指令
+.galstudio/
+  README.md               # 项目格式速查
+  schemas/                # JSON Schema 快照
+    graph.json
+    nodeFile.json
+    manifest.json
+    meta.json
 content/
   manifest.json          # 已有，资源表（不动）
   meta.json              # 已有，全局播放参数（不动）
@@ -68,6 +76,8 @@ content/
 ```
 
 `graph.json` 是项目剧本入口。节点文件由 `graph.nodes[].file` 引用，路径相对 `content/`。
+
+新建/初始化项目会生成项目内 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json`。这些文件是给外部 Agent 与人工工具看的自描述交付物；打开旧项目时不会自动补写，避免静默修改用户文件。
 
 ### 2.2 `graph.json` schema
 

@@ -2,9 +2,11 @@
 
 ## Product Model
 
-GalStudio is a data-driven galgame project editor and live viewer. A project is a directory that contains `gal.project.json`, `content/`, and `renderers/`.
+GalStudio is a data-driven galgame project editor and live viewer. A project is a directory that contains `gal.project.json`, `content/`, `renderers/`, and project-local self-description files for external tools.
 
 The script source of truth is graph-first: `content/graph.json` describes the flow, and each graph node points at a `content/nodes/*.json` file containing an `Instruction[]`. Linear stories are represented as linear graph nodes and edges. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized; they should surface as project issues instead of silently driving the UI.
+
+New/initialized projects should include root `AGENTS.md`, `.galstudio/README.md`, and `.galstudio/schemas/*.json` so an external Agent can operate from the project directory without knowing where the GalStudio source repository lives.
 
 Opening a directory should treat that directory itself as the project root. If it is not yet a GalStudio project, ask before adding project files.
 
@@ -16,7 +18,7 @@ GalStudio's job is to visualize, edit, validate, hot-reload, and preview Galgame
 
 External AI coding ergonomics are welcome and important, but they should be achieved through clear data contracts, stable file layouts, schema documentation, validation reports, hot reload, CLI validation commands, machine-readable errors, and predictable persistence.
 
-Prefer Agent-operable workflows over user copy/paste workflows. For example, a CLI command such as `galstudio validate <project-path> --format json` should let an external Agent check a project, receive structured errors with a non-zero exit code, fix files, and rerun validation without asking the user to shuttle issue text between apps.
+Prefer Agent-operable workflows over user copy/paste workflows. For example, the current CLI command `galstudio-cli validate <project-path> --format json` should let an external Agent check a project, receive structured errors with a non-zero exit code, fix files, and rerun validation without asking the user to shuttle issue text between apps.
 
 Do not add in-app AI integration. The app should not expose AI buttons, AI task prompts, prompt handoff files, AI connectors, model/provider settings, token storage, or agent session management.
 
