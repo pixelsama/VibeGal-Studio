@@ -31,3 +31,4 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 clap = { version = "4", features = ["derive"] }
+base64 = "0.22"

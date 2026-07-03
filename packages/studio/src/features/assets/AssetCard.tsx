@@ -13,6 +13,7 @@
  */
 import type { AssetEntry } from "../../lib/types";
 import { baseName, previewKind, resolveAssetUrl } from "./assetPreview";
+import { AssetImagePreview } from "./AssetImagePreview";
 
 interface AssetCardProps {
   entry: AssetEntry;
@@ -37,13 +38,21 @@ export function AssetCard({
   readOnly = false,
 }: AssetCardProps) {
   const kind = previewKind(entry.relPath);
-  const url = resolveAssetUrl(projectPath, entry.relPath);
+  const url = kind === "audio" || kind === "video" ? resolveAssetUrl(projectPath, entry.relPath) : "";
   const name = baseName(entry.relPath);
 
   return (
     <div style={{ ...cardStyle, borderColor: isOrphan ? "#7a3a3a" : "#232a38" }}>
       <div style={previewStyle}>
-        {kind === "image" && <img src={url} alt={name} style={imgStyle} draggable={false} />}
+        {kind === "image" && (
+          <AssetImagePreview
+            projectPath={projectPath}
+            relPath={entry.relPath}
+            alt={name}
+            style={imgStyle}
+            placeholderStyle={previewPlaceholderStyle}
+          />
+        )}
         {kind === "audio" && <audio src={url} controls style={audioStyle} />}
         {kind === "video" && <video src={url} controls style={videoStyle} />}
         {kind === "other" && <span style={otherPreviewStyle}>📄</span>}
@@ -158,6 +167,11 @@ const videoStyle: React.CSSProperties = {
 
 const otherPreviewStyle: React.CSSProperties = {
   fontSize: 28,
+  color: "#7a8290",
+};
+
+const previewPlaceholderStyle: React.CSSProperties = {
+  fontSize: 11,
   color: "#7a8290",
 };
 

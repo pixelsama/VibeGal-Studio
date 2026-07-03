@@ -1,6 +1,7 @@
 // GalStudio Tauri 后端 —— 文件系统操作。
 // 所有磁盘读写集中在这里；前端通过 invoke 调用，不直接碰文件系统。
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -12,6 +13,8 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
+
+const MAX_ASSET_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProjectMeta {
@@ -1441,6 +1444,59 @@ fn delete_asset(project_path: String, rel_path: String) -> Result<(), String> {
     delete_file(project_path, rel_path)
 }
 
+/// 读取 content/ 下的图片资产，返回可直接用于 <img src> 的 data URL。
+/// 前端资产缩略图走这个命令，而不是直接把本地磁盘路径暴露给 WebView。
+#[tauri::command]
+fn read_asset_preview_data_url(project_path: String, rel_path: String) -> Result<String, String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    let target = resolve_relative_under(&content_root, &rel_path)?;
+
+    let mime = preview_image_mime(&rel_path)
+        .ok_or_else(|| format!("不支持预览的图片类型: {}", rel_path))?;
+    ensure_existing_path_within(&content_root, &target)?;
+    if !target.is_file() {
+        return Err(format!("资产文件不存在或不是文件: {}", target.display()));
+    }
+
+    let size = fs::metadata(&target)
+        .map_err(|e| format!("读取资产信息失败 ({}): {}", target.display(), e))?
+        .len();
+    if size > MAX_ASSET_PREVIEW_BYTES {
+        return Err(format!(
+            "资产预览过大（{} bytes），超过 {} bytes",
+            size, MAX_ASSET_PREVIEW_BYTES
+        ));
+    }
+
+    let bytes =
+        fs::read(&target).map_err(|e| format!("读取资产预览失败 ({}): {}", target.display(), e))?;
+    Ok(format!(
+        "data:{};base64,{}",
+        mime,
+        BASE64_STANDARD.encode(bytes)
+    ))
+}
+
+fn preview_image_mime(rel_path: &str) -> Option<&'static str> {
+    let ext = Path::new(rel_path)
+        .extension()
+        .and_then(|s| s.to_str())?
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        "gif" => Some("image/gif"),
+        "svg" => Some("image/svg+xml"),
+        "bmp" => Some("image/bmp"),
+        _ => None,
+    }
+}
+
 // ── save_manifest 的输入类型 ──
 
 #[derive(Deserialize, Clone)]
@@ -1841,6 +1897,7 @@ pub fn run() {
             list_assets,
             import_asset,
             delete_asset,
+            read_asset_preview_data_url,
             save_manifest,
         ])
         .run(tauri::generate_context!())
@@ -3159,6 +3216,44 @@ mod tests {
             "应含 manifest 结构错误: {:?}",
             report.project_issues.iter().map(|i| &i.code).collect::<Vec<_>>()
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_asset_preview_data_url_reads_image_under_content() {
+        let dir = unique_temp_dir("asset-preview-data-url");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{"sky":"assets/backgrounds/sky.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/sky.png"],
+        );
+
+        let data_url = read_asset_preview_data_url(
+            dir.to_string_lossy().to_string(),
+            "assets/backgrounds/sky.png".to_string(),
+        )
+        .unwrap();
+
+        assert!(data_url.starts_with("data:image/png;base64,"));
+        assert!(data_url.ends_with("ZmFrZQ=="));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_asset_preview_data_url_rejects_path_traversal() {
+        let dir = unique_temp_dir("asset-preview-traversal");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[],
+        );
+
+        let result = read_asset_preview_data_url(
+            dir.to_string_lossy().to_string(),
+            "../gal.project.json".to_string(),
+        );
+
+        assert!(result.is_err());
         let _ = fs::remove_dir_all(&dir);
     }
 }

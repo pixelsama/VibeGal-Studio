@@ -232,6 +232,20 @@ describe("read-only asset UI", () => {
   });
 });
 
+describe("asset preview loading", () => {
+  it("does not expose a direct asset protocol URL for image thumbnails", () => {
+    const html = renderToStaticMarkup(createElement(AssetCard, {
+      entry: { relPath: "assets/backgrounds/sky.png", size: 1, kind: "background" },
+      projectPath: "/project",
+      isOrphan: false,
+      refCount: 1,
+      onDelete: () => {},
+    }));
+
+    expect(html).not.toContain("asset://");
+  });
+});
+
 describe("safeAssetFileStem", () => {
   it("removes path separators and traversal tokens from generated asset filenames", () => {
     expect(safeAssetFileStem("../happy/smile")).toBe("happy_smile");

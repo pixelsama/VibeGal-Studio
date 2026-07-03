@@ -10,7 +10,7 @@
 import { useState } from "react";
 import type { Manifest, ManifestCharacter } from "../../lib/types";
 import { importAsset, pickAssetFiles } from "../../lib/tauri";
-import { resolveAssetUrl } from "./assetPreview";
+import { AssetImagePreview } from "./AssetImagePreview";
 
 interface CharacterEditorProps {
   projectPath: string;
@@ -256,11 +256,12 @@ function CharacterStage({ char, projectPath }: { char: ManifestCharacter; projec
   return (
     <div style={stageInnerStyle}>
       {defaultPath ? (
-        <img
-          src={resolveAssetUrl(projectPath, defaultPath)}
+        <AssetImagePreview
+          projectPath={projectPath}
+          relPath={defaultPath}
           alt={char.name}
           style={stageImgStyle}
-          draggable={false}
+          placeholderStyle={stagePlaceholderStyle}
         />
       ) : (
         <span style={stagePlaceholderStyle}>未设置 default 表情</span>
@@ -295,11 +296,12 @@ function SpriteExprRow({
   const [draft, setDraft] = useState(expr);
   return (
     <div style={exprRowStyle}>
-      <img
-        src={resolveAssetUrl(projectPath, path)}
+      <AssetImagePreview
+        projectPath={projectPath}
+        relPath={path}
         alt={expr}
         style={exprThumbStyle}
-        draggable={false}
+        placeholderStyle={exprThumbPlaceholderStyle}
       />
       <div style={exprMetaStyle}>
         {editing ? (
@@ -605,6 +607,15 @@ const exprThumbStyle: React.CSSProperties = {
   borderRadius: 5,
   background: "#0e1116",
   border: "1px solid #232a38",
+};
+
+const exprThumbPlaceholderStyle: React.CSSProperties = {
+  ...exprThumbStyle,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 10,
+  color: "#7a8290",
 };
 
 const exprMetaStyle: React.CSSProperties = {

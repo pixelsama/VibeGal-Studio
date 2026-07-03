@@ -132,6 +132,11 @@ export async function deleteAsset(projectPath: string, relPath: string): Promise
   await invoke("delete_asset", { projectPath, relPath });
 }
 
+/** 读取 content/ 下的图片资产预览，返回 data URL（后端校验路径不越界）。 */
+export async function readAssetPreviewDataUrl(projectPath: string, relPath: string): Promise<string> {
+  return invoke<string>("read_asset_preview_data_url", { projectPath, relPath });
+}
+
 /** 保存 content/manifest.json（整体覆盖，类型化输入） */
 export async function saveManifest(projectPath: string, manifest: Manifest): Promise<void> {
   await invoke("save_manifest", { projectPath, manifest });
