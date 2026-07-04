@@ -180,6 +180,17 @@ export function applyInstruction(
     case "wait":
       return { ...state, flags: { ...state.flags, isWaiting: true } };
 
+    // ── pause：纯画面停点，等待玩家下一次推进 ───────────────
+    case "pause":
+      return {
+        ...state,
+        speaker: null,
+        dialogue: null,
+        narration: null,
+        choice: null,
+        currentCueMs: null,
+      };
+
     default: {
       // 穷尽性检查：如果新增指令类型忘了处理，编译期就会报错
       const _exhaustive: never = instr;

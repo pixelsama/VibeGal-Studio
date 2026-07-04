@@ -90,6 +90,16 @@ Key fields:
 - `flags`
 - `currentCueMs`
 
+Playback advances by story frame: a user advance consumes non-blocking stage instructions
+(`bg`, `bgm`, `sfx`, `voice`, `char`, `effect`, `transition`) until it reaches a stop
+instruction (`say`, `narrate`, `choice`, `wait`, `pause`). Renderers receive the resulting
+semantic `NovelState`; they should decide how slots such as `left`, `center`, and `right`
+map to their own layout inside the fixed `stage`.
+
+V1 does not define `layoutOverride`, custom coordinates, or an `@layout` command. If a
+renderer wants custom placement rules, keep them internal to the renderer or expose them
+through documented project presets in a later contract revision.
+
 ## Asset Resolution
 
 Manifest values are relative paths under `content/`. Renderers can resolve them with `resolveAsset(contentBase, relPath)` from `@galstudio/engine`, or equivalent string joining.

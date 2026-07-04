@@ -106,8 +106,41 @@ renderers/
 | `wait` | 等待 | `ms` |
 | `effect` | 舞台效果 | `type`, `intensity`, `ms` |
 | `transition` | 转场 | `type`, `ms` |
+| `pause` | 纯画面剧情帧停点，等待玩家下一次推进 | 无 |
 
 `manifest.json` 中定义角色、背景和音频资源 id。剧本指令应引用这些 id，而不是直接写资源路径。
+
+## 节点 Scenario Editor DSL
+
+Studio 的节点编辑器默认显示剧本文本，但磁盘文件仍然保存为 `Instruction[]` JSON。这个文本 DSL 是可逆投影：保存时编译回节点 JSON，外部 Agent 仍可直接编辑 `content/nodes/*.json`。
+
+基础写法：
+
+```text
+@bg classroom fade
+@bgm daily
+@char akari smile left
+
+akari: 今天也很安静呢。
+
+@sfx door
+@char akari surprised center
+akari: 咦？
+
+@choice
+- 开门 -> open_door
+- 装作没听见 -> ignore
+```
+
+DSL 规则：
+
+- 空行分隔剧情帧。每次玩家点击/按键会推进到下一个停点。
+- 同一帧内的 `@bg` / `@bgm` / `@sfx` / `@voice` / `@char` / `@effect` / `@transition` 属于舞台命令，会在同一次推进里连续应用。
+- `角色ID: 文本` 编译为 `say`；普通文本行编译为 `narrate`。
+- 只有舞台命令、没有文本/选择/等待的帧会自动补一个 `{ "t": "pause" }`，用于停在纯画面状态等待玩家继续。
+- `@wait 800` 是时间等待，计时结束后自动继续；`@pause` 是玩家停点，不会自动继续。
+- `@choice` 后接 `- 文本 -> nodeId`，目标节点仍需在 Graph 中有对应 edge；V1 只校验并报告缺失，不自动修改 graph。
+- V1 不支持 `@layout`、相对坐标或 renderer layout override；精细布局属于后续能力。
 
 ## meta.json
 

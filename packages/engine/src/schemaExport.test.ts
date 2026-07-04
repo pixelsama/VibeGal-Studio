@@ -67,4 +67,13 @@ describe("schemaExport", () => {
     expect(choice?.required).toEqual(["t", "choices"]);
     expect(choice?.properties).toHaveProperty("choices");
   });
+
+  it("nodeFile schema includes pause instructions", () => {
+    const nodeFile = buildJsonSchema("nodeFile");
+    const items = nodeFile.items as { oneOf: Array<{ properties: { t: { const: string } }; required: string[] }> };
+    const pause = items.oneOf.find((item) => item.properties.t.const === "pause");
+
+    expect(pause).toBeDefined();
+    expect(pause?.required).toEqual(["t"]);
+  });
 });

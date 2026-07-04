@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Instruction, Manifest as EngineManifest } from "@galstudio/engine";
+import {
+  formatScenarioText,
+  parseScenarioText,
+  type Instruction,
+  type Manifest as EngineManifest,
+  type ScenarioDiagnostic,
+} from "@galstudio/engine";
 import { saveFile } from "../../lib/tauri";
 import type { GraphIssueFocusRequest, GraphNode, ProjectData } from "../../lib/types";
 import { ResourcePicker } from "../assets/ResourcePicker";
@@ -13,11 +19,14 @@ import {
   type InsertableKind,
 } from "./instructions";
 import {
-  deleteInstruction,
-  duplicateInstruction,
   instructionIndexFromJsonPath,
-  moveInstruction,
 } from "./instructionEditing";
+import {
+  getScenarioSelection,
+  replaceScenarioSelectionInstruction,
+  ScenarioInspector,
+  ScenarioNodeLayout,
+} from "./scenarioEditor";
 
 interface NodeEditorProps {
   project: ProjectData;
@@ -28,7 +37,7 @@ interface NodeEditorProps {
   onSaved: () => void;
 }
 
-type NodeEditorMode = "json" | "blocks";
+type NodeEditorMode = "scenario" | "json" | "blocks";
 
 export function isWriteConflictError(error: unknown): boolean {
   if (error instanceof Error) return isWriteConflictError(error.message);
@@ -105,6 +114,24 @@ function serializeNodeData(nodeData: unknown | null): string {
   return nodeData == null ? "[]" : JSON.stringify(nodeData, null, 2);
 }
 
+function instructionsFromNodeData(nodeData: unknown | null): Instruction[] {
+  return Array.isArray(nodeData) ? (nodeData as Instruction[]) : [];
+}
+
+function scenarioTextFromNodeData(nodeData: unknown | null): string {
+  return formatScenarioText(instructionsFromNodeData(nodeData));
+}
+
+function parseJsonInstructionText(text: string): { ok: true; instructions: Instruction[] } | { ok: false; error: string } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) return { ok: false, error: "节点内容必须是 JSON 数组。" };
+    return { ok: true, instructions: parsed as Instruction[] };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 const INSERT_BUTTONS: { kind: InsertableKind; label: string }[] = [
   { kind: "narrate", label: "旁白" },
   { kind: "say", label: "台词" },
@@ -119,11 +146,45 @@ const INSERT_BUTTONS: { kind: InsertableKind; label: string }[] = [
   { kind: "choice", label: "选择" },
 ];
 
+function defaultScenarioInstruction(kind: InsertableKind, project: ProjectData): Instruction {
+  const draft = defaultInstruction(kind);
+  const manifest = project.content.manifest;
+  const firstCharacter = Object.keys(manifest.characters)[0] ?? "角色";
+  const firstBackground = Object.keys(manifest.backgrounds)[0] ?? "背景";
+  const firstBgm = Object.keys(manifest.audio.bgm)[0] ?? "bgm";
+  const firstSfx = Object.keys(manifest.audio.sfx)[0] ?? "sfx";
+  const firstVoice = Object.keys(manifest.audio.voice)[0] ?? "voice";
+
+  switch (draft.t) {
+    case "narrate":
+      return { ...draft, text: "旁白" };
+    case "say":
+      return { ...draft, who: firstCharacter, text: "台词" };
+    case "bg":
+      return { ...draft, id: firstBackground };
+    case "bgm":
+      return { ...draft, id: firstBgm };
+    case "sfx":
+      return { ...draft, id: firstSfx };
+    case "voice":
+      return { ...draft, id: firstVoice };
+    case "char":
+      return { ...draft, id: firstCharacter };
+    default:
+      return draft;
+  }
+}
+
 export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, onSaved }: NodeEditorProps) {
-  const incomingText = useMemo(() => serializeNodeData(nodeData), [nodeData]);
-  const [mode, setMode] = useState<NodeEditorMode>("json");
-  const [text, setText] = useState(incomingText);
-  const [instructions, setInstructions] = useState<Instruction[]>([]);
+  const incomingJsonText = useMemo(() => serializeNodeData(nodeData), [nodeData]);
+  const incomingScenarioText = useMemo(() => scenarioTextFromNodeData(nodeData), [nodeData]);
+  const incomingInstructions = useMemo(() => instructionsFromNodeData(nodeData), [nodeData]);
+  const [mode, setMode] = useState<NodeEditorMode>("scenario");
+  const [text, setText] = useState(incomingScenarioText);
+  const [instructions, setInstructions] = useState<Instruction[]>(incomingInstructions);
+  const [lastValidInstructions, setLastValidInstructions] = useState<Instruction[]>(incomingInstructions);
+  const [diagnostics, setDiagnostics] = useState<ScenarioDiagnostic[]>([]);
+  const [cursorOffset, setCursorOffset] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
@@ -131,9 +192,8 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   const [hasExternalUpdate, setHasExternalUpdate] = useState(false);
   const [writeConflict, setWriteConflict] = useState(false);
   const [draftCopyPath, setDraftCopyPath] = useState<string | null>(null);
-  const loadedTextRef = useRef(incomingText);
+  const loadedTextRef = useRef(incomingJsonText);
   const loadedRevisionRef = useRef(project.nodeRevisions?.[node.file] ?? undefined);
-  const blockRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   const nodeIssues = useMemo(() => {
     const file = `content/${node.file}`;
@@ -145,68 +205,107 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   useEffect(() => {
     const incomingRevision = project.nodeRevisions?.[node.file] ?? undefined;
     if (dirty) {
-      if (incomingText !== loadedTextRef.current) {
-        setPendingExternalText(incomingText);
+      if (incomingJsonText !== loadedTextRef.current) {
+        setPendingExternalText(incomingJsonText);
         setHasExternalUpdate(true);
       }
       return;
     }
-    loadedTextRef.current = incomingText;
+    loadedTextRef.current = incomingJsonText;
     loadedRevisionRef.current = incomingRevision;
-    setText(incomingText);
-    try {
-      const parsed = JSON.parse(incomingText);
-      setInstructions(Array.isArray(parsed) ? (parsed as Instruction[]) : []);
-    } catch {
-      setInstructions([]);
-    }
+    setText(mode === "json" ? incomingJsonText : incomingScenarioText);
+    setInstructions(incomingInstructions);
+    setLastValidInstructions(incomingInstructions);
+    setDiagnostics([]);
     setPendingExternalText(null);
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setDraftCopyPath(null);
     setStatus("");
-  }, [incomingText, dirty, node.file, project.nodeRevisions]);
+  }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
 
-  const outline = useMemo(() => {
-    try {
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) return [];
-      return summarizeInstructions(parsed as Instruction[]);
-    } catch {
-      return [];
-    }
-  }, [text]);
+  const outline = useMemo(() => summarizeInstructions(lastValidInstructions), [lastValidInstructions]);
+  const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
+  const canSave = useMemo(() => {
+    if (mode === "scenario") return diagnostics.length === 0;
+    if (mode === "json") return parseJsonInstructionText(text).ok;
+    return true;
+  }, [diagnostics.length, mode, text]);
 
   useEffect(() => {
     if (!focusRequest?.jsonPath) return;
     const index = instructionIndexFromJsonPath(focusRequest.jsonPath);
     if (index == null) return;
-    if (mode !== "blocks") {
-      setStatus(`节点问题位置：${focusRequest.jsonPath}`);
-      return;
+    setStatus(`节点问题位置：第 ${index + 1} 条指令（${focusRequest.jsonPath}）`);
+  }, [focusRequest]);
+
+  const applyScenarioText = (nextText: string) => {
+    setText(nextText);
+    setDirty(true);
+    setStatus("");
+    const parsed = parseScenarioText(nextText);
+    if (parsed.ok) {
+      setInstructions(parsed.instructions);
+      setLastValidInstructions(parsed.instructions);
+      setDiagnostics([]);
+    } else {
+      setDiagnostics(parsed.diagnostics);
     }
-    blockRefs.current[index]?.scrollIntoView({ block: "center" });
-    setStatus(`已定位到第 ${index + 1} 条指令。`);
-  }, [focusRequest, mode]);
+  };
+
+  const applyJsonText = (nextText: string) => {
+    setText(nextText);
+    setDirty(true);
+    setStatus("");
+    const parsed = parseJsonInstructionText(nextText);
+    if (parsed.ok) {
+      setInstructions(parsed.instructions);
+      setLastValidInstructions(parsed.instructions);
+      setDiagnostics([]);
+    } else {
+      setDiagnostics([{ line: 1, message: parsed.error }]);
+    }
+  };
 
   const applyInstructionList = (next: Instruction[]) => {
     setInstructions(next);
-    setText(JSON.stringify(next, null, 2));
+    setLastValidInstructions(next);
+    setDiagnostics([]);
+    setText(mode === "scenario" ? formatScenarioText(next) : JSON.stringify(next, null, 2));
     setDirty(true);
     setStatus("");
   };
 
+  const buildPayload = (): { ok: true; payload: string; nextInstructions: Instruction[] } | { ok: false; message: string } => {
+    if (mode === "scenario") {
+      const parsed = parseScenarioText(text);
+      if (!parsed.ok) return { ok: false, message: `剧本文本有 ${parsed.diagnostics.length} 个问题，修正后才能保存。` };
+      return { ok: true, payload: JSON.stringify(parsed.instructions, null, 2), nextInstructions: parsed.instructions };
+    }
+    if (mode === "json") {
+      const parsed = parseJsonInstructionText(text);
+      if (!parsed.ok) return { ok: false, message: `JSON 无法保存：${parsed.error}` };
+      return { ok: true, payload: JSON.stringify(parsed.instructions, null, 2), nextInstructions: parsed.instructions };
+    }
+    return { ok: true, payload: JSON.stringify(instructions, null, 2), nextInstructions: instructions };
+  };
+
   const handleSave = async () => {
+    const built = buildPayload();
+    if (!built.ok) {
+      setStatus(built.message);
+      return;
+    }
     setSaving(true);
     setStatus("");
     try {
-      const payload = mode === "blocks"
-        ? JSON.stringify(instructions, null, 2)
-        : JSON.stringify(JSON.parse(text), null, 2);
-      await saveFile(project.path, `content/${node.file}`, payload, loadedRevisionRef.current);
-      loadedTextRef.current = payload;
+      await saveFile(project.path, `content/${node.file}`, built.payload, loadedRevisionRef.current);
+      loadedTextRef.current = built.payload;
       loadedRevisionRef.current = undefined;
-      setText(payload);
+      setInstructions(built.nextInstructions);
+      setLastValidInstructions(built.nextInstructions);
+      setDiagnostics([]);
+      setText(mode === "json" ? built.payload : formatScenarioText(built.nextInstructions));
       setDirty(false);
       setPendingExternalText(null);
       setHasExternalUpdate(false);
@@ -230,21 +329,20 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   };
 
   const handleLoadExternal = () => {
-    if (writeConflict && pendingExternalText == null && incomingText === loadedTextRef.current) {
+    if (writeConflict && pendingExternalText == null && incomingJsonText === loadedTextRef.current) {
       setStatus("正在载入外部版本…");
       void onSaved();
       return;
     }
-    const nextText = pendingExternalText ?? incomingText;
-    loadedTextRef.current = nextText;
+    const nextJsonText = pendingExternalText ?? incomingJsonText;
+    const parsed = parseJsonInstructionText(nextJsonText);
+    const nextInstructions = parsed.ok ? parsed.instructions : [];
+    loadedTextRef.current = nextJsonText;
     loadedRevisionRef.current = project.nodeRevisions?.[node.file] ?? undefined;
-    setText(nextText);
-    try {
-      const parsed = JSON.parse(nextText);
-      setInstructions(Array.isArray(parsed) ? (parsed as Instruction[]) : []);
-    } catch {
-      setInstructions([]);
-    }
+    setText(mode === "json" ? nextJsonText : formatScenarioText(nextInstructions));
+    setInstructions(nextInstructions);
+    setLastValidInstructions(nextInstructions);
+    setDiagnostics(parsed.ok ? [] : [{ line: 1, message: parsed.error }]);
     setDirty(false);
     setPendingExternalText(null);
     setHasExternalUpdate(false);
@@ -254,14 +352,16 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   };
 
   const handleSaveDraftCopy = async () => {
+    const built = buildPayload();
+    if (!built.ok) {
+      setStatus(built.message);
+      return;
+    }
     setSaving(true);
     setStatus("");
     try {
-      const payload = mode === "blocks"
-        ? JSON.stringify(instructions, null, 2)
-        : JSON.stringify(JSON.parse(text), null, 2);
       const copyPath = conflictDraftCopyPath(node.file, Date.now());
-      await saveFile(project.path, `content/${copyPath}`, payload);
+      await saveFile(project.path, `content/${copyPath}`, built.payload);
       setDraftCopyPath(copyPath);
       setStatus(`草稿副本已保存: ${copyPath}`);
       onSaved();
@@ -273,141 +373,148 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   };
 
   const handleInsert = (kind: InsertableKind) => {
-    try {
-      const base = mode === "blocks" ? instructions : JSON.parse(text);
-      if (!Array.isArray(base)) {
-        setStatus("插入失败: 节点内容不是 JSON 数组");
-        return;
-      }
-      applyInstructionList(insertInstructionAt(base as Instruction[], base.length, defaultInstruction(kind)));
-    } catch (error) {
-      setStatus(`插入失败: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    applyInstructionList(insertInstructionAt(lastValidInstructions, lastValidInstructions.length, defaultScenarioInstruction(kind, project)));
   };
 
   const handleModeToggle = (nextMode: NodeEditorMode) => {
     if (nextMode === mode) return;
-    const next = transitionNodeEditorMode({ mode, text, instructions });
-    if (next.error) {
-      setStatus(next.error);
+    if (nextMode === "json") {
+      const built = buildPayload();
+      if (!built.ok) {
+        setStatus(built.message);
+        return;
+      }
+      setMode("json");
+      setText(built.payload);
+      setInstructions(built.nextInstructions);
+      setLastValidInstructions(built.nextInstructions);
+      setDiagnostics([]);
+      setStatus("");
       return;
     }
-    setMode(next.mode);
-    setText(next.text);
-    setInstructions(next.instructions);
+    const parsed = parseJsonInstructionText(text);
+    const nextInstructions = mode === "json" && parsed.ok ? parsed.instructions : lastValidInstructions;
+    if (mode === "json" && !parsed.ok) {
+      setStatus(`切换失败：${parsed.error}`);
+      return;
+    }
+    setMode("scenario");
+    setText(formatScenarioText(nextInstructions));
+    setInstructions(nextInstructions);
+    setLastValidInstructions(nextInstructions);
+    setDiagnostics([]);
     setStatus("");
   };
 
-  return (
-    <div style={containerStyle}>
-      <div style={editorPaneStyle}>
-        <div style={toolbarStyle}>
-          <div style={titleGroupStyle}>
-            <div style={titleStyle}>{node.title}</div>
-            <div style={metaStyle}>{node.file}</div>
-          </div>
-          <div style={toolbarSpacerStyle} />
-          <button type="button" onClick={() => handleModeToggle("json")} style={toggleButtonStyle}>JSON</button>
-          <button type="button" onClick={() => handleModeToggle("blocks")} style={toggleButtonStyle}>块编辑</button>
-          {dirty && <span style={{ ...statusTextStyle, color: "var(--status-warn-text)" }}>未保存</span>}
-          {hasExternalUpdate && !writeConflict && (
-            <button type="button" onClick={handleLoadExternal} style={loadButtonStyle}>
-              外部已更新，点击载入
-            </button>
-          )}
-          {writeConflict && (
-            <>
-              <button type="button" onClick={handleLoadExternal} style={loadButtonStyle}>
-                载入外部版本
-              </button>
-              <button type="button" onClick={handleSaveDraftCopy} disabled={saving} style={loadButtonStyle}>
-                另存为副本
-              </button>
-            </>
-          )}
-          {status && (
-            <span style={{ ...statusTextStyle, color: status.startsWith("保存失败") || status.startsWith("另存为副本失败") ? "var(--status-error-text)" : "var(--status-ok-text)" }}>
-              {status}
-            </span>
-          )}
-          {draftCopyPath && <span style={statusTextStyle}>{draftCopyPath}</span>}
-          <button type="button" onClick={handleSave} disabled={saving} style={saveButtonStyle}>
-            {saving ? "保存中…" : "保存"}
+  const editor = (
+    <div style={editorPaneStyle}>
+      <div style={toolbarStyle}>
+        <div style={titleGroupStyle}>
+          <div style={titleStyle}>{node.title}</div>
+          <div style={metaStyle}>{node.file}</div>
+        </div>
+        <div style={toolbarSpacerStyle} />
+        <button type="button" onClick={() => handleModeToggle("scenario")} style={toggleButtonStyle}>剧本</button>
+        <button type="button" onClick={() => handleModeToggle("json")} style={toggleButtonStyle}>JSON</button>
+        {dirty && <span style={{ ...statusTextStyle, color: "var(--status-warn-text)" }}>未保存</span>}
+        {diagnostics.length > 0 && <span style={{ ...statusTextStyle, color: "var(--status-error-text)" }}>剧本有 {diagnostics.length} 个问题</span>}
+        {hasExternalUpdate && !writeConflict && (
+          <button type="button" onClick={handleLoadExternal} style={loadButtonStyle}>
+            外部已更新，点击载入
           </button>
-        </div>
-        <div style={asideStyle}>
-          <div style={insertBarStyle}>
-            {INSERT_BUTTONS.map((btn) => (
-              <button key={btn.kind} type="button" onClick={() => handleInsert(btn.kind)} style={insertBtnStyle}>
-                + {btn.label}
-              </button>
-            ))}
-          </div>
-          <div style={outlineStyle}>
-            <div style={outlineTitleStyle}>大纲（say / narrate / bg / bgm）</div>
-            {outline.length === 0 ? (
-              <div style={outlineEmptyStyle}>暂无可摘要指令</div>
-            ) : (
-              outline.map((item) => (
-                <button key={`${item.index}-${item.kind}`} type="button" style={outlineItemStyle}>
-                  <span style={{ ...outlineKindStyle, ...kindColor(item.kind) }}>{item.kind}</span>
-                  <span style={outlineLabelStyle}>{item.label}</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-        {mode === "blocks" ? (
-          <div style={blocksStyle}>
-            {instructions.map((instruction, index) => (
-              <div
-                key={`${instruction.t}-${index}`}
-                ref={(element) => {
-                  blockRefs.current[index] = element;
-                }}
-              >
-                <InstructionBlock
-                  index={index}
-                  instruction={instruction}
-                  manifest={project.content.manifest as EngineManifest}
-                  graphNodes={project.graph?.nodes ?? []}
-                  issues={nodeIssues.filter((issue) => issue.instructionIndex === index)}
-                  onUpdate={(nextInstruction) => {
-                    const next = instructions.slice();
-                    next[index] = nextInstruction;
-                    applyInstructionList(next);
-                  }}
-                  onDuplicate={() => applyInstructionList(duplicateInstruction(instructions, index))}
-                  onDelete={() => applyInstructionList(deleteInstruction(instructions, index))}
-                  onMoveUp={() => applyInstructionList(moveInstruction(instructions, index, index - 1))}
-                  onMoveDown={() => applyInstructionList(moveInstruction(instructions, index, index + 1))}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <textarea
-            value={text}
-            onChange={(event) => {
-              setText(event.target.value);
-              setDirty(true);
-            }}
-            spellCheck={false}
-            style={textareaStyle}
-          />
         )}
+        {writeConflict && (
+          <>
+            <button type="button" onClick={handleLoadExternal} style={loadButtonStyle}>
+              载入外部版本
+            </button>
+            <button type="button" onClick={handleSaveDraftCopy} disabled={saving} style={loadButtonStyle}>
+              另存为副本
+            </button>
+          </>
+        )}
+        {status && (
+          <span style={{ ...statusTextStyle, color: status.includes("失败") || status.includes("问题") ? "var(--status-error-text)" : "var(--status-ok-text)" }}>
+            {status}
+          </span>
+        )}
+        {draftCopyPath && <span style={statusTextStyle}>{draftCopyPath}</span>}
+        <button type="button" onClick={handleSave} disabled={saving || !canSave} style={saveButtonStyle}>
+          {saving ? "保存中…" : "保存"}
+        </button>
       </div>
-      <div style={previewPaneStyle}>
-        <NodePreviewPanel
-          key={`${rendererId}:${node.id}`}
-          project={project}
-          rendererId={rendererId}
-          node={node}
-          nodeData={nodeData}
-        />
+      <div style={asideStyle}>
+        <div style={insertBarStyle}>
+          {INSERT_BUTTONS.map((btn) => (
+            <button key={btn.kind} type="button" onClick={() => handleInsert(btn.kind)} style={insertBtnStyle}>
+              + {btn.label}
+            </button>
+          ))}
+        </div>
+        <div style={outlineStyle}>
+          <div style={outlineTitleStyle}>大纲（SAY / NARRATE / BG / BGM / CHOICE）</div>
+          {outline.length === 0 ? (
+            <div style={outlineEmptyStyle}>暂无可摘要指令</div>
+          ) : (
+            outline.map((item) => (
+              <button key={`${item.index}-${item.kind}`} type="button" style={outlineItemStyle}>
+                <span style={{ ...outlineKindStyle, ...kindColor(item.kind) }}>{item.kind}</span>
+                <span style={outlineLabelStyle}>{item.label}</span>
+              </button>
+            ))
+          )}
+        </div>
       </div>
+      <textarea
+        value={text}
+        onChange={(event) => {
+          if (mode === "scenario") applyScenarioText(event.target.value);
+          else applyJsonText(event.target.value);
+        }}
+        onSelect={(event) => setCursorOffset(event.currentTarget.selectionStart)}
+        onClick={(event) => setCursorOffset(event.currentTarget.selectionStart)}
+        onKeyUp={(event) => setCursorOffset(event.currentTarget.selectionStart)}
+        spellCheck={false}
+        style={mode === "scenario" ? scenarioTextareaStyle : textareaStyle}
+      />
     </div>
   );
+
+  const preview = (
+    <NodePreviewPanel
+      key={`${rendererId}:${node.id}`}
+      project={project}
+      rendererId={rendererId}
+      node={node}
+      nodeData={lastValidInstructions}
+    />
+  );
+
+  const inspector = mode === "scenario" ? (
+    <ScenarioInspector
+      selection={scenarioSelection}
+      manifest={project.content.manifest}
+      graphNodes={project.graph?.nodes ?? []}
+      diagnostics={diagnostics}
+      onReplaceInstruction={(instruction) => applyScenarioText(replaceScenarioSelectionInstruction(text, scenarioSelection, instruction))}
+    />
+  ) : (
+    <div style={jsonInspectorStyle}>
+      <div style={titleStyle}>JSON 高级模式</div>
+      <div style={outlineEmptyStyle}>返回剧本模式后可使用 Inspector 编辑当前行。</div>
+      {nodeIssues.length > 0 && (
+        <div style={issueListStyle}>
+          {nodeIssues.map((issue) => (
+            <div key={`${issue.code}-${issue.jsonPath ?? issue.message}`} style={issueItemStyle}>
+              {issue.code}: {issue.message}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return <ScenarioNodeLayout editor={editor} preview={preview} inspector={inspector} />;
 }
 
 export function InstructionBlock({
@@ -809,24 +916,11 @@ function PreviewMessage({ children, mono = false }: { children: React.ReactNode;
   );
 }
 
-const containerStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 44%)",
-  width: "100%",
-  height: "100%",
-  background: "var(--bg-inset)",
-};
-
 const editorPaneStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   minWidth: 0,
   borderRight: "1px solid var(--border)",
-};
-
-const previewPaneStyle: React.CSSProperties = {
-  minWidth: 0,
-  background: "var(--bg-app)",
 };
 
 const toolbarStyle: React.CSSProperties = {
@@ -906,6 +1000,19 @@ const textareaStyle: React.CSSProperties = {
   lineHeight: 1.6,
 };
 
+const scenarioTextareaStyle: React.CSSProperties = {
+  ...textareaStyle,
+  fontFamily: "ui-monospace, 'SF Mono', monospace",
+  fontSize: 14,
+  lineHeight: 1.7,
+};
+
+const jsonInspectorStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  padding: 16,
+};
+
 const asideStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -979,14 +1086,6 @@ const outlineLabelStyle: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-};
-
-const blocksStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 12,
-  padding: 16,
-  overflowY: "auto",
 };
 
 const blockStyle: React.CSSProperties = {

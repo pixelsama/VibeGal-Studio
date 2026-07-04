@@ -181,43 +181,41 @@ export class NovelPlayer {
     this.clearTyping();
     this.clearAuto();
 
-    if (this.ip >= this.flat.length) {
-      // 播放完毕，保持终态
-      return;
-    }
-
-    // 推进前清掉上一帧标记 leaving 的立绘（渲染层已播完退场动画）
+    // 推进一帧前清掉上一帧标记 leaving 的立绘（渲染层已播完退场动画）
     if (this.state.sprites.some((s) => s.leaving)) {
       this.state = { ...this.state, sprites: this.state.sprites.filter((s) => !s.leaving) };
     }
 
-    const instr = this.flat[this.ip];
-    this.ip += 1;
-    this.state = applyInstruction(this.state, instr, this.deps);
-    this.state.flags.progress.current = this.ip;
-    this.emit();
+    while (this.ip < this.flat.length) {
+      const instr = this.flat[this.ip];
+      this.ip += 1;
+      this.state = applyInstruction(this.state, instr, this.deps);
+      this.state.flags.progress.current = this.ip;
+      this.emit();
 
-    // 根据指令类型决定后续行为
-    this.afterStep(instr);
+      // 根据指令类型决定这一帧是否到达玩家停点
+      if (this.afterStep(instr)) return;
+    }
   }
 
-  private afterStep(instr: Instruction) {
+  private afterStep(instr: Instruction): boolean {
     switch (instr.t) {
       case "say":
       case "narrate":
         this.startTyping();
-        break;
+        return true;
       case "wait":
         this.startWait(instr.ms);
-        break;
+        return true;
       case "choice":
         this.clearAuto();
-        break;
+        return true;
+      case "pause":
+        this.clearAuto();
+        return true;
       default:
-        // 无文本、无等待的指令：自动顺延，让画面连续
-        if (this.state.flags.isAutoPlay || this.state.flags.isRecording) {
-          this.autoTimer = setTimeout(() => this.stepNext(), 60);
-        }
+        // 无文本、无等待的舞台指令属于当前剧情帧，继续消费直到停点。
+        return false;
     }
   }
 

@@ -17,10 +17,11 @@
 ]
 ```
 
-- **格式 = `Instruction[]`**，沿用 `packages/engine/src/schema.ts` 的 `t` 判别联合（`bg`/`bgm`/`sfx`/`voice`/`char`/`say`/`narrate`/`choice`/`wait`/`effect`/`transition`）。
+- **格式 = `Instruction[]`**，沿用 `packages/engine/src/schema.ts` 的 `t` 判别联合（`bg`/`bgm`/`sfx`/`voice`/`char`/`say`/`narrate`/`choice`/`wait`/`effect`/`transition`/`pause`）。
 - **否决**早期草案里的 `{ "type": "say", "speaker": ... }`。那只是示意，不是契约。
-- 好处：`validateContent`、`NovelPlayer`、`InstructionSchema`、`useProjectPlayer` 全部零改写复用；
-  外部工具/Agent 写节点时可直接参考既有 schema，且预览/校验链路天然打通。
+- 好处：`validateContent`、`NovelPlayer`、`InstructionSchema`、`useProjectPlayer` 共享同一套指令契约；
+  外部工具/Agent 写节点时可直接参考 schema，且预览/校验链路天然打通。
+- Studio 节点编辑器默认显示 Scenario DSL 文本；该文本只是 `Instruction[]` 的可逆投影，保存到磁盘时仍是 JSON 数组。
 
 ### 🟡 1.2 节点粒度由作者决定（推荐场景级）
 

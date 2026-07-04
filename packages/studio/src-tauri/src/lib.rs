@@ -34,6 +34,8 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 - Linear stories are represented as graph nodes connected by edges.
 - Add a node by writing `content/nodes/<id>.json`, then adding a matching item to `content/graph.json` under `nodes`.
 - Node `file` values are relative to `content/`, for example `nodes/start.json`.
+- GalStudio's node editor may show Scenario DSL text, but project files still persist node content as `Instruction[]` JSON.
+- `pause` is a valid instruction for a pure visual story-frame stop. `wait` is a timed wait; `pause` waits for player input.
 - If `content/graph.json` is missing, report a `missing_graph` issue rather than synthesizing legacy chapters.
 - Do not use absolute paths, parent-directory traversal, or Windows drive paths in project data.
 - Keep `edge.condition` as `null` unless GalStudio documents branch semantics.
@@ -105,7 +107,7 @@ renderers/
 
 If `content/graph.json` is missing, GalStudio still opens the project with an empty graph and a `missing_graph` issue. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized.
 
-Node files under `content/nodes/*.json` contain an `Instruction[]` JSON array.
+Node files under `content/nodes/*.json` contain an `Instruction[]` JSON array. The Studio node editor may present this as Scenario DSL text, but the project file on disk remains JSON.
 
 Minimal graph:
 
@@ -132,6 +134,21 @@ Minimal node file:
   { "t": "narrate", "text": "新的故事从这里开始。" }
 ]
 ```
+
+Scenario DSL shown by the Studio editor compiles back to this JSON format. For example:
+
+```text
+@bg classroom fade
+@char akari smile left
+
+akari: 今天也很安静呢。
+
+@choice
+- 开门 -> open_door
+- 装作没听见 -> ignore
+```
+
+Blank lines split story frames. Stage-only frames become `{ "t": "pause" }`, a player-input stop distinct from timed `{ "t": "wait" }`.
 
 ## Schemas
 
@@ -1410,6 +1427,7 @@ pub fn validate_node_contents(
                         &mut issues,
                     );
                 }
+                "pause" => {}
                 _ => {
                     issues.push(node_issue(
                         "instruction_unknown_type",
@@ -4477,6 +4495,23 @@ mod tests {
         assert_eq!(issues[0].code, "instruction_unknown_type");
         assert_eq!(issues[0].json_path.as_deref(), Some("$[0].t"));
         assert_eq!(issues[0].node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn validate_node_contents_accepts_pause_instruction() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                { "t": "bg", "id": "school" },
+                { "t": "pause" },
+                { "t": "narrate", "text": "继续。" }
+            ]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert!(issues.is_empty(), "pause 应被视为合法剧情帧停点: {issues:?}");
     }
 
     #[test]

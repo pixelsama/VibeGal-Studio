@@ -13,3 +13,4 @@ export * from "./AudioEngine";
 export * from "./validate";
 export * from "./assetPath";
 export * from "./renderer";
+export * from "./scenario";

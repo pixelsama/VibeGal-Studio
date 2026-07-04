@@ -100,6 +100,8 @@ export function createInstructionDraft(kind: EditableInstructionKind): Instructi
       return { t: "effect", type: "shake", intensity: 6, ms: 400 };
     case "transition":
       return { t: "transition", type: "fade_in", ms: 1000 };
+    case "pause":
+      return { t: "pause" };
   }
 }
 

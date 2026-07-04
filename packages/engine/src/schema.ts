@@ -87,6 +87,10 @@ export const TransitionInstruction = z.object({
   ms: z.number().int().nonnegative().default(1000),
 });
 
+export const PauseInstruction = z.object({
+  t: z.literal("pause"),
+});
+
 export const InstructionSchema = z.discriminatedUnion("t", [
   BgInstruction,
   BgmInstruction,
@@ -99,6 +103,7 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   WaitInstruction,
   EffectInstruction,
   TransitionInstruction,
+  PauseInstruction,
 ]);
 
 export const ChapterSchema = z.array(InstructionSchema);

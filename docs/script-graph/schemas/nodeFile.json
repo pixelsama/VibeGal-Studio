@@ -304,6 +304,18 @@
           "t",
           "type"
         ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "pause"
+          }
+        },
+        "required": [
+          "t"
+        ]
       }
     ]
   }
