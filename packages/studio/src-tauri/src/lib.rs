@@ -5,6 +5,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -201,8 +202,7 @@ include `file`, `jsonPath`, and `nodeId` when available.
 Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead; if they appear, GalStudio reports them as issues instead of silently using them.
 "#;
 
-const PROJECT_RENDERER_CONTRACT_MD: &str =
-    include_str!("../../../../docs/renderer-contract.md");
+const PROJECT_RENDERER_CONTRACT_MD: &str = include_str!("../../../../docs/renderer-contract.md");
 
 const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
     (
@@ -462,6 +462,19 @@ impl Default for AppSettings {
             theme: ThemeMode::default(),
         }
     }
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CliToolStatus {
+    pub command: String,
+    pub cli_path: String,
+    pub link_path: String,
+    pub installed: bool,
+    pub cli_available: bool,
+    pub link_occupied: bool,
+    pub in_path: bool,
+    pub issue: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -2215,7 +2228,11 @@ pub fn validate_meta_structure(meta: &serde_json::Value) -> Vec<ProjectIssue> {
 
     if let Some(title) = obj.get("title") {
         if !title.is_string() {
-            issues.push(meta_issue("meta_invalid_title", "meta.title 必须是字符串", "$.title"));
+            issues.push(meta_issue(
+                "meta_invalid_title",
+                "meta.title 必须是字符串",
+                "$.title",
+            ));
         }
     }
 
@@ -2229,12 +2246,7 @@ pub fn validate_meta_structure(meta: &serde_json::Value) -> Vec<ProjectIssue> {
         }
     }
 
-    validate_optional_nonnegative_int(
-        obj,
-        "autoAdvanceMs",
-        "$.autoAdvanceMs",
-        &mut issues,
-    );
+    validate_optional_nonnegative_int(obj, "autoAdvanceMs", "$.autoAdvanceMs", &mut issues);
     validate_optional_nonnegative_int(obj, "chapterGapMs", "$.chapterGapMs", &mut issues);
 
     if let Some(stage) = obj.get("stage") {
@@ -2247,14 +2259,7 @@ pub fn validate_meta_structure(meta: &serde_json::Value) -> Vec<ProjectIssue> {
             return issues;
         };
 
-        validate_optional_int_range(
-            stage_obj,
-            "width",
-            "$.stage.width",
-            320,
-            7680,
-            &mut issues,
-        );
+        validate_optional_int_range(stage_obj, "width", "$.stage.width", 320, 7680, &mut issues);
         validate_optional_int_range(
             stage_obj,
             "height",
@@ -3253,7 +3258,11 @@ fn create_renderer(
 }
 
 #[tauri::command]
-fn duplicate_renderer(project_path: String, source_id: String, new_id: String) -> Result<(), String> {
+fn duplicate_renderer(
+    project_path: String,
+    source_id: String,
+    new_id: String,
+) -> Result<(), String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     duplicate_renderer_inner(&project_root, &source_id, &new_id)
 }
@@ -3698,6 +3707,284 @@ fn save_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Res
     atomic_write_text(&path, &json).map_err(|e| format!("写设置失败 ({}): {}", path.display(), e))
 }
 
+// ──────────────────────────────────────────────
+// 命令行工具安装（显式 symlink，不静默修改 PATH）
+// ──────────────────────────────────────────────
+
+const CLI_COMMAND_NAME: &str = "galstudio-cli";
+
+fn cli_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "galstudio-cli.exe"
+    } else {
+        CLI_COMMAND_NAME
+    }
+}
+
+fn cli_sidecar_target_triple() -> Option<&'static str> {
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        Some("aarch64-apple-darwin")
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        Some("x86_64-apple-darwin")
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        Some("x86_64-unknown-linux-gnu")
+    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        Some("x86_64-pc-windows-msvc")
+    } else {
+        None
+    }
+}
+
+fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if cfg!(unix) {
+        paths.push(PathBuf::from("/usr/local/bin").join(CLI_COMMAND_NAME));
+    }
+    if let Ok(home) = env::var("HOME") {
+        paths.push(
+            PathBuf::from(home)
+                .join(".local/bin")
+                .join(CLI_COMMAND_NAME),
+        );
+    }
+    paths
+}
+
+fn cli_tool_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(path) = env::var("GALSTUDIO_CLI_PATH") {
+        candidates.push(PathBuf::from(path));
+    }
+
+    if let Ok(exe) = env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            candidates.push(parent.join(cli_executable_name()));
+            if let Some(triple) = cli_sidecar_target_triple() {
+                candidates.push(parent.join(format!("{}-{}", CLI_COMMAND_NAME, triple)));
+                if cfg!(windows) {
+                    candidates.push(parent.join(format!("{}-{}.exe", CLI_COMMAND_NAME, triple)));
+                }
+            }
+        }
+    }
+
+    if let Ok(resources) = app_handle.path().resource_dir() {
+        candidates.push(resources.join(cli_executable_name()));
+        candidates.push(resources.join("bin").join(cli_executable_name()));
+        if let Some(triple) = cli_sidecar_target_triple() {
+            candidates.push(resources.join(format!("{}-{}", CLI_COMMAND_NAME, triple)));
+            if cfg!(windows) {
+                candidates.push(resources.join(format!("{}-{}.exe", CLI_COMMAND_NAME, triple)));
+            }
+        }
+    }
+
+    candidates
+}
+
+fn resolve_cli_tool_path(app_handle: &tauri::AppHandle) -> PathBuf {
+    let candidates = cli_tool_path_candidates(app_handle);
+    candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned()
+        .or_else(|| candidates.into_iter().next())
+        .unwrap_or_else(|| PathBuf::from(cli_executable_name()))
+}
+
+fn resolve_symlink_target(link_path: &Path, target: PathBuf) -> PathBuf {
+    if target.is_absolute() {
+        target
+    } else {
+        link_path
+            .parent()
+            .map(|parent| parent.join(&target))
+            .unwrap_or(target)
+    }
+}
+
+fn paths_point_to_same_file(a: &Path, b: &Path) -> bool {
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => a == b,
+    }
+}
+
+fn is_managed_cli_symlink(cli_path: &Path, link_path: &Path) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(link_path) else {
+        return false;
+    };
+    if !metadata.file_type().is_symlink() {
+        return false;
+    }
+    let Ok(target) = fs::read_link(link_path) else {
+        return false;
+    };
+    let target = resolve_symlink_target(link_path, target);
+    paths_point_to_same_file(&target, cli_path)
+}
+
+fn path_env_contains_dir(path_env: Option<&str>, dir: &Path) -> bool {
+    let Some(raw_path) = path_env else {
+        return false;
+    };
+    env::split_paths(raw_path).any(|candidate| paths_point_to_same_file(&candidate, dir))
+}
+
+fn cli_tool_status_inner(
+    cli_path: &Path,
+    candidate_link_paths: &[PathBuf],
+    path_env: Option<&str>,
+) -> Result<CliToolStatus, String> {
+    let Some(default_link_path) = candidate_link_paths.first() else {
+        return Err("当前平台没有可用的命令行安装路径".to_string());
+    };
+    let installed_link_path = candidate_link_paths
+        .iter()
+        .find(|path| is_managed_cli_symlink(cli_path, path));
+    let link_path = installed_link_path.unwrap_or(default_link_path);
+    let installed = installed_link_path.is_some();
+    let cli_available = cli_path.is_file();
+    let link_occupied =
+        fs::symlink_metadata(link_path).is_ok() && !is_managed_cli_symlink(cli_path, link_path);
+    let in_path = link_path
+        .parent()
+        .map(|parent| path_env_contains_dir(path_env, parent))
+        .unwrap_or(false);
+    let issue = if !cli_available {
+        Some(format!(
+            "找不到随应用提供的 {}: {}",
+            CLI_COMMAND_NAME,
+            cli_path.display()
+        ))
+    } else if link_occupied {
+        Some(format!(
+            "目标路径已存在且不是 GalStudio 管理的链接: {}",
+            link_path.display()
+        ))
+    } else if installed && !in_path {
+        Some(format!(
+            "{} 已安装，但 {} 不在 PATH 中",
+            CLI_COMMAND_NAME,
+            link_path.parent().unwrap_or(link_path).display()
+        ))
+    } else {
+        None
+    };
+
+    Ok(CliToolStatus {
+        command: CLI_COMMAND_NAME.to_string(),
+        cli_path: cli_path.to_string_lossy().to_string(),
+        link_path: link_path.to_string_lossy().to_string(),
+        installed,
+        cli_available,
+        link_occupied,
+        in_path,
+        issue,
+    })
+}
+
+#[cfg(unix)]
+fn create_cli_tool_symlink(cli_path: &Path, link_path: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(cli_path, link_path).map_err(|e| {
+        format!(
+            "创建命令链接失败 ({} -> {}): {}",
+            link_path.display(),
+            cli_path.display(),
+            e
+        )
+    })
+}
+
+#[cfg(not(unix))]
+fn create_cli_tool_symlink(_cli_path: &Path, _link_path: &Path) -> Result<(), String> {
+    Err("当前平台暂不支持从应用内安装命令行工具".to_string())
+}
+
+fn install_cli_tool_inner(
+    cli_path: &Path,
+    candidate_link_paths: &[PathBuf],
+    path_env: Option<&str>,
+) -> Result<CliToolStatus, String> {
+    if !cli_path.is_file() {
+        return Err(format!(
+            "找不到随应用提供的 {}: {}",
+            CLI_COMMAND_NAME,
+            cli_path.display()
+        ));
+    }
+    if candidate_link_paths.is_empty() {
+        return Err("当前平台没有可用的命令行安装路径".to_string());
+    }
+
+    let mut fallback_error: Option<String> = None;
+    for link_path in candidate_link_paths {
+        if is_managed_cli_symlink(cli_path, link_path) {
+            return cli_tool_status_inner(cli_path, candidate_link_paths, path_env);
+        }
+        if fs::symlink_metadata(link_path).is_ok() {
+            return Err(format!(
+                "目标路径已存在且不是 GalStudio 管理的命令: {}",
+                link_path.display()
+            ));
+        }
+        if let Some(parent) = link_path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                fallback_error = Some(format!(
+                    "创建命令目录失败 ({}): {}",
+                    parent.display(),
+                    error
+                ));
+                continue;
+            }
+        }
+        match create_cli_tool_symlink(cli_path, link_path) {
+            Ok(()) => return cli_tool_status_inner(cli_path, candidate_link_paths, path_env),
+            Err(error) => fallback_error = Some(error),
+        }
+    }
+
+    Err(fallback_error.unwrap_or_else(|| "安装命令行工具失败".to_string()))
+}
+
+fn uninstall_cli_tool_inner(
+    cli_path: &Path,
+    candidate_link_paths: &[PathBuf],
+    path_env: Option<&str>,
+) -> Result<CliToolStatus, String> {
+    for link_path in candidate_link_paths {
+        if is_managed_cli_symlink(cli_path, link_path) {
+            fs::remove_file(link_path)
+                .map_err(|e| format!("移除命令链接失败 ({}): {}", link_path.display(), e))?;
+        }
+    }
+    cli_tool_status_inner(cli_path, candidate_link_paths, path_env)
+}
+
+#[tauri::command]
+fn cli_tool_status(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
+    let cli_path = resolve_cli_tool_path(&app_handle);
+    let link_paths = cli_tool_candidate_link_paths();
+    let path_env = env::var("PATH").ok();
+    cli_tool_status_inner(&cli_path, &link_paths, path_env.as_deref())
+}
+
+#[tauri::command]
+fn install_cli_tool(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
+    let cli_path = resolve_cli_tool_path(&app_handle);
+    let link_paths = cli_tool_candidate_link_paths();
+    let path_env = env::var("PATH").ok();
+    install_cli_tool_inner(&cli_path, &link_paths, path_env.as_deref())
+}
+
+#[tauri::command]
+fn uninstall_cli_tool(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
+    let cli_path = resolve_cli_tool_path(&app_handle);
+    let link_paths = cli_tool_candidate_link_paths();
+    let path_env = env::var("PATH").ok();
+    uninstall_cli_tool_inner(&cli_path, &link_paths, path_env.as_deref())
+}
+
 fn ensure_initialization_targets_available(
     project_path: &Path,
     default_renderer_dir: &Path,
@@ -3816,6 +4103,9 @@ pub fn run() {
             save_manifest,
             load_app_settings,
             save_app_settings,
+            cli_tool_status,
+            install_cli_tool,
+            uninstall_cli_tool,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -4511,7 +4801,10 @@ mod tests {
 
         let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
 
-        assert!(issues.is_empty(), "pause 应被视为合法剧情帧停点: {issues:?}");
+        assert!(
+            issues.is_empty(),
+            "pause 应被视为合法剧情帧停点: {issues:?}"
+        );
     }
 
     #[test]
@@ -6172,5 +6465,68 @@ mod tests {
     fn app_settings_deserialize_unknown_theme_uses_default() {
         let back: AppSettings = serde_json::from_str(r#"{"theme":"solarized"}"#).unwrap();
         assert_eq!(back.theme, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn cli_tool_status_detects_managed_symlink() {
+        let root = unique_temp_dir("cli-status");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let cli = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(cli.parent().unwrap()).unwrap();
+        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+
+        create_cli_tool_symlink(&cli, &link).unwrap();
+        let status =
+            cli_tool_status_inner(&cli, &[link.clone()], Some(bin_dir.to_str().unwrap())).unwrap();
+
+        assert!(status.installed);
+        assert!(status.cli_available);
+        assert!(!status.link_occupied);
+        assert!(status.in_path);
+        assert_eq!(status.link_path, link.to_string_lossy());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn install_cli_tool_refuses_to_overwrite_existing_command() {
+        let root = unique_temp_dir("cli-install-occupied");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let cli = root.join("galstudio-cli-source");
+        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+        fs::write(&link, "someone else's command").unwrap();
+
+        let error = install_cli_tool_inner(&cli, &[link.clone()], Some(bin_dir.to_str().unwrap()))
+            .unwrap_err();
+
+        assert!(error.contains("已存在"));
+        assert_eq!(fs::read_to_string(&link).unwrap(), "someone else's command");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn uninstall_cli_tool_only_removes_managed_symlink() {
+        let root = unique_temp_dir("cli-uninstall");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let cli = root.join("galstudio-cli-source");
+        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+        create_cli_tool_symlink(&cli, &link).unwrap();
+
+        let status =
+            uninstall_cli_tool_inner(&cli, &[link.clone()], Some(bin_dir.to_str().unwrap()))
+                .unwrap();
+
+        assert!(!link.exists());
+        assert!(!status.installed);
+        assert!(status.cli_available);
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

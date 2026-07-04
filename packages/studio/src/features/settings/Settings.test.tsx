@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, isValidElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Settings } from "./Settings";
+import { AppearanceSection, CommandLineToolSection, Settings } from "./Settings";
 import type { AppSettings } from "../../lib/theme";
+import type { CliToolStatus } from "../../lib/tauri";
 
 const noop = () => {};
 
@@ -40,11 +41,9 @@ describe("Settings", () => {
   it("点击主题卡片调用 onUpdate", () => {
     const onUpdate = vi.fn();
     const tree = resolveFunctionComponents(
-      <Settings
+      <AppearanceSection
         settings={{ theme: "dark" } as AppSettings}
         onUpdate={onUpdate}
-        onBack={noop}
-        canGoBack
       />,
     );
     const lightButton = findButtonByText(tree, "浅色");
@@ -64,6 +63,73 @@ describe("Settings", () => {
       />,
     );
     expect(html).toContain("disabled");
+  });
+
+  it("显示命令行工具安装状态与操作", () => {
+    const status: CliToolStatus = {
+      command: "galstudio-cli",
+      cliPath: "/Applications/GalStudio.app/Contents/MacOS/galstudio-cli",
+      linkPath: "/Users/me/.local/bin/galstudio-cli",
+      installed: false,
+      cliAvailable: true,
+      linkOccupied: false,
+      inPath: true,
+      issue: null,
+    };
+
+    const html = renderToStaticMarkup(
+      <CommandLineToolSection
+        status={status}
+        busy={false}
+        error={null}
+        message={null}
+        onRefresh={noop}
+        onInstall={noop}
+        onUninstall={noop}
+      />,
+    );
+
+    expect(html).toContain("命令行工具");
+    expect(html).toContain("galstudio-cli");
+    expect(html).toContain("未安装到 PATH");
+    expect(html).toContain("安装 galstudio-cli");
+    expect(html).toContain("重新检查");
+  });
+
+  it("点击命令行工具按钮调用对应动作", () => {
+    const onInstall = vi.fn();
+    const onUninstall = vi.fn();
+    const onRefresh = vi.fn();
+    const status: CliToolStatus = {
+      command: "galstudio-cli",
+      cliPath: "/Applications/GalStudio.app/Contents/MacOS/galstudio-cli",
+      linkPath: "/Users/me/.local/bin/galstudio-cli",
+      installed: true,
+      cliAvailable: true,
+      linkOccupied: false,
+      inPath: true,
+      issue: null,
+    };
+
+    const tree = resolveFunctionComponents(
+      <CommandLineToolSection
+        status={status}
+        busy={false}
+        error={null}
+        message={null}
+        onRefresh={onRefresh}
+        onInstall={onInstall}
+        onUninstall={onUninstall}
+      />,
+    );
+
+    findButtonByText(tree, "重新检查")?.props.onClick?.();
+    findButtonByText(tree, "卸载")?.props.onClick?.();
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onUninstall).toHaveBeenCalledTimes(1);
+    expect(findButtonByText(tree, "安装 galstudio-cli")?.props.disabled).toBe(true);
+    expect(onInstall).not.toHaveBeenCalled();
   });
 });
 
@@ -86,7 +152,7 @@ function resolveFunctionComponents(node: ReactNode): ReactNode {
   };
 }
 
-function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void } } | null {
+function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void; disabled?: boolean } } | null {
   if (Array.isArray(node)) {
     for (const child of node) {
       const found = findButtonByText(child, text);
