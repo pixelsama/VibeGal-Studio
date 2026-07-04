@@ -1,50 +1,60 @@
-/**
- * Settings —— 全局设置页（独立全屏，模式同 ProjectList）。
- *
- * 通过导航栈进入（{ type: "settings" }），返回按钮回到来源位置。
- * 主题切换实时生效：updateSettings → applyTheme → <html data-theme> → CSS 变量。
- */
 import type { AppSettings, ThemeMode } from "../../lib/theme";
+import { t } from "../../lib/i18n";
 
 interface SettingsProps {
   settings: AppSettings;
   onUpdate: (next: Partial<AppSettings>) => void | Promise<void>;
-  onBack: () => void;
-  canGoBack: boolean;
+  presentation?: "embedded" | "standalone";
+  onBack?: () => void;
+  canGoBack?: boolean;
 }
 
-export function Settings({ settings, onUpdate, onBack, canGoBack }: SettingsProps) {
+export function Settings({
+  settings,
+  onUpdate,
+  presentation = "standalone",
+  onBack,
+  canGoBack = false,
+}: SettingsProps) {
+  const content = (
+    <div style={contentStyle}>
+      <section style={sectionStyle}>
+        <h2 style={sectionTitleStyle}>{t("settings.appearance.title")}</h2>
+        <p style={sectionDescStyle}>{t("settings.appearance.description")}</p>
+        <div style={themeCardRowStyle}>
+          <ThemeCard
+            mode="dark"
+            active={settings.theme === "dark"}
+            onSelect={() => void onUpdate({ theme: "dark" })}
+          />
+          <ThemeCard
+            mode="light"
+            active={settings.theme === "light"}
+            onSelect={() => void onUpdate({ theme: "light" })}
+          />
+        </div>
+      </section>
+    </div>
+  );
+
+  if (presentation === "embedded") {
+    return <div style={embeddedPageStyle}>{content}</div>;
+  }
+
   return (
     <div style={pageStyle}>
       {/* 顶部导航条（自定义拖拽区） */}
       <header data-tauri-drag-region style={headerStyle}>
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <NavBtn onClick={onBack} disabled={!canGoBack} label="后退" ariaLabel="后退">‹</NavBtn>
+          <NavBtn onClick={onBack ?? noop} disabled={!canGoBack || !onBack} label={t("navigation.back")} ariaLabel={t("navigation.back")}>‹</NavBtn>
         </div>
         <div data-tauri-drag-region style={titleGroupStyle}>
-          <span style={titleStyle}>设置</span>
+          <span style={titleStyle}>{t("settings.title")}</span>
         </div>
         <div style={{ marginLeft: "auto" }} />
       </header>
 
-      <div style={contentStyle}>
-        <section style={sectionStyle}>
-          <h2 style={sectionTitleStyle}>外观</h2>
-          <p style={sectionDescStyle}>选择编辑器界面的配色主题。预览区（游戏渲染层）不受影响。</p>
-          <div style={themeCardRowStyle}>
-            <ThemeCard
-              mode="dark"
-              active={settings.theme === "dark"}
-              onSelect={() => void onUpdate({ theme: "dark" })}
-            />
-            <ThemeCard
-              mode="light"
-              active={settings.theme === "light"}
-              onSelect={() => void onUpdate({ theme: "light" })}
-            />
-          </div>
-        </section>
-      </div>
+      {content}
     </div>
   );
 }
@@ -59,7 +69,7 @@ function ThemeCard({
   active: boolean;
   onSelect: () => void;
 }) {
-  const label = mode === "dark" ? "深色" : "浅色";
+  const label = mode === "dark" ? t("settings.theme.dark") : t("settings.theme.light");
   return (
     <button
       type="button"
@@ -80,11 +90,13 @@ function ThemeCard({
       </div>
       <div style={themeCardMetaStyle}>
         <span style={themeCardLabelStyle}>{label}</span>
-        {active && <span style={activeTagStyle}>当前</span>}
+        {active && <span style={activeTagStyle}>{t("settings.theme.current")}</span>}
       </div>
     </button>
   );
 }
+
+function noop() {}
 
 function NavBtn({
   children,
@@ -129,6 +141,12 @@ function NavBtn({
 const pageStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
+  width: "100%",
+  height: "100%",
+  background: "var(--bg-app)",
+};
+
+const embeddedPageStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   background: "var(--bg-app)",

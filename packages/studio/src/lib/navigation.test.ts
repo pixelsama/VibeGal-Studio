@@ -62,7 +62,10 @@ describe("semantic navigation history", () => {
     expect(state.index).toBe(0);
   });
 
-  it("maps script locations to the Script workspace tab", () => {
+  it("maps project locations to workspace tabs", () => {
+    expect(workspaceFromLocation({ type: "workspace", workspace: "render" })).toBe("render");
+    expect(workspaceFromLocation({ type: "workspace", workspace: "assets" })).toBe("assets");
+    expect(workspaceFromLocation({ type: "workspace", workspace: "settings" })).toBe("settings");
     expect(workspaceFromLocation({ type: "script-node", nodeId: "intro" })).toBe("script");
     expect(workspaceFromLocation({ type: "script-graph" })).toBe("script");
     expect(workspaceFromLocation({ type: "project-list" })).toBeNull();
@@ -74,8 +77,8 @@ describe("semantic navigation history", () => {
 
   it("can navigate to settings and back", () => {
     let state = createNavigationState({ type: "workspace", workspace: "render" });
-    state = pushLocation(state, { type: "settings" });
-    expect(currentLocation(state)).toEqual({ type: "settings" });
+    state = pushLocation(state, { type: "workspace", workspace: "settings" });
+    expect(currentLocation(state)).toEqual({ type: "workspace", workspace: "settings" });
     expect(canGoBack(state)).toBe(true);
 
     state = goBack(state);

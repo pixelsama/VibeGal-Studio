@@ -4,6 +4,7 @@ import { Settings } from "./features/settings/Settings";
 import { Workspace } from "./Workspace";
 import type { ProjectData } from "./lib/types";
 import { useAppSettings } from "./lib/theme";
+import { t } from "./lib/i18n";
 import {
   canGoBack,
   canGoForward,
@@ -51,11 +52,11 @@ export default function App() {
   }, []);
 
   const openSettings = useCallback(() => {
-    navigate({ type: "settings" });
-  }, [navigate]);
+    navigate(project ? { type: "workspace", workspace: "settings" } : { type: "settings" });
+  }, [navigate, project]);
 
   if (loading) {
-    return <div role="status" aria-label="正在加载设置" style={bootstrapStyle} />;
+    return <div role="status" aria-label={t("app.loadingSettings")} style={bootstrapStyle} />;
   }
 
   // 设置页：独立全屏，可从项目列表或工作台进入
@@ -66,6 +67,7 @@ export default function App() {
         onUpdate={updateSettings}
         onBack={handleBack}
         canGoBack={backEnabled}
+        presentation="standalone"
       />
     );
   }
@@ -94,7 +96,8 @@ export default function App() {
       onNavigate={navigate}
       onReplaceLocation={replaceNavigation}
       onProjectChanged={handleProjectChanged}
-      onOpenSettings={openSettings}
+      settings={settings}
+      onUpdateSettings={updateSettings}
     />
   );
 }

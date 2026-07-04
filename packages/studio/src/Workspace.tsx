@@ -1,8 +1,8 @@
 /**
  * Workspace —— 打开项目后的工作台。
  *
- * 顶部：项目名 + 渲染层切换 + 返回
- * 内容区：Render / Script / Assets 三工作台
+ * 顶部：项目名 + 渲染层状态 + 返回
+ * 内容区：渲染 / 脚本 / 资产 / 设置
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -11,12 +11,15 @@ import type { GraphIssueFocusRequest, ProjectData } from "./lib/types";
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
+import { Settings } from "./features/settings/Settings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
 import { RendererSidebar } from "./features/renderers/RendererSidebar";
 import { openProject, saveProjectMeta, unwatchProject, watchProject } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
+import type { AppSettings } from "./lib/theme";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
+import { t } from "./lib/i18n";
 
 interface Props {
   project: ProjectData;
@@ -29,7 +32,8 @@ interface Props {
   onReplaceLocation: (next: NavigationLocation) => void;
   /** 项目被刷新后（编辑保存触发）通知上层更新 */
   onProjectChanged: (p: ProjectData) => void;
-  onOpenSettings: () => void;
+  settings: AppSettings;
+  onUpdateSettings: (next: Partial<AppSettings>) => void | Promise<void>;
 }
 
 type SyncState = "synced" | "syncing" | "error";
@@ -70,7 +74,8 @@ export function Workspace({
   onNavigate,
   onReplaceLocation,
   onProjectChanged,
-  onOpenSettings,
+  settings,
+  onUpdateSettings,
 }: Props) {
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -158,7 +163,7 @@ export function Workspace({
   }, []);
 
   const report = project.projectReport ?? { projectIssues: [] };
-  const rendererStatusText = rendererId || "无渲染层";
+  const rendererStatusText = rendererId || t("workspace.noRenderer");
 
   const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string }) => {
     const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1);
@@ -180,26 +185,18 @@ export function Workspace({
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
         <div data-tauri-drag-region style={centerGroupStyle}>
-          <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>Render</TabBtn>
-          <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>Script</TabBtn>
-          <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>Assets</TabBtn>
+          <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>{t("workspace.tab.render")}</TabBtn>
+          <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>{t("workspace.tab.script")}</TabBtn>
+          <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>{t("workspace.tab.assets")}</TabBtn>
+          <TabBtn active={workspace === "settings"} onClick={() => onNavigate({ type: "workspace", workspace: "settings" })}>{t("workspace.tab.settings")}</TabBtn>
         </div>
 
-        {/* 右侧：项目名 + 同步指示器 + 渲染层 + 设置 */}
+        {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={projectNameStyle}>{project.meta.name}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
-          <span style={rendererLabelStyle}>当前渲染层</span>
+          <span style={rendererLabelStyle}>{t("workspace.currentRenderer")}</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="设置"
-            title="设置"
-            style={settingsBtnStyle}
-          >
-            ⚙
-          </button>
         </div>
       </header>
 
@@ -247,6 +244,13 @@ export function Workspace({
             sidebarCollapsed={assetsSidebarCollapsed}
             onSidebarCollapsedChange={setAssetsSidebarCollapsed}
             onSaved={handleSaved}
+          />
+        )}
+        {workspace === "settings" && (
+          <Settings
+            settings={settings}
+            onUpdate={onUpdateSettings}
+            presentation="embedded"
           />
         )}
       </div>
@@ -382,18 +386,6 @@ const navBtnStyle: React.CSSProperties = {
   lineHeight: 1,
   cursor: "pointer",
 };
-const settingsBtnStyle: React.CSSProperties = {
-  width: 26,
-  height: 26,
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  background: "transparent",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  fontSize: 14,
-  lineHeight: 1,
-};
-
 const projectNameStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,

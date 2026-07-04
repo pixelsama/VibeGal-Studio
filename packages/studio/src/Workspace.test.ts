@@ -25,6 +25,10 @@ vi.mock("./features/assets/AssetsWorkspace", () => ({
   AssetsWorkspace: () => createElement("div", { "data-testid": "assets-workspace" }),
 }));
 
+vi.mock("./features/settings/Settings", () => ({
+  Settings: () => createElement("div", { "data-testid": "settings-workspace" }, "设置内容"),
+}));
+
 vi.mock("./features/common/StatusPanel", () => ({
   StatusPanel: () => createElement("div", { "data-testid": "status-panel" }),
 }));
@@ -96,10 +100,37 @@ describe("Workspace renderer chrome", () => {
       onNavigate: () => {},
       onReplaceLocation: () => {},
       onProjectChanged: () => {},
+      settings: { theme: "dark" },
+      onUpdateSettings: () => {},
     }));
 
     expect(html).toContain("当前渲染层");
     expect(html).toContain("default");
     expect(html).not.toContain("<select");
+  });
+
+  it("renders Chinese workspace tabs with Settings alongside the project workspaces", () => {
+    const html = renderToStaticMarkup(createElement(Workspace, {
+      project,
+      location: { type: "workspace", workspace: "settings" },
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      settings: { theme: "dark" },
+      onUpdateSettings: () => {},
+    }));
+
+    expect(html).toContain("渲染");
+    expect(html).toContain("脚本");
+    expect(html).toContain("资产");
+    expect(html).toContain("设置");
+    expect(html).not.toContain(">Render<");
+    expect(html).not.toContain(">Script<");
+    expect(html).not.toContain(">Assets<");
+    expect(html).toContain("设置内容");
   });
 });

@@ -1,3 +1,5 @@
+import { t } from "../../lib/i18n";
+
 interface BreadcrumbProps {
   view: "graph" | "node";
   selectedNodeTitle: string | null;
@@ -7,7 +9,7 @@ interface BreadcrumbProps {
 export function Breadcrumb({ view, selectedNodeTitle, onBackToGraph }: BreadcrumbProps) {
   return (
     <div style={containerStyle}>
-      <span style={rootLabelStyle}>Script</span>
+      <span style={rootLabelStyle}>{t("script.title")}</span>
       <span style={separatorStyle}>/</span>
       {view === "graph" ? (
         <span style={currentLabelStyle}>流程图</span>
