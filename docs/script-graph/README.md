@@ -16,12 +16,20 @@
 | [05-graph-editing.spec.md](./05-graph-editing.spec.md) | 节点增/删/连线/重命名/移位 | Phase 5 |
 | [06-external-data-operations.spec.md](./06-external-data-operations.spec.md) | 校验、可操作错误、外部刷新指示、无内置 AI 边界 | Phase 6 |
 | [07-e2g-flowchart-inspired-plan.md](./07-e2g-flowchart-inspired-plan.md) | 借鉴 Everything2Galgame 后的流程图增强计划 | Phase 7+ |
+| [08-node-content-validation.spec.md](./08-node-content-validation.spec.md) | 节点 `Instruction[]` 内容校验接入全局报告与 CLI | 完善 Spec 08 |
+| [09-safe-persistence-collaboration.spec.md](./09-safe-persistence-collaboration.spec.md) | 文件 revision、冲突检测、可恢复删除、graph patch 保存 | 完善 Spec 09 |
+| [10-block-instruction-editor.spec.md](./10-block-instruction-editor.spec.md) | 从 JSON 编辑升级到指令块编辑，同时保留 JSON 高级模式 | 完善 Spec 10 |
+| [11-branch-choice-semantics.spec.md](./11-branch-choice-semantics.spec.md) | `choice` 指令、graph 分支语义、分支校验与预览路线 | 完善 Spec 11 |
+| [12-assets-renderer-productization.spec.md](./12-assets-renderer-productization.spec.md) | 资产选择/预览/批量清理与 renderer 管理/契约/回归 | 完善 Spec 12 |
+| [13-documentation-convergence.spec.md](./13-documentation-convergence.spec.md) | 收敛 AGENTS、overview、历史 spec、项目自描述和 schema 文档 | 完善 Spec 13 |
+| [14-release-readiness.spec.md](./14-release-readiness.spec.md) | CI、smoke/e2e、打包版本、示例项目与发布 checklist | 完善 Spec 14 |
 
 ## 如何阅读
 
 1. **先读 [00-feature-plan.md](./00-feature-plan.md)** 了解整体目标与 6 阶段划分。
 2. **再读 [overview.md](./overview.md)** —— 它锁定所有 phase 共享的横切决策（数据格式、命名、路径安全、热重载、测试约定）。每个 phase spec 都假设你已读过 overview。
 3. 按阶段顺序读 01 → 06。**阶段间有依赖**：01 是 UI 地基；02 是数据契约（几乎其它所有 phase 依赖它）；03/04 可并行；05 依赖 03+04；06 依赖 02+05。
+4. 读 08 → 14 时，把它们视作“完善到可归档状态”的后续执行规格：每份都含当前状态、推进阶段、TDD/验收清单和可归档标准。
 
 ## 推荐实施顺序
 
