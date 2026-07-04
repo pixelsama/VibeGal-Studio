@@ -104,7 +104,7 @@ export function GraphCanvas({
         selected,
         animated: suspicious,
         style: {
-          stroke: suspicious ? "#d66a6a" : selected ? "#9fc8e3" : "#3a6ea5",
+          stroke: suspicious ? "var(--status-error)" : selected ? "var(--accent-bright)" : "var(--accent)",
           strokeWidth: suspicious || selected ? 2.5 : 1.5,
           strokeDasharray: suspicious ? "6 4" : undefined,
         },
@@ -269,10 +269,10 @@ export function GraphCanvas({
         onNodeContextMenu={handleNodeContextMenu}
         proOptions={{ hideAttribution: false }}
       >
-        <Background color="#1f2734" gap={24} />
+        <Background color="var(--bg-hover)" gap={24} />
         <Controls
           showInteractive={false}
-          style={{ background: "#141922", border: "1px solid #232a38", borderRadius: 8 }}
+          style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 8 }}
         >
           {graph.entryNodeId && (
             <ControlButton
@@ -287,10 +287,10 @@ export function GraphCanvas({
         </Controls>
         <MiniMap
           nodeColor={(node) =>
-            node.data.duplicateNodeId ? "#d66a6a" : node.id === selectedNodeId ? "#9fc8e3" : "#3a6ea5"
+            node.data.duplicateNodeId ? "var(--status-error)" : node.id === selectedNodeId ? "var(--accent-bright)" : "var(--accent)"
           }
-          maskColor="rgba(0, 0, 0, 0.6)"
-          style={{ background: "#10151d", border: "1px solid #232a38" }}
+          maskColor="var(--overlay-strong)"
+          style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
         />
       </ReactFlow>
 
@@ -304,7 +304,7 @@ const canvasShellStyle: React.CSSProperties = {
   position: "relative",
   width: "100%",
   height: "100%",
-  background: "#0b0e14",
+  background: "var(--bg-inset)",
 };
 
 const emptyStateStyle: React.CSSProperties = {
@@ -315,15 +315,15 @@ const emptyStateStyle: React.CSSProperties = {
   zIndex: 2,
   padding: "8px 14px",
   borderRadius: 999,
-  background: "rgba(20, 25, 34, 0.92)",
-  border: "1px solid #232a38",
-  color: "#a0a8b4",
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border)",
+  color: "var(--text-secondary)",
   fontSize: 13,
   pointerEvents: "none",
 };
 
 const entryLocatorIconStyle: React.CSSProperties = {
-  color: "#9fc8e3",
+  color: "var(--accent-bright)",
   fontSize: 18,
   lineHeight: 1,
 };

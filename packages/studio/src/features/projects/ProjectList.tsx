@@ -9,9 +9,10 @@ interface Props {
   onOpen: (project: ProjectData) => void;
   canGoForward?: boolean;
   onForward?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function ProjectList({ onOpen, canGoForward = false, onForward }: Props) {
+export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSettings }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
@@ -90,6 +91,9 @@ export function ProjectList({ onOpen, canGoForward = false, onForward }: Props) 
       <div style={navOverlayStyle}>
         <NavButton disabled label="后退" ariaLabel="后退">‹</NavButton>
         <NavButton onClick={onForward} disabled={!canGoForward} label="前进到上一个项目工作台" ariaLabel="前进">›</NavButton>
+        {onOpenSettings && (
+          <NavButton onClick={onOpenSettings} label="设置" ariaLabel="设置">⚙</NavButton>
+        )}
       </div>
 
       <header style={headerStyle}>
@@ -174,7 +178,7 @@ const pageStyle: React.CSSProperties = {
 };
 const headerStyle: React.CSSProperties = { marginBottom: 32 };
 const titleStyle: React.CSSProperties = { fontSize: 32, margin: "0 0 4px", fontWeight: 600 };
-const subtitleStyle: React.CSSProperties = { margin: 0, color: "#7a8290", fontSize: 14 };
+const subtitleStyle: React.CSSProperties = { margin: 0, color: "var(--text-muted)", fontSize: 14 };
 const sectionStyle: React.CSSProperties = {};
 const workspaceRow: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" };
 const navOverlayStyle: React.CSSProperties = {
@@ -192,9 +196,9 @@ const navButtonStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   background: "transparent",
-  border: "1px solid #2a3242",
+  border: "1px solid var(--border-strong)",
   borderRadius: 6,
-  color: "#a0a8b4",
+  color: "var(--text-secondary)",
   fontSize: 18,
   lineHeight: 1,
   cursor: "pointer",
@@ -205,41 +209,41 @@ const modalOverlayStyle: React.CSSProperties = {
   display: "grid",
   placeItems: "center",
   padding: 24,
-  background: "rgba(4, 7, 12, 0.68)",
+  background: "var(--overlay)",
   zIndex: 20,
 };
 const modalStyle: React.CSSProperties = {
   width: "min(480px, 100%)",
   padding: 20,
-  background: "#141922",
-  border: "1px solid #2a3242",
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border-strong)",
   borderRadius: 8,
-  boxShadow: "0 24px 80px rgba(0, 0, 0, 0.45)",
+  boxShadow: "0 24px 80px var(--overlay)",
 };
 const modalHeaderStyle: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 8 };
-const parentPathStyle: React.CSSProperties = { fontSize: 12, color: "#7a8290", marginBottom: 12, wordBreak: "break-all" };
+const parentPathStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", marginBottom: 12, wordBreak: "break-all" };
 const inputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
   padding: "8px 12px",
-  background: "#1a1f29",
-  border: "1px solid #2a3242",
+  background: "var(--bg-hover)",
+  border: "1px solid var(--border-strong)",
   borderRadius: 6,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   fontFamily: "inherit",
   fontSize: 14,
 };
 const modalActionsStyle: React.CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 };
 const btnStyle: React.CSSProperties = {
-  padding: "8px 14px", background: "#1a1f29", border: "1px solid #2a3242",
-  borderRadius: 6, color: "#d4dae2", cursor: "pointer", fontSize: 14,
+  padding: "8px 14px", background: "var(--bg-hover)", border: "1px solid var(--border-strong)",
+  borderRadius: 6, color: "var(--text-primary)", cursor: "pointer", fontSize: 14,
 };
 const primaryBtn: React.CSSProperties = {
-  ...btnStyle, background: "#3a6ea5", borderColor: "#3a6ea5", color: "#fff",
+  ...btnStyle, background: "var(--accent)", borderColor: "var(--accent)", color: "var(--text-on-accent)",
 };
 const errorStyle: React.CSSProperties = {
-  padding: "10px 14px", background: "#3a1a1a", border: "1px solid #6a2a2a",
-  borderRadius: 6, color: "#e0a0a0", fontSize: 13, marginBottom: 16, whiteSpace: "pre-wrap",
+  padding: "10px 14px", background: "var(--bg-error-soft)", border: "1px solid var(--border-error)",
+  borderRadius: 6, color: "var(--status-error-text)", fontSize: 13, marginBottom: 16, whiteSpace: "pre-wrap",
 };
 const modalErrorStyle: React.CSSProperties = { ...errorStyle, marginTop: 12, marginBottom: 0 };
-const emptyStyle: React.CSSProperties = { color: "#6a7280", fontSize: 14, padding: 24, textAlign: "center" };
+const emptyStyle: React.CSSProperties = { color: "var(--text-dim)", fontSize: 14, padding: 24, textAlign: "center" };

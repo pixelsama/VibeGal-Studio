@@ -36,7 +36,7 @@ function Centered({ children, mono }: { children: React.ReactNode; mono?: boolea
   return (
     <div style={{
       width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-      color: "#cdd6e0", fontFamily: mono ? "ui-monospace, monospace" : "inherit",
+      color: "var(--text-primary)", fontFamily: mono ? "ui-monospace, monospace" : "inherit",
       whiteSpace: "pre-wrap", textAlign: "center", padding: 40, lineHeight: 1.8, fontSize: 14,
     }}>
       {children}

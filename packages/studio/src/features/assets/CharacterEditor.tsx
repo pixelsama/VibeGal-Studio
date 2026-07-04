@@ -141,8 +141,8 @@ export function CharacterEditor({ projectPath, manifest, onChange, disabled = fa
               type="button"
               style={{
                 ...rowStyle,
-                background: id === selectedId ? "#1a2230" : "transparent",
-                color: id === selectedId ? "#e8edf5" : "#a0a8b4",
+                background: id === selectedId ? "var(--bg-active)" : "transparent",
+                color: id === selectedId ? "var(--text-bright)" : "var(--text-secondary)",
               }}
               onClick={() => setSelectedId(id)}
             >
@@ -196,7 +196,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, disabled = fa
                   type="button"
                   style={{
                     ...smallBtnStyle,
-                    color: "#e0a0a0",
+                    color: "var(--status-error-text)",
                     opacity: disabled ? 0.48 : 1,
                     cursor: disabled ? "not-allowed" : "pointer",
                   }}
@@ -357,7 +357,7 @@ function SpriteExprRow({
           type="button"
           style={{
             ...tinyBtnStyle,
-            color: "#e0a0a0",
+            color: "var(--status-error-text)",
             opacity: disabled ? 0.48 : 1,
             cursor: disabled ? "not-allowed" : "pointer",
           }}
@@ -473,8 +473,8 @@ const workspaceStyle: React.CSSProperties = {
 const listPanelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  borderRight: "1px solid #232a38",
-  background: "#0e1116",
+  borderRight: `1px solid var(--border)`,
+  background: "var(--bg-app)",
   overflow: "hidden",
 };
 
@@ -483,7 +483,7 @@ const listHeaderStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   padding: "10px 12px",
-  borderBottom: "1px solid #232a38",
+  borderBottom: `1px solid var(--border)`,
 };
 
 const listStyle: React.CSSProperties = {
@@ -505,7 +505,7 @@ const rowStyle: React.CSSProperties = {
 
 const emptyRowStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   padding: "10px",
   textAlign: "center",
 };
@@ -514,9 +514,9 @@ const readOnlyHintStyle: React.CSSProperties = {
   margin: "8px",
   padding: "7px 8px",
   borderRadius: 6,
-  border: "1px solid #5a2b2b",
-  background: "#1a1212",
-  color: "#e0a0a0",
+  border: `1px solid var(--border-error)`,
+  background: "var(--bg-error-soft)",
+  color: "var(--status-error-text)",
   fontSize: 11,
   lineHeight: 1.45,
 };
@@ -544,7 +544,7 @@ const stageImgStyle: React.CSSProperties = {
 };
 
 const stagePlaceholderStyle: React.CSSProperties = {
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };
 
@@ -554,7 +554,7 @@ const stageNameStyle: React.CSSProperties = {
 };
 
 const emptyStageStyle: React.CSSProperties = {
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };
 
@@ -563,8 +563,8 @@ const propsPanelStyle: React.CSSProperties = {
   flexDirection: "column",
   gap: 16,
   padding: 16,
-  borderLeft: "1px solid #232a38",
-  background: "#0e1116",
+  borderLeft: `1px solid var(--border)`,
+  background: "var(--bg-app)",
   overflowY: "auto",
 };
 
@@ -577,13 +577,13 @@ const propGroupStyle: React.CSSProperties = {
   flexDirection: "column",
   gap: 8,
   paddingBottom: 14,
-  borderBottom: "1px solid #232a38",
+  borderBottom: `1px solid var(--border)`,
 };
 
 const panelTitleStyle: React.CSSProperties = {
   fontSize: 11,
   textTransform: "uppercase",
-  color: "#7a8290",
+  color: "var(--text-muted)",
   letterSpacing: 0.5,
 };
 
@@ -592,16 +592,16 @@ const fieldLabelStyle: React.CSSProperties = {
   flexDirection: "column",
   gap: 4,
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const fieldInputStyle: React.CSSProperties = {
   fontSize: 12,
   padding: "5px 8px",
   borderRadius: 5,
-  border: "1px solid #2f394a",
-  background: "#0e1116",
-  color: "#d4dae2",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-app)",
+  color: "var(--text-primary)",
   outline: "none",
 };
 
@@ -609,7 +609,7 @@ const colorInputStyle: React.CSSProperties = {
   width: 36,
   height: 28,
   padding: 0,
-  border: "1px solid #2f394a",
+  border: `1px solid var(--border-input)`,
   borderRadius: 5,
   background: "transparent",
   cursor: "pointer",
@@ -618,13 +618,13 @@ const colorInputStyle: React.CSSProperties = {
 const hexStyle: React.CSSProperties = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const idStyle: React.CSSProperties = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const exprRowStyle: React.CSSProperties = {
@@ -639,8 +639,8 @@ const exprThumbStyle: React.CSSProperties = {
   height: 44,
   objectFit: "cover",
   borderRadius: 5,
-  background: "#0e1116",
-  border: "1px solid #232a38",
+  background: "var(--bg-app)",
+  border: `1px solid var(--border)`,
 };
 
 const exprThumbPlaceholderStyle: React.CSSProperties = {
@@ -649,7 +649,7 @@ const exprThumbPlaceholderStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   fontSize: 10,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const exprMetaStyle: React.CSSProperties = {
@@ -665,7 +665,7 @@ const exprNameBtnStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 6,
   fontSize: 12,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   background: "transparent",
   border: "none",
   cursor: "pointer",
@@ -676,13 +676,13 @@ const defaultTagStyle: React.CSSProperties = {
   fontSize: 9,
   padding: "1px 4px",
   borderRadius: 3,
-  background: "#2a4a3a",
-  color: "#9fd3b0",
+  background: "var(--tag-narrate-bg)",
+  color: "var(--status-ok-text)",
 };
 
 const exprPathStyle: React.CSSProperties = {
   fontSize: 10,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -699,9 +699,9 @@ const smallBtnStyle: React.CSSProperties = {
   fontSize: 11,
   padding: "4px 9px",
   borderRadius: 5,
-  border: "1px solid #2f394a",
-  background: "#0e1116",
-  color: "#a0a8b4",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-app)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
 };
 
@@ -710,9 +710,9 @@ const tinyBtnStyle: React.CSSProperties = {
   width: 22,
   height: 22,
   borderRadius: 5,
-  border: "1px solid #2f394a",
-  background: "#0e1116",
-  color: "#a0a8b4",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-app)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
   display: "inline-flex",
   alignItems: "center",

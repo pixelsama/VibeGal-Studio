@@ -2,6 +2,7 @@ export type WorkspaceId = "render" | "script" | "assets";
 
 export type NavigationLocation =
   | { type: "project-list" }
+  | { type: "settings" }
   | { type: "workspace"; workspace: "render" | "assets" }
   | { type: "script-graph" }
   | { type: "script-node"; nodeId: string };

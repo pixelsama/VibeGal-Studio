@@ -67,4 +67,18 @@ describe("semantic navigation history", () => {
     expect(workspaceFromLocation({ type: "script-graph" })).toBe("script");
     expect(workspaceFromLocation({ type: "project-list" })).toBeNull();
   });
+
+  it("treats settings as a global (non-workspace) location", () => {
+    expect(workspaceFromLocation({ type: "settings" })).toBeNull();
+  });
+
+  it("can navigate to settings and back", () => {
+    let state = createNavigationState({ type: "workspace", workspace: "render" });
+    state = pushLocation(state, { type: "settings" });
+    expect(currentLocation(state)).toEqual({ type: "settings" });
+    expect(canGoBack(state)).toBe(true);
+
+    state = goBack(state);
+    expect(currentLocation(state)).toEqual({ type: "workspace", workspace: "render" });
+  });
 });

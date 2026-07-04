@@ -29,22 +29,22 @@ const containerStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 8,
   padding: "10px 16px",
-  borderBottom: "1px solid #232a38",
-  background: "#0e1116",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-app)",
 };
 
 const rootLabelStyle: React.CSSProperties = {
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };
 
 const separatorStyle: React.CSSProperties = {
-  color: "#4f5867",
+  color: "var(--text-dim)",
   fontSize: 12,
 };
 
 const currentLabelStyle: React.CSSProperties = {
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   fontSize: 13,
   fontWeight: 600,
 };
@@ -53,7 +53,7 @@ const crumbButtonStyle: React.CSSProperties = {
   padding: 0,
   background: "transparent",
   border: "none",
-  color: "#9fc8e3",
+  color: "var(--accent-bright)",
   cursor: "pointer",
   fontSize: 13,
 };

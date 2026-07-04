@@ -165,14 +165,14 @@ export function NodeEditor({ project, rendererId, node, nodeData, onSaved }: Nod
             <div style={metaStyle}>{node.file}</div>
           </div>
           <div style={toolbarSpacerStyle} />
-          {dirty && <span style={{ ...statusTextStyle, color: "#e0b676" }}>未保存</span>}
+          {dirty && <span style={{ ...statusTextStyle, color: "var(--status-warn-text)" }}>未保存</span>}
           {hasExternalUpdate && (
             <button type="button" onClick={handleLoadExternal} style={loadButtonStyle}>
               外部已更新，点击载入
             </button>
           )}
           {status && (
-            <span style={{ ...statusTextStyle, color: status.startsWith("保存失败") ? "#e0a0a0" : "#7ab38a" }}>
+            <span style={{ ...statusTextStyle, color: status.startsWith("保存失败") ? "var(--status-error-text)" : "var(--status-ok-text)" }}>
               {status}
             </span>
           )}
@@ -281,7 +281,7 @@ function PreviewMessage({ children, mono = false }: { children: React.ReactNode;
       alignItems: "center",
       justifyContent: "center",
       padding: 24,
-      color: "#cdd6e0",
+      color: "var(--text-primary)",
       textAlign: "center",
       whiteSpace: "pre-wrap",
       lineHeight: 1.8,
@@ -298,19 +298,19 @@ const containerStyle: React.CSSProperties = {
   gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 44%)",
   width: "100%",
   height: "100%",
-  background: "#0b0e14",
+  background: "var(--bg-inset)",
 };
 
 const editorPaneStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   minWidth: 0,
-  borderRight: "1px solid #232a38",
+  borderRight: "1px solid var(--border)",
 };
 
 const previewPaneStyle: React.CSSProperties = {
   minWidth: 0,
-  background: "#0e1116",
+  background: "var(--bg-app)",
 };
 
 const toolbarStyle: React.CSSProperties = {
@@ -318,8 +318,8 @@ const toolbarStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 12,
   padding: "10px 16px",
-  borderBottom: "1px solid #232a38",
-  background: "#0e1116",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-app)",
 };
 
 const titleGroupStyle: React.CSSProperties = {
@@ -332,12 +332,12 @@ const titleGroupStyle: React.CSSProperties = {
 const titleStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: "#e8edf5",
+  color: "var(--text-bright)",
 };
 
 const metaStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   wordBreak: "break-all",
 };
 
@@ -352,9 +352,9 @@ const statusTextStyle: React.CSSProperties = {
 const loadButtonStyle: React.CSSProperties = {
   padding: "6px 10px",
   borderRadius: 6,
-  border: "1px solid #3a6ea5",
-  background: "#1a2431",
-  color: "#9fc8e3",
+  border: "1px solid var(--accent)",
+  background: "var(--bg-active)",
+  color: "var(--accent-bright)",
   cursor: "pointer",
   fontSize: 12,
   flexShrink: 0,
@@ -363,9 +363,9 @@ const loadButtonStyle: React.CSSProperties = {
 const saveButtonStyle: React.CSSProperties = {
   padding: "6px 16px",
   borderRadius: 6,
-  border: "1px solid #3a6ea5",
-  background: "#3a6ea5",
-  color: "#fff",
+  border: "1px solid var(--accent)",
+  background: "var(--accent)",
+  color: "var(--text-on-accent)",
   cursor: "pointer",
   fontSize: 13,
   flexShrink: 0,
@@ -378,8 +378,8 @@ const textareaStyle: React.CSSProperties = {
   border: "none",
   outline: "none",
   padding: 16,
-  background: "#0b0e14",
-  color: "#d4dae2",
+  background: "var(--bg-inset)",
+  color: "var(--text-primary)",
   fontFamily: "ui-monospace, 'SF Mono', monospace",
   fontSize: 13,
   lineHeight: 1.6,
@@ -389,8 +389,8 @@ const textareaStyle: React.CSSProperties = {
 const asideStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  borderBottom: "1px solid #232a38",
-  background: "#0e1116",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-app)",
   maxHeight: 220,
   flexShrink: 0,
 };
@@ -400,15 +400,15 @@ const insertBarStyle: React.CSSProperties = {
   flexWrap: "wrap",
   gap: 6,
   padding: "8px 12px",
-  borderBottom: "1px solid #161b24",
+  borderBottom: "1px solid var(--border-subtle)",
 };
 
 const insertBtnStyle: React.CSSProperties = {
   padding: "5px 10px",
   borderRadius: 6,
-  border: "1px solid #2a3242",
-  background: "#141922",
-  color: "#a0a8b4",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
   fontSize: 12,
 };
@@ -420,14 +420,14 @@ const outlineStyle: React.CSSProperties = {
 
 const outlineTitleStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   textTransform: "uppercase",
   marginBottom: 6,
 };
 
 const outlineEmptyStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#596274",
+  color: "var(--text-dim)",
   padding: "4px 0",
 };
 
@@ -455,7 +455,7 @@ const outlineKindStyle: React.CSSProperties = {
 
 const outlineLabelStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -463,10 +463,10 @@ const outlineLabelStyle: React.CSSProperties = {
 
 function kindColor(kind: "say" | "narrate" | "bg" | "bgm"): React.CSSProperties {
   const map: Record<string, React.CSSProperties> = {
-    say: { background: "#2a3a5a", color: "#9fc8e3" },
-    narrate: { background: "#2f4538", color: "#93d3b0" },
-    bg: { background: "#3a2f45", color: "#c8a0e0" },
-    bgm: { background: "#45382f", color: "#e0b676" },
+    say: { background: "var(--tag-say-bg)", color: "var(--tag-say-text)" },
+    narrate: { background: "var(--tag-narrate-bg)", color: "var(--tag-narrate-text)" },
+    bg: { background: "var(--tag-bg-bg)", color: "var(--tag-bg-text)" },
+    bgm: { background: "var(--tag-bgm-bg)", color: "var(--tag-bgm-text)" },
   };
   return map[kind] ?? {};
 }

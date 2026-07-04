@@ -42,7 +42,7 @@ export function AssetCard({
   const name = baseName(entry.relPath);
 
   return (
-    <div style={{ ...cardStyle, borderColor: isOrphan ? "#7a3a3a" : "#232a38" }}>
+    <div style={{ ...cardStyle, borderColor: isOrphan ? "var(--border-error)" : "var(--border)" }}>
       <div style={previewStyle}>
         {kind === "image" && (
           <AssetImagePreview
@@ -77,7 +77,7 @@ export function AssetCard({
           )}
           <button
             type="button"
-            style={{ ...smallBtnStyle, color: "#e0a0a0" }}
+            style={{ ...smallBtnStyle, color: "var(--status-error-text)" }}
             onClick={() => onDelete(entry.relPath)}
             aria-label={`删除 ${name}`}
           >
@@ -104,20 +104,20 @@ export function DanglingCard({
   onRemoveRef: (source: string) => void;
 }) {
   return (
-    <div style={{ ...cardStyle, borderColor: "#7a3a3a", borderStyle: "dashed" }}>
-      <div style={{ ...previewStyle, background: "#1a1212" }}>
-        <span style={{ ...otherPreviewStyle, color: "#e0a0a0" }}>⚠</span>
+    <div style={{ ...cardStyle, borderColor: "var(--border-error)", borderStyle: "dashed" }}>
+      <div style={{ ...previewStyle, background: "var(--bg-error-soft)" }}>
+        <span style={{ ...otherPreviewStyle, color: "var(--status-error-text)" }}>⚠</span>
       </div>
       <div style={metaStyle}>
         <span style={nameStyle} title={path}>{id}</span>
-        <span style={{ ...refStyle, color: "#e0a0a0" }}>文件缺失</span>
+        <span style={{ ...refStyle, color: "var(--status-error-text)" }}>文件缺失</span>
       </div>
       <div style={actionsStyle}>
         <span style={danglingSourceStyle} title={source}>{source}</span>
         {!readOnly && (
           <button
             type="button"
-            style={{ ...smallBtnStyle, color: "#e0a0a0" }}
+            style={{ ...smallBtnStyle, color: "var(--status-error-text)" }}
             onClick={() => onRemoveRef(source)}
           >
             移除引用
@@ -135,8 +135,8 @@ const cardStyle: React.CSSProperties = {
   flexDirection: "column",
   width: 168,
   borderRadius: 8,
-  border: "1px solid #232a38",
-  background: "#141922",
+  border: `1px solid var(--border)`,
+  background: "var(--bg-panel)",
   overflow: "hidden",
 };
 
@@ -144,7 +144,7 @@ const previewStyle: React.CSSProperties = {
   position: "relative",
   width: "100%",
   aspectRatio: "16 / 9",
-  background: "#0e1116",
+  background: "var(--bg-app)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -167,12 +167,12 @@ const videoStyle: React.CSSProperties = {
 
 const otherPreviewStyle: React.CSSProperties = {
   fontSize: 28,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const previewPlaceholderStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const orphanBadgeStyle: React.CSSProperties = {
@@ -183,8 +183,8 @@ const orphanBadgeStyle: React.CSSProperties = {
   fontWeight: 700,
   padding: "2px 6px",
   borderRadius: 4,
-  background: "#7a3a3a",
-  color: "#fff",
+  background: "var(--border-error)",
+  color: "var(--text-on-error)",
 };
 
 const metaStyle: React.CSSProperties = {
@@ -196,7 +196,7 @@ const metaStyle: React.CSSProperties = {
 
 const nameStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -204,7 +204,7 @@ const nameStyle: React.CSSProperties = {
 
 const refStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const actionsStyle: React.CSSProperties = {
@@ -219,16 +219,16 @@ const smallBtnStyle: React.CSSProperties = {
   fontSize: 11,
   padding: "3px 8px",
   borderRadius: 5,
-  border: "1px solid #2f394a",
-  background: "#0e1116",
-  color: "#a0a8b4",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-app)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
 };
 
 const danglingSourceStyle: React.CSSProperties = {
   flex: 1,
   fontSize: 10,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   overflow: "hidden",
   textOverflow: "ellipsis",

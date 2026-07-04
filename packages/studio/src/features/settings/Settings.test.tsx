@@ -1,0 +1,113 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { Children, isValidElement, type ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { Settings } from "./Settings";
+import type { AppSettings } from "../../lib/theme";
+
+const noop = () => {};
+
+describe("Settings", () => {
+  it("显示主题选项，并标注当前选中项", () => {
+    const html = renderToStaticMarkup(
+      <Settings
+        settings={{ theme: "dark" } as AppSettings}
+        onUpdate={noop}
+        onBack={noop}
+        canGoBack
+      />,
+    );
+    expect(html).toContain("外观");
+    expect(html).toContain("深色");
+    expect(html).toContain("浅色");
+    // 深色卡片应标记为当前选中
+    expect(html).toContain("当前");
+  });
+
+  it("浅色主题下，浅色卡片被选中", () => {
+    const html = renderToStaticMarkup(
+      <Settings
+        settings={{ theme: "light" } as AppSettings}
+        onUpdate={noop}
+        onBack={noop}
+        canGoBack
+      />,
+    );
+    // 两个卡片都渲染，浅色那个应带 aria-pressed
+    expect(html).toContain("浅色");
+    expect(html).toContain('aria-pressed="true"');
+  });
+
+  it("点击主题卡片调用 onUpdate", () => {
+    const onUpdate = vi.fn();
+    const tree = resolveFunctionComponents(
+      <Settings
+        settings={{ theme: "dark" } as AppSettings}
+        onUpdate={onUpdate}
+        onBack={noop}
+        canGoBack
+      />,
+    );
+    const lightButton = findButtonByText(tree, "浅色");
+
+    expect(lightButton).not.toBeNull();
+    lightButton?.props.onClick?.();
+    expect(onUpdate).toHaveBeenCalledWith({ theme: "light" });
+  });
+
+  it("canGoBack 为 false 时返回按钮禁用", () => {
+    const html = renderToStaticMarkup(
+      <Settings
+        settings={{ theme: "dark" } as AppSettings}
+        onUpdate={noop}
+        onBack={noop}
+        canGoBack={false}
+      />,
+    );
+    expect(html).toContain("disabled");
+  });
+});
+
+function resolveFunctionComponents(node: ReactNode): ReactNode {
+  if (Array.isArray(node)) return node.map(resolveFunctionComponents);
+  if (!isValidElement(node)) return node;
+
+  if (typeof node.type === "function") {
+    const Component = node.type as (props: unknown) => ReactNode;
+    return resolveFunctionComponents(Component(node.props));
+  }
+
+  const props = node.props as { children?: ReactNode };
+  return {
+    ...node,
+    props: {
+      ...props,
+      children: Children.toArray(props.children).map(resolveFunctionComponents),
+    },
+  };
+}
+
+function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void } } | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findButtonByText(child, text);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isValidElement(node)) return null;
+
+  const props = node.props as { children?: ReactNode; onClick?: () => void };
+  if (node.type === "button" && textContent(props.children).includes(text)) {
+    return { props };
+  }
+
+  return findButtonByText(props.children, text);
+}
+
+function textContent(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textContent).join("");
+  if (!isValidElement(node)) return "";
+  const props = node.props as { children?: ReactNode };
+  return textContent(props.children);
+}

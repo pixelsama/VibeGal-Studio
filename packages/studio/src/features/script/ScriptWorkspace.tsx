@@ -363,7 +363,7 @@ export function ScriptWorkspace({
                     <span
                       style={{
                         ...statusTextStyle,
-                        color: graphStatus.includes("失败") ? "#e0a0a0" : "#7ab38a",
+                        color: graphStatus.includes("失败") ? "var(--status-error-text)" : "var(--status-ok-text)",
                       }}
                     >
                       {graphStatus}
@@ -447,7 +447,7 @@ const containerStyle: React.CSSProperties = {
   flexDirection: "column",
   width: "100%",
   height: "100%",
-  background: "#0b0e14",
+  background: "var(--bg-inset)",
 };
 
 const contentStyle: React.CSSProperties = {
@@ -486,16 +486,16 @@ const toolbarStyle: React.CSSProperties = {
   gap: 10,
   minHeight: 48,
   padding: "8px 12px",
-  borderBottom: "1px solid #232a38",
-  background: "#0e1116",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-app)",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: "8px 12px",
   borderRadius: 8,
-  border: "1px solid #3a6ea5",
-  background: "#3a6ea5",
-  color: "#fff",
+  border: "1px solid var(--accent)",
+  background: "var(--accent)",
+  color: "var(--text-on-accent)",
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
@@ -512,5 +512,5 @@ const statusTextStyle: React.CSSProperties = {
 const inspectorPaneStyle: React.CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
-  borderLeft: "1px solid #232a38",
+  borderLeft: "1px solid var(--border)",
 };

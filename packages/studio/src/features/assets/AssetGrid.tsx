@@ -33,6 +33,6 @@ const emptyStyle: React.CSSProperties = {
   justifyContent: "center",
   width: "100%",
   height: "100%",
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };

@@ -103,15 +103,15 @@ const panelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   height: "100%",
-  background: "#0e1116",
+  background: "var(--bg-app)",
 };
 
 const panelTitleStyle: React.CSSProperties = {
   padding: "14px 16px",
-  borderBottom: "1px solid #232a38",
+  borderBottom: "1px solid var(--border)",
   fontSize: 13,
   fontWeight: 600,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
 };
 
 const contentStyle: React.CSSProperties = {
@@ -128,8 +128,8 @@ const sectionStyle: React.CSSProperties = {
   gap: 10,
   padding: 14,
   borderRadius: 8,
-  background: "#141922",
-  border: "1px solid #232a38",
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border)",
 };
 
 const titleFieldStyle: React.CSSProperties = {
@@ -143,9 +143,9 @@ const titleInputStyle: React.CSSProperties = {
   boxSizing: "border-box",
   padding: "8px 10px",
   borderRadius: 6,
-  border: "1px solid #2f394a",
-  background: "#0b0e14",
-  color: "#e8edf5",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-inset)",
+  color: "var(--text-bright)",
   fontSize: 14,
   fontWeight: 600,
   outline: "none",
@@ -159,22 +159,22 @@ const fieldRowStyle: React.CSSProperties = {
 
 const fieldLabelStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   textTransform: "uppercase",
 };
 
 const fieldValueStyle: React.CSSProperties = {
   fontSize: 13,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   wordBreak: "break-all",
 };
 
 const actionButtonStyle: React.CSSProperties = {
   padding: "10px 14px",
   borderRadius: 8,
-  background: "#3a6ea5",
-  border: "1px solid #3a6ea5",
-  color: "#fff",
+  background: "var(--accent)",
+  border: "1px solid var(--accent)",
+  color: "var(--text-on-accent)",
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
@@ -183,9 +183,9 @@ const actionButtonStyle: React.CSSProperties = {
 const secondaryButtonStyle: React.CSSProperties = {
   padding: "10px 14px",
   borderRadius: 8,
-  background: "#1a2431",
-  border: "1px solid #3a6ea5",
-  color: "#9fc8e3",
+  background: "var(--bg-active)",
+  border: "1px solid var(--accent)",
+  color: "var(--accent-bright)",
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
@@ -193,11 +193,11 @@ const secondaryButtonStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: 16,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };
 
 const statusTextStyle = (hasContent: boolean): React.CSSProperties => ({
   fontSize: 13,
-  color: hasContent ? "#93d3b0" : "#e0b676",
+  color: hasContent ? "var(--status-ok-text)" : "var(--status-warn-text)",
 });

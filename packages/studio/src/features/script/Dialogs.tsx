@@ -158,37 +158,37 @@ const overlayStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "rgba(0, 0, 0, 0.5)",
+  background: "var(--overlay)",
 };
 
 const dialogStyle: React.CSSProperties = {
   minWidth: 340,
   maxWidth: 440,
   padding: 20,
-  background: "#141922",
-  border: "1px solid #2f394a",
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border-input)",
   borderRadius: 12,
-  boxShadow: "0 16px 40px rgba(0, 0, 0, 0.6)",
+  boxShadow: "0 16px 40px var(--overlay-strong)",
 };
 
 const dialogTitleStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 600,
-  color: "#e8edf5",
+  color: "var(--text-bright)",
   marginBottom: 14,
 };
 
 const dialogMessageStyle: React.CSSProperties = {
   fontSize: 14,
   lineHeight: 1.6,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   marginBottom: 18,
 };
 
 const dialogLabelStyle: React.CSSProperties = {
   display: "block",
   fontSize: 12,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   marginBottom: 6,
 };
 
@@ -197,9 +197,9 @@ const promptInputStyle: React.CSSProperties = {
   boxSizing: "border-box",
   padding: "9px 11px",
   borderRadius: 8,
-  border: "1px solid #2f394a",
-  background: "#0b0e14",
-  color: "#e8edf5",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-inset)",
+  color: "var(--text-bright)",
   fontSize: 14,
   outline: "none",
   marginBottom: 18,
@@ -214,9 +214,9 @@ const dialogActionsStyle: React.CSSProperties = {
 const cancelBtnStyle: React.CSSProperties = {
   padding: "8px 16px",
   borderRadius: 8,
-  border: "1px solid #2a3242",
-  background: "#1a2431",
-  color: "#a0a8b4",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-active)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
   fontSize: 13,
 };
@@ -224,9 +224,9 @@ const cancelBtnStyle: React.CSSProperties = {
 const confirmBtnStyle: React.CSSProperties = {
   padding: "8px 16px",
   borderRadius: 8,
-  border: "1px solid #3a6ea5",
-  background: "#3a6ea5",
-  color: "#fff",
+  border: "1px solid var(--accent)",
+  background: "var(--accent)",
+  color: "var(--text-on-accent)",
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
@@ -234,6 +234,6 @@ const confirmBtnStyle: React.CSSProperties = {
 
 const dangerBtnStyle: React.CSSProperties = {
   ...confirmBtnStyle,
-  border: "1px solid #a04848",
-  background: "#a04848",
+  border: "1px solid var(--destructive)",
+  background: "var(--destructive)",
 };

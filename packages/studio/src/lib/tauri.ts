@@ -140,3 +140,21 @@ export async function readAssetPreviewDataUrl(projectPath: string, relPath: stri
 export async function saveManifest(projectPath: string, manifest: Manifest): Promise<void> {
   await invoke("save_manifest", { projectPath, manifest });
 }
+
+// ──────────────────────────────────────────────
+// 应用级设置（非项目级，存到 app config 目录）
+// ──────────────────────────────────────────────
+
+export interface AppSettings {
+  theme: "dark" | "light";
+}
+
+/** 加载应用设置；文件不存在（首次运行）时后端返回默认值（dark）。 */
+export async function loadAppSettings(): Promise<AppSettings> {
+  return invoke<AppSettings>("load_app_settings");
+}
+
+/** 保存应用设置。 */
+export async function saveAppSettings(settings: AppSettings): Promise<void> {
+  await invoke("save_app_settings", { settings });
+}

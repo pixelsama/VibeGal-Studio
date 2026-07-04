@@ -2,6 +2,122 @@
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
+
+  /* 表面（深色为默认；浅色在 [data-theme="light"] 覆盖） */
+  --bg-app: #0e1116;       /* 根/页面背景 */
+  --bg-panel: #141922;     /* 面板/卡片/弹窗 */
+  --bg-inset: #0b0e14;     /* 凹陷区（渲染画布、输入框） */
+  --bg-hover: #1a1f29;     /* 悬停项 */
+  --bg-active: #1a2230;    /* 选中项 */
+  --bg-accent-soft: #20354b; /* 强调色淡背景 */
+
+  /* 边框 */
+  --border: #232a38;
+  --border-strong: #2a3242;
+  --border-input: #2f394a;
+  --border-subtle: #161b24;
+
+  /* 文字 */
+  --text-bright: #e8edf5;
+  --text-primary: #d4dae2;
+  --text-secondary: #a0a8b4;
+  --text-muted: #7a8290;
+  --text-dim: #6a7280;
+  --text-on-accent: #ffffff;
+
+  /* 强调 */
+  --accent: #3a6ea5;
+  --accent-bright: #9fc8e3;
+
+  /* 状态 */
+  --status-ok: #4caf7a;
+  --status-ok-text: #93d3b0;
+  --status-warn: #d49b4d;
+  --status-warn-text: #e0b676;
+  --status-warn-ring: rgba(212, 155, 77, 0.14);
+  --status-error: #d66a6a;
+  --status-error-text: #e0a0a0;
+  --border-error: #6a2a2a;
+  --border-warn: #594823;
+  --border-ok: #2f5942;
+  --bg-error-soft: #1a1212;
+
+  /* 危险操作 */
+  --destructive: #a04848;
+  --text-on-destructive: #ffffff;
+  --text-on-error: #ffffff;
+  --bg-tag-error: #3a2222;
+  --bg-tag-warn: #3a2f17;
+
+  /* 遮罩 */
+  --overlay: rgba(0, 0, 0, 0.5);
+  --overlay-strong: rgba(0, 0, 0, 0.6);
+
+  /* 节点类型标签 */
+  --tag-say-bg: #2a3a5a;
+  --tag-say-text: #9fc8e3;
+  --tag-narrate-bg: #2f4538;
+  --tag-narrate-text: #93d3b0;
+  --tag-bg-bg: #3a2f45;
+  --tag-bg-text: #c8a0e0;
+  --tag-bgm-bg: #45382f;
+  --tag-bgm-text: #e0b676;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-app: #f4f6f9;
+  --bg-panel: #ffffff;
+  --bg-inset: #eceff4;
+  --bg-hover: #eef1f5;
+  --bg-active: #e2ecf7;
+  --bg-accent-soft: #d8e6f5;
+
+  --border: #d8dde5;
+  --border-strong: #c4ccd6;
+  --border-input: #c8d0db;
+  --border-subtle: #e6e9ee;
+
+  --text-bright: #1a2230;
+  --text-primary: #2a3340;
+  --text-secondary: #5a6573;
+  --text-muted: #828c9a;
+  --text-dim: #a0a8b4;
+  --text-on-accent: #ffffff;
+
+  --accent: #2a6db0;
+  --accent-bright: #1a5694;
+
+  --status-ok: #2d9d63;
+  --status-ok-text: #1d8a52;
+  --status-warn: #c4862f;
+  --status-warn-text: #a8701f;
+  --status-warn-ring: rgba(196, 134, 47, 0.18);
+  --status-error: #d04040;
+  --status-error-text: #b83030;
+  --border-error: #e0a0a0;
+  --border-warn: #e0c080;
+  --border-ok: #80c0a0;
+  --bg-error-soft: #fdf0f0;
+
+  --destructive: #c04040;
+  --text-on-destructive: #ffffff;
+  --text-on-error: #ffffff;
+  --bg-tag-error: #f5dede;
+  --bg-tag-warn: #f5e8d0;
+
+  --overlay: rgba(0, 0, 0, 0.35);
+  --overlay-strong: rgba(0, 0, 0, 0.45);
+
+  --tag-say-bg: #d8e6f5;
+  --tag-say-text: #1a5694;
+  --tag-narrate-bg: #d6efe0;
+  --tag-narrate-text: #1d8a52;
+  --tag-bg-bg: #ece0f5;
+  --tag-bg-text: #6a3a9a;
+  --tag-bgm-bg: #f5e8d0;
+  --tag-bgm-text: #a8701f;
 }
 
 * {
@@ -16,6 +132,6 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #0e1116;
-  color: #d4dae2;
+  background: var(--bg-app);
+  color: var(--text-primary);
 }

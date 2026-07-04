@@ -260,14 +260,14 @@ function IssueCard({
       }}
       style={{
         ...issueButtonStyle,
-        borderColor: issue.severity === "error" ? "#5a2b2b" : "#594823",
+        borderColor: issue.severity === "error" ? "var(--border-error)" : "var(--border-warn)",
         cursor: clickable ? "pointer" : "default",
       }}
     >
       <span
         style={{
           ...severityDotStyle,
-          background: issue.severity === "error" ? "#d66a6a" : "#d49b4d",
+          background: issue.severity === "error" ? "var(--status-error)" : "var(--status-warn)",
         }}
       />
       <span style={issueTextStyle}>
@@ -296,7 +296,7 @@ const indicatorShellStyle: React.CSSProperties = {
 };
 
 function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSSProperties {
-  const color = !hasIssues ? "#7ab38a" : hasErrors ? "#e0a0a0" : "#e0b676";
+  const color = !hasIssues ? "var(--status-ok-text)" : hasErrors ? "var(--status-error-text)" : "var(--status-warn-text)";
   return {
     position: "relative",
     display: "inline-flex",
@@ -307,8 +307,8 @@ function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSS
     height: 22,
     padding: hasIssues ? "0 7px" : 0,
     borderRadius: 6,
-    border: "1px solid #232a38",
-    background: "#0e1116",
+    border: "1px solid var(--border)",
+    background: "var(--bg-app)",
     color,
     cursor: "pointer",
     opacity: hasIssues ? 1 : 0.72,
@@ -337,7 +337,7 @@ const overlayStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: 24,
-  background: "rgba(0, 0, 0, 0.5)",
+  background: "var(--overlay)",
 };
 
 const dialogStyle: React.CSSProperties = {
@@ -345,10 +345,10 @@ const dialogStyle: React.CSSProperties = {
   flexDirection: "column",
   width: "min(720px, calc(100vw - 48px))",
   maxHeight: "min(680px, calc(100vh - 48px))",
-  background: "#141922",
-  border: "1px solid #2f394a",
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border-input)",
   borderRadius: 12,
-  boxShadow: "0 16px 40px rgba(0, 0, 0, 0.6)",
+  boxShadow: "0 16px 40px var(--overlay-strong)",
   overflow: "hidden",
 };
 
@@ -358,18 +358,18 @@ const dialogHeaderStyle: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 18,
   padding: "16px 18px",
-  borderBottom: "1px solid #232a38",
+  borderBottom: "1px solid var(--border)",
 };
 
 const dialogTitleStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
-  color: "#e8edf5",
+  color: "var(--text-bright)",
 };
 
 const dialogMetaStyle: React.CSSProperties = {
   marginTop: 4,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 12,
 };
 
@@ -377,9 +377,9 @@ const closeButtonStyle: React.CSSProperties = {
   width: 30,
   height: 30,
   borderRadius: 8,
-  border: "1px solid #2f394a",
-  background: "#0e1116",
-  color: "#a0a8b4",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-app)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
   fontSize: 18,
   lineHeight: 1,
@@ -394,7 +394,7 @@ const dialogContentStyle: React.CSSProperties = {
 };
 
 const okStyle: React.CSSProperties = {
-  color: "#93d3b0",
+  color: "var(--status-ok-text)",
   fontSize: 13,
 };
 
@@ -405,7 +405,7 @@ const groupStyle: React.CSSProperties = {
 };
 
 const groupTitleStyle: React.CSSProperties = {
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 11,
   textTransform: "uppercase",
 };
@@ -418,8 +418,8 @@ const issueButtonStyle: React.CSSProperties = {
   padding: 10,
   borderRadius: 8,
   border: "1px solid",
-  background: "#141922",
-  color: "#d4dae2",
+  background: "var(--bg-panel)",
+  color: "var(--text-primary)",
   cursor: "pointer",
   textAlign: "left",
 };
@@ -458,19 +458,19 @@ function severityTagStyle(severity: "error" | "warn"): React.CSSProperties {
     borderRadius: 3,
     textTransform: "uppercase",
     letterSpacing: 0.4,
-    background: severity === "error" ? "#3a2222" : "#3a2f17",
-    color: severity === "error" ? "#d66a6a" : "#d49b4d",
+    background: severity === "error" ? "var(--bg-tag-error)" : "var(--bg-tag-warn)",
+    color: severity === "error" ? "var(--status-error)" : "var(--status-warn)",
   };
 }
 
 const issueCodeStyle: React.CSSProperties = {
-  color: "#9fc8e3",
+  color: "var(--accent-bright)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
 };
 
 const targetStyle: React.CSSProperties = {
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
   wordBreak: "break-all",

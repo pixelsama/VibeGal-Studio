@@ -339,6 +339,49 @@ pub struct ProjectData {
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    Dark,
+    Light,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        ThemeMode::Dark
+    }
+}
+
+impl<'de> Deserialize<'de> for ThemeMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "light" => ThemeMode::Light,
+            "dark" => ThemeMode::Dark,
+            _ => ThemeMode::Dark,
+        })
+    }
+}
+
+/// 应用级设置（非项目级），持久化到 app config 目录。
+/// 新增字段时加 #[serde(default)] 保证向前兼容。
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct AppSettings {
+    #[serde(default)]
+    pub theme: ThemeMode,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        AppSettings {
+            theme: ThemeMode::default(),
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct ProjectChangedPayload {
     #[serde(rename = "projectPath")]
     pub project_path: String,
@@ -1915,6 +1958,43 @@ fn default_renderer_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String
         .join("resources/default-renderer"))
 }
 
+// ──────────────────────────────────────────────
+// 应用级设置（非项目级），存到 app config 目录的 settings.json
+// ──────────────────────────────────────────────
+
+fn settings_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("获取 app_config_dir 失败: {}", e))?
+        .join("settings.json"))
+}
+
+/// 加载应用设置。文件不存在时返回默认值（首次运行）。
+#[tauri::command]
+fn load_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
+    let path = settings_path(&app_handle)?;
+    if !path.exists() {
+        return Ok(AppSettings::default());
+    }
+    let text = fs::read_to_string(&path)
+        .map_err(|e| format!("读取设置失败 ({}): {}", path.display(), e))?;
+    serde_json::from_str::<AppSettings>(&text)
+        .map_err(|e| format!("解析设置失败 ({}): {}", path.display(), e))
+}
+
+/// 保存应用设置。
+#[tauri::command]
+fn save_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+    let path = settings_path(&app_handle)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建设置目录失败: {}", e))?;
+    }
+    let json =
+        serde_json::to_string_pretty(&settings).map_err(|e| format!("序列化设置失败: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("写设置失败 ({}): {}", path.display(), e))
+}
+
 fn ensure_initialization_targets_available(
     project_path: &Path,
     default_renderer_dir: &Path,
@@ -2025,6 +2105,8 @@ pub fn run() {
             delete_asset,
             read_asset_preview_data_url,
             save_manifest,
+            load_app_settings,
+            save_app_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -3451,5 +3533,38 @@ mod tests {
 
         assert!(result.is_err());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── 应用设置（AppSettings）测试 ──
+
+    #[test]
+    fn app_settings_defaults_to_dark() {
+        let s = AppSettings::default();
+        assert_eq!(s.theme, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn app_settings_serde_roundtrip_preserves_theme() {
+        let s = AppSettings {
+            theme: ThemeMode::Light,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""theme":"light""#));
+        // 反序列化回来应一致
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn app_settings_deserialize_missing_theme_uses_default() {
+        // 旧版/部分设置文件缺 theme 字段时应回退到默认 dark
+        let back: AppSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(back.theme, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn app_settings_deserialize_unknown_theme_uses_default() {
+        let back: AppSettings = serde_json::from_str(r#"{"theme":"solarized"}"#).unwrap();
+        assert_eq!(back.theme, ThemeMode::Dark);
     }
 }

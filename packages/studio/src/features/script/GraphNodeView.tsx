@@ -16,18 +16,18 @@ type GraphNodeViewNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
 
 /** 状态 → 颜色 / 文案。颜色语义对齐 plan：红=缺文件/重复，绿=正常/终点，黄=分支/孤立/警告，蓝=入口。 */
 const STATUS_STYLE: Record<GraphNodeStatus, { dot: string; text: string; border: string; label: string }> = {
-  duplicate: { dot: "#d66a6a", text: "#e0a0a0", border: "#d66a6a", label: "ID 重复" },
-  "missing-file": { dot: "#d66a6a", text: "#e0a0a0", border: "#d49b4d", label: "文件缺失" },
-  entry: { dot: "#3a6ea5", text: "#9fc8e3", border: "#3a6ea5", label: "起点" },
-  orphan: { dot: "#d49b4d", text: "#e0b676", border: "#594823", label: "未连接" },
-  ending: { dot: "#4caf7a", text: "#93d3b0", border: "#2f5942", label: "终点" },
-  branch: { dot: "#d49b4d", text: "#e0b676", border: "#594823", label: "分支" },
-  normal: { dot: "#4caf7a", text: "#93d3b0", border: "#232a38", label: "已有内容" },
+  duplicate: { dot: "var(--status-error)", text: "var(--status-error-text)", border: "var(--status-error)", label: "ID 重复" },
+  "missing-file": { dot: "var(--status-error)", text: "var(--status-error-text)", border: "var(--status-warn)", label: "文件缺失" },
+  entry: { dot: "var(--accent)", text: "var(--accent-bright)", border: "var(--accent)", label: "起点" },
+  orphan: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", label: "未连接" },
+  ending: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border-ok)", label: "终点" },
+  branch: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", label: "分支" },
+  normal: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border)", label: "已有内容" },
 };
 
 export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) {
   const status = STATUS_STYLE[data.status];
-  const accent = selected ? "#9fc8e3" : status.border;
+  const accent = selected ? "var(--accent-bright)" : status.border;
 
   return (
     <div
@@ -35,7 +35,7 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
         ...nodeStyle,
         borderColor: accent,
         boxShadow: selected
-          ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px rgba(0, 0, 0, 0.24)"
+          ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px var(--overlay)"
           : "none",
       }}
     >
@@ -62,9 +62,9 @@ const nodeStyle: React.CSSProperties = {
   maxWidth: 260,
   padding: "14px 16px",
   borderRadius: 8,
-  border: "1px solid #232a38",
-  background: "#141922",
-  color: "#d4dae2",
+  border: "1px solid var(--border)",
+  background: "var(--bg-panel)",
+  color: "var(--text-primary)",
 };
 
 const headerStyle: React.CSSProperties = {
@@ -80,8 +80,8 @@ const entryBadgeStyle: React.CSSProperties = {
   width: 20,
   height: 20,
   borderRadius: 999,
-  background: "#3a6ea5",
-  color: "#f5f8fc",
+  background: "var(--accent)",
+  color: "var(--text-on-accent)",
   fontSize: 11,
   fontWeight: 700,
   flexShrink: 0,
@@ -90,13 +90,13 @@ const entryBadgeStyle: React.CSSProperties = {
 const titleStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: "#e8edf5",
+  color: "var(--text-bright)",
 };
 
 const metaStyle: React.CSSProperties = {
   marginTop: 8,
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   wordBreak: "break-all",
 };
 
@@ -116,7 +116,7 @@ const statusDotStyle: React.CSSProperties = {
 };
 
 const connStyle: React.CSSProperties = {
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 11,
 };
@@ -124,7 +124,7 @@ const connStyle: React.CSSProperties = {
 const connectionHandleStyle: React.CSSProperties = {
   width: 9,
   height: 9,
-  background: "#0e1116",
-  border: "1px solid #3a6ea5",
+  background: "var(--bg-app)",
+  border: "1px solid var(--accent)",
   boxShadow: "0 0 0 2px rgba(58, 110, 165, 0.16)",
 };

@@ -73,7 +73,7 @@ const toolbarStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 10,
   padding: "10px 14px",
-  borderBottom: "1px solid #232a38",
+  borderBottom: `1px solid var(--border)`,
 };
 
 const searchInputStyle: React.CSSProperties = {
@@ -81,23 +81,23 @@ const searchInputStyle: React.CSSProperties = {
   fontSize: 12,
   padding: "5px 9px",
   borderRadius: 6,
-  border: "1px solid #2f394a",
-  background: "#0e1116",
-  color: "#d4dae2",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-app)",
+  color: "var(--text-primary)",
   outline: "none",
 };
 
 const countStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 
 const importBtnStyle: React.CSSProperties = {
   fontSize: 12,
   padding: "5px 12px",
   borderRadius: 6,
-  border: "1px solid #2f394a",
-  background: "#1a2230",
-  color: "#e8edf5",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-active)",
+  color: "var(--text-bright)",
   cursor: "pointer",
 };

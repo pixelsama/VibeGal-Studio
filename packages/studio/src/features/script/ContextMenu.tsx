@@ -83,14 +83,14 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
             style={{
               ...itemStyle,
               color: item.disabled
-                ? "#596274"
+                ? "var(--text-dim)"
                 : item.danger
-                  ? "#e0a0a0"
-                  : "#d4dae2",
+                  ? "var(--status-error-text)"
+                  : "var(--text-primary)",
               cursor: item.disabled ? "not-allowed" : "pointer",
             }}
             onMouseEnter={(event) => {
-              if (!item.disabled) event.currentTarget.style.background = "#1c2533";
+              if (!item.disabled) event.currentTarget.style.background = "var(--bg-hover)";
             }}
             onMouseLeave={(event) => {
               event.currentTarget.style.background = "transparent";
@@ -110,10 +110,10 @@ const menuStyle: React.CSSProperties = {
   minWidth: 180,
   maxWidth: MENU_WIDTH,
   padding: 6,
-  background: "#141922",
-  border: "1px solid #2f394a",
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border-input)",
   borderRadius: 8,
-  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.5)",
+  boxShadow: "0 12px 32px var(--overlay)",
   display: "flex",
   flexDirection: "column",
   gap: 2,
@@ -134,5 +134,5 @@ const itemStyle: React.CSSProperties = {
 const dividerStyle: React.CSSProperties = {
   height: 1,
   margin: "4px 6px",
-  background: "#232a38",
+  background: "var(--border)",
 };

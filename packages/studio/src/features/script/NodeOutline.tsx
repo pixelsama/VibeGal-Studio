@@ -33,8 +33,8 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
                 onClick={() => onSelect(node.id)}
                 style={{
                   ...itemStyle,
-                  borderColor: active ? "#3a6ea5" : "#232a38",
-                  background: active ? "#1a2431" : "#141922",
+                  borderColor: active ? "var(--accent)" : "var(--border)",
+                  background: active ? "var(--bg-active)" : "var(--bg-panel)",
                 }}
               >
                 <div style={itemHeaderStyle}>
@@ -43,8 +43,8 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
                 </div>
                 <div style={itemMetaStyle}>{node.file}</div>
                 <div style={statusRowStyle}>
-                  <span style={{ ...statusDotStyle, background: hasContent ? "#4caf7a" : "#d49b4d" }} />
-                  <span style={{ color: hasContent ? "#93d3b0" : "#e0b676" }}>
+                  <span style={{ ...statusDotStyle, background: hasContent ? "var(--status-ok)" : "var(--status-warn)" }} />
+                  <span style={{ color: hasContent ? "var(--status-ok-text)" : "var(--status-warn-text)" }}>
                     {hasContent ? "已有内容" : "文件缺失"}
                   </span>
                 </div>
@@ -79,9 +79,9 @@ const itemStyle: React.CSSProperties = {
   gap: 8,
   padding: 12,
   borderRadius: 8,
-  border: "1px solid #232a38",
+  border: "1px solid var(--border)",
   cursor: "pointer",
-  color: "#d4dae2",
+  color: "var(--text-primary)",
   textAlign: "left",
 };
 
@@ -95,21 +95,21 @@ const itemHeaderStyle: React.CSSProperties = {
 const itemTitleStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
-  color: "#e8edf5",
+  color: "var(--text-bright)",
 };
 
 const entryBadgeStyle: React.CSSProperties = {
   padding: "2px 8px",
   borderRadius: 999,
-  background: "#20354b",
-  color: "#9fc8e3",
+  background: "var(--bg-accent-soft)",
+  color: "var(--accent-bright)",
   fontSize: 11,
   flexShrink: 0,
 };
 
 const itemMetaStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   wordBreak: "break-all",
 };
 
@@ -129,6 +129,6 @@ const statusDotStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: "8px 4px",
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };

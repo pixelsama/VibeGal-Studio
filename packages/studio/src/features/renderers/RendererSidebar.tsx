@@ -21,9 +21,9 @@ export function RendererSidebar({ rendererIds, activeRendererId, onSelect }: Ren
               aria-current={active ? "page" : undefined}
               style={{
                 ...itemStyle,
-                color: active ? "#e8edf5" : "#a0a8b4",
-                background: active ? "#1a2230" : "transparent",
-                borderColor: active ? "#3a6ea5" : "transparent",
+                color: active ? "var(--text-bright)" : "var(--text-secondary)",
+                background: active ? "var(--bg-active)" : "transparent",
+                borderColor: active ? "var(--accent)" : "transparent",
               }}
             >
               <span style={itemNameStyle}>{id}</span>
@@ -74,13 +74,13 @@ const activeBadgeStyle: React.CSSProperties = {
   flexShrink: 0,
   padding: "1px 6px",
   borderRadius: 999,
-  background: "#20354b",
-  color: "#9fc8e3",
+  background: "var(--bg-accent-soft)",
+  color: "var(--accent-bright)",
   fontSize: 11,
 };
 
 const emptyStyle: React.CSSProperties = {
   padding: "8px 4px",
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 13,
 };

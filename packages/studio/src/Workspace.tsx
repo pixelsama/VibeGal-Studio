@@ -20,7 +20,7 @@ import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation
 
 interface Props {
   project: ProjectData;
-  location: Exclude<NavigationLocation, { type: "project-list" }>;
+  location: Exclude<NavigationLocation, { type: "project-list" } | { type: "settings" }>;
   canGoBack: boolean;
   canGoForward: boolean;
   onBack: () => void;
@@ -29,6 +29,7 @@ interface Props {
   onReplaceLocation: (next: NavigationLocation) => void;
   /** 项目被刷新后（编辑保存触发）通知上层更新 */
   onProjectChanged: (p: ProjectData) => void;
+  onOpenSettings: () => void;
 }
 
 type SyncState = "synced" | "syncing" | "error";
@@ -69,6 +70,7 @@ export function Workspace({
   onNavigate,
   onReplaceLocation,
   onProjectChanged,
+  onOpenSettings,
 }: Props) {
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -183,12 +185,21 @@ export function Workspace({
           <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>Assets</TabBtn>
         </div>
 
-        {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
+        {/* 右侧：项目名 + 同步指示器 + 渲染层 + 设置 */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={projectNameStyle}>{project.meta.name}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle}>当前渲染层</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label="设置"
+            title="设置"
+            style={settingsBtnStyle}
+          >
+            ⚙
+          </button>
         </div>
       </header>
 
@@ -280,9 +291,9 @@ function hasClosest(target: EventTarget): target is EventTarget & { closest: (se
 
 function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => void }) {
   const config = {
-    synced: { label: "已同步", dot: "#4caf7a", cursor: "default" },
-    syncing: { label: "同步中...", dot: "#d49b4d", cursor: "default" },
-    error: { label: "刷新失败（点击重试）", dot: "#d66a6a", cursor: "pointer" },
+    synced: { label: "已同步", dot: "var(--status-ok)", cursor: "default" },
+    syncing: { label: "同步中...", dot: "var(--status-warn)", cursor: "default" },
+    error: { label: "刷新失败（点击重试）", dot: "var(--status-error)", cursor: "pointer" },
   }[state];
 
   return (
@@ -293,7 +304,7 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
       style={{
         ...syncButtonStyle,
         cursor: config.cursor,
-        color: state === "error" ? "#e0a0a0" : "#a0a8b4",
+        color: state === "error" ? "var(--status-error-text)" : "var(--text-secondary)",
       }}
       title={state === "error" ? "重新打开项目并保留当前工作台" : undefined}
     >
@@ -301,7 +312,7 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
         style={{
           ...syncDotStyle,
           background: config.dot,
-          boxShadow: state === "syncing" ? "0 0 0 3px rgba(212, 155, 77, 0.14)" : undefined,
+          boxShadow: state === "syncing" ? "0 0 0 3px var(--status-warn-ring)" : undefined,
         }}
       />
       {config.label}
@@ -312,8 +323,8 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick} style={{
-      padding: "0 14px", height: 30, background: active ? "#1a1f29" : "transparent",
-      border: "none", borderRadius: 6, color: active ? "#9fc8e3" : "#7a8290",
+      padding: "0 14px", height: 30, background: active ? "var(--bg-hover)" : "transparent",
+      border: "none", borderRadius: 6, color: active ? "var(--accent-bright)" : "var(--text-muted)",
       cursor: "pointer", fontSize: 13,
     }}>
       {children}
@@ -346,8 +357,8 @@ const titleBarStyle: React.CSSProperties = {
   height: 38,
   // 左侧 88px 为 macOS 红绿灯避让（约 70px）+ 一点间距；右 12px
   padding: "0 12px 0 88px",
-  borderBottom: "1px solid #232a38",
-  background: "#0e1116",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-app)",
 };
 const centerGroupStyle: React.CSSProperties = {
   position: "absolute",
@@ -364,17 +375,29 @@ const navBtnStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   background: "transparent",
-  border: "1px solid #2a3242",
+  border: "1px solid var(--border-strong)",
   borderRadius: 6,
-  color: "#a0a8b4",
+  color: "var(--text-secondary)",
   fontSize: 18,
   lineHeight: 1,
   cursor: "pointer",
 };
+const settingsBtnStyle: React.CSSProperties = {
+  width: 26,
+  height: 26,
+  borderRadius: 6,
+  border: "1px solid var(--border)",
+  background: "transparent",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  fontSize: 14,
+  lineHeight: 1,
+};
+
 const projectNameStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
-  color: "#7a8290",
+  color: "var(--text-muted)",
   maxWidth: 200,
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -382,7 +405,7 @@ const projectNameStyle: React.CSSProperties = {
 };
 const rendererLabelStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#7a8290",
+  color: "var(--text-muted)",
 };
 const rendererStatusStyle: React.CSSProperties = {
   maxWidth: 140,
@@ -391,9 +414,9 @@ const rendererStatusStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   padding: "5px 9px",
   borderRadius: 6,
-  border: "1px solid #2a3242",
-  background: "#141922",
-  color: "#d4dae2",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-panel)",
+  color: "var(--text-primary)",
   fontSize: 13,
 };
 const renderWorkspaceStyle: React.CSSProperties = {
@@ -402,7 +425,7 @@ const renderWorkspaceStyle: React.CSSProperties = {
   height: "100%",
   minWidth: 0,
   overflow: "hidden",
-  background: "#0b0e14",
+  background: "var(--bg-inset)",
 };
 const previewPaneStyle: React.CSSProperties = {
   flex: 1,
@@ -415,8 +438,8 @@ const syncButtonStyle: React.CSSProperties = {
   gap: 7,
   padding: "5px 9px",
   borderRadius: 999,
-  border: "1px solid #2a3242",
-  background: "#141922",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-panel)",
   fontSize: 12,
 };
 const syncDotStyle: React.CSSProperties = {

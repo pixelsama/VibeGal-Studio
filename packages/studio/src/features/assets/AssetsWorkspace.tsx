@@ -447,7 +447,7 @@ const rootStyle: React.CSSProperties = {
   display: "flex",
   width: "100%",
   height: "100%",
-  background: "#0e1116",
+  background: "var(--bg-app)",
   overflow: "hidden",
 };
 
@@ -467,9 +467,9 @@ const scrollStyle: React.CSSProperties = {
 const invalidBannerStyle: React.CSSProperties = {
   padding: "8px 14px",
   fontSize: 12,
-  color: "#e0a0a0",
-  background: "#1a1212",
-  borderBottom: "1px solid #5a2b2b",
+  color: "var(--status-error-text)",
+  background: "var(--bg-error-soft)",
+  borderBottom: `1px solid var(--border-error)`,
 };
 
 const draftHintStyle: React.CSSProperties = {
@@ -478,10 +478,10 @@ const draftHintStyle: React.CSSProperties = {
   left: "50%",
   transform: "translateX(-50%)",
   fontSize: 11,
-  color: "#7a8290",
-  background: "#0e1116",
+  color: "var(--text-muted)",
+  background: "var(--bg-app)",
   padding: "3px 10px",
   borderRadius: 6,
-  border: "1px solid #232a38",
+  border: `1px solid var(--border)`,
   zIndex: 30,
 };

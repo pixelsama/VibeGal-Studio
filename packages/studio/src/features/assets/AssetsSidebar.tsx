@@ -37,8 +37,8 @@ export function AssetsSidebar({ active, onSelect }: AssetsSidebarProps) {
               onClick={() => onSelect(section.id)}
               style={{
                 ...itemStyle,
-                color: isActive ? "#e8edf5" : "#7a8290",
-                background: isActive ? "#1a2230" : "transparent",
+                color: isActive ? "var(--text-bright)" : "var(--text-muted)",
+                background: isActive ? "var(--bg-active)" : "transparent",
               }}
               aria-current={isActive ? "page" : undefined}
             >
@@ -71,12 +71,12 @@ const itemStyle: React.CSSProperties = {
   borderRadius: 6,
   border: "1px solid transparent",
   background: "transparent",
-  color: "#7a8290",
+  color: "var(--text-muted)",
   cursor: "pointer",
 };
 
 const dividerStyle: React.CSSProperties = {
   height: 1,
   margin: "6px 4px",
-  background: "#232a38",
+  background: "var(--border)",
 };

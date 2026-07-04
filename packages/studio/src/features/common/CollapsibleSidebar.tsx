@@ -53,8 +53,8 @@ const shellStyle: React.CSSProperties = {
   flexShrink: 0,
   height: "100%",
   minWidth: 0,
-  background: "#0e1116",
-  borderRight: "1px solid #232a38",
+  background: "var(--bg-app)",
+  borderRight: "1px solid var(--border)",
   overflow: "hidden",
 };
 
@@ -64,7 +64,7 @@ const headerStyle: React.CSSProperties = {
   gap: 8,
   minHeight: 42,
   padding: "0 8px 0 12px",
-  borderBottom: "1px solid #232a38",
+  borderBottom: "1px solid var(--border)",
 };
 
 const collapsedHeaderStyle: React.CSSProperties = {
@@ -81,7 +81,7 @@ const titleStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   fontSize: 13,
   fontWeight: 600,
-  color: "#d4dae2",
+  color: "var(--text-primary)",
 };
 
 const toggleButtonStyle: React.CSSProperties = {
@@ -90,10 +90,10 @@ const toggleButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  border: "1px solid #2a3242",
+  border: "1px solid var(--border-strong)",
   borderRadius: 6,
-  background: "#141922",
-  color: "#a0a8b4",
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
   fontSize: 18,
   lineHeight: 1,
@@ -112,7 +112,7 @@ const collapsedLabelStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   writingMode: "vertical-rl",
-  color: "#7a8290",
+  color: "var(--text-muted)",
   fontSize: 12,
   userSelect: "none",
 };
