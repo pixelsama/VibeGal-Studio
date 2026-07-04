@@ -2,14 +2,20 @@ import { createElement } from "react";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Instruction } from "@galstudio/engine";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   conflictDraftCopyPath,
   InstructionBlock,
   isWriteConflictError,
+  NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
   transitionNodeEditorMode,
 } from "./NodeEditor";
+import type { ProjectData } from "../../lib/types";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (path: string) => `asset://${path}`,
+}));
 
 describe("InstructionBlock", () => {
   const manifest = {
@@ -112,5 +118,34 @@ describe("NodeEditor safe persistence", () => {
 
   it("builds conflict draft copy path next to the node file", () => {
     expect(conflictDraftCopyPath("nodes/act1/start.json", 123)).toBe("nodes/act1/start.conflict-123.json");
+  });
+});
+
+describe("NodeEditor scenario surface", () => {
+  it("does not repeat prose in outline and inspector", () => {
+    const node = { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 } };
+    const project: ProjectData = {
+      path: "/tmp/galstudio-test",
+      meta: { name: "Test", activeRendererId: "default", createdAt: "2026-01-01T00:00:00.000Z" },
+      content: {
+        manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
+        meta: { stage: { width: 1280, height: 720 } },
+      },
+      rendererIds: ["default"],
+      graph: { version: 1, entryNodeId: "start", nodes: [node], edges: [] },
+      nodes: [{ relPath: "nodes/start.json", data: [{ t: "narrate", text: "新的故事从这里开始。" }] }],
+      projectReport: { projectIssues: [] },
+    };
+
+    const html = renderToStaticMarkup(createElement(NodeEditor, {
+      project,
+      rendererId: "default",
+      node,
+      nodeData: [{ t: "narrate", text: "新的故事从这里开始。" }],
+      onSaved: () => {},
+    }));
+
+    expect(html).not.toContain("大纲");
+    expect(html.match(/新的故事从这里开始。/g)).toHaveLength(1);
   });
 });

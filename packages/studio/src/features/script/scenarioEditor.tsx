@@ -168,29 +168,13 @@ export function ScenarioInspector({
             value={instruction.who}
             onChange={(who) => onReplaceInstruction({ ...instruction, who })}
           />
-          <ResourcePicker
-            label="表情"
-            manifest={manifest}
-            kind="expression"
-            characterId={instruction.who}
-            value={instruction.expr}
-            onChange={(expr) => onReplaceInstruction({ ...instruction, expr })}
-          />
-          <TextAreaField
-            label="文本"
-            value={instruction.text}
-            onChange={(text) => onReplaceInstruction({ ...instruction, text })}
-          />
+          <div style={mutedTextStyle}>正文在左侧剧本文本中编辑；表情变化请使用 @char 行。</div>
         </InspectorPanel>
       );
     case "narrate":
       return (
         <InspectorPanel title="旁白">
-          <TextAreaField
-            label="文本"
-            value={instruction.text}
-            onChange={(text) => onReplaceInstruction({ ...instruction, text })}
-          />
+          <div style={mutedTextStyle}>正文在左侧剧本文本中编辑。</div>
         </InspectorPanel>
       );
     case "bg":
@@ -324,15 +308,6 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} style={textareaStyle} />
-    </label>
-  );
-}
-
 function EnumField({
   label,
   value,
@@ -460,12 +435,6 @@ const inputStyle: CSSProperties = {
   background: "var(--bg-app)",
   color: "var(--text-primary)",
   fontSize: 13,
-};
-
-const textareaStyle: CSSProperties = {
-  ...inputStyle,
-  minHeight: 96,
-  resize: "vertical",
 };
 
 const choiceRowStyle: CSSProperties = {

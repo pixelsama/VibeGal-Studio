@@ -102,6 +102,28 @@ describe("ScenarioInspector", () => {
     expect(choice).toContain("目标节点");
   });
 
+  it("does not duplicate prose text in the inspector", () => {
+    const say = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("akari: 早上好。", 0),
+      manifest,
+      graphNodes,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const narrate = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("新的故事从这里开始。", 0),
+      manifest,
+      graphNodes,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(say).not.toContain("早上好。");
+    expect(say).not.toContain("textarea");
+    expect(narrate).not.toContain("新的故事从这里开始。");
+    expect(narrate).not.toContain("textarea");
+  });
+
   it("renders node summary when no editable line is selected", () => {
     const html = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("", 0),

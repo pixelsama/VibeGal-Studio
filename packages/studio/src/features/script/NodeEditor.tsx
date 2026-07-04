@@ -15,7 +15,6 @@ import { useNodePreview } from "./useNodePreview";
 import {
   defaultInstruction,
   insertInstructionAt,
-  summarizeInstructions,
   type InsertableKind,
 } from "./instructions";
 import {
@@ -224,7 +223,6 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
     setStatus("");
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
 
-  const outline = useMemo(() => summarizeInstructions(lastValidInstructions), [lastValidInstructions]);
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
   const canSave = useMemo(() => {
     if (mode === "scenario") return diagnostics.length === 0;
@@ -451,19 +449,6 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
             </button>
           ))}
         </div>
-        <div style={outlineStyle}>
-          <div style={outlineTitleStyle}>大纲（SAY / NARRATE / BG / BGM / CHOICE）</div>
-          {outline.length === 0 ? (
-            <div style={outlineEmptyStyle}>暂无可摘要指令</div>
-          ) : (
-            outline.map((item) => (
-              <button key={`${item.index}-${item.kind}`} type="button" style={outlineItemStyle}>
-                <span style={{ ...outlineKindStyle, ...kindColor(item.kind) }}>{item.kind}</span>
-                <span style={outlineLabelStyle}>{item.label}</span>
-              </button>
-            ))
-          )}
-        </div>
       </div>
       <textarea
         value={text}
@@ -501,7 +486,7 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   ) : (
     <div style={jsonInspectorStyle}>
       <div style={titleStyle}>JSON 高级模式</div>
-      <div style={outlineEmptyStyle}>返回剧本模式后可使用 Inspector 编辑当前行。</div>
+      <div style={helperTextStyle}>返回剧本模式后可使用 Inspector 编辑当前行。</div>
       {nodeIssues.length > 0 && (
         <div style={issueListStyle}>
           {nodeIssues.map((issue) => (
@@ -1018,7 +1003,6 @@ const asideStyle: React.CSSProperties = {
   flexDirection: "column",
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
-  maxHeight: 220,
   flexShrink: 0,
 };
 
@@ -1040,52 +1024,10 @@ const insertBtnStyle: React.CSSProperties = {
   fontSize: 12,
 };
 
-const outlineStyle: React.CSSProperties = {
-  overflowY: "auto",
-  padding: "8px 12px",
-};
-
-const outlineTitleStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "var(--text-muted)",
-  textTransform: "uppercase",
-  marginBottom: 6,
-};
-
-const outlineEmptyStyle: React.CSSProperties = {
+const helperTextStyle: React.CSSProperties = {
   fontSize: 12,
   color: "var(--text-dim)",
   padding: "4px 0",
-};
-
-const outlineItemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  width: "100%",
-  padding: "6px 8px",
-  border: "none",
-  background: "transparent",
-  borderRadius: 6,
-  cursor: "pointer",
-  textAlign: "left",
-};
-
-const outlineKindStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 700,
-  padding: "2px 6px",
-  borderRadius: 4,
-  flexShrink: 0,
-  textTransform: "uppercase",
-};
-
-const outlineLabelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-primary)",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
 };
 
 const blockStyle: React.CSSProperties = {
@@ -1196,14 +1138,3 @@ const issueItemStyle: React.CSSProperties = {
   fontSize: 12,
   lineHeight: 1.5,
 };
-
-function kindColor(kind: "say" | "narrate" | "bg" | "bgm" | "choice"): React.CSSProperties {
-  const map: Record<string, React.CSSProperties> = {
-    say: { background: "var(--tag-say-bg)", color: "var(--tag-say-text)" },
-    narrate: { background: "var(--tag-narrate-bg)", color: "var(--tag-narrate-text)" },
-    bg: { background: "var(--tag-bg-bg)", color: "var(--tag-bg-text)" },
-    bgm: { background: "var(--tag-bgm-bg)", color: "var(--tag-bgm-text)" },
-    choice: { background: "var(--tag-choice-bg)", color: "var(--tag-choice-text)" },
-  };
-  return map[kind] ?? {};
-}
