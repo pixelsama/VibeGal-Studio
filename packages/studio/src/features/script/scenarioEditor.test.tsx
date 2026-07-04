@@ -102,7 +102,7 @@ describe("ScenarioInspector", () => {
     expect(choice).toContain("目标节点");
   });
 
-  it("does not duplicate prose text in the inspector", () => {
+  it("renders compact current-line text fields for prose", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("akari: 早上好。", 0),
       manifest,
@@ -118,9 +118,11 @@ describe("ScenarioInspector", () => {
       onReplaceInstruction: () => {},
     }));
 
-    expect(say).not.toContain("早上好。");
+    expect(say).toContain("当前行文本");
+    expect(say).toContain("早上好。");
     expect(say).not.toContain("textarea");
-    expect(narrate).not.toContain("新的故事从这里开始。");
+    expect(narrate).toContain("当前行文本");
+    expect(narrate).toContain("新的故事从这里开始。");
     expect(narrate).not.toContain("textarea");
   });
 

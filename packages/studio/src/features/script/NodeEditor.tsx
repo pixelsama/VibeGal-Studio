@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  formatScenarioInstruction,
   formatScenarioText,
   parseScenarioText,
   type Instruction,
@@ -14,7 +15,6 @@ import { useRendererComponent } from "../preview/useRendererComponent";
 import { useNodePreview } from "./useNodePreview";
 import {
   defaultInstruction,
-  insertInstructionAt,
   type InsertableKind,
 } from "./instructions";
 import {
@@ -37,6 +37,7 @@ interface NodeEditorProps {
 }
 
 type NodeEditorMode = "scenario" | "json" | "blocks";
+type CommandMenuSource = "trigger" | "line-plus";
 
 export function isWriteConflictError(error: unknown): boolean {
   if (error instanceof Error) return isWriteConflictError(error.message);
@@ -131,19 +132,92 @@ function parseJsonInstructionText(text: string): { ok: true; instructions: Instr
   }
 }
 
-const INSERT_BUTTONS: { kind: InsertableKind; label: string }[] = [
-  { kind: "narrate", label: "旁白" },
-  { kind: "say", label: "台词" },
-  { kind: "bg", label: "背景" },
-  { kind: "bgm", label: "BGM" },
-  { kind: "sfx", label: "音效" },
-  { kind: "voice", label: "语音" },
-  { kind: "char", label: "角色" },
-  { kind: "wait", label: "等待" },
-  { kind: "effect", label: "效果" },
-  { kind: "transition", label: "转场" },
-  { kind: "choice", label: "选择" },
+const SCENARIO_COMMANDS: Array<{ kind: InsertableKind; label: string; detail: string; aliases: string[] }> = [
+  { kind: "narrate", label: "旁白", detail: "插入一行叙述文本", aliases: ["narrate", "text", "旁白"] },
+  { kind: "say", label: "台词", detail: "插入角色台词", aliases: ["say", "dialog", "台词"] },
+  { kind: "bg", label: "背景", detail: "切换背景", aliases: ["bg", "background", "背景"] },
+  { kind: "bgm", label: "BGM", detail: "播放背景音乐", aliases: ["bgm", "music", "音乐"] },
+  { kind: "sfx", label: "音效", detail: "播放音效", aliases: ["sfx", "sound", "音效"] },
+  { kind: "voice", label: "语音", detail: "播放语音", aliases: ["voice", "语音"] },
+  { kind: "char", label: "角色", detail: "登场或切换立绘", aliases: ["char", "character", "角色"] },
+  { kind: "wait", label: "等待", detail: "等待指定毫秒", aliases: ["wait", "等待"] },
+  { kind: "effect", label: "效果", detail: "触发画面效果", aliases: ["effect", "fx", "效果"] },
+  { kind: "transition", label: "转场", detail: "触发转场覆盖层", aliases: ["transition", "trans", "转场"] },
+  { kind: "choice", label: "选择", detail: "插入分支选项", aliases: ["choice", "branch", "选择"] },
 ];
+
+interface ScenarioCommandTrigger {
+  trigger: "@" | "/";
+  query: string;
+  replaceStart: number;
+  replaceEnd: number;
+  line: number;
+}
+
+export function scenarioCommandTriggerAtCursor(text: string, cursorOffset: number): ScenarioCommandTrigger | null {
+  const bounds = lineBoundsAtCursor(text, cursorOffset);
+  const prefix = text.slice(bounds.start, bounds.offset);
+  const suffix = text.slice(bounds.offset, bounds.end);
+  if (suffix.trim().length > 0) return null;
+
+  const trimmedPrefix = prefix.trimStart();
+  const leadingWhitespace = prefix.length - trimmedPrefix.length;
+  const trigger = trimmedPrefix[0];
+  if (trigger !== "@" && trigger !== "/") return null;
+
+  const query = trimmedPrefix.slice(1);
+  if (query.length > 0 && /\s/.test(query)) return null;
+
+  return {
+    trigger,
+    query,
+    replaceStart: bounds.start + leadingWhitespace,
+    replaceEnd: bounds.end,
+    line: bounds.line,
+  };
+}
+
+export function insertScenarioCommandAtCursor(
+  text: string,
+  cursorOffset: number,
+  commandText: string,
+): { text: string; cursorOffset: number } {
+  const trigger = scenarioCommandTriggerAtCursor(text, cursorOffset);
+  if (trigger) {
+    const nextText = `${text.slice(0, trigger.replaceStart)}${commandText}${text.slice(trigger.replaceEnd)}`;
+    return { text: nextText, cursorOffset: trigger.replaceStart + commandText.length };
+  }
+
+  const bounds = lineBoundsAtCursor(text, cursorOffset);
+  const lineText = text.slice(bounds.start, bounds.end);
+  if (lineText.trim().length === 0) {
+    const nextText = `${text.slice(0, bounds.start)}${commandText}${text.slice(bounds.end)}`;
+    return { text: nextText, cursorOffset: bounds.start + commandText.length };
+  }
+
+  const nextText = `${text.slice(0, bounds.end)}\n${commandText}${text.slice(bounds.end)}`;
+  return { text: nextText, cursorOffset: bounds.end + 1 + commandText.length };
+}
+
+function lineBoundsAtCursor(text: string, cursorOffset: number): { start: number; end: number; offset: number; line: number } {
+  const offset = Math.max(0, Math.min(cursorOffset, text.length));
+  const previousBreak = offset === 0 ? -1 : text.lastIndexOf("\n", offset - 1);
+  const start = previousBreak + 1;
+  const nextBreak = text.indexOf("\n", offset);
+  const end = nextBreak === -1 ? text.length : nextBreak;
+  const line = text.slice(0, offset).split("\n").length;
+  return { start, end, offset, line };
+}
+
+function scenarioCommandOptionsForQuery(query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return SCENARIO_COMMANDS;
+  return SCENARIO_COMMANDS.filter((command) => (
+    command.label.toLowerCase().includes(normalized)
+    || command.kind.toLowerCase().includes(normalized)
+    || command.aliases.some((alias) => alias.toLowerCase().includes(normalized))
+  ));
+}
 
 function defaultScenarioInstruction(kind: InsertableKind, project: ProjectData): Instruction {
   const draft = defaultInstruction(kind);
@@ -191,6 +265,10 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   const [hasExternalUpdate, setHasExternalUpdate] = useState(false);
   const [writeConflict, setWriteConflict] = useState(false);
   const [draftCopyPath, setDraftCopyPath] = useState<string | null>(null);
+  const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
+  const [textareaScrollTop, setTextareaScrollTop] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingSelectionRef = useRef<number | null>(null);
   const loadedTextRef = useRef(incomingJsonText);
   const loadedRevisionRef = useRef(project.nodeRevisions?.[node.file] ?? undefined);
 
@@ -224,11 +302,33 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
 
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
+  const scenarioCommandTrigger = useMemo(
+    () => (mode === "scenario" ? scenarioCommandTriggerAtCursor(text, cursorOffset) : null),
+    [cursorOffset, mode, text],
+  );
+  const commandQuery = commandMenuSource === "trigger" ? scenarioCommandTrigger?.query ?? "" : "";
+  const visibleCommands = useMemo(() => scenarioCommandOptionsForQuery(commandQuery), [commandQuery]);
+  const commandMenuVisible = mode === "scenario"
+    && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
+  const lineActionTop = Math.max(8, 16 + (scenarioSelection.line - 1) * 23.8 - textareaScrollTop);
   const canSave = useMemo(() => {
     if (mode === "scenario") return diagnostics.length === 0;
     if (mode === "json") return parseJsonInstructionText(text).ok;
     return true;
   }, [diagnostics.length, mode, text]);
+
+  useEffect(() => {
+    if (commandMenuSource === "trigger" && !scenarioCommandTrigger) setCommandMenuSource(null);
+  }, [commandMenuSource, scenarioCommandTrigger]);
+
+  useEffect(() => {
+    const offset = pendingSelectionRef.current;
+    const textarea = textareaRef.current;
+    if (offset == null || !textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+    pendingSelectionRef.current = null;
+  }, [text]);
 
   useEffect(() => {
     if (!focusRequest?.jsonPath) return;
@@ -263,15 +363,6 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
     } else {
       setDiagnostics([{ line: 1, message: parsed.error }]);
     }
-  };
-
-  const applyInstructionList = (next: Instruction[]) => {
-    setInstructions(next);
-    setLastValidInstructions(next);
-    setDiagnostics([]);
-    setText(mode === "scenario" ? formatScenarioText(next) : JSON.stringify(next, null, 2));
-    setDirty(true);
-    setStatus("");
   };
 
   const buildPayload = (): { ok: true; payload: string; nextInstructions: Instruction[] } | { ok: false; message: string } => {
@@ -370,8 +461,50 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
     }
   };
 
-  const handleInsert = (kind: InsertableKind) => {
-    applyInstructionList(insertInstructionAt(lastValidInstructions, lastValidInstructions.length, defaultScenarioInstruction(kind, project)));
+  const syncCursorFromTextarea = (textarea: HTMLTextAreaElement) => {
+    const nextOffset = textarea.selectionStart;
+    setCursorOffset(nextOffset);
+    setTextareaScrollTop(textarea.scrollTop);
+    if (mode !== "scenario") {
+      setCommandMenuSource(null);
+      return;
+    }
+    if (scenarioCommandTriggerAtCursor(textarea.value, nextOffset)) {
+      setCommandMenuSource("trigger");
+    } else if (commandMenuSource === "trigger") {
+      setCommandMenuSource(null);
+    }
+  };
+
+  const handleScenarioTextChange = (textarea: HTMLTextAreaElement) => {
+    const nextText = textarea.value;
+    const nextOffset = textarea.selectionStart;
+    applyScenarioText(nextText);
+    setCursorOffset(nextOffset);
+    setTextareaScrollTop(textarea.scrollTop);
+    setCommandMenuSource(scenarioCommandTriggerAtCursor(nextText, nextOffset) ? "trigger" : null);
+  };
+
+  const handleInsertCommand = (kind: InsertableKind) => {
+    if (mode !== "scenario") return;
+    const commandText = formatScenarioInstruction(defaultScenarioInstruction(kind, project));
+    const inserted = insertScenarioCommandAtCursor(text, cursorOffset, commandText);
+    pendingSelectionRef.current = inserted.cursorOffset;
+    setCursorOffset(inserted.cursorOffset);
+    setCommandMenuSource(null);
+    applyScenarioText(inserted.text);
+  };
+
+  const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape" && commandMenuSource) {
+      event.preventDefault();
+      setCommandMenuSource(null);
+      return;
+    }
+    if ((event.key === "Enter" || event.key === "Tab") && commandMenuVisible && visibleCommands[0]) {
+      event.preventDefault();
+      handleInsertCommand(visibleCommands[0].kind);
+    }
   };
 
   const handleModeToggle = (nextMode: NodeEditorMode) => {
@@ -441,27 +574,64 @@ export function NodeEditor({ project, rendererId, node, nodeData, focusRequest, 
           {saving ? "保存中…" : "保存"}
         </button>
       </div>
-      <div style={asideStyle}>
-        <div style={insertBarStyle}>
-          {INSERT_BUTTONS.map((btn) => (
-            <button key={btn.kind} type="button" onClick={() => handleInsert(btn.kind)} style={insertBtnStyle}>
-              + {btn.label}
-            </button>
-          ))}
-        </div>
+      <div style={scenarioTextWrapStyle}>
+        {mode === "scenario" && (
+          <button
+            type="button"
+            aria-label="插入当前行命令"
+            title="插入当前行命令"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setCommandMenuSource(commandMenuSource === "line-plus" ? null : "line-plus");
+              textareaRef.current?.focus();
+            }}
+            style={{ ...linePlusButtonStyle, top: lineActionTop }}
+          >
+            +
+          </button>
+        )}
+        {commandMenuVisible && (
+          <div
+            role="menu"
+            aria-label="剧本命令"
+            style={{ ...commandMenuStyle, top: lineActionTop + 30 }}
+          >
+            {visibleCommands.map((command) => (
+              <button
+                key={command.kind}
+                type="button"
+                role="menuitem"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => handleInsertCommand(command.kind)}
+                style={commandMenuButtonStyle}
+              >
+                <span style={commandMenuLabelStyle}>{command.label}</span>
+                <span style={commandMenuDetailStyle}>{command.detail}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(event) => {
+            if (mode === "scenario") handleScenarioTextChange(event.currentTarget);
+            else {
+              setCommandMenuSource(null);
+              setCursorOffset(event.currentTarget.selectionStart);
+              setTextareaScrollTop(event.currentTarget.scrollTop);
+              applyJsonText(event.target.value);
+            }
+          }}
+          onSelect={(event) => syncCursorFromTextarea(event.currentTarget)}
+          onClick={(event) => syncCursorFromTextarea(event.currentTarget)}
+          onKeyDown={handleTextareaKeyDown}
+          onKeyUp={(event) => syncCursorFromTextarea(event.currentTarget)}
+          onScroll={(event) => setTextareaScrollTop(event.currentTarget.scrollTop)}
+          spellCheck={false}
+          style={mode === "scenario" ? scenarioTextareaStyle : textareaStyle}
+        />
       </div>
-      <textarea
-        value={text}
-        onChange={(event) => {
-          if (mode === "scenario") applyScenarioText(event.target.value);
-          else applyJsonText(event.target.value);
-        }}
-        onSelect={(event) => setCursorOffset(event.currentTarget.selectionStart)}
-        onClick={(event) => setCursorOffset(event.currentTarget.selectionStart)}
-        onKeyUp={(event) => setCursorOffset(event.currentTarget.selectionStart)}
-        spellCheck={false}
-        style={mode === "scenario" ? scenarioTextareaStyle : textareaStyle}
-      />
     </div>
   );
 
@@ -974,6 +1144,7 @@ const saveButtonStyle: React.CSSProperties = {
 const textareaStyle: React.CSSProperties = {
   flex: 1,
   width: "100%",
+  height: "100%",
   resize: "none",
   border: "none",
   outline: "none",
@@ -990,6 +1161,7 @@ const scenarioTextareaStyle: React.CSSProperties = {
   fontFamily: "ui-monospace, 'SF Mono', monospace",
   fontSize: 14,
   lineHeight: 1.7,
+  paddingLeft: 46,
 };
 
 const jsonInspectorStyle: React.CSSProperties = {
@@ -998,36 +1170,69 @@ const jsonInspectorStyle: React.CSSProperties = {
   padding: 16,
 };
 
-const asideStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  borderBottom: "1px solid var(--border)",
-  background: "var(--bg-app)",
-  flexShrink: 0,
-};
-
-const insertBarStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 6,
-  padding: "8px 12px",
-  borderBottom: "1px solid var(--border-subtle)",
-};
-
-const insertBtnStyle: React.CSSProperties = {
-  padding: "5px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--border-strong)",
-  background: "var(--bg-panel)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  fontSize: 12,
-};
-
 const helperTextStyle: React.CSSProperties = {
   fontSize: 12,
   color: "var(--text-dim)",
   padding: "4px 0",
+};
+
+const scenarioTextWrapStyle: React.CSSProperties = {
+  position: "relative",
+  flex: 1,
+  minHeight: 0,
+};
+
+const linePlusButtonStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 10,
+  zIndex: 3,
+  width: 24,
+  height: 24,
+  borderRadius: 6,
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  fontSize: 16,
+  lineHeight: "20px",
+};
+
+const commandMenuStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 36,
+  zIndex: 4,
+  display: "grid",
+  gap: 4,
+  width: 240,
+  maxHeight: 280,
+  overflow: "auto",
+  padding: 6,
+  borderRadius: 8,
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-panel)",
+  boxShadow: "0 14px 34px rgba(15, 23, 42, 0.18)",
+};
+
+const commandMenuButtonStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 2,
+  padding: "7px 9px",
+  border: "none",
+  borderRadius: 6,
+  background: "transparent",
+  color: "var(--text-primary)",
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const commandMenuLabelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+};
+
+const commandMenuDetailStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--text-muted)",
 };
 
 const blockStyle: React.CSSProperties = {

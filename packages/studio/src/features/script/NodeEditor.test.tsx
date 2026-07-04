@@ -5,10 +5,12 @@ import type { Instruction } from "@galstudio/engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   conflictDraftCopyPath,
+  insertScenarioCommandAtCursor,
   InstructionBlock,
   isWriteConflictError,
   NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
+  scenarioCommandTriggerAtCursor,
   transitionNodeEditorMode,
 } from "./NodeEditor";
 import type { ProjectData } from "../../lib/types";
@@ -121,8 +123,37 @@ describe("NodeEditor safe persistence", () => {
   });
 });
 
+describe("NodeEditor scenario command surface", () => {
+  it("detects @ and / command triggers at the current line", () => {
+    expect(scenarioCommandTriggerAtCursor("@b", 2)).toMatchObject({
+      trigger: "@",
+      query: "b",
+      replaceStart: 0,
+      replaceEnd: 2,
+    });
+    expect(scenarioCommandTriggerAtCursor("第一句\n/ch", "第一句\n/ch".length)).toMatchObject({
+      trigger: "/",
+      query: "ch",
+      replaceStart: 4,
+      replaceEnd: 7,
+    });
+    expect(scenarioCommandTriggerAtCursor("明里: @", "明里: @".length)).toBeNull();
+  });
+
+  it("replaces command triggers or inserts after the current nonblank line", () => {
+    expect(insertScenarioCommandAtCursor("@b", 2, "@bg classroom fade")).toEqual({
+      text: "@bg classroom fade",
+      cursorOffset: "@bg classroom fade".length,
+    });
+    expect(insertScenarioCommandAtCursor("第一句\n第二句", 2, "@wait 800")).toEqual({
+      text: "第一句\n@wait 800\n第二句",
+      cursorOffset: "第一句\n@wait 800".length,
+    });
+  });
+});
+
 describe("NodeEditor scenario surface", () => {
-  it("does not repeat prose in outline and inspector", () => {
+  it("uses line-local command insertion instead of a fixed insert toolbar", () => {
     const node = { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 } };
     const project: ProjectData = {
       path: "/tmp/galstudio-test",
@@ -146,6 +177,8 @@ describe("NodeEditor scenario surface", () => {
     }));
 
     expect(html).not.toContain("大纲");
-    expect(html.match(/新的故事从这里开始。/g)).toHaveLength(1);
+    expect(html).not.toContain("+ 背景");
+    expect(html).not.toContain("+ 台词");
+    expect(html).toContain("aria-label=\"插入当前行命令\"");
   });
 });

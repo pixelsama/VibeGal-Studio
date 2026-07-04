@@ -168,13 +168,23 @@ export function ScenarioInspector({
             value={instruction.who}
             onChange={(who) => onReplaceInstruction({ ...instruction, who })}
           />
-          <div style={mutedTextStyle}>正文在左侧剧本文本中编辑；表情变化请使用 @char 行。</div>
+          <TextField
+            label="当前行文本"
+            value={instruction.text}
+            onChange={(text) => onReplaceInstruction({ ...instruction, text })}
+          />
+          <div style={mutedTextStyle}>表情变化请使用 @char 行；这里编辑的内容会同步回左侧当前行。</div>
         </InspectorPanel>
       );
     case "narrate":
       return (
         <InspectorPanel title="旁白">
-          <div style={mutedTextStyle}>正文在左侧剧本文本中编辑。</div>
+          <TextField
+            label="当前行文本"
+            value={instruction.text}
+            onChange={(text) => onReplaceInstruction({ ...instruction, text })}
+          />
+          <div style={mutedTextStyle}>这里编辑的内容会同步回左侧当前行。</div>
         </InspectorPanel>
       );
     case "bg":
