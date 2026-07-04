@@ -16,6 +16,7 @@ import type {
   CharInstruction,
   SayInstruction,
   NarrateInstruction,
+  ChoiceInstruction,
   WaitInstruction,
   EffectInstruction,
   TransitionInstruction,
@@ -44,6 +45,7 @@ export type VoiceInstr = z.infer<typeof VoiceInstruction>;
 export type CharInstr = z.infer<typeof CharInstruction>;
 export type SayInstr = z.infer<typeof SayInstruction>;
 export type NarrateInstr = z.infer<typeof NarrateInstruction>;
+export type ChoiceInstr = z.infer<typeof ChoiceInstruction>;
 export type WaitInstr = z.infer<typeof WaitInstruction>;
 export type EffectInstr = z.infer<typeof EffectInstruction>;
 export type TransitionInstr = z.infer<typeof TransitionInstruction>;

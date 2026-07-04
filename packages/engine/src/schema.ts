@@ -61,6 +61,14 @@ export const NarrateInstruction = z.object({
   ms: z.number().int().nonnegative().optional(), // 该条旁白的自动停顿覆盖（0=跟随全局）
 });
 
+export const ChoiceInstruction = z.object({
+  t: z.literal("choice"),
+  choices: z.array(z.object({
+    text: z.string().min(1),
+    to: z.string().min(1),
+  })).min(1),
+});
+
 export const WaitInstruction = z.object({
   t: z.literal("wait"),
   ms: z.number().int().nonnegative(),
@@ -87,6 +95,7 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   CharInstruction,
   SayInstruction,
   NarrateInstruction,
+  ChoiceInstruction,
   WaitInstruction,
   EffectInstruction,
   TransitionInstruction,

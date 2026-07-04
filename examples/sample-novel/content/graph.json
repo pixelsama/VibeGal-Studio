@@ -7,7 +7,20 @@
       "title": "序章",
       "file": "nodes/prologue.json",
       "position": { "x": 120, "y": 120 }
+    },
+    {
+      "id": "awakening",
+      "title": "苏醒",
+      "file": "nodes/awakening.json",
+      "position": { "x": 520, "y": 180 }
     }
   ],
-  "edges": []
+  "edges": [
+    {
+      "id": "prologue__awakening",
+      "from": "prologue",
+      "to": "awakening",
+      "condition": null
+    }
+  ]
 }

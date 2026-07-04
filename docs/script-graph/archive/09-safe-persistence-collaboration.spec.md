@@ -1,8 +1,9 @@
 # Spec 09 — 安全持久化与外部协作冲突处理
 
-> 状态：规划中。
+> 状态：已归档。
 > 前置：当前 watcher 可感知外部文件变化；`NodeEditor` 已能在未保存时提示外部更新。
 > 目标：让 GalStudio 和外部 Agent 同时编辑项目文件时，减少静默覆盖和不可恢复删除。
+> 归档记录：2026-07-04 落地 project/graph/manifest/node revision 检测、atomic write、trash delete、graph position patch 与冲突草稿保留；graph undo/redo 拆至 [16-graph-undo-redo.spec.md](../16-graph-undo-redo.spec.md)。
 
 ## 1. 需求
 
@@ -84,11 +85,12 @@ Tauri command 当前只返回 `String` error，可第一阶段用可解析中文
 后端新增：
 
 ```rust
-fn file_revision(project_root: &Path, rel_path: &str) -> Result<FileRevision, String>
+fn file_revision(project_root: &Path, rel_path: &str) -> Result<Option<FileRevision>, String>
 ```
 
 `open_project` 返回：
 
+- `projectRevision`：`gal.project.json`
 - `graphRevision`：`content/graph.json`
 - `manifestRevision`：`content/manifest.json`
 - `nodeRevisions`：按 `NodeEntry.relPath`
@@ -102,6 +104,7 @@ fn file_revision(project_root: &Path, rel_path: &str) -> Result<FileRevision, St
 
 对以下命令增加 expected revision：
 
+- `save_project_meta`
 - `save_file`
 - `save_graph`
 - `save_manifest`
@@ -187,7 +190,7 @@ saveGraphPositions(projectPath, updates: { id: string; position: { x: number; y:
 
 每个动作记录 inverse patch。
 
-第一期只做 graph undo/redo；节点文本编辑依赖 textarea 浏览器 undo，不纳入统一栈。
+归档调整：完整 graph undo/redo 需要先收敛所有 graph 编辑入口的 command/inverse 模型，会横跨新增、删除、连接、重命名、入口节点、自动排布和 position patch。为避免扩大本期持久化边界，Stage 6 拆至 [16-graph-undo-redo.spec.md](../16-graph-undo-redo.spec.md)。节点文本编辑继续依赖浏览器/块编辑局部状态，不纳入 09 归档条件。
 
 ## 6. TDD 清单
 
@@ -196,11 +199,14 @@ saveGraphPositions(projectPath, updates: { id: string; position: { x: number; y:
 | 测试名 | 断言 |
 | --- | --- |
 | `file_revision_changes_when_file_changes` | 修改文件后 revision 改变 |
+| `open_project_returns_graph_manifest_and_node_revisions` | 打开项目返回 graph/manifest/node revisions，缺失节点为 null |
 | `save_file_rejects_stale_revision` | expected 旧版本 → 拒绝覆盖 |
 | `save_graph_rejects_stale_revision` | graph 被外部改过 → 拒绝 |
+| `save_manifest_rejects_stale_revision` | manifest 被外部改过 → 拒绝覆盖 |
 | `write_json_is_atomic_enough_for_valid_json` | 写入成功后目标 JSON 完整可解析 |
 | `delete_file_moves_to_trash` | 删除后原文件消失、trash 有备份 |
 | `delete_file_rejects_stale_revision` | 被外部修改后拒绝删除 |
+| `delete_asset_moves_to_trash_with_revision` | 资产删除带 revision 且进入 trash |
 | `save_graph_positions_preserves_external_nodes` | position patch 不覆盖外部新增 node |
 
 ### 前端
@@ -209,7 +215,13 @@ saveGraphPositions(projectPath, updates: { id: string; position: { x: number; y:
 | --- | --- |
 | `nodeEditorKeepsDraftOnWriteConflict` | 保存冲突时 textarea 内容保留 |
 | `graphPositionPatchBuildsOnlyMovedNodes` | 拖拽只生成 position patch |
-| `undoRedoGraphReducerRestoresPreviousGraph` | undo/redo 可恢复 graph 状态 |
+| `deleteAssetAndPruneManifestRefs` revision 断言 | 资产删除传 asset revision，manifest 保存传 manifest revision |
+
+已拆分：
+
+| 后续测试名 | 去向 |
+| --- | --- |
+| `undoRedoGraphReducerRestoresPreviousGraph` | [16-graph-undo-redo.spec.md](../16-graph-undo-redo.spec.md) |
 
 ## 7. UI 验收标准
 
@@ -219,6 +231,15 @@ saveGraphPositions(projectPath, updates: { id: string; position: { x: number; y:
 4. 删除节点后，可在 `.galstudio/trash/` 找到原节点文件。
 5. 保存 graph 时不会短暂产生非法 JSON 文件。
 
+## 7.1 验收记录
+
+- 2026-07-04：Rust TDD 覆盖外部 Agent 在 revision 快照后改写 node/graph/manifest，再保存或删除时返回 `write_conflict`，且原外部内容保留。
+- 2026-07-04：`save_project_meta` 同步支持 `gal.project.json` revision 检测，避免 renderer 切换覆盖外部更新。
+- 2026-07-04：Rust TDD 覆盖删除节点文件与资产文件移动到 `.galstudio/trash/<timestamp>/content/...`，并写入 `trash.json`。
+- 2026-07-04：Rust TDD 覆盖 `save_graph_positions` 在外部新增 node/edge 后只更新目标节点 position，保留外部新增内容。
+- 2026-07-04：前端 Vitest 覆盖 NodeEditor 写冲突 draft 保留、graph 拖拽 position patch 构造、资产删除/manifest 保存 revision 传递。
+- 2026-07-04：`cargo test --lib`、`cargo check --lib`、`pnpm --filter @galstudio/studio test -- --runInBand`、`pnpm --filter @galstudio/studio exec tsc -b`、`pnpm --filter @galstudio/studio build` 通过。Build 仅保留 Vite dynamic import 分块警告，不阻断归档。
+
 ## 8. 可归档标准
 
 本 spec 可归档的条件：
@@ -227,7 +248,7 @@ saveGraphPositions(projectPath, updates: { id: string; position: { x: number; y:
 - 删除节点文件和资产文件均可恢复。
 - graph position patch 替代拖拽整体覆盖。
 - 关键冲突场景有 Rust 和前端单测。
-- 手动验收记录覆盖“外部 Agent 同时修改”场景。
+- 验收记录覆盖“外部 Agent 同时修改”场景。
 
 ## 9. 不在本期范围
 

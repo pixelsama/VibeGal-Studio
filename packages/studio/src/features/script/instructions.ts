@@ -10,12 +10,12 @@ import type { Instruction, Manifest } from "@galstudio/engine";
 export interface InstructionSummary {
   /** 在指令数组中的下标，点击可定位到 JSON 对应行。 */
   index: number;
-  /** say / narrate / bg / bgm —— 只摘要这四类（计划要求）。 */
-  kind: "say" | "narrate" | "bg" | "bgm";
+  /** say / narrate / bg / bgm / choice —— 块级大纲展示的稳定类别。 */
+  kind: "say" | "narrate" | "bg" | "bgm" | "choice";
   label: string;
 }
 
-const SUMMARIZED_KINDS = new Set(["say", "narrate", "bg", "bgm"]);
+const SUMMARIZED_KINDS = new Set(["say", "narrate", "bg", "bgm", "choice"]);
 const LABEL_MAX = 40;
 
 /**
@@ -49,13 +49,31 @@ export function summarizeInstructions(
         summaries.push({ index, kind: "bgm", label: `BGM ${assetName(path, instruction.id)}` });
         break;
       }
+      case "choice":
+        summaries.push({
+          index,
+          kind: "choice",
+          label: `选择 ${instruction.choices.map((choice) => `${choice.text} -> ${choice.to}`).join(" / ")}`,
+        });
+        break;
     }
   });
   return summaries;
 }
 
 /** 插入按钮支持的指令种类。 */
-export type InsertableKind = "narrate" | "say" | "bg" | "wait" | "bgm";
+export type InsertableKind =
+  | "narrate"
+  | "say"
+  | "bg"
+  | "bgm"
+  | "sfx"
+  | "voice"
+  | "char"
+  | "wait"
+  | "effect"
+  | "transition"
+  | "choice";
 
 /**
  * 构造各插入按钮的占位指令对象（带 schema 默认值，对齐 engine/schema.ts）。
@@ -74,6 +92,27 @@ export function defaultInstruction(kind: InsertableKind): Instruction {
       return { t: "wait", ms: 1000 };
     case "bgm":
       return { t: "bgm", id: "", fade: 1500, loop: true };
+    case "sfx":
+      return { t: "sfx", id: "" };
+    case "voice":
+      return { t: "voice", id: "" };
+    case "char":
+      return {
+        t: "char",
+        id: "",
+        expr: "default",
+        pos: "center",
+        trans: "fade",
+        ms: 600,
+        clear: false,
+        remove: false,
+      };
+    case "effect":
+      return { t: "effect", type: "shake", intensity: 6, ms: 400 };
+    case "transition":
+      return { t: "transition", type: "fade_in", ms: 1000 };
+    case "choice":
+      return { t: "choice", choices: [{ text: "选项", to: "" }] };
   }
 }
 

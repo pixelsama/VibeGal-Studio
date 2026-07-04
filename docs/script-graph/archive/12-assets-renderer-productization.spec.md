@@ -1,8 +1,22 @@
 # Spec 12 — 资产与 Renderer 工作流产品化
 
-> 状态：规划中。
+> 状态：已归档。
 > 前置：Assets 工作台、renderer discovery、runtime compiler、默认 renderer 模板均已存在。
 > 目标：让资产和渲染层从“能运行”升级为可日常维护、可扩展、可调试的项目工作流。
+
+## 0. 实现结果
+
+本期已落地：
+
+- `features/assets/ResourcePicker.tsx` 可按背景 / 音频 / 角色 / 表情筛选，并在缺失引用时保留当前值。
+- `NodeEditor` 提供块编辑模式，`InstructionBlock` 已接入 `say.who` / `expr` 的资源选择器。
+- `AssetAudioPreview` 提供音频试听、格式 / 大小 / 时长展示，并保证同一时间只播放一个预览音频。
+- 资产页支持批量登记 orphan、批量移除 dangling refs、批量删除 orphan。
+- Tauri / 前端已接通 renderer create / duplicate / rename / delete 工作流。
+- `docs/renderer-contract.md` 与新项目 `.galstudio/renderer-contract.md` 已入仓。
+- renderer dev/prod 加载回归由 `rendererLoader`、`runtimeCompiler` 测试和 studio build 覆盖。
+
+本期未做自动模板迁移；`rendererTemplateVersion` 继续留给后续文档化阶段处理，不阻塞归档标准。
 
 ## 1. 需求
 
@@ -11,7 +25,7 @@ GalStudio 的创作体验依赖两条辅助工作流：
 - 资产管理：图片、角色、表情、BGM、SFX、voice 能被导入、预览、登记、清理，并在脚本编辑时直接引用。
 - renderer 管理：用户能创建、复制、切换、调试 renderer 层，并理解 renderer API contract。
 
-当前两者已有基础，但还缺产品化闭环。
+当前两者已有基础，本期把关键闭环补齐到可归档状态。
 
 ## 2. 当前状态
 

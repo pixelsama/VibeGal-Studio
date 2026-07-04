@@ -13,6 +13,7 @@
  */
 import type { AssetEntry } from "../../lib/types";
 import { baseName, previewKind, resolveAssetUrl } from "./assetPreview";
+import { AssetAudioPreview } from "./AssetAudioPreview";
 import { AssetImagePreview } from "./AssetImagePreview";
 
 interface AssetCardProps {
@@ -21,7 +22,7 @@ interface AssetCardProps {
   isOrphan: boolean;
   /** 引用数（被多少 manifest 条目引用）。0 = 未登记。 */
   refCount: number;
-  onDelete: (relPath: string) => void;
+  onDelete: (relPath: string, revision: AssetEntry["revision"]) => void;
   /** 孤儿登记：把该文件加进 manifest（kind 决定放哪张子表）。可选。 */
   onRegisterOrphan?: (entry: AssetEntry) => void;
   /** true 时只展示资产，不提供会写入磁盘或 manifest 的操作。 */
@@ -53,7 +54,13 @@ export function AssetCard({
             placeholderStyle={previewPlaceholderStyle}
           />
         )}
-        {kind === "audio" && <audio src={url} controls style={audioStyle} />}
+        {kind === "audio" && (
+          <AssetAudioPreview
+            projectPath={projectPath}
+            relPath={entry.relPath}
+            size={entry.size}
+          />
+        )}
         {kind === "video" && <video src={url} controls style={videoStyle} />}
         {kind === "other" && <span style={otherPreviewStyle}>📄</span>}
         {isOrphan && <span style={orphanBadgeStyle}>未登记</span>}
@@ -78,7 +85,7 @@ export function AssetCard({
           <button
             type="button"
             style={{ ...smallBtnStyle, color: "var(--status-error-text)" }}
-            onClick={() => onDelete(entry.relPath)}
+            onClick={() => onDelete(entry.relPath, entry.revision)}
             aria-label={`删除 ${name}`}
           >
             删除
@@ -154,10 +161,6 @@ const imgStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "cover",
-};
-
-const audioStyle: React.CSSProperties = {
-  width: "90%",
 };
 
 const videoStyle: React.CSSProperties = {

@@ -1,5 +1,8 @@
 # Node and Graph Schema
 
+> 状态：完成。
+> 当前契约以 [AGENTS.md](../../AGENTS.md) 和 [overview.md](./overview.md) 为准。
+
 本文档面向外部工具/Agent 与人工编辑，说明 GalStudio 图模式项目的可写文件、数据格式和路径安全约定。
 
 ## 文件布局
@@ -25,7 +28,7 @@ content/
 renderers/
 ```
 
-`content/graph.json` 和 `content/nodes/*.json` 是项目剧本的核心文件。线性故事也用一串节点和边表达。保存后 GalStudio 会通过项目 watcher 自动刷新，无需重启应用。
+`content/graph.json` 和 `content/nodes/*.json` 是项目剧本的核心文件。保存后 GalStudio 会通过项目 watcher 自动刷新，无需重启应用。
 
 新建/初始化项目会把 Agent 指令和 schema 快照写进项目根目录。外部 Agent 的首选入口是项目内 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json`，不需要依赖 GalStudio 源码仓库路径。
 
@@ -88,7 +91,7 @@ renderers/
 ]
 ```
 
-指令 schema 会随新项目复制到 `.galstudio/schemas/nodeFile.json`。当前可用的 `t` 判别值：
+指令 schema 会随新项目复制到 `.galstudio/schemas/nodeFile.json`。`galstudio-cli validate . --format json` 会校验节点文件是否为 `Instruction[]`、指令结构是否符合 schema，以及 `bg` / `bgm` / `sfx` / `voice` / `char` / `say` 引用的 manifest id 是否存在；问题会以 `source: "node"` 进入 `projectIssues`，并包含 `file`、`jsonPath` 和可定位的 `nodeId`。当前可用的 `t` 判别值：
 
 | `t` | 用途 | 常用字段 |
 | --- | --- | --- |
@@ -99,6 +102,7 @@ renderers/
 | `char` | 角色立绘入场、退场或切换表情 | `id`, `pos`, `expr`, `trans`, `ms`, `clear`, `remove` |
 | `say` | 角色台词 | `who`, `expr`, `text`, `ms` |
 | `narrate` | 旁白 | `text`, `ms` |
+| `choice` | 选择项 | `choices[].text`, `choices[].to` |
 | `wait` | 等待 | `ms` |
 | `effect` | 舞台效果 | `type`, `intensity`, `ms` |
 | `transition` | 转场 | `type`, `ms` |
@@ -129,6 +133,17 @@ renderers/
 
 1. 修改 `content/graph.json` 的 `edges`。
 2. 不要把 `condition` 改成非 `null`，当前播放器尚未实现分支语义。
+
+## Revision 与协作安全
+
+GalStudio 打开项目时会为关键文件返回轻量 revision：
+
+- `projectRevision`：`gal.project.json`
+- `graphRevision`：`content/graph.json`
+- `manifestRevision`：`content/manifest.json`
+- `nodeRevisions`：各 `content/nodes/*.json`
+
+Studio 自身保存这些文件时会带上对应 revision；若外部 Agent 在此期间修改了文件，保存会返回 `write_conflict`，并保留当前草稿而不是静默覆盖。外部 Agent 仍可直接读写普通项目文件；写完后运行 `galstudio-cli validate . --format json` 即可得到结构化问题报告。
 
 ## 路径安全
 

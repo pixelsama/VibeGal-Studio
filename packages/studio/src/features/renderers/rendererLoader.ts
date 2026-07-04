@@ -6,7 +6,7 @@
  */
 import type { RendererManifest } from "@galstudio/engine";
 import { readRendererFiles } from "../../lib/tauri";
-import { compileRenderer } from "./runtimeCompiler";
+import { compileRenderer, formatRuntimeCompilerError, type RuntimeCompilerError } from "./runtimeCompiler";
 
 const cache = new Map<string, RendererManifest>();
 let rendererCacheVersion = 0;
@@ -17,7 +17,18 @@ export async function loadRenderer(projectPath: string, rendererId: string): Pro
   if (cached) return cached;
 
   const files = await readRendererFiles(projectPath, rendererId);
-  const defaultExport = await compileRenderer(files);
+  let defaultExport: unknown;
+  try {
+    defaultExport = await compileRenderer(files);
+  } catch (error) {
+    if (typeof error === "object" && error != null && "kind" in error) {
+      throw new Error(formatRuntimeCompilerError({
+        rendererId,
+        error: error as RuntimeCompilerError,
+      }));
+    }
+    throw error;
+  }
   const manifest = defaultExport as RendererManifest;
 
   if (!manifest) throw new Error(`渲染层 ${rendererId} 没有默认导出 RendererManifest`);

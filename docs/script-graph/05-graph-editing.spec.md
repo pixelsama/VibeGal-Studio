@@ -1,5 +1,6 @@
 # Phase 5 — 图编辑（Graph Editing）规格
 
+> 状态：完成。
 > 前置：Phase 3（图视图）、Phase 4（节点编辑器）、Phase 2（数据契约）。
 > 已读 [overview.md](./overview.md)（§4 路径安全、§1.2 节点粒度）。
 > 本阶段让用户能**创建 / 移动 / 连线 / 重命名 / 删除**节点，并持久化。**含后端新命令，严格 TDD。**
@@ -12,7 +13,7 @@
 - 连线：React Flow `onConnect` → 新增 edge。
 - 删除：选中节点/边 + 删除（节点删除带确认）。
 - 持久化：上述编辑写回 `content/graph.json`（必要时新建/删节点文件）。
-- 「转为图项目」固化：合成图（`synthetic: true`）下提供显式「固化图结构」动作，把合成图落盘为 `graph.json`。
+- 图结构始终以 `content/graph.json` 为真源，写入时直接保存当前图。
 
 ## 2. 后端新命令（`lib.rs`）
 
@@ -108,7 +109,7 @@ export async function deleteFile(projectPath: string, relPath: string): Promise<
 // → "delete_file"
 ```
 
-`saveGraph` 入参直接用 `ProjectGraph` 类型（去掉 `synthetic` 字段传或不传都行，后端 Deserialize 忽略多余字段）。
+`saveGraph` 入参直接用 `ProjectGraph` 类型。
 
 ## 4. 前端图编辑逻辑（纯函数 + 组件）
 
@@ -202,22 +203,12 @@ Phase 3 是只读；本阶段开启编辑回调：
 - `handleChange`：用 React Flow 的 `applyNodeChanges`/`applyEdgeChanges` 维护受控 nodes/edges，
   其中 position 变化提取出来走 `moveNode` + 防抖存图。
 - 删除：React Flow 选中 + Delete 键触发 `onNodesDelete`/`onEdgesDelete` → 走 §4.2 的删节点/删边。
-- 工具栏：画布上方加「+ 新建节点」「固化图结构（仅合成图显示）」按钮。
+- 工具栏：画布上方加「+ 新建节点」按钮。
 
-### 4.4 「转为图项目」固化
+### 4.4 图项目写入
 
-仅当 `project.graph.synthetic === true` 时，inspector 或工具栏显示「固化图结构」按钮：
-
-```ts
-const handleMaterialize = async () => {
-  const { synthetic, ...rest } = project.graph;   // 去掉 synthetic 标记
-  await saveGraph(project.path, { ...rest, synthetic: false } as ProjectGraph);
-  onSaved();   // 刷新后 graph.synthetic === false（graph.json 已存在）
-};
-```
-
-固化后 `graph.json` 落盘，下次打开为「真实图项目」。**不**移动/复制 chapters 文件——
-合成图的 `node.file` 本就指向 `chapters/*.json`，固化后图引用旧文件，语义不变。
+图编辑完成后直接 `saveGraph` 即可。`content/graph.json` 始终是图结构的持久化真源。
+保存不会自动创建或迁移节点文件；节点文件生命周期仍由 `saveFile` / `deleteFile` 单独管理。
 
 ## 5. 路径安全（overview §4）
 
@@ -246,7 +237,7 @@ fn write_graph_project_with_files(dir, graph_json, node_files: &[(&str, &str)])
 | `delete_file_is_idempotent_for_missing_file` | 删不存在的文件 → `Ok(())` |
 | `delete_file_rejects_path_traversal` | rel=`../../x` → `is_err()` |
 | `delete_file_rejects_untrusted_project_root` | 非 GalStudio 项目 → `is_err()` |
-| `save_graph_then_open_project_roundtrip` | save_graph 后 open_project 读回的 graph 与存入一致（synthetic=false） |
+| `save_graph_then_open_project_roundtrip` | save_graph 后 open_project 读回的 graph 与存入一致 |
 
 ### 前端（Vitest，`graphEditing.test.ts`）
 
@@ -270,8 +261,7 @@ fn write_graph_project_with_files(dir, graph_json, node_files: &[(&str, &str)])
 4. inspector 改标题 → 保存后 graph.json 的 title 更新，id/文件名不变。
 5. 选中节点 + Delete → 确认后节点+关联边消失 + 节点文件删除；graph.json 更新。
 6. 选中边 + Delete → 边消失，节点保留。
-7. 合成图项目：inspector/工具栏出现「固化图结构」→ 点击后 `content/graph.json` 生成，重开为真实图项目。
-8. `node.file` 越界的图保存被后端拒绝（前端显示错误，不破坏现有 graph.json）。
+7. `node.file` 越界的图保存被后端拒绝（前端显示错误，不破坏现有 graph.json）。
 
 ## 8. 边界情况
 
@@ -282,7 +272,6 @@ fn write_graph_project_with_files(dir, graph_json, node_files: &[(&str, &str)])
 | 删除 entry 节点 | 允许删，entryNodeId 可能变悬空；Phase 6 校验标错并提示重设 |
 | 自环边（from==to） | 前端 `connectNodes` 允许（流程图偶有自环）；Phase 6 可校验 |
 | 删除被边引用的节点 | `removeNode` 自动清关联边（§4.1） |
-| 合成图固化后仍指向 chapters 文件 | 正常，语义一致（§4.4） |
 
 ## 9. 不在本期范围
 

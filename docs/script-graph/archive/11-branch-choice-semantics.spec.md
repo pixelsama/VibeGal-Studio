@@ -1,6 +1,6 @@
 # Spec 11 — 分支与选择语义
 
-> 状态：规划中。
+> 状态：已归档；Stage 2/3 已拆至 [15-graph-aware-choice-preview.spec.md](../15-graph-aware-choice-preview.spec.md)。
 > 前置：graph 节点/边已存在；`edge.condition` 当前是保留字段；预览当前按线性启发式排序。
 > 目标：定义 galgame 选择项如何驱动 graph 分支，使剧情流程、预览、校验和外部 Agent 数据写入有稳定契约。
 
@@ -246,9 +246,20 @@ choice 块控件：
 - 至少 Stage 1 预览行为完成并有测试。
 - Stage 2/3 若未做，需拆出独立后续 spec。
 
-## 12. 不在本期范围
+## 12. Stage 1 落地范围
+
+- `choice` 指令进入 engine schema/type、`NovelState.choice` 和 JSON Schema 导出。
+- flat `NovelPlayer` 遇到 `choice` 停住，不自动推进到下一条指令。
+- Studio 节点 JSON 编辑器可插入 choice 草稿，大纲可摘要 choice。
+- Graph 映射从节点文件 choice 推导 edge label，并将非入口 choice 节点显示为 branch。
+- Rust graph/CLI 校验 choice target 与 outgoing edge 一致性。
+- 默认 renderer 模板展示 choice 选项；Stage 1 点击只提示目标，不跨节点加载。
+- renderer contract 文档说明 `state.choice` 与 `onChoose`。
+
+## 13. 不在本期范围
 
 - flags / variables / conditional expression。
 - 存档系统。
 - 多周目状态。
 - 复杂脚本语言。
+- 整图 graph-aware 播放器与循环处理；见 Spec 15。

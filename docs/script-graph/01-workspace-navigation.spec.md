@@ -1,5 +1,6 @@
 # Phase 1 — 工作台导航（Workspace Navigation）规格
 
+> 状态：完成。
 > 前置：已读 [overview.md](./overview.md)。本阶段为 UI 地基，无后端改动。
 
 ## 1. 需求

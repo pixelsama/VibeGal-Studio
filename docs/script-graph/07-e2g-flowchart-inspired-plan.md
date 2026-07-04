@@ -1,5 +1,8 @@
 # Phase 7+ — 借鉴 Everything2Galgame 的流程图增强计划
 
+> 状态：规划中。
+> 当前契约以 [AGENTS.md](../../AGENTS.md)、[overview.md](./overview.md) 和 [node-and-graph-schema.md](./node-and-graph-schema.md) 为准。
+
 > Source study: `/Users/pixelsama/Dev/Github/Everything2Galgame` main branch.
 > Scope: 研究 Everything2Galgame 的 Story Flow，从功能和前端两个方面提炼可迁移方案，并结合 GalStudio 当前 Script Graph 架构规划下一阶段。
 
@@ -69,10 +72,10 @@ Everything2Galgame 没有用 React Flow，而是自己实现：
 GalStudio 已具备流程图地基：
 
 - `content/graph.json` + `content/nodes/*.json` 数据契约。
-- 旧章节合成线性图，且不自动改写磁盘。
+- 缺失 `content/graph.json` 时会报 issue，而不是合成旧 chapters。
 - watcher + debounce 自动刷新 `content/` 和 `renderers/`。
 - `@xyflow/react` 画布。
-- 节点新增、删除、重命名、拖动、连线、固化合成图。
+- 节点新增、删除、重命名、拖动、连线。
 - 单节点 JSON 指令编辑和单节点预览。
 - 图 issues 面板和同步状态。
 - 顶部 Render / Script / Assets 工作台。

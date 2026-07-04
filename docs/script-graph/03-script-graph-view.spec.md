@@ -1,5 +1,6 @@
 # Phase 3 — 脚本图视图（Script Graph View）规格
 
+> 状态：完成。
 > 前置：Phase 1（工作台导航）、Phase 2（图数据契约，`project.graph`/`project.nodes` 就位）、
 > 已读 [overview.md](./overview.md)（§1.4 React Flow、§3 类型）。
 > 本阶段把 Script 工作台过渡视图升级为**图视图**。本期为**只读展示 + 导航**，图编辑留 Phase 5。
@@ -191,19 +192,18 @@ export function findNode(graph: ProjectGraph, id: string | null): GraphNode | nu
 
 ## 8. 验收标准
 
-1. 打开 `examples/sample-novel`（合成线性图），Script 工作台显示 3 个（按 chapters 数）节点 + 连线。
+1. 打开一个含 `graph.json` 的示例项目，Script 工作台显示对应节点 + 连线。
 2. 画布可拖拽平移、滚轮缩放，minimap 可见。
 3. 单击节点：左大纲 + 右 inspector 同步显示该节点。
 4. 双击节点：进入节点占位视图，面包屑出现节点名；点面包屑「流程图」返回。
 5. 外部新增一个 `content/nodes/x.json` + 改 `graph.json`：保存后画布出现新节点（无需重开项目）。
-6. 空项目（无 chapters 无 graph）：画布显示「暂无节点」，不报错。
+6. 空项目（无 graph）：画布显示「暂无节点」，不报错。
 
 ## 9. 边界情况
 
 | 情况 | 处理 |
 |------|------|
 | `project.graph` 为 undefined（理论不会，Phase 2 总返回） | 当作空图，显示「暂无节点」 |
-| 合成图（`synthetic: true`） | 照常渲染；inspector 可标注「（合成，未落盘）」 |
 | 节点文件缺失（`data: null`） | 节点上显示「⚠ 文件缺失」，双击进入显示提示而非崩溃 |
 | 边指向不存在的节点（悬空边） | 本期 React Flow 会渲染异常边；Phase 6 校验会标红。本期至少不崩溃 |
 | 重复 node id（损坏数据） | React Flow 按 id 去重显示；Phase 6 校验标错 |

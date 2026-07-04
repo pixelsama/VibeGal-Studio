@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { deleteFile, saveFile, saveGraph } from "../../lib/tauri";
-import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "../../lib/types";
+import { deleteFile, saveFile, saveGraph, saveGraphPositions } from "../../lib/tauri";
+import type { GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
@@ -50,6 +50,16 @@ const EMPTY_GRAPH = {
   edges: [],
 } satisfies ProjectGraph;
 
+export function buildGraphPositionUpdates(before: ProjectGraph, after: ProjectGraph): GraphPositionPatch[] {
+  const beforeById = new Map(before.nodes.map((node) => [node.id, node.position]));
+  return after.nodes
+    .filter((node) => {
+      const previous = beforeById.get(node.id);
+      return previous && (previous.x !== node.position.x || previous.y !== node.position.y);
+    })
+    .map((node) => ({ id: node.id, position: node.position }));
+}
+
 export function ScriptWorkspace({
   project,
   rendererId,
@@ -74,6 +84,7 @@ export function ScriptWorkspace({
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; onConfirm: (v: string) => void } | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
+  const pendingPositionUpdatesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
 
@@ -125,7 +136,7 @@ export function ScriptWorkspace({
       setSavingGraph(true);
       setGraphStatus("");
       try {
-        await saveGraph(project.path, next);
+        await saveGraph(project.path, next, project.graphRevision);
         setGraphStatus("图结构已保存");
         onSaved();
         return true;
@@ -136,20 +147,43 @@ export function ScriptWorkspace({
         setSavingGraph(false);
       }
     },
-    [onSaved, project.path],
+    [onSaved, project.graphRevision, project.path],
+  );
+
+  const persistGraphPositions = useCallback(
+    async (updates: GraphPositionPatch[]) => {
+      if (updates.length === 0) return;
+      setSavingGraph(true);
+      setGraphStatus("");
+      try {
+        await saveGraphPositions(project.path, updates, project.graphRevision);
+        setGraphStatus("节点位置已保存");
+        onSaved();
+      } catch (error) {
+        setGraphStatus(`保存节点位置失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setSavingGraph(false);
+      }
+    },
+    [onSaved, project.graphRevision, project.path],
   );
 
   const schedulePositionSave = useCallback(
-    (next: ProjectGraph) => {
+    (updates: GraphPositionPatch[]) => {
+      for (const update of updates) {
+        pendingPositionUpdatesRef.current.set(update.id, update.position);
+      }
       if (positionSaveTimerRef.current != null) {
         window.clearTimeout(positionSaveTimerRef.current);
       }
       positionSaveTimerRef.current = window.setTimeout(() => {
         positionSaveTimerRef.current = null;
-        void persistGraph(next);
+        const pending = Array.from(pendingPositionUpdatesRef.current, ([id, position]) => ({ id, position }));
+        pendingPositionUpdatesRef.current.clear();
+        void persistGraphPositions(pending);
       }, 400);
     },
-    [persistGraph],
+    [persistGraphPositions],
   );
 
   const handleSelect = (id: string) => {
@@ -194,8 +228,10 @@ export function ScriptWorkspace({
 
   const handleMoveNode = (id: string, position: { x: number; y: number }) => {
     const next = moveNode(graph, id, position);
+    const updates = buildGraphPositionUpdates(graph, next);
+    if (updates.length === 0) return;
     setGraph(next);
-    schedulePositionSave(next);
+    schedulePositionSave(updates);
   };
 
   const handleConnect = (from: string, to: string) => {
@@ -234,7 +270,7 @@ export function ScriptWorkspace({
 
     for (const removedFile of removedFiles) {
       try {
-        await deleteFile(project.path, removedFile);
+        await deleteFile(project.path, removedFile, project.nodeRevisions?.[removedFile]);
       } catch (error) {
         console.warn("删除节点文件失败（图已更新）:", error);
       }
@@ -412,6 +448,7 @@ export function ScriptWorkspace({
               rendererId={rendererId}
               node={selectedNode}
               nodeData={findNodeData(project.nodes, selectedNode.file)}
+              focusRequest={focusRequest}
               onSaved={onSaved}
             />
           )

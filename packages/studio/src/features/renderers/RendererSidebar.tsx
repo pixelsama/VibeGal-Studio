@@ -2,11 +2,29 @@ interface RendererSidebarProps {
   rendererIds: string[];
   activeRendererId: string;
   onSelect: (rendererId: string) => void;
+  onCreate?: () => void;
+  onDuplicate?: (rendererId: string) => void;
+  onRename?: (rendererId: string) => void;
+  onDelete?: (rendererId: string) => void;
 }
 
-export function RendererSidebar({ rendererIds, activeRendererId, onSelect }: RendererSidebarProps) {
+export function RendererSidebar({
+  rendererIds,
+  activeRendererId,
+  onSelect,
+  onCreate,
+  onDuplicate,
+  onRename,
+  onDelete,
+}: RendererSidebarProps) {
   return (
     <nav style={sidebarStyle} aria-label="渲染层列表">
+      <div style={toolbarStyle}>
+        <button type="button" style={actionBtnStyle} onClick={onCreate}>新建</button>
+        <button type="button" style={actionBtnStyle} onClick={() => onDuplicate?.(activeRendererId)} disabled={!activeRendererId}>复制</button>
+        <button type="button" style={actionBtnStyle} onClick={() => onRename?.(activeRendererId)} disabled={!activeRendererId}>重命名</button>
+        <button type="button" style={dangerBtnStyle} onClick={() => onDelete?.(activeRendererId)} disabled={!activeRendererId}>删除</button>
+      </div>
       {rendererIds.length === 0 ? (
         <div style={emptyStyle}>暂无渲染层</div>
       ) : (
@@ -45,6 +63,28 @@ const sidebarStyle: React.CSSProperties = {
   boxSizing: "border-box",
   padding: "10px 8px",
   overflowY: "auto",
+};
+
+const toolbarStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 6,
+  marginBottom: 8,
+};
+
+const actionBtnStyle: React.CSSProperties = {
+  minHeight: 30,
+  borderRadius: 6,
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  fontSize: 12,
+};
+
+const dangerBtnStyle: React.CSSProperties = {
+  ...actionBtnStyle,
+  color: "var(--status-error-text)",
 };
 
 const itemStyle: React.CSSProperties = {

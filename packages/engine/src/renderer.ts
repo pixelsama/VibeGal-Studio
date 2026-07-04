@@ -19,6 +19,8 @@ export interface RendererProps {
   contentBase: string;
   /** 玩家推进（点击/空格）回调 */
   onAdvance: () => void;
+  /** 玩家选择分支目标。Stage 1 可只提示目标，不必加载下个节点。 */
+  onChoose?: (toNodeId: string) => void;
   /** 切换自动播放 */
   onToggleAuto: () => void;
   /** 切换录制模式 */

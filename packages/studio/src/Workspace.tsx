@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { GraphIssueFocusRequest, ProjectData } from "./lib/types";
+import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "./lib/types";
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
@@ -15,7 +15,16 @@ import { Settings } from "./features/settings/Settings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
 import { RendererSidebar } from "./features/renderers/RendererSidebar";
-import { openProject, saveProjectMeta, unwatchProject, watchProject } from "./lib/tauri";
+import {
+  createRenderer,
+  deleteRenderer,
+  duplicateRenderer,
+  openProject,
+  renameRenderer,
+  saveProjectMeta,
+  unwatchProject,
+  watchProject,
+} from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
 import type { AppSettings } from "./lib/theme";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
@@ -45,13 +54,32 @@ interface ProjectChangedPayload {
 }
 
 export function graphFocusTargetFromIssue(
-  issue: { source?: string; nodeId?: string; edgeId?: string },
+  issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string },
   requestId: number,
+  graph?: Pick<ProjectGraph, "nodes"> | null,
 ): GraphIssueFocusRequest | null {
+  if (issue.source === "node") {
+    const nodeId = issue.nodeId ?? nodeIdFromIssueFile(issue.file, graph);
+    return nodeId ? { requestId, nodeId, jsonPath: issue.jsonPath } : null;
+  }
   if (issue.source !== "graph") return null;
   if (issue.nodeId) return { requestId, nodeId: issue.nodeId };
   if (issue.edgeId) return { requestId, edgeId: issue.edgeId };
   return null;
+}
+
+function nodeIdFromIssueFile(file: string | undefined, graph?: Pick<ProjectGraph, "nodes"> | null): string | null {
+  if (!file || !graph) return null;
+  const normalized = file.replace(/\\/g, "/").replace(/^content\//, "");
+  return graph.nodes.find((node) => node.file.replace(/\\/g, "/") === normalized)?.id ?? null;
+}
+
+export function projectIssueSourceLabel(source: string): string {
+  if (source === "graph") return "图结构";
+  if (source === "node") return "节点内容";
+  if (source === "asset") return "资产";
+  if (source === "manifest") return "manifest";
+  return source;
 }
 
 const windowDragIgnoreSelector = [
@@ -92,7 +120,7 @@ export function Workspace({
   const handleRendererChange = useCallback(async (id: string) => {
     setRendererId(id);
     try {
-      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: id });
+      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: id }, project.projectRevision);
     } catch (e) {
       console.warn("持久化渲染层失败:", e);
     }
@@ -154,6 +182,58 @@ export function Workspace({
     await refreshProject(false);
   }, [refreshProject]);
 
+  const handleCreateRenderer = useCallback(async () => {
+    const rendererId = window.prompt("新建渲染层 id", "renderer");
+    if (!rendererId) return;
+    try {
+      await createRenderer(project.path, rendererId, "default");
+      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: rendererId }, project.projectRevision);
+      setRendererId(rendererId);
+      await refreshProject(true);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  }, [project.meta, project.path, refreshProject]);
+
+  const handleDuplicateRenderer = useCallback(async (sourceId: string) => {
+    if (!sourceId) return;
+    const newId = window.prompt("复制为新的渲染层 id", `${sourceId}_copy`);
+    if (!newId) return;
+    try {
+      await duplicateRenderer(project.path, sourceId, newId);
+      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: newId }, project.projectRevision);
+      setRendererId(newId);
+      await refreshProject(true);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  }, [project.meta, project.path, refreshProject]);
+
+  const handleRenameRenderer = useCallback(async (sourceId: string) => {
+    if (!sourceId) return;
+    const newId = window.prompt("新的渲染层 id", sourceId);
+    if (!newId || newId === sourceId) return;
+    try {
+      await renameRenderer(project.path, sourceId, newId);
+      if (rendererId === sourceId) setRendererId(newId);
+      await refreshProject(true);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  }, [project.path, refreshProject, rendererId]);
+
+  const handleDeleteRenderer = useCallback(async (sourceId: string) => {
+    if (!sourceId) return;
+    const confirmed = window.confirm(`确定删除渲染层 ${sourceId}？`);
+    if (!confirmed) return;
+    try {
+      await deleteRenderer(project.path, sourceId);
+      await refreshProject(true);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  }, [project.path, refreshProject]);
+
   const handleTitleBarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
     if (!shouldStartWindowDrag(event)) return;
 
@@ -165,13 +245,17 @@ export function Workspace({
   const report = project.projectReport ?? { projectIssues: [] };
   const rendererStatusText = rendererId || t("workspace.noRenderer");
 
-  const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string }) => {
-    const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1);
+  const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string }) => {
+    const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1, project.graph);
     if (!next) return;
     graphIssueFocusRequestIdRef.current = next.requestId;
     setGraphIssueFocus(next);
-    onNavigate({ type: "script-graph" });
-  }, [onNavigate]);
+    if (issue.source === "node" && next.nodeId) {
+      onNavigate({ type: "script-node", nodeId: next.nodeId });
+    } else {
+      onNavigate({ type: "script-graph" });
+    }
+  }, [onNavigate, project.graph]);
 
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
@@ -215,6 +299,10 @@ export function Workspace({
                 rendererIds={project.rendererIds}
                 activeRendererId={rendererId}
                 onSelect={handleRendererChange}
+                onCreate={handleCreateRenderer}
+                onDuplicate={handleDuplicateRenderer}
+                onRename={handleRenameRenderer}
+                onDelete={handleDeleteRenderer}
               />
             </CollapsibleSidebar>
             <div style={previewPaneStyle}>
@@ -264,9 +352,9 @@ export function Workspace({
         dialogTitle="Project Issues"
         dialogAriaLabel="Project Issues"
         emptyDescription="项目正常"
-        sourceLabel={(s) => (s === "graph" ? "图结构" : s === "asset" ? "资产" : s === "manifest" ? "manifest" : s)}
+        sourceLabel={projectIssueSourceLabel}
         issueExtra={(issue) =>
-          issue.source === "graph"
+          issue.source === "graph" || issue.source === "node"
             ? issue.nodeId
               ? `node ${issue.nodeId}`
               : issue.edgeId
@@ -274,7 +362,7 @@ export function Workspace({
                 : null
             : null
         }
-        isIssueClickable={(issue) => issue.source === "graph" && Boolean(issue.nodeId || issue.edgeId)}
+        isIssueClickable={(issue) => Boolean(graphFocusTargetFromIssue(issue, 0, project.graph))}
         onIssueClick={handleProjectIssueClick}
       />
     </div>

@@ -1,5 +1,6 @@
 # Phase 4 — 节点指令编辑器（Node Instruction Editor）规格
 
+> 状态：完成。
 > 前置：Phase 3（图视图，双击进入节点的占位替换为本编辑器）、Phase 2（`project.nodes`）。
 > 已读 [overview.md](./overview.md)（§1.1 节点=Instruction[]、§1.3 预览播放选中节点）。
 > 本阶段把双击进入的节点视图做成**可编辑的指令流编辑器 + 单节点预览**。
@@ -27,8 +28,7 @@
 
 ### 3.1 与 `ScriptEditor` 的关系
 
-`ScriptEditor`（`features/editor/ScriptEditor.tsx`）当前数据源是 `project.content.chapters`，
-按 `selectedRel` 选章节、`saveFile(project.path, relPath, ...)` 保存。
+`ScriptEditor`（`features/editor/ScriptEditor.tsx`）是早期章节编辑器，保留兼容。
 `NodeEditor` **结构同构**，但数据源切到 `project.nodes`，且「选哪个节点」由 Script 工作台的
 `selectedNodeId`（进入节点时已定）决定，而非左侧列表自选。
 
@@ -188,7 +188,6 @@ export function useNodePreview(
 | 节点 JSON 非法（手改坏） | Phase 2 的 `open_project` 已会 Err；编辑器侧若仍能进入（旧 project 缓存），保存前 `JSON.parse` 会拦 |
 | 用户未保存时外部更新 | 顶栏提示，不静默覆盖（§3.3） |
 | 节点指令引用 manifest 不存在的 id | `validateContent` 抛 → 预览显示错误信息（既有行为） |
-| 合成图节点（file 指向 chapters/旧文件） | 正常：file 就是 `chapters/ch01.json`，编辑即改旧章节文件。语义一致 |
 | 空 `nodeData`（`[]`） | 编辑器显示 `[]`，预览显示空场景 |
 
 ## 9. 不在本期范围

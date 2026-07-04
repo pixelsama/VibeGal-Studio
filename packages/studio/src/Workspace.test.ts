@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { graphFocusTargetFromIssue, shouldStartWindowDrag } from "./Workspace";
+import { graphFocusTargetFromIssue, projectIssueSourceLabel, shouldStartWindowDrag } from "./Workspace";
 import { Workspace } from "./Workspace";
 import type { ProjectData } from "./lib/types";
 
@@ -75,6 +75,32 @@ describe("graphFocusTargetFromIssue", () => {
   it("ignores non-graph issues", () => {
     expect(graphFocusTargetFromIssue({ source: "asset", nodeId: "intro" }, 1)).toBeNull();
     expect(graphFocusTargetFromIssue({ source: "manifest" }, 1)).toBeNull();
+  });
+
+  it("creates a node focus request for node content issues with nodeId", () => {
+    expect(graphFocusTargetFromIssue({ source: "node", nodeId: "intro" }, 5)).toEqual({
+      requestId: 5,
+      nodeId: "intro",
+    });
+  });
+
+  it("resolves node content issues by file when nodeId is missing", () => {
+    expect(
+      graphFocusTargetFromIssue(
+        { source: "node", file: "content/nodes/intro.json" },
+        6,
+        { nodes: [{ id: "intro", title: "Intro", file: "nodes/intro.json", position: { x: 0, y: 0 } }] },
+      ),
+    ).toEqual({
+      requestId: 6,
+      nodeId: "intro",
+    });
+  });
+});
+
+describe("projectIssueSourceLabel", () => {
+  it("labels node issues as node content", () => {
+    expect(projectIssueSourceLabel("node")).toBe("节点内容");
   });
 });
 

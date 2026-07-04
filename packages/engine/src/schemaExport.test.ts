@@ -56,4 +56,14 @@ describe("schemaExport", () => {
     expect(nodeItem.required).toEqual(["id", "file"]);
     expect(edgeItem.required).toEqual(["id", "from", "to"]);
   });
+
+  it("nodeFile schema includes choice instructions", () => {
+    const nodeFile = buildJsonSchema("nodeFile");
+    const items = nodeFile.items as { oneOf: Array<{ properties: { t: { const: string }; choices?: unknown }; required: string[] }> };
+    const choice = items.oneOf.find((item) => item.properties.t.const === "choice");
+
+    expect(choice).toBeDefined();
+    expect(choice?.required).toEqual(["t", "choices"]);
+    expect(choice?.properties).toHaveProperty("choices");
+  });
 });

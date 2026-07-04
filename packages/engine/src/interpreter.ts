@@ -34,6 +34,10 @@ export function applyInstruction(
   instr: Instruction,
   deps: InterpreterDeps,
 ): NovelState {
+  if (instr.t !== "choice" && state.choice) {
+    state = { ...state, choice: null };
+  }
+
   switch (instr.t) {
     // ── 视觉：背景 ──────────────────────────────
     case "bg":
@@ -113,6 +117,7 @@ export function applyInstruction(
         speaker,
         // say 时若有旁白则清掉，二者不并显
         narration: null,
+        choice: null,
         dialogue: { text: instr.text, typedLen: 0, fullyRevealed: false },
         currentCueMs: instr.ms ?? null, // null = 跟随全局 autoAdvanceMs
       };
@@ -124,8 +129,20 @@ export function applyInstruction(
         ...state,
         speaker: null,
         dialogue: null,
+        choice: null,
         narration: { text: instr.text, typedLen: 0, fullyRevealed: false },
         currentCueMs: instr.ms ?? null,
+      };
+
+    // ── 分支：展示选择项并暂停，跳转由 graph-aware player 后续阶段负责 ──
+    case "choice":
+      return {
+        ...state,
+        speaker: null,
+        dialogue: null,
+        narration: null,
+        choice: { choices: instr.choices.map((choice) => ({ ...choice })) },
+        currentCueMs: null,
       };
 
     // ── 音频线索（不在这里播放，只改状态；播放由 player/组件负责） ──

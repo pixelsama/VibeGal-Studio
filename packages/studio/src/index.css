@@ -62,6 +62,8 @@
   --tag-bg-text: #c8a0e0;
   --tag-bgm-bg: #45382f;
   --tag-bgm-text: #e0b676;
+  --tag-choice-bg: #243f46;
+  --tag-choice-text: #8ed6df;
 }
 
 [data-theme="light"] {
@@ -118,6 +120,8 @@
   --tag-bg-text: #6a3a9a;
   --tag-bgm-bg: #f5e8d0;
   --tag-bgm-text: #a8701f;
+  --tag-choice-bg: #d8eef2;
+  --tag-choice-text: #1f7180;
 }
 
 * {

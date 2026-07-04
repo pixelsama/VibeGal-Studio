@@ -196,6 +196,40 @@
         "properties": {
           "t": {
             "type": "string",
+            "const": "choice"
+          },
+          "choices": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "text",
+                "to"
+              ]
+            }
+          }
+        },
+        "required": [
+          "t",
+          "choices"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
             "const": "wait"
           },
           "ms": {

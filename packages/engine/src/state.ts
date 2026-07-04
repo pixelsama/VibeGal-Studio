@@ -85,6 +85,11 @@ export interface NovelState {
     fullyRevealed: boolean;
   } | null;
 
+  /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 onChoose。 */
+  choice: {
+    choices: { text: string; to: string }[];
+  } | null;
+
   /** 待播放特效 / 转场（组件消费） */
   effects: PendingEffect[];
   transitions: PendingTransition[];
@@ -119,6 +124,7 @@ export function createInitialState(): NovelState {
     speaker: null,
     dialogue: null,
     narration: null,
+    choice: null,
     effects: [],
     transitions: [],
     audio: { bgm: null, sfx: [], voice: null },

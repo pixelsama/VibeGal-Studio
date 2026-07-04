@@ -1,6 +1,6 @@
 # Spec 10 — 节点指令块编辑器
 
-> 状态：规划中。
+> 状态：已归档。
 > 前置：节点 JSON 编辑器、插入按钮、大纲定位、单节点预览已存在。
 > 目标：保留 JSON 作为高级模式，同时提供适合日常创作的块级指令编辑体验。
 
@@ -20,7 +20,7 @@
 
 已有能力：
 
-- [NodeEditor](../../packages/studio/src/features/script/NodeEditor.tsx) 以 textarea 编辑 JSON。
+- [NodeEditor](../../../packages/studio/src/features/script/NodeEditor.tsx) 以 textarea 编辑 JSON。
 - `summarizeInstructions()` 能生成 say/narrate/bg/bgm 大纲。
 - `insertInstructionAt()` 和 `defaultInstruction()` 支持常用插入。
 - `useNodePreview()` 可播放当前节点。
@@ -73,9 +73,12 @@
 | `sfx` | SFX 选择 |
 | `voice` | voice 选择 |
 | `char` | 角色选择、表情选择、位置、transition、ms、clear/remove |
+| `choice` | 选项列表、文案、跳转目标 |
 | `wait` | ms |
 | `effect` | type、intensity、ms |
 | `transition` | type、ms |
+
+> 2026-07 更新：`choice` 已在 engine/schema 中合入，因此块编辑器也同步覆盖，而不是留到 Phase 11 之后补做。
 
 ## 5. 模式切换
 
@@ -205,7 +208,7 @@ JSON.stringify(instructions, null, 2)
 
 本 spec 可归档的条件：
 
-- 所有现有指令类型都有块编辑能力。
+- 所有现有指令类型（含 `choice`）都有块编辑能力。
 - JSON 模式和块模式可安全切换。
 - 资源选择器覆盖角色、表情、背景、音频。
 - 节点问题能 inline 定位到块。

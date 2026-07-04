@@ -5,13 +5,14 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{
     mpsc::{self, RecvTimeoutError, Sender},
     Mutex,
 };
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
 const MAX_ASSET_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
@@ -33,6 +34,7 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 - Linear stories are represented as graph nodes connected by edges.
 - Add a node by writing `content/nodes/<id>.json`, then adding a matching item to `content/graph.json` under `nodes`.
 - Node `file` values are relative to `content/`, for example `nodes/start.json`.
+- If `content/graph.json` is missing, report a `missing_graph` issue rather than synthesizing legacy chapters.
 - Do not use absolute paths, parent-directory traversal, or Windows drive paths in project data.
 - Keep `edge.condition` as `null` unless GalStudio documents branch semantics.
 
@@ -56,11 +58,14 @@ Run this from the project root after edits:
 galstudio-cli validate . --format json
 ```
 
-The command returns structured JSON issues and a non-zero exit code when the project has errors or warnings.
+The command validates graph structure, node `Instruction[]` shape, node resource references,
+manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
+exit code when the project has errors or warnings.
 
 ## Local Reference
 
 - Read `.galstudio/README.md` for project format notes.
+- Read `.galstudio/renderer-contract.md` for the renderer runtime contract.
 - Read `.galstudio/schemas/*.json` for local JSON Schema snapshots.
 - Do not casually edit `.galstudio/schemas`; they are generated from the GalStudio product schema.
 "#;
@@ -76,6 +81,7 @@ gal.project.json
 AGENTS.md
 .galstudio/
   README.md
+  renderer-contract.md
   schemas/
     graph.json
     nodeFile.json
@@ -95,6 +101,8 @@ renderers/
 ## Script Data
 
 `content/graph.json` is the required script entry point. Each graph node points to a node file through `nodes[].file`, relative to `content/`.
+
+If `content/graph.json` is missing, GalStudio still opens the project with an empty graph and a `missing_graph` issue. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized.
 
 Node files under `content/nodes/*.json` contain an `Instruction[]` JSON array.
 
@@ -135,6 +143,12 @@ Local JSON Schema snapshots are in `.galstudio/schemas/`:
 
 These files are copied from the GalStudio product at project initialization time.
 
+## Renderers
+
+Renderer contract notes are copied to `.galstudio/renderer-contract.md`.
+
+Each renderer lives in `renderers/<id>/` and must default-export a `RendererManifest`.
+
 ## Validation
 
 Run from the project root:
@@ -143,10 +157,18 @@ Run from the project root:
 galstudio-cli validate . --format json
 ```
 
+Validation reports graph issues, node `Instruction[]` structure errors, missing character /
+background / audio references from node instructions, manifest structure problems, and asset
+consistency issues as structured `projectIssues`. Node content issues use `source: "node"` and
+include `file`, `jsonPath`, and `nodeId` when available.
+
 ## Legacy Chapters
 
-Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead.
+Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead; if they appear, GalStudio reports them as issues instead of silently using them.
 "#;
+
+const PROJECT_RENDERER_CONTRACT_MD: &str =
+    include_str!("../../../../docs/renderer-contract.md");
 
 const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
     (
@@ -186,6 +208,17 @@ pub struct ProjectListItem {
 pub struct ProjectContent {
     pub manifest: serde_json::Value,
     pub meta: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FileRevision {
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    #[serde(rename = "mtimeMs")]
+    pub mtime_ms: f64,
+    pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -312,6 +345,12 @@ pub struct GraphPositionInput {
 }
 
 #[derive(Deserialize)]
+pub struct GraphPositionPatchInput {
+    pub id: String,
+    pub position: GraphPositionInput,
+}
+
+#[derive(Deserialize)]
 pub struct GraphEdgeInput {
     pub id: String,
     pub from: String,
@@ -326,10 +365,18 @@ pub struct ProjectData {
     pub content: ProjectContent,
     #[serde(rename = "rendererIds")]
     pub renderer_ids: Vec<String>,
+    #[serde(rename = "projectRevision", skip_serializing_if = "Option::is_none")]
+    pub project_revision: Option<FileRevision>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph: Option<ProjectGraph>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nodes: Option<Vec<NodeEntry>>,
+    #[serde(rename = "graphRevision", skip_serializing_if = "Option::is_none")]
+    pub graph_revision: Option<FileRevision>,
+    #[serde(rename = "manifestRevision", skip_serializing_if = "Option::is_none")]
+    pub manifest_revision: Option<FileRevision>,
+    #[serde(rename = "nodeRevisions", skip_serializing_if = "Option::is_none")]
+    pub node_revisions: Option<HashMap<String, Option<FileRevision>>>,
     #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]
     pub graph_report: Option<GraphReport>,
     #[serde(rename = "assetReport", skip_serializing_if = "Option::is_none")]
@@ -532,7 +579,17 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let meta_json = read_json(&content_dir.join("meta.json"))?;
 
     let renderer_ids = list_renderer_ids(&project_path);
+    let project_revision = file_revision(&project_path, "gal.project.json")?;
     let (graph, nodes, mut graph_issues) = load_project_graph_data(&content_root)?;
+    let graph_revision = file_revision(&project_path, "content/graph.json")?;
+    let manifest_revision = file_revision(&project_path, "content/manifest.json")?;
+    let mut node_revisions = HashMap::new();
+    for node in &nodes {
+        node_revisions.insert(
+            node.rel_path.clone(),
+            file_revision(&project_path, &format!("content/{}", node.rel_path))?,
+        );
+    }
     graph_issues.extend(legacy_chapter_layout_issues(&content_root, &meta_json));
     graph_issues.extend(validate_graph(&graph, &nodes));
     let graph_report = GraphReport { graph_issues };
@@ -540,7 +597,8 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         asset_issues: validate_assets(&content_root, &manifest),
     };
 
-    // 全局聚合：图结构 + 资产 + manifest 结构三类问题汇总成一个报告
+    // 全局聚合：图结构 + 节点内容 + 资产 + manifest 结构问题汇总成一个报告
+    let node_issues = validate_node_contents(&graph, &nodes, &manifest);
     let manifest_issues = validate_manifest_structure(&manifest);
     let mut project_issues: Vec<ProjectIssue> = vec![];
     project_issues.extend(
@@ -549,6 +607,7 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
             .iter()
             .map(|i| graph_issue_to_project(i, "graph")),
     );
+    project_issues.extend(node_issues);
     project_issues.extend(
         asset_report
             .asset_issues
@@ -556,8 +615,20 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
             .map(|i| graph_issue_to_project(i, "asset")),
     );
     project_issues.extend(manifest_issues);
-    // 组内排序：error 优先于 warn（source 内稳定）
-    project_issues.sort_by_key(|i| (i.source.clone(), i.severity != GraphIssueSeverity::Error));
+    project_issues.sort_by(|a, b| {
+        (
+            project_issue_source_order(&a.source),
+            a.severity != GraphIssueSeverity::Error,
+            a.file.as_deref().unwrap_or(""),
+            a.json_path.as_deref().unwrap_or(""),
+        )
+            .cmp(&(
+                project_issue_source_order(&b.source),
+                b.severity != GraphIssueSeverity::Error,
+                b.file.as_deref().unwrap_or(""),
+                b.json_path.as_deref().unwrap_or(""),
+            ))
+    });
     let project_report = ProjectReport { project_issues };
 
     Ok(ProjectData {
@@ -568,12 +639,35 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
             meta: meta_json,
         },
         renderer_ids,
+        project_revision,
         graph: Some(graph),
         nodes: Some(nodes),
+        graph_revision,
+        manifest_revision,
+        node_revisions: Some(node_revisions),
         graph_report: Some(graph_report),
         asset_report: Some(asset_report),
         project_report: Some(project_report),
     })
+}
+
+fn project_issue_source_order(source: &str) -> u8 {
+    match source {
+        "graph" => 0,
+        "node" => 1,
+        "asset" => 2,
+        "manifest" => 3,
+        _ => 4,
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ChoiceTarget {
+    text: String,
+    to: String,
+    instruction_index: usize,
+    choice_index: usize,
+    node_file: String,
 }
 
 pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIssue> {
@@ -644,10 +738,17 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
 
     let mut seen_edge_ids = HashSet::new();
     let mut duplicate_edge_ids = HashSet::new();
+    let mut outgoing_edges: HashMap<String, Vec<(usize, &GraphEdge)>> = HashMap::new();
+    let mut edge_pairs: HashSet<(String, String)> = HashSet::new();
     for (index, edge) in graph.edges.iter().enumerate() {
         if !seen_edge_ids.insert(edge.id.clone()) {
             duplicate_edge_ids.insert(edge.id.clone());
         }
+        outgoing_edges
+            .entry(edge.from.clone())
+            .or_default()
+            .push((index, edge));
+        edge_pairs.insert((edge.from.clone(), edge.to.clone()));
 
         let mut missing = vec![];
         if !seen_node_ids.contains(&edge.from) {
@@ -672,6 +773,85 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
             });
         }
     }
+
+    let choice_targets = collect_choice_targets(graph, nodes_data);
+    for (node_id, choices) in &choice_targets {
+        let expected_targets: HashSet<&str> =
+            choices.iter().map(|choice| choice.to.as_str()).collect();
+        for choice in choices {
+            if !seen_node_ids.contains(&choice.to) {
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Error,
+                    code: "choice_target_missing_node".to_string(),
+                    message: format!("选择项「{}」指向不存在的节点：{}", choice.text, choice.to),
+                    file: Some(format!("content/{}", choice.node_file)),
+                    json_path: Some(format!(
+                        "$[{}].choices[{}].to",
+                        choice.instruction_index, choice.choice_index
+                    )),
+                    node_id: Some(node_id.clone()),
+                    edge_id: None,
+                });
+            } else if !edge_pairs.contains(&(node_id.clone(), choice.to.clone())) {
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Warn,
+                    code: "choice_missing_graph_edge".to_string(),
+                    message: format!(
+                        "选择项「{}」指向 {}，但 graph 中缺少 {} -> {} 的边",
+                        choice.text, choice.to, node_id, choice.to
+                    ),
+                    file: Some("content/graph.json".to_string()),
+                    json_path: Some("$.edges".to_string()),
+                    node_id: Some(node_id.clone()),
+                    edge_id: None,
+                });
+            }
+        }
+
+        if let Some(outgoing) = outgoing_edges.get(node_id) {
+            for (edge_index, edge) in outgoing {
+                if !expected_targets.contains(edge.to.as_str()) {
+                    issues.push(GraphIssue {
+                        severity: GraphIssueSeverity::Warn,
+                        code: "edge_missing_choice".to_string(),
+                        message: format!(
+                            "choice 节点 {} 有额外 outgoing edge {} -> {}，但没有对应选择项",
+                            node_id, edge.from, edge.to
+                        ),
+                        file: Some("content/graph.json".to_string()),
+                        json_path: Some(format!("$.edges[{edge_index}]")),
+                        node_id: Some(node_id.clone()),
+                        edge_id: Some(edge.id.clone()),
+                    });
+                }
+            }
+        }
+    }
+
+    for node in &graph.nodes {
+        if choice_targets.contains_key(&node.id) {
+            continue;
+        }
+        let outgoing_count = outgoing_edges
+            .get(&node.id)
+            .map(|edges| edges.len())
+            .unwrap_or(0);
+        if outgoing_count > 1 {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "linear_node_multiple_outgoing".to_string(),
+                message: format!(
+                    "线性节点 {} 有多条 outgoing edges，但节点内没有 choice 指令",
+                    node.id
+                ),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some("$.edges".to_string()),
+                node_id: Some(node.id.clone()),
+                edge_id: None,
+            });
+        }
+    }
+
     let mut duplicate_edge_ids = duplicate_edge_ids.into_iter().collect::<Vec<_>>();
     duplicate_edge_ids.sort();
     for edge_id in duplicate_edge_ids {
@@ -687,6 +867,937 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
     }
 
     issues
+}
+
+fn collect_choice_targets(
+    graph: &ProjectGraph,
+    nodes_data: &[NodeEntry],
+) -> HashMap<String, Vec<ChoiceTarget>> {
+    let mut result: HashMap<String, Vec<ChoiceTarget>> = HashMap::new();
+    for (node_index, node) in graph.nodes.iter().enumerate() {
+        let Some(data) = nodes_data
+            .get(node_index)
+            .and_then(|entry| entry.data.as_ref())
+        else {
+            continue;
+        };
+        let Some(instructions) = data.as_array() else {
+            continue;
+        };
+        for (instruction_index, instruction) in instructions.iter().enumerate() {
+            if instruction.get("t").and_then(|value| value.as_str()) != Some("choice") {
+                continue;
+            }
+            let Some(choices) = instruction
+                .get("choices")
+                .and_then(|value| value.as_array())
+            else {
+                continue;
+            };
+            for (choice_index, choice) in choices.iter().enumerate() {
+                let Some(text) = choice.get("text").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                let Some(to) = choice.get("to").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                result
+                    .entry(node.id.clone())
+                    .or_default()
+                    .push(ChoiceTarget {
+                        text: text.to_string(),
+                        to: to.to_string(),
+                        instruction_index,
+                        choice_index,
+                        node_file: node.file.clone(),
+                    });
+            }
+        }
+    }
+    result
+}
+
+struct ManifestRefs {
+    backgrounds: HashSet<String>,
+    bgm: HashSet<String>,
+    sfx: HashSet<String>,
+    voice: HashSet<String>,
+    characters: HashMap<String, HashSet<String>>,
+}
+
+fn collect_manifest_refs(manifest: &serde_json::Value) -> Option<ManifestRefs> {
+    let obj = manifest.as_object()?;
+    let backgrounds = obj
+        .get("backgrounds")?
+        .as_object()?
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let audio = obj.get("audio")?.as_object()?;
+    let audio_set = |name: &str| -> Option<HashSet<String>> {
+        Some(audio.get(name)?.as_object()?.keys().cloned().collect())
+    };
+    let characters_obj = obj.get("characters")?.as_object()?;
+    let mut characters = HashMap::new();
+    for (id, raw) in characters_obj {
+        let sprites = raw.get("sprites")?.as_object()?;
+        characters.insert(id.clone(), sprites.keys().cloned().collect());
+    }
+
+    Some(ManifestRefs {
+        backgrounds,
+        bgm: audio_set("bgm")?,
+        sfx: audio_set("sfx")?,
+        voice: audio_set("voice")?,
+        characters,
+    })
+}
+
+pub fn validate_node_contents(
+    graph: &ProjectGraph,
+    nodes: &[NodeEntry],
+    manifest: &serde_json::Value,
+) -> Vec<ProjectIssue> {
+    let mut issues = vec![];
+    let manifest_refs = collect_manifest_refs(manifest);
+
+    for (index, graph_node) in graph.nodes.iter().enumerate() {
+        let Some(entry) = nodes.get(index) else {
+            continue;
+        };
+        let Some(data) = &entry.data else {
+            continue;
+        };
+        let file = format!("content/{}", graph_node.file);
+        let Some(instructions) = data.as_array() else {
+            issues.push(node_issue(
+                "node_not_array",
+                format!("节点「{}」的内容必须是 Instruction[] 数组", graph_node.id),
+                &file,
+                "$".to_string(),
+                &graph_node.id,
+            ));
+            continue;
+        };
+
+        for (instruction_index, instruction) in instructions.iter().enumerate() {
+            let Some(obj) = instruction.as_object() else {
+                issues.push(node_issue(
+                    "instruction_invalid_field",
+                    format!("第 {} 条指令必须是 JSON 对象", instruction_index),
+                    &file,
+                    format!("$[{instruction_index}]"),
+                    &graph_node.id,
+                ));
+                continue;
+            };
+            let Some(t) = obj.get("t").and_then(|value| value.as_str()) else {
+                issues.push(node_issue(
+                    "instruction_unknown_type",
+                    format!("第 {} 条指令缺少有效的 t 类型", instruction_index),
+                    &file,
+                    format!("$[{instruction_index}].t"),
+                    &graph_node.id,
+                ));
+                continue;
+            };
+
+            let mut valid = true;
+            match t {
+                "bg" => {
+                    valid &= require_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_enum_field(
+                        obj,
+                        "trans",
+                        &["fade", "cut", "dissolve"],
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            check_registry_ref(
+                                refs.backgrounds.contains(obj["id"].as_str().unwrap()),
+                                "missing_background_ref",
+                                format!(
+                                    "bg 引用了不存在的背景 id：{}",
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "bgm" => {
+                    valid &= require_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_nonnegative_int_field(
+                        obj,
+                        "fade",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_bool_field(
+                        obj,
+                        "loop",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            check_registry_ref(
+                                refs.bgm.contains(obj["id"].as_str().unwrap()),
+                                "missing_bgm_ref",
+                                format!(
+                                    "bgm 引用了不存在的 bgm id：{}",
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "sfx" => {
+                    valid &= require_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            check_registry_ref(
+                                refs.sfx.contains(obj["id"].as_str().unwrap()),
+                                "missing_sfx_ref",
+                                format!(
+                                    "sfx 引用了不存在的 sfx id：{}",
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "voice" => {
+                    valid &= require_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            check_registry_ref(
+                                refs.voice.contains(obj["id"].as_str().unwrap()),
+                                "missing_voice_ref",
+                                format!(
+                                    "voice 引用了不存在的 voice id：{}",
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "char" => {
+                    valid &= require_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_string_field(
+                        obj,
+                        "pos",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_string_field(
+                        obj,
+                        "expr",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_enum_field(
+                        obj,
+                        "trans",
+                        &["fade", "cut", "slide"],
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_bool_field(
+                        obj,
+                        "clear",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_bool_field(
+                        obj,
+                        "remove",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            let id = obj["id"].as_str().unwrap();
+                            check_character_ref(
+                                refs,
+                                id,
+                                obj.get("expr")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("default"),
+                                "id",
+                                "expr",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "say" => {
+                    valid &= require_string_field(
+                        obj,
+                        "who",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_string_field(
+                        obj,
+                        "expr",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= require_nonempty_string_field(
+                        obj,
+                        "text",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            let who = obj["who"].as_str().unwrap();
+                            check_character_ref(
+                                refs,
+                                who,
+                                obj.get("expr")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("default"),
+                                "who",
+                                "expr",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "narrate" => {
+                    require_nonempty_string_field(
+                        obj,
+                        "text",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    optional_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                }
+                "wait" => {
+                    require_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                }
+                "effect" => {
+                    require_enum_field(
+                        obj,
+                        "type",
+                        &["shake", "flash", "blur"],
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    optional_number_range_field(
+                        obj,
+                        "intensity",
+                        0.0,
+                        20.0,
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    optional_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                }
+                "transition" => {
+                    require_enum_field(
+                        obj,
+                        "type",
+                        &["fade_in", "fade_out", "white_in", "white_out", "black"],
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    optional_nonnegative_int_field(
+                        obj,
+                        "ms",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                }
+                "choice" => {
+                    validate_choice_instruction_fields(
+                        obj,
+                        instruction_index,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                }
+                _ => {
+                    issues.push(node_issue(
+                        "instruction_unknown_type",
+                        format!("第 {} 条指令类型不支持：{}", instruction_index, t),
+                        &file,
+                        format!("$[{instruction_index}].t"),
+                        &graph_node.id,
+                    ));
+                }
+            }
+        }
+    }
+
+    issues
+}
+
+fn node_issue(
+    code: &str,
+    message: String,
+    file: &str,
+    json_path: String,
+    node_id: &str,
+) -> ProjectIssue {
+    ProjectIssue {
+        severity: GraphIssueSeverity::Error,
+        source: "node".to_string(),
+        code: code.to_string(),
+        message,
+        file: Some(file.to_string()),
+        json_path: Some(json_path),
+        node_id: Some(node_id.to_string()),
+        edge_id: None,
+    }
+}
+
+fn validate_choice_instruction_fields(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    index: usize,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    let Some(choices) = obj.get("choices").and_then(|value| value.as_array()) else {
+        issues.push(node_issue(
+            "instruction_invalid_field",
+            "choice.choices 必须是非空数组".to_string(),
+            file,
+            format!("$[{index}].choices"),
+            node_id,
+        ));
+        return false;
+    };
+    if choices.is_empty() {
+        issues.push(node_issue(
+            "instruction_invalid_field",
+            "choice.choices 必须是非空数组".to_string(),
+            file,
+            format!("$[{index}].choices"),
+            node_id,
+        ));
+        return false;
+    }
+
+    let mut valid = true;
+    for (choice_index, choice) in choices.iter().enumerate() {
+        let Some(choice_obj) = choice.as_object() else {
+            issues.push(node_issue(
+                "instruction_invalid_field",
+                "choice item 必须是对象".to_string(),
+                file,
+                format!("$[{index}].choices[{choice_index}]"),
+                node_id,
+            ));
+            valid = false;
+            continue;
+        };
+        if choice_obj
+            .get("text")
+            .and_then(|value| value.as_str())
+            .map(|text| text.is_empty())
+            .unwrap_or(true)
+        {
+            issues.push(node_issue(
+                "instruction_invalid_field",
+                "choice item.text 必须是非空字符串".to_string(),
+                file,
+                format!("$[{index}].choices[{choice_index}].text"),
+                node_id,
+            ));
+            valid = false;
+        }
+        if choice_obj
+            .get("to")
+            .and_then(|value| value.as_str())
+            .map(|to| to.is_empty())
+            .unwrap_or(true)
+        {
+            issues.push(node_issue(
+                "instruction_invalid_field",
+                "choice item.to 必须是非空字符串".to_string(),
+                file,
+                format!("$[{index}].choices[{choice_index}].to"),
+                node_id,
+            ));
+            valid = false;
+        }
+    }
+
+    valid
+}
+
+fn require_string_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    if obj.get(field).and_then(|value| value.as_str()).is_some() {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(instruction_type, field, "必须是字符串"),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn optional_string_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    if !obj.contains_key(field) || obj.get(field).and_then(|value| value.as_str()).is_some() {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(instruction_type, field, "必须是字符串"),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn require_nonempty_string_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    match obj.get(field).and_then(|value| value.as_str()) {
+        Some(value) if !value.is_empty() => true,
+        _ => {
+            push_invalid_field(
+                issue_message(instruction_type, field, "必须是非空字符串"),
+                field,
+                index,
+                file,
+                node_id,
+                issues,
+            );
+            false
+        }
+    }
+}
+
+fn require_nonnegative_int_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    if obj.get(field).and_then(|value| value.as_u64()).is_some() {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(instruction_type, field, "必须是非负整数"),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn optional_nonnegative_int_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    if !obj.contains_key(field) || obj.get(field).and_then(|value| value.as_u64()).is_some() {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(instruction_type, field, "必须是非负整数"),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn optional_number_range_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    min: f64,
+    max: f64,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    let valid = match obj.get(field) {
+        None => true,
+        Some(value) => value
+            .as_f64()
+            .map(|number| number >= min && number <= max)
+            .unwrap_or(false),
+    };
+    if valid {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(
+            instruction_type,
+            field,
+            &format!("必须在 {min}..={max} 范围内"),
+        ),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn optional_bool_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    if !obj.contains_key(field) || obj.get(field).and_then(|value| value.as_bool()).is_some() {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(instruction_type, field, "必须是布尔值"),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn require_enum_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    allowed: &[&str],
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    match obj.get(field).and_then(|value| value.as_str()) {
+        Some(value) if allowed.contains(&value) => true,
+        _ => {
+            push_invalid_field(
+                issue_message(instruction_type, field, "不是支持的枚举值"),
+                field,
+                index,
+                file,
+                node_id,
+                issues,
+            );
+            false
+        }
+    }
+}
+
+fn optional_enum_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    allowed: &[&str],
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    match obj.get(field).and_then(|value| value.as_str()) {
+        None => !obj.contains_key(field),
+        Some(value) if allowed.contains(&value) => true,
+        _ => {
+            push_invalid_field(
+                issue_message(instruction_type, field, "不是支持的枚举值"),
+                field,
+                index,
+                file,
+                node_id,
+                issues,
+            );
+            false
+        }
+    }
+}
+
+fn push_invalid_field(
+    message: String,
+    field: &str,
+    index: usize,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) {
+    issues.push(node_issue(
+        "instruction_invalid_field",
+        message,
+        file,
+        format!("$[{index}].{field}"),
+        node_id,
+    ));
+}
+
+fn issue_message(instruction_type: &str, field: &str, reason: &str) -> String {
+    format!("{instruction_type}.{field} {reason}")
+}
+
+fn check_registry_ref(
+    exists: bool,
+    code: &str,
+    message: String,
+    field: &str,
+    index: usize,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) {
+    if !exists {
+        issues.push(node_issue(
+            code,
+            message,
+            file,
+            format!("$[{index}].{field}"),
+            node_id,
+        ));
+    }
+}
+
+fn check_character_ref(
+    refs: &ManifestRefs,
+    character_id: &str,
+    expr: &str,
+    id_field: &str,
+    expr_field: &str,
+    index: usize,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) {
+    let Some(sprites) = refs.characters.get(character_id) else {
+        issues.push(node_issue(
+            "missing_character_ref",
+            format!("引用了不存在的角色 id：{character_id}"),
+            file,
+            format!("$[{index}].{id_field}"),
+            node_id,
+        ));
+        return;
+    };
+    if !sprites.contains(expr) {
+        issues.push(node_issue(
+            "missing_character_expr",
+            format!("角色 {character_id} 没有表情：{expr}"),
+            file,
+            format!("$[{index}].{expr_field}"),
+            node_id,
+        ));
+    }
 }
 
 // ──────────────────────────────────────────────
@@ -733,6 +1844,8 @@ pub struct AssetEntry {
     pub rel_path: String,
     pub size: u64,
     pub kind: AssetKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<FileRevision>,
 }
 
 /// 递归收集 content/assets/ 下的所有文件。
@@ -756,10 +1869,15 @@ fn collect_asset_files(
                 .replace('\\', "/");
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let kind = AssetKind::from_rel_path(&rel);
+            let project_root = content_root
+                .parent()
+                .ok_or_else(|| format!("无法定位项目根目录: {}", content_root.display()))?;
+            let revision = file_revision(project_root, &format!("content/{rel}"))?;
             out.push(AssetEntry {
                 rel_path: rel,
                 size,
                 kind,
+                revision,
             });
         }
     }
@@ -1422,9 +2540,15 @@ fn initialize_project_root(
 
 /// 保存单个文件（相对项目根的路径）。校验目标必须在项目目录内。
 #[tauri::command]
-fn save_file(project_path: String, rel_path: String, content: String) -> Result<(), String> {
+fn save_file(
+    project_path: String,
+    rel_path: String,
+    content: String,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let safe_target = resolve_relative_under(&project_root, &rel_path)?;
+    ensure_expected_revision(&project_root, &rel_path, expected_revision)?;
     if let Some(parent) = safe_target.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
         ensure_existing_path_within(&project_root, parent)?;
@@ -1432,18 +2556,23 @@ fn save_file(project_path: String, rel_path: String, content: String) -> Result<
     if safe_target.exists() {
         ensure_existing_path_within(&project_root, &safe_target)?;
     }
-    fs::write(&safe_target, content)
+    atomic_write_text(&safe_target, &content)
         .map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
 }
 
 /// 保存 content/graph.json。节点文件生命周期由 save_file/delete_file 单独管理。
 #[tauri::command]
-fn save_graph(project_path: String, graph: ProjectGraphInput) -> Result<(), String> {
+fn save_graph(
+    project_path: String,
+    graph: ProjectGraphInput,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let content_dir = project_root.join("content");
     let content_root = content_dir
         .canonicalize()
         .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    ensure_expected_revision(&project_root, "content/graph.json", expected_revision)?;
 
     for (index, node) in graph.nodes.iter().enumerate() {
         if node.id.is_empty() {
@@ -1499,19 +2628,88 @@ fn save_graph(project_path: String, graph: ProjectGraphInput) -> Result<(), Stri
     write_json(&graph_path, &value)
 }
 
-/// 删除 content/ 下的单个文件。路径相对 content 根，缺失视为已删除。
+/// 只更新 graph.json 中指定节点的 position，保留外部新增/修改的其他节点和边。
 #[tauri::command]
-fn delete_file(project_path: String, rel_path: String) -> Result<(), String> {
+fn save_graph_positions(
+    project_path: String,
+    updates: Vec<GraphPositionPatchInput>,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let content_dir = project_root.join("content");
     let content_root = content_dir
         .canonicalize()
         .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    let graph_path = content_dir.join("graph.json");
+    ensure_existing_path_within(&content_root, &graph_path)?;
+    let _ = parse_expected_revision(expected_revision)?;
+
+    let mut graph = read_json(&graph_path)?;
+    let nodes = graph
+        .get_mut("nodes")
+        .and_then(|value| value.as_array_mut())
+        .ok_or_else(|| "graph.json 的 nodes 必须是数组".to_string())?;
+
+    let positions_by_id = updates
+        .into_iter()
+        .map(|update| {
+            if update.id.is_empty() {
+                return Err("position patch 的 id 不能为空".to_string());
+            }
+            Ok((update.id, update.position))
+        })
+        .collect::<Result<HashMap<_, _>, String>>()?;
+
+    for node in nodes {
+        let Some(id) = node.get("id").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        let Some(position) = positions_by_id.get(id) else {
+            continue;
+        };
+        let Some(node_object) = node.as_object_mut() else {
+            continue;
+        };
+        node_object.insert(
+            "position".to_string(),
+            serde_json::json!({ "x": position.x, "y": position.y }),
+        );
+    }
+
+    write_json(&graph_path, &graph)
+}
+
+/// 删除 content/ 下的单个文件。路径相对 content 根，缺失视为已删除。
+#[tauri::command]
+fn delete_file(
+    project_path: String,
+    rel_path: String,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
+    delete_content_file_to_trash(project_path, rel_path, expected_revision, "delete_file")
+}
+
+fn delete_content_file_to_trash(
+    project_path: String,
+    rel_path: String,
+    expected_revision: Option<serde_json::Value>,
+    command: &str,
+) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    let content_dir = project_root.join("content");
+    let content_root = content_dir
+        .canonicalize()
+        .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    let content_rel_path = safe_relative_path(&rel_path)?;
+    let project_rel_path = PathBuf::from("content")
+        .join(content_rel_path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    ensure_expected_revision(&project_root, &project_rel_path, expected_revision)?;
     let target = resolve_relative_under(&content_root, &rel_path)?;
     if target.exists() {
         ensure_existing_path_within(&content_root, &target)?;
-        fs::remove_file(&target)
-            .map_err(|e| format!("删除文件失败 ({}): {}", target.display(), e))?;
+        move_project_file_to_trash(&project_root, &target, &project_rel_path, command)?;
     }
     Ok(())
 }
@@ -1580,10 +2778,14 @@ fn import_asset(
 /// 删除 content/ 下的资产文件。路径相对 content 根，幂等（缺失视为已删除）。
 /// 注意：此命令只删文件，manifest 条目的移除由 save_manifest 统一负责（单一写入点）。
 #[tauri::command]
-fn delete_asset(project_path: String, rel_path: String) -> Result<(), String> {
+fn delete_asset(
+    project_path: String,
+    rel_path: String,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
     // 语义与 delete_file 完全一致（都是 content 根相对路径删文件）；
     // 单独命名是为了在前端语义上区分「删资产」与「删节点文件」。
-    delete_file(project_path, rel_path)
+    delete_content_file_to_trash(project_path, rel_path, expected_revision, "delete_asset")
 }
 
 /// 读取 content/ 下的图片资产，返回可直接用于 <img src> 的 data URL。
@@ -1676,12 +2878,17 @@ pub struct ManifestInput {
 /// 保存 content/manifest.json。镜像 save_graph 的模式：
 /// 类型化输入 → 字段校验 → canonical JSON → 写盘。
 #[tauri::command]
-fn save_manifest(project_path: String, manifest: ManifestInput) -> Result<(), String> {
+fn save_manifest(
+    project_path: String,
+    manifest: ManifestInput,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let content_dir = project_root.join("content");
     let content_root = content_dir
         .canonicalize()
         .map_err(|e| format!("无法定位 content 目录 {}: {}", content_dir.display(), e))?;
+    ensure_expected_revision(&project_root, "content/manifest.json", expected_revision)?;
 
     // 基本校验：角色名不能空
     for (id, char) in &manifest.characters {
@@ -1778,10 +2985,129 @@ fn collect_source_files(
     Ok(())
 }
 
+fn renderer_dir(project_root: &Path, renderer_id: &str) -> Result<PathBuf, String> {
+    validate_plain_name(renderer_id, "渲染层 id")?;
+    resolve_relative_under(project_root, &format!("renderers/{renderer_id}"))
+}
+
+fn ensure_renderer_exists(renderer_dir: &Path, renderer_id: &str) -> Result<(), String> {
+    if !renderer_dir.is_dir() {
+        return Err(format!("渲染层不存在: {renderer_id}"));
+    }
+    Ok(())
+}
+
+fn create_renderer_from_template(
+    project_root: &Path,
+    renderer_id: &str,
+    template_dir: &Path,
+) -> Result<(), String> {
+    let target_dir = renderer_dir(project_root, renderer_id)?;
+    if target_dir.exists() {
+        return Err(format!("渲染层已存在: {renderer_id}"));
+    }
+    if !template_dir.is_dir() {
+        return Err(format!("渲染层模板不存在: {}", template_dir.display()));
+    }
+    ensure_copy_targets_available(template_dir, &target_dir)?;
+    fs::create_dir_all(&target_dir).map_err(|e| format!("创建渲染层目录失败: {}", e))?;
+    copy_dir_all(template_dir, &target_dir).map_err(|e| format!("复制渲染层模板失败: {}", e))
+}
+
+fn duplicate_renderer_inner(
+    project_root: &Path,
+    source_id: &str,
+    new_id: &str,
+) -> Result<(), String> {
+    let source_dir = renderer_dir(project_root, source_id)?;
+    ensure_renderer_exists(&source_dir, source_id)?;
+    let target_dir = renderer_dir(project_root, new_id)?;
+    if target_dir.exists() {
+        return Err(format!("渲染层已存在: {new_id}"));
+    }
+    ensure_copy_targets_available(&source_dir, &target_dir)?;
+    fs::create_dir_all(&target_dir).map_err(|e| format!("创建渲染层目录失败: {}", e))?;
+    copy_dir_all(&source_dir, &target_dir).map_err(|e| format!("复制渲染层失败: {}", e))
+}
+
+fn rename_renderer_inner(project_root: &Path, old_id: &str, new_id: &str) -> Result<(), String> {
+    if old_id == new_id {
+        return Err("旧渲染层 id 与新 id 相同".to_string());
+    }
+    let source_dir = renderer_dir(project_root, old_id)?;
+    ensure_renderer_exists(&source_dir, old_id)?;
+    let target_dir = renderer_dir(project_root, new_id)?;
+    if target_dir.exists() {
+        return Err(format!("渲染层已存在: {new_id}"));
+    }
+    fs::rename(&source_dir, &target_dir).map_err(|e| format!("重命名渲染层失败: {}", e))?;
+
+    let mut meta = read_project_meta(project_root)?;
+    if meta.active_renderer_id == old_id {
+        meta.active_renderer_id = new_id.to_string();
+        write_json(
+            &project_root.join("gal.project.json"),
+            &serde_json::to_value(&meta).unwrap(),
+        )?;
+    }
+    Ok(())
+}
+
+fn delete_renderer_inner(project_root: &Path, renderer_id: &str) -> Result<(), String> {
+    let target_dir = renderer_dir(project_root, renderer_id)?;
+    ensure_renderer_exists(&target_dir, renderer_id)?;
+    let meta = read_project_meta(project_root)?;
+    if meta.active_renderer_id == renderer_id {
+        return Err(format!(
+            "当前激活的渲染层 {renderer_id} 不能直接删除，请先切换到其他渲染层"
+        ));
+    }
+    fs::remove_dir_all(&target_dir).map_err(|e| format!("删除渲染层失败: {}", e))
+}
+
+#[tauri::command]
+fn create_renderer(
+    project_path: String,
+    renderer_id: String,
+    template_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    validate_plain_name(&template_id, "渲染层模板 id")?;
+    if template_id != "default" {
+        return Err(format!("未知渲染层模板: {template_id}"));
+    }
+    let template_dir = default_renderer_dir(&app_handle)?;
+    create_renderer_from_template(&project_root, &renderer_id, &template_dir)
+}
+
+#[tauri::command]
+fn duplicate_renderer(project_path: String, source_id: String, new_id: String) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    duplicate_renderer_inner(&project_root, &source_id, &new_id)
+}
+
+#[tauri::command]
+fn rename_renderer(project_path: String, old_id: String, new_id: String) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    rename_renderer_inner(&project_root, &old_id, &new_id)
+}
+
+#[tauri::command]
+fn delete_renderer(project_path: String, renderer_id: String) -> Result<(), String> {
+    let project_root = canonical_project_root(Path::new(&project_path))?;
+    delete_renderer_inner(&project_root, &renderer_id)
+}
+
 /// 更新 gal.project.json
 #[tauri::command]
-fn save_project_meta(project_path: String, meta: ProjectMeta) -> Result<(), String> {
+fn save_project_meta(
+    project_path: String,
+    meta: ProjectMeta,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
+    ensure_expected_revision(&project_root, "gal.project.json", expected_revision)?;
     write_json(
         &project_root.join("gal.project.json"),
         &serde_json::to_value(&meta).unwrap(),
@@ -1862,6 +3188,208 @@ fn ensure_existing_path_within(base_canon: &Path, target: &Path) -> Result<(), S
     Ok(())
 }
 
+pub fn file_revision(project_root: &Path, rel_path: &str) -> Result<Option<FileRevision>, String> {
+    let project_root = project_root
+        .canonicalize()
+        .map_err(|e| format!("无法定位项目目录 {}: {}", project_root.display(), e))?;
+    let target = resolve_relative_under(&project_root, rel_path)?;
+    if !target.exists() {
+        return Ok(None);
+    }
+    ensure_existing_path_within(&project_root, &target)?;
+    let metadata = fs::metadata(&target)
+        .map_err(|e| format!("读取文件信息失败 {}: {}", target.display(), e))?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+    let modified = metadata
+        .modified()
+        .map_err(|e| format!("读取文件修改时间失败 {}: {}", target.display(), e))?;
+    let mtime_ms = modified
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
+    Ok(Some(FileRevision {
+        rel_path: rel_path.replace('\\', "/"),
+        mtime_ms,
+        size: metadata.len(),
+        sha256: None,
+    }))
+}
+
+enum RevisionExpectation {
+    Unchecked,
+    Missing,
+    Present(FileRevision),
+}
+
+fn parse_expected_revision(
+    expected_revision: Option<serde_json::Value>,
+) -> Result<RevisionExpectation, String> {
+    match expected_revision {
+        None => Ok(RevisionExpectation::Unchecked),
+        Some(serde_json::Value::Null) => Ok(RevisionExpectation::Missing),
+        Some(value) => serde_json::from_value::<FileRevision>(value)
+            .map(RevisionExpectation::Present)
+            .map_err(|e| format!("expectedRevision 格式错误: {}", e)),
+    }
+}
+
+fn ensure_expected_revision(
+    project_root: &Path,
+    rel_path: &str,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<(), String> {
+    match parse_expected_revision(expected_revision)? {
+        RevisionExpectation::Unchecked => Ok(()),
+        RevisionExpectation::Missing => {
+            let current = file_revision(project_root, rel_path)?;
+            if current.is_none() {
+                Ok(())
+            } else {
+                Err(write_conflict_error(rel_path, current))
+            }
+        }
+        RevisionExpectation::Present(expected) => {
+            let current = file_revision(project_root, rel_path)?;
+            match current {
+                Some(current) if revisions_match(&expected, &current) => Ok(()),
+                other => Err(write_conflict_error(rel_path, other)),
+            }
+        }
+    }
+}
+
+fn revisions_match(expected: &FileRevision, current: &FileRevision) -> bool {
+    expected.rel_path == current.rel_path
+        && expected.size == current.size
+        && (expected.mtime_ms - current.mtime_ms).abs() < 0.001
+}
+
+fn write_conflict_error(rel_path: &str, current_revision: Option<FileRevision>) -> String {
+    serde_json::json!({
+        "code": "write_conflict",
+        "message": format!("文件已被外部修改，未覆盖：{}", rel_path),
+        "file": rel_path,
+        "currentRevision": current_revision,
+    })
+    .to_string()
+}
+
+fn now_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
+fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("目标文件缺少父目录: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file");
+    let mut last_error = None;
+
+    for attempt in 0..100 {
+        let tmp_path = parent.join(format!(
+            ".galstudio-tmp-{}-{}-{}-{}",
+            file_name,
+            std::process::id(),
+            now_nanos(),
+            attempt
+        ));
+        let open_result = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path);
+        let mut file = match open_result {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "创建临时文件失败 ({}): {}",
+                    tmp_path.display(),
+                    error
+                ))
+            }
+        };
+
+        let write_result = file.write_all(bytes).and_then(|_| file.sync_all());
+        drop(file);
+        if let Err(error) = write_result {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(format!(
+                "写临时文件失败 ({}): {}",
+                tmp_path.display(),
+                error
+            ));
+        }
+
+        match fs::rename(&tmp_path, path) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let _ = fs::remove_file(&tmp_path);
+                last_error = Some(error);
+            }
+        }
+    }
+
+    Err(format!(
+        "替换文件失败 ({}): {}",
+        path.display(),
+        last_error
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "无法创建唯一临时文件".to_string())
+    ))
+}
+
+fn atomic_write_text(path: &Path, text: &str) -> Result<(), String> {
+    atomic_write_bytes(path, text.as_bytes())
+}
+
+fn move_project_file_to_trash(
+    project_root: &Path,
+    source: &Path,
+    project_rel_path: &str,
+    command: &str,
+) -> Result<(), String> {
+    ensure_existing_path_within(project_root, source)?;
+    let metadata = fs::metadata(source)
+        .map_err(|e| format!("读取文件信息失败 {}: {}", source.display(), e))?;
+    if !metadata.is_file() {
+        return Err(format!("删除目标不是文件: {}", source.display()));
+    }
+
+    let deleted_at = now_nanos().to_string();
+    let trash_dir = project_root.join(".galstudio/trash").join(&deleted_at);
+    let trash_target = trash_dir.join(safe_relative_path(project_rel_path)?);
+    if let Some(parent) = trash_target.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建 trash 目录失败: {}", e))?;
+    }
+    fs::rename(source, &trash_target).map_err(|e| {
+        format!(
+            "移动文件到 trash 失败 ({} → {}): {}",
+            source.display(),
+            trash_target.display(),
+            e
+        )
+    })?;
+
+    write_json(
+        &trash_dir.join("trash.json"),
+        &serde_json::json!({
+            "originalPath": project_rel_path,
+            "deletedAt": deleted_at,
+            "command": command,
+            "size": metadata.len(),
+        }),
+    )
+}
+
 fn run_project_watch_debouncer(
     app_handle: tauri::AppHandle,
     project_path: String,
@@ -1928,14 +3456,14 @@ fn write_json(path: &Path, value: &serde_json::Value) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
     let text = serde_json::to_string_pretty(value).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(path, text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
+    atomic_write_text(path, &text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
 }
 
 fn write_text_file(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
-    fs::write(path, text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
+    atomic_write_text(path, text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
 }
 
 fn write_project_self_description(project_path: &Path) -> Result<(), String> {
@@ -1943,6 +3471,10 @@ fn write_project_self_description(project_path: &Path) -> Result<(), String> {
     write_text_file(
         &project_path.join(".galstudio/README.md"),
         PROJECT_README_MD,
+    )?;
+    write_text_file(
+        &project_path.join(".galstudio/renderer-contract.md"),
+        PROJECT_RENDERER_CONTRACT_MD,
     )?;
     for (name, text) in PROJECT_SCHEMA_FILES {
         write_text_file(&project_path.join(".galstudio/schemas").join(name), text)?;
@@ -1992,7 +3524,7 @@ fn save_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Res
     }
     let json =
         serde_json::to_string_pretty(&settings).map_err(|e| format!("序列化设置失败: {}", e))?;
-    fs::write(&path, json).map_err(|e| format!("写设置失败 ({}): {}", path.display(), e))
+    atomic_write_text(&path, &json).map_err(|e| format!("写设置失败 ({}): {}", path.display(), e))
 }
 
 fn ensure_initialization_targets_available(
@@ -2007,6 +3539,7 @@ fn ensure_initialization_targets_available(
         project_path.join("content/nodes/start.json"),
         project_path.join("AGENTS.md"),
         project_path.join(".galstudio/README.md"),
+        project_path.join(".galstudio/renderer-contract.md"),
         project_path.join(".galstudio/schemas/graph.json"),
         project_path.join(".galstudio/schemas/nodeFile.json"),
         project_path.join(".galstudio/schemas/manifest.json"),
@@ -2097,9 +3630,14 @@ pub fn run() {
             unwatch_project,
             save_file,
             save_graph,
+            save_graph_positions,
             delete_file,
             save_project_meta,
             read_renderer_files,
+            create_renderer,
+            duplicate_renderer,
+            rename_renderer,
+            delete_renderer,
             list_assets,
             import_asset,
             delete_asset,
@@ -2192,6 +3730,18 @@ mod tests {
         }
     }
 
+    fn write_renderer_project(project: &Path) {
+        write_minimal_project(project);
+        write_text(
+            &project.join("renderers/default/index.tsx"),
+            "export default { id: 'default', name: 'Default', Component: () => null };",
+        );
+        write_text(
+            &project.join("renderers/default/Stage.tsx"),
+            "export const Stage = () => null;",
+        );
+    }
+
     fn graph_input(node_file: &str, title: &str) -> ProjectGraphInput {
         ProjectGraphInput {
             version: 1,
@@ -2237,6 +3787,43 @@ mod tests {
         }
     }
 
+    fn node_entry(rel_path: &str, data: serde_json::Value) -> NodeEntry {
+        NodeEntry {
+            rel_path: rel_path.to_string(),
+            data: Some(data),
+        }
+    }
+
+    fn manifest_with_refs() -> serde_json::Value {
+        serde_json::json!({
+            "characters": {
+                "hero": {
+                    "name": "Hero",
+                    "color": "#fff",
+                    "sprites": {
+                        "default": "assets/characters/hero_default.png",
+                        "happy": "assets/characters/hero_happy.png"
+                    }
+                }
+            },
+            "backgrounds": { "school": "assets/backgrounds/school.png" },
+            "audio": {
+                "bgm": { "theme": "assets/audio/bgm/theme.mp3" },
+                "sfx": { "click": "assets/audio/sfx/click.wav" },
+                "voice": { "line01": "assets/audio/voice/line01.ogg" }
+            }
+        })
+    }
+
+    fn one_node_graph() -> ProjectGraph {
+        ProjectGraph {
+            version: 1,
+            entry_node_id: "start".to_string(),
+            nodes: vec![graph_node("start", "nodes/start.json")],
+            edges: vec![],
+        }
+    }
+
     fn valid_project_graph() -> ProjectGraph {
         ProjectGraph {
             version: 1,
@@ -2258,6 +3845,37 @@ mod tests {
                 data: Some(serde_json::json!([])),
             })
             .collect()
+    }
+
+    fn choice_branch_graph() -> ProjectGraph {
+        ProjectGraph {
+            version: 1,
+            entry_node_id: "start".to_string(),
+            nodes: vec![
+                graph_node("start", "nodes/start.json"),
+                graph_node("stay", "nodes/stay.json"),
+                graph_node("leave", "nodes/leave.json"),
+            ],
+            edges: vec![
+                graph_edge("start__stay", "start", "stay"),
+                graph_edge("start__leave", "start", "leave"),
+            ],
+        }
+    }
+
+    fn choice_node_entry() -> NodeEntry {
+        node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                {
+                    "t": "choice",
+                    "choices": [
+                        { "text": "留下", "to": "stay" },
+                        { "text": "离开", "to": "leave" }
+                    ]
+                }
+            ]),
+        )
     }
 
     #[test]
@@ -2362,6 +3980,96 @@ mod tests {
     }
 
     #[test]
+    fn validate_choice_flags_missing_target_node() {
+        let mut graph = choice_branch_graph();
+        graph.nodes.retain(|node| node.id != "leave");
+        let nodes = vec![
+            choice_node_entry(),
+            node_entry("nodes/stay.json", serde_json::json!([])),
+        ];
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "choice_target_missing_node")
+            .expect("choice target should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+        assert_eq!(issue.file.as_deref(), Some("content/nodes/start.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$[0].choices[1].to"));
+    }
+
+    #[test]
+    fn validate_choice_flags_missing_graph_edge() {
+        let mut graph = choice_branch_graph();
+        graph.edges.retain(|edge| edge.to != "leave");
+        let nodes = vec![
+            choice_node_entry(),
+            node_entry("nodes/stay.json", serde_json::json!([])),
+            node_entry("nodes/leave.json", serde_json::json!([])),
+        ];
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "choice_missing_graph_edge")
+            .expect("missing choice edge should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+        assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.edges"));
+    }
+
+    #[test]
+    fn validate_choice_flags_extra_edge_from_choice_node() {
+        let mut graph = choice_branch_graph();
+        graph.nodes.push(graph_node("secret", "nodes/secret.json"));
+        graph
+            .edges
+            .push(graph_edge("start__secret", "start", "secret"));
+        let nodes = vec![
+            choice_node_entry(),
+            node_entry("nodes/stay.json", serde_json::json!([])),
+            node_entry("nodes/leave.json", serde_json::json!([])),
+            node_entry("nodes/secret.json", serde_json::json!([])),
+        ];
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "edge_missing_choice")
+            .expect("extra choice edge should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+        assert_eq!(issue.edge_id.as_deref(), Some("start__secret"));
+    }
+
+    #[test]
+    fn validate_choice_flags_linear_multiple_outgoing() {
+        let graph = choice_branch_graph();
+        let nodes = vec![
+            node_entry(
+                "nodes/start.json",
+                serde_json::json!([{ "t": "narrate", "text": "走吧。" }]),
+            ),
+            node_entry("nodes/stay.json", serde_json::json!([])),
+            node_entry("nodes/leave.json", serde_json::json!([])),
+        ];
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "linear_node_multiple_outgoing")
+            .expect("linear multi-edge node should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
     fn validate_graph_clean_graph_has_no_issues() {
         let graph = valid_project_graph();
         let entries = present_node_entries(&graph);
@@ -2369,6 +4077,339 @@ mod tests {
         let issues = validate_graph(&graph, &entries);
 
         assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn file_revision_changes_when_file_changes() {
+        let root = unique_temp_dir("file-revision-changes");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        let rel_path = "content/nodes/a.json";
+        write_text(&project.join(rel_path), "[]");
+
+        let before = file_revision(&project, rel_path).unwrap().unwrap();
+        write_text(&project.join(rel_path), "[1]");
+        let after = file_revision(&project, rel_path).unwrap().unwrap();
+
+        assert_ne!(before.size, after.size);
+        assert_eq!(after.rel_path, rel_path);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_returns_graph_manifest_and_node_revisions() {
+        let root = unique_temp_dir("open-project-revisions");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "present",
+                "nodes": [
+                    {
+                        "id": "present",
+                        "title": "Present",
+                        "file": "nodes/present.json",
+                        "position": { "x": 0, "y": 0 }
+                    },
+                    {
+                        "id": "missing",
+                        "title": "Missing",
+                        "file": "nodes/missing.json",
+                        "position": { "x": 260, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[("nodes/present.json", serde_json::json!([]))],
+        );
+
+        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let node_revisions = opened.node_revisions.unwrap();
+
+        assert_eq!(
+            opened.graph_revision.as_ref().unwrap().rel_path,
+            "content/graph.json"
+        );
+        assert_eq!(
+            opened.project_revision.as_ref().unwrap().rel_path,
+            "gal.project.json"
+        );
+        assert_eq!(
+            opened.manifest_revision.as_ref().unwrap().rel_path,
+            "content/manifest.json"
+        );
+        assert_eq!(
+            node_revisions
+                .get("nodes/present.json")
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .rel_path,
+            "content/nodes/present.json"
+        );
+        assert!(node_revisions.get("nodes/missing.json").unwrap().is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_file_rejects_stale_revision() {
+        let root = unique_temp_dir("save-file-stale");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        let rel_path = "content/nodes/a.json";
+        write_text(&project.join(rel_path), "[]");
+        let expected = file_revision(&project, rel_path).unwrap().unwrap();
+        write_text(&project.join(rel_path), "[1]");
+
+        let result = save_file(
+            project.to_string_lossy().into_owned(),
+            rel_path.to_string(),
+            "[2]".to_string(),
+            Some(serde_json::to_value(&expected).unwrap()),
+        );
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("write_conflict"));
+        assert_eq!(fs::read_to_string(project.join(rel_path)).unwrap(), "[1]");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_graph_rejects_stale_revision() {
+        let root = unique_temp_dir("save-graph-stale");
+        let project = root.join("project");
+        write_graph_project_with_files(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "old",
+                "nodes": [{ "id": "old", "title": "Old", "file": "nodes/old.json", "position": { "x": 0, "y": 0 } }],
+                "edges": []
+            }),
+            &[("nodes/prologue.json", "[]"), ("nodes/ending.json", "[]")],
+        );
+        let expected = file_revision(&project, "content/graph.json")
+            .unwrap()
+            .unwrap();
+        write_json(
+            &project.join("content/graph.json"),
+            &serde_json::json!({
+                "version": 1,
+                "entryNodeId": "external",
+                "nodes": [{ "id": "external", "title": "External", "file": "nodes/external.json", "position": { "x": 0, "y": 0 } }],
+                "edges": []
+            }),
+        )
+        .unwrap();
+
+        let result = save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Prologue"),
+            Some(serde_json::to_value(&expected).unwrap()),
+        );
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("write_conflict"));
+        let graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(project.join("content/graph.json")).unwrap())
+                .unwrap();
+        assert_eq!(graph["entryNodeId"], "external");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_manifest_rejects_stale_revision() {
+        let root = unique_temp_dir("save-manifest-stale");
+        let project = root.join("project");
+        write_asset_project(
+            &project,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &[],
+        );
+        let expected = file_revision(&project, "content/manifest.json")
+            .unwrap()
+            .unwrap();
+        write_text(
+            &project.join("content/manifest.json"),
+            r#"{"characters":{},"backgrounds":{"external":"assets/backgrounds/sky.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+        );
+
+        let result = save_manifest(
+            project.to_string_lossy().into_owned(),
+            ManifestInput {
+                characters: std::collections::HashMap::new(),
+                backgrounds: std::collections::HashMap::new(),
+                audio: ManifestAudioRegistryInput::default(),
+            },
+            Some(serde_json::to_value(&expected).unwrap()),
+        );
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("write_conflict"));
+        let manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(project.join("content/manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest["backgrounds"]["external"],
+            "assets/backgrounds/sky.png"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_project_meta_rejects_stale_revision() {
+        let root = unique_temp_dir("save-project-meta-stale");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        let expected = file_revision(&project, "gal.project.json")
+            .unwrap()
+            .unwrap();
+        write_text(
+            &project.join("gal.project.json"),
+            r#"{"name":"External","activeRendererId":"external","createdAt":"0"}"#,
+        );
+
+        let result = save_project_meta(
+            project.to_string_lossy().into_owned(),
+            ProjectMeta {
+                name: "Local".to_string(),
+                active_renderer_id: "default".to_string(),
+                created_at: "0".to_string(),
+            },
+            Some(serde_json::to_value(&expected).unwrap()),
+        );
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("write_conflict"));
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(project.join("gal.project.json")).unwrap())
+                .unwrap();
+        assert_eq!(meta["activeRendererId"], "external");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_node_contents_flags_non_array_node() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry("nodes/start.json", serde_json::json!({}))];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].source, "node");
+        assert_eq!(issues[0].code, "node_not_array");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
+        assert_eq!(issues[0].file.as_deref(), Some("content/nodes/start.json"));
+        assert_eq!(issues[0].json_path.as_deref(), Some("$"));
+        assert_eq!(issues[0].node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn validate_node_contents_flags_unknown_instruction_type() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "teleport", "id": "x" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "instruction_unknown_type");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].t"));
+        assert_eq!(issues[0].node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn validate_node_contents_flags_missing_required_field() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "say", "who": "hero" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "instruction_invalid_field");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].text"));
+    }
+
+    #[test]
+    fn validate_node_contents_flags_invalid_enum() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "bg", "id": "school", "trans": "spin" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "instruction_invalid_field");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].trans"));
+    }
+
+    #[test]
+    fn validate_node_contents_flags_missing_background_ref() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "bg", "id": "ghost_bg" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "missing_background_ref");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].id"));
+    }
+
+    #[test]
+    fn validate_node_contents_flags_missing_character_expr() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "say", "who": "hero", "expr": "angry", "text": "Hi" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "missing_character_expr");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].expr"));
+    }
+
+    #[test]
+    fn validate_node_contents_skips_missing_node_file() {
+        let graph = one_node_graph();
+        let nodes = vec![NodeEntry {
+            rel_path: "nodes/start.json".to_string(),
+            data: None,
+        }];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn validate_node_contents_skips_reference_checks_when_manifest_is_invalid() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "bg", "id": "ghost_bg" }]),
+        )];
+        let manifest = serde_json::json!({ "characters": {}, "backgrounds": {}, "audio": { "bgm_main": "x.mp3" } });
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest);
+
+        assert!(
+            issues.is_empty(),
+            "manifest 非法时不应制造引用二次问题: {issues:?}"
+        );
     }
 
     #[test]
@@ -2382,6 +4423,7 @@ mod tests {
         save_graph(
             project.to_string_lossy().into_owned(),
             graph_input("nodes/prologue.json", "Prologue"),
+            None,
         )
         .unwrap();
 
@@ -2412,6 +4454,7 @@ mod tests {
         save_graph(
             project.to_string_lossy().into_owned(),
             graph_input("nodes/prologue.json", "Fresh"),
+            None,
         )
         .unwrap();
 
@@ -2425,6 +4468,112 @@ mod tests {
     }
 
     #[test]
+    fn write_json_is_atomic_enough_for_valid_json() {
+        let root = unique_temp_dir("save-graph-atomic-json");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        write_text(&project.join("content/nodes/prologue.json"), "[]");
+        write_text(&project.join("content/nodes/ending.json"), "[]");
+
+        save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Prologue"),
+            None,
+        )
+        .unwrap();
+
+        let graph_path = project.join("content/graph.json");
+        let graph_text = fs::read_to_string(&graph_path).unwrap();
+        let graph: serde_json::Value = serde_json::from_str(&graph_text).unwrap();
+        assert_eq!(graph["entryNodeId"], "prologue");
+        let leftovers = fs::read_dir(project.join("content"))
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".galstudio-tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_graph_positions_preserves_external_nodes() {
+        let root = unique_temp_dir("save-graph-positions");
+        let project = root.join("project");
+        write_graph_project_with_files(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "a",
+                "nodes": [
+                    { "id": "a", "title": "A", "file": "nodes/a.json", "position": { "x": 0, "y": 0 } },
+                    { "id": "b", "title": "B", "file": "nodes/b.json", "position": { "x": 100, "y": 0 } }
+                ],
+                "edges": [{ "id": "a__b", "from": "a", "to": "b", "condition": null }]
+            }),
+            &[
+                ("nodes/a.json", "[]"),
+                ("nodes/b.json", "[]"),
+                ("nodes/c.json", "[]"),
+            ],
+        );
+        let expected = file_revision(&project, "content/graph.json")
+            .unwrap()
+            .unwrap();
+        write_json(
+            &project.join("content/graph.json"),
+            &serde_json::json!({
+                "version": 1,
+                "entryNodeId": "a",
+                "nodes": [
+                    { "id": "a", "title": "A", "file": "nodes/a.json", "position": { "x": 0, "y": 0 } },
+                    { "id": "b", "title": "B", "file": "nodes/b.json", "position": { "x": 100, "y": 0 } },
+                    { "id": "c", "title": "External", "file": "nodes/c.json", "position": { "x": 200, "y": 0 } }
+                ],
+                "edges": [
+                    { "id": "a__b", "from": "a", "to": "b", "condition": null },
+                    { "id": "b__c", "from": "b", "to": "c", "condition": null }
+                ]
+            }),
+        )
+        .unwrap();
+
+        save_graph_positions(
+            project.to_string_lossy().into_owned(),
+            vec![GraphPositionPatchInput {
+                id: "a".to_string(),
+                position: GraphPositionInput { x: 42.0, y: 24.0 },
+            }],
+            Some(serde_json::to_value(&expected).unwrap()),
+        )
+        .unwrap();
+
+        let graph: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(project.join("content/graph.json")).unwrap())
+                .unwrap();
+        assert_eq!(graph["nodes"].as_array().unwrap().len(), 3);
+        assert_eq!(graph["edges"].as_array().unwrap().len(), 2);
+        let node_a = graph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "a")
+            .unwrap();
+        assert_eq!(node_a["position"]["x"], 42.0);
+        assert_eq!(node_a["position"]["y"], 24.0);
+        assert!(graph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["id"] == "c"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn save_graph_rejects_untrusted_project_root() {
         let root = unique_temp_dir("save-graph-untrusted");
         fs::create_dir_all(&root).unwrap();
@@ -2432,6 +4581,7 @@ mod tests {
         let result = save_graph(
             root.to_string_lossy().into_owned(),
             graph_input("nodes/prologue.json", "Nope"),
+            None,
         );
 
         assert!(result.is_err());
@@ -2458,6 +4608,7 @@ mod tests {
         let result = save_graph(
             project.to_string_lossy().into_owned(),
             graph_input("../../outside.json", "Escape"),
+            None,
         );
 
         assert!(result.is_err());
@@ -2480,10 +4631,69 @@ mod tests {
         delete_file(
             project.to_string_lossy().into_owned(),
             "nodes/a.json".to_string(),
+            None,
         )
         .unwrap();
 
         assert!(!target.exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_file_moves_to_trash() {
+        let root = unique_temp_dir("delete-file-trash");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        let target = project.join("content/nodes/a.json");
+        write_text(&target, "[1]");
+
+        delete_file(
+            project.to_string_lossy().into_owned(),
+            "nodes/a.json".to_string(),
+            None,
+        )
+        .unwrap();
+
+        assert!(!target.exists());
+        let trash_root = project.join(".galstudio/trash");
+        let entries = fs::read_dir(&trash_root)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), 1);
+        let trash_dir = &entries[0];
+        assert_eq!(
+            fs::read_to_string(trash_dir.join("content/nodes/a.json")).unwrap(),
+            "[1]"
+        );
+        let manifest: serde_json::Value = read_json(&trash_dir.join("trash.json")).unwrap();
+        assert_eq!(manifest["originalPath"], "content/nodes/a.json");
+        assert_eq!(manifest["command"], "delete_file");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_file_rejects_stale_revision() {
+        let root = unique_temp_dir("delete-file-stale");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        let target = project.join("content/nodes/a.json");
+        write_text(&target, "[]");
+        let expected = file_revision(&project, "content/nodes/a.json")
+            .unwrap()
+            .unwrap();
+        write_text(&target, "[1]");
+
+        let result = delete_file(
+            project.to_string_lossy().into_owned(),
+            "nodes/a.json".to_string(),
+            Some(serde_json::to_value(&expected).unwrap()),
+        );
+
+        assert!(result.is_err());
+        assert!(result.err().unwrap().contains("write_conflict"));
+        assert!(target.exists());
+        assert!(!project.join(".galstudio/trash").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -2496,6 +4706,7 @@ mod tests {
         let result = delete_file(
             project.to_string_lossy().into_owned(),
             "nodes/missing.json".to_string(),
+            None,
         );
 
         assert!(result.is_ok());
@@ -2512,6 +4723,7 @@ mod tests {
         let result = delete_file(
             project.to_string_lossy().into_owned(),
             "../../outside.json".to_string(),
+            None,
         );
 
         assert!(result.is_err());
@@ -2530,6 +4742,7 @@ mod tests {
         let result = delete_file(
             root.to_string_lossy().into_owned(),
             "nodes/a.json".to_string(),
+            None,
         );
 
         assert!(result.is_err());
@@ -2553,6 +4766,7 @@ mod tests {
         save_graph(
             project.to_string_lossy().into_owned(),
             graph_input("nodes/prologue.json", "Prologue"),
+            None,
         )
         .unwrap();
 
@@ -2886,6 +5100,7 @@ mod tests {
             dir.to_string_lossy().into_owned(),
             "owned.txt".to_string(),
             "nope".to_string(),
+            None,
         );
 
         assert!(result.is_err());
@@ -2929,6 +5144,7 @@ mod tests {
         assert!(project.join("content/assets").is_dir());
         assert!(project.join("AGENTS.md").is_file());
         assert!(project.join(".galstudio/README.md").is_file());
+        assert!(project.join(".galstudio/renderer-contract.md").is_file());
         for schema_name in ["graph", "nodeFile", "manifest", "meta"] {
             let schema_path = project.join(format!(".galstudio/schemas/{schema_name}.json"));
             assert!(schema_path.is_file(), "missing schema {}", schema_name);
@@ -2970,7 +5186,19 @@ mod tests {
         assert!(agent_instructions.contains("Instruction[]"));
         assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
         assert!(agent_instructions.contains("galstudio-cli validate . --format json"));
+        assert!(agent_instructions.contains("missing_graph"));
         assert!(agent_instructions.contains("content/chapters/"));
+        let project_readme = fs::read_to_string(project.join(".galstudio/README.md")).unwrap();
+        assert!(project_readme.contains("content/graph.json"));
+        assert!(project_readme.contains("missing_graph"));
+        assert!(project_readme.contains("Legacy Chapters"));
+        assert!(project_readme.contains("content/chapters/"));
+        assert!(project_readme.contains(".galstudio/renderer-contract.md"));
+        let renderer_contract =
+            fs::read_to_string(project.join(".galstudio/renderer-contract.md")).unwrap();
+        assert!(renderer_contract.contains("RendererManifest"));
+        assert!(renderer_contract.contains("renderers/<id>/index.tsx"));
+        assert!(renderer_contract.contains("@galstudio/engine"));
         assert_eq!(
             fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
             "export default {};"
@@ -3229,14 +5457,50 @@ mod tests {
         delete_asset(
             dir.to_string_lossy().to_string(),
             "assets/backgrounds/gone.png".to_string(),
+            None,
         )
         .unwrap();
         // 再次删除已不存在的文件也应成功
         delete_asset(
             dir.to_string_lossy().to_string(),
             "assets/backgrounds/gone.png".to_string(),
+            None,
         )
         .unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_asset_moves_to_trash_with_revision() {
+        let dir = unique_temp_dir("delete-asset-trash");
+        write_asset_project(
+            &dir,
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+            &["assets/backgrounds/gone.png"],
+        );
+        let expected = file_revision(&dir, "content/assets/backgrounds/gone.png")
+            .unwrap()
+            .unwrap();
+
+        delete_asset(
+            dir.to_string_lossy().to_string(),
+            "assets/backgrounds/gone.png".to_string(),
+            Some(serde_json::to_value(&expected).unwrap()),
+        )
+        .unwrap();
+
+        assert!(!dir.join("content/assets/backgrounds/gone.png").exists());
+        let trash_dir = fs::read_dir(dir.join(".galstudio/trash"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(trash_dir
+            .join("content/assets/backgrounds/gone.png")
+            .exists());
+        let manifest: serde_json::Value = read_json(&trash_dir.join("trash.json")).unwrap();
+        assert_eq!(manifest["command"], "delete_asset");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -3288,7 +5552,7 @@ mod tests {
             },
         };
 
-        save_manifest(dir.to_string_lossy().to_string(), manifest).unwrap();
+        save_manifest(dir.to_string_lossy().to_string(), manifest, None).unwrap();
 
         let written = fs::read_to_string(dir.join("content/manifest.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
@@ -3471,6 +5735,45 @@ mod tests {
     }
 
     #[test]
+    fn open_project_aggregates_node_issues() {
+        let dir = unique_temp_dir("aggregate-node-report");
+        write_graph_project(
+            &dir,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "start",
+                "nodes": [
+                    {
+                        "id": "start",
+                        "title": "Start",
+                        "file": "nodes/start.json",
+                        "position": { "x": 0, "y": 0 }
+                    }
+                ],
+                "edges": []
+            }),
+            &[(
+                "nodes/start.json",
+                serde_json::json!([{ "t": "say", "who": "ghost", "text": "Hi" }]),
+            )],
+        );
+
+        let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
+        let report = data.project_report.expect("应有 project_report");
+        let issue = report
+            .project_issues
+            .iter()
+            .find(|issue| issue.source == "node" && issue.code == "missing_character_ref")
+            .expect("节点内容引用错误应进入 project_report");
+
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
+        assert_eq!(issue.file.as_deref(), Some("content/nodes/start.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$[0].who"));
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn open_project_report_includes_manifest_error() {
         let dir = unique_temp_dir("report-manifest-err");
         // 旧 flat audio manifest → manifest 结构错误应进 project_report
@@ -3533,6 +5836,95 @@ mod tests {
 
         assert!(result.is_err());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_renderer_copies_template_without_overwrite() {
+        let root = unique_temp_dir("create-renderer");
+        let project = root.join("project");
+        let template = root.join("template");
+        write_renderer_project(&project);
+        write_text(
+            &template.join("index.tsx"),
+            "export default { id: 'template', name: 'Template', Component: () => null };",
+        );
+        write_text(
+            &template.join("Stage.tsx"),
+            "export const Stage = () => 'ok';",
+        );
+
+        create_renderer_from_template(&project, "cinematic", &template).unwrap();
+
+        assert!(project.join("renderers/cinematic/index.tsx").is_file());
+        assert!(project.join("renderers/cinematic/Stage.tsx").is_file());
+        assert!(create_renderer_from_template(&project, "cinematic", &template).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn duplicate_renderer_copies_source_files() {
+        let root = unique_temp_dir("duplicate-renderer");
+        let project = root.join("project");
+        write_renderer_project(&project);
+        write_text(
+            &project.join("renderers/default/Nested/View.tsx"),
+            "export const View = () => null;",
+        );
+
+        duplicate_renderer_inner(&project, "default", "mobile").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(project.join("renderers/mobile/Stage.tsx")).unwrap(),
+            "export const Stage = () => null;"
+        );
+        assert!(project.join("renderers/mobile/Nested/View.tsx").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rename_renderer_updates_active_renderer_when_needed() {
+        let root = unique_temp_dir("rename-renderer");
+        let project = root.join("project");
+        write_renderer_project(&project);
+
+        rename_renderer_inner(&project, "default", "mobile").unwrap();
+
+        assert!(project.join("renderers/mobile/index.tsx").is_file());
+        assert!(!project.join("renderers/default").exists());
+        let meta = read_project_meta(&project).unwrap();
+        assert_eq!(meta.active_renderer_id, "mobile");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_renderer_rejects_active_renderer() {
+        let root = unique_temp_dir("delete-active-renderer");
+        let project = root.join("project");
+        write_renderer_project(&project);
+
+        let result = delete_renderer_inner(&project, "default");
+
+        assert!(result.is_err());
+        assert!(project.join("renderers/default").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn renderer_commands_reject_path_traversal() {
+        let root = unique_temp_dir("renderer-path-traversal");
+        let project = root.join("project");
+        let template = root.join("template");
+        write_renderer_project(&project);
+        write_text(
+            &template.join("index.tsx"),
+            "export default { id: 'template', name: 'Template', Component: () => null };",
+        );
+
+        assert!(create_renderer_from_template(&project, "../escape", &template).is_err());
+        assert!(duplicate_renderer_inner(&project, "default", "../escape").is_err());
+        assert!(rename_renderer_inner(&project, "default", "../escape").is_err());
+        assert!(delete_renderer_inner(&project, "../escape").is_err());
+        let _ = fs::remove_dir_all(&root);
     }
 
     // ── 应用设置（AppSettings）测试 ──

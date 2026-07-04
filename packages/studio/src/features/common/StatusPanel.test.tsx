@@ -145,6 +145,22 @@ describe("StatusDialog 按 source 分组", () => {
     expect(html).toContain("资产");
   });
 
+  it("sourceLabel 支持 node issues 显示为节点内容", () => {
+    const html = renderToStaticMarkup(
+      <StatusDialog
+        issues={[{ severity: "error", source: "node", code: "node_not_array", message: "节点文件不是数组" }]}
+        okLabel="项目正常"
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+        sourceLabel={(s) => (s === "node" ? "节点内容" : s)}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(html).toContain("节点内容");
+    expect(html).toContain("node_not_array");
+  });
+
   it("同一 source 组内 error 排在 warn 前面", () => {
     const html = renderToStaticMarkup(
       <StatusDialog

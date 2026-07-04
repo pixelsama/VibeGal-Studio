@@ -1,5 +1,9 @@
 # Script Graph Feature Plan
 
+> 状态：历史背景。
+> 当前契约以 [AGENTS.md](../../AGENTS.md)、[overview.md](./overview.md) 和 [node-and-graph-schema.md](./node-and-graph-schema.md) 为准。
+> 本文保留早期路线图与演化脉络，不作为当前实现说明。
+
 ## Goal
 
 GalStudio should evolve into a data-driven galgame editor with three primary workspaces:

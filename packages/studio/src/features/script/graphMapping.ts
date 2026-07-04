@@ -20,6 +20,7 @@ export function mapGraphToFlow(
   nodeEntries?: NodeEntry[],
 ): { nodes: Node<FlowNodeData, typeof NODE_TYPE>[]; edges: Edge[] } {
   const duplicateNodeIds = collectDuplicateNodeIds(graphReport);
+  const choiceEdgeLabels = collectChoiceEdgeLabels(graph, nodeEntries);
   const suspiciousEdgeIds = new Set(
     graphReport?.graphIssues
       .filter((issue) => issue.code === "dangling_edge" && issue.edgeId)
@@ -32,7 +33,10 @@ export function mapGraphToFlow(
     const entry = nodeEntries ? findNodeEntry(nodeEntries, node.file) : null;
     const hasFile = nodeEntries == null ? true : entry?.data != null;
     const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
-    const status = deriveGraphNodeStatus(graph, node.id, { hasFile, duplicateNodeIds });
+    const baseStatus = deriveGraphNodeStatus(graph, node.id, { hasFile, duplicateNodeIds });
+    const status = hasChoiceInstruction(entry?.data) && !["duplicate", "missing-file", "entry"].includes(baseStatus)
+      ? "branch"
+      : baseStatus;
     return {
       id: node.id,
       type: NODE_TYPE,
@@ -53,6 +57,7 @@ export function mapGraphToFlow(
     source: edge.from,
     target: edge.to,
     type: "smoothstep",
+    label: choiceEdgeLabels.get(`${edge.from}\0${edge.to}`),
     data: {
       condition: edge.condition,
       ...(suspiciousEdgeIds.has(edge.id) ? { suspicious: true } : {}),
@@ -153,4 +158,40 @@ export function findNodeEntry(entries: NodeEntry[] | undefined, file: string): N
 /** 节点文件数据 */
 export function findNodeData(entries: NodeEntry[] | undefined, file: string): unknown | null {
   return findNodeEntry(entries, file)?.data ?? null;
+}
+
+function collectChoiceEdgeLabels(graph: ProjectGraph, nodeEntries?: NodeEntry[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  if (!nodeEntries) return labels;
+
+  for (const node of graph.nodes) {
+    const data = findNodeEntry(nodeEntries, node.file)?.data;
+    if (!Array.isArray(data)) continue;
+    for (const instruction of data) {
+      if (!isChoiceInstruction(instruction)) continue;
+      for (const choice of instruction.choices) {
+        if (!labels.has(`${node.id}\0${choice.to}`)) {
+          labels.set(`${node.id}\0${choice.to}`, choice.text);
+        }
+      }
+    }
+  }
+
+  return labels;
+}
+
+function hasChoiceInstruction(data: unknown): boolean {
+  return Array.isArray(data) && data.some(isChoiceInstruction);
+}
+
+function isChoiceInstruction(value: unknown): value is { t: "choice"; choices: { text: string; to: string }[] } {
+  if (!value || typeof value !== "object") return false;
+  const instruction = value as { t?: unknown; choices?: unknown };
+  return instruction.t === "choice" && Array.isArray(instruction.choices) && instruction.choices.some(isChoiceItem);
+}
+
+function isChoiceItem(value: unknown): value is { text: string; to: string } {
+  if (!value || typeof value !== "object") return false;
+  const choice = value as { text?: unknown; to?: unknown };
+  return typeof choice.text === "string" && typeof choice.to === "string";
 }

@@ -1,0 +1,7 @@
+[
+  { "t": "transition", "type": "fade_in", "ms": 1200 },
+  { "t": "narrate", "text": "光照进来时，她终于站稳了脚跟。" },
+  { "t": "char", "id": "protagonist", "pos": "center", "expr": "default", "trans": "fade", "ms": 600 },
+  { "t": "say", "who": "protagonist", "expr": "default", "text": "从这里开始？我好像还记得些什么。" },
+  { "t": "sfx", "id": "sfx_boom" }
+]

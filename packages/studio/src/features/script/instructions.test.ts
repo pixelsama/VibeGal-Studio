@@ -56,6 +56,22 @@ describe("summarizeInstructions", () => {
   it("returns empty array for empty instructions", () => {
     expect(summarizeInstructions([])).toEqual([]);
   });
+
+  it("summarizeInstructions_includes_choice", () => {
+    const summaries = summarizeInstructions([
+      {
+        t: "choice",
+        choices: [
+          { text: "留下", to: "stay" },
+          { text: "离开", to: "leave" },
+        ],
+      },
+    ] as unknown as Instruction[]);
+
+    expect(summaries).toEqual([
+      { index: 0, kind: "choice", label: "选择 留下 -> stay / 离开 -> leave" },
+    ]);
+  });
 });
 
 describe("insertInstructionAt", () => {
@@ -108,5 +124,12 @@ describe("defaultInstruction", () => {
 
   it("wait has t and ms", () => {
     expect(defaultInstruction("wait")).toEqual({ t: "wait", ms: 1000 });
+  });
+
+  it("choiceBlock_adds_choice_item", () => {
+    expect(defaultInstruction("choice")).toEqual({
+      t: "choice",
+      choices: [{ text: "选项", to: "" }],
+    });
   });
 });

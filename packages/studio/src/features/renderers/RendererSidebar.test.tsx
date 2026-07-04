@@ -37,4 +37,21 @@ describe("RendererSidebar", () => {
 
     expect(html).toContain("暂无渲染层");
   });
+
+  it("renders renderer management actions", () => {
+    const html = renderToStaticMarkup(createElement(RendererSidebar, {
+      rendererIds: ["default"],
+      activeRendererId: "default",
+      onSelect: () => {},
+      onCreate: () => {},
+      onDuplicate: () => {},
+      onRename: () => {},
+      onDelete: () => {},
+    }));
+
+    expect(html).toContain("新建");
+    expect(html).toContain("复制");
+    expect(html).toContain("重命名");
+    expect(html).toContain("删除");
+  });
 });

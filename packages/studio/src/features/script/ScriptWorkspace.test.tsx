@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { ScriptWorkspace } from "./ScriptWorkspace";
+import { buildGraphPositionUpdates, ScriptWorkspace } from "./ScriptWorkspace";
 import type { ProjectData, ProjectGraph } from "../../lib/types";
 
 vi.mock("@xyflow/react", async () => {
@@ -26,6 +26,7 @@ vi.mock("../../lib/tauri", () => ({
   deleteFile: vi.fn(),
   saveFile: vi.fn(),
   saveGraph: vi.fn(),
+  saveGraphPositions: vi.fn(),
 }));
 
 const graph: ProjectGraph = {
@@ -67,5 +68,21 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("aria-label=\"节点\"");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("序章");
+  });
+});
+
+describe("graph position patch", () => {
+  it("graphPositionPatchBuildsOnlyMovedNodes", () => {
+    const next: ProjectGraph = {
+      ...graph,
+      nodes: [
+        { ...graph.nodes[0], position: { x: 24, y: 48 } },
+        { id: "external", title: "External", file: "nodes/external.json", position: { x: 9, y: 9 } },
+      ],
+    };
+
+    expect(buildGraphPositionUpdates(graph, next)).toEqual([
+      { id: "prologue", position: { x: 24, y: 48 } },
+    ]);
   });
 });

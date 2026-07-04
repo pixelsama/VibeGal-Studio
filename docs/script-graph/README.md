@@ -1,40 +1,46 @@
 # Script Graph — 规格文档集
 
-本目录是「脚本图（Script Graph）」功能的规格说明集合，把 GalStudio 从单一预览/编辑器演化为
-**Render / Script / Assets** 三工作台，并在 Script 工作台中引入 graph-first 的剧本编排方式。
+> 状态：完成。
+> 当前产品契约以仓库根 [AGENTS.md](../../AGENTS.md)、[overview.md](./overview.md)、[node-and-graph-schema.md](./node-and-graph-schema.md) 和 `.galstudio/schemas/*.json` 为准。
 
-## 文档清单
+本目录记录 Script Graph 的当前契约、活跃规格和历史背景。
 
-| 文档 | 内容 | 角色 |
+## 文档分层
+
+| 文档 | 内容 | 状态 |
 |------|------|------|
-| [00-feature-plan.md](./00-feature-plan.md) | 原始高层产品计划（6 阶段路线图） | 路线图 / 背景 |
-| [overview.md](./overview.md) | 横切决策、统一数据模型、命名/路径/热重载约定 | **所有 phase 共用，先读这个** |
-| [01-workspace-navigation.spec.md](./01-workspace-navigation.spec.md) | 顶部工作台切换 Render/Script/Assets | Phase 1 |
-| [02-graph-data-contract.spec.md](./02-graph-data-contract.spec.md) | 后端图数据加载 + 线性图合成 | Phase 2（后端核心，TDD 重点） |
-| [03-script-graph-view.spec.md](./03-script-graph-view.spec.md) | 图画布视图（React Flow） | Phase 3 |
-| [04-node-instruction-editor.spec.md](./04-node-instruction-editor.spec.md) | 节点内指令流编辑器 | Phase 4 |
-| [05-graph-editing.spec.md](./05-graph-editing.spec.md) | 节点增/删/连线/重命名/移位 | Phase 5 |
-| [06-external-data-operations.spec.md](./06-external-data-operations.spec.md) | 校验、可操作错误、外部刷新指示、无内置 AI 边界 | Phase 6 |
-| [07-e2g-flowchart-inspired-plan.md](./07-e2g-flowchart-inspired-plan.md) | 借鉴 Everything2Galgame 后的流程图增强计划 | Phase 7+ |
-| [08-node-content-validation.spec.md](./08-node-content-validation.spec.md) | 节点 `Instruction[]` 内容校验接入全局报告与 CLI | 完善 Spec 08 |
-| [09-safe-persistence-collaboration.spec.md](./09-safe-persistence-collaboration.spec.md) | 文件 revision、冲突检测、可恢复删除、graph patch 保存 | 完善 Spec 09 |
-| [10-block-instruction-editor.spec.md](./10-block-instruction-editor.spec.md) | 从 JSON 编辑升级到指令块编辑，同时保留 JSON 高级模式 | 完善 Spec 10 |
-| [11-branch-choice-semantics.spec.md](./11-branch-choice-semantics.spec.md) | `choice` 指令、graph 分支语义、分支校验与预览路线 | 完善 Spec 11 |
-| [12-assets-renderer-productization.spec.md](./12-assets-renderer-productization.spec.md) | 资产选择/预览/批量清理与 renderer 管理/契约/回归 | 完善 Spec 12 |
-| [13-documentation-convergence.spec.md](./13-documentation-convergence.spec.md) | 收敛 AGENTS、overview、历史 spec、项目自描述和 schema 文档 | 完善 Spec 13 |
-| [14-release-readiness.spec.md](./14-release-readiness.spec.md) | CI、smoke/e2e、打包版本、示例项目与发布 checklist | 完善 Spec 14 |
+| [overview.md](./overview.md) | 横切决策、统一数据模型、命名/路径/热重载约定 | 当前契约 |
+| [node-and-graph-schema.md](./node-and-graph-schema.md) | 面向外部工具/Agent 的读写速查与路径安全约定 | 当前契约 |
+| [01-workspace-navigation.spec.md](./01-workspace-navigation.spec.md) | 顶部工作台切换 Render/Script/Assets | 完成 |
+| [02-graph-data-contract.spec.md](./02-graph-data-contract.spec.md) | 后端图数据加载、缺失图报 issue、节点文件读取 | 完成 |
+| [03-script-graph-view.spec.md](./03-script-graph-view.spec.md) | 图画布视图（React Flow） | 完成 |
+| [04-node-instruction-editor.spec.md](./04-node-instruction-editor.spec.md) | 节点内指令流编辑器 | 完成 |
+| [05-graph-editing.spec.md](./05-graph-editing.spec.md) | 节点增/删/连线/重命名/移位/落盘 | 完成 |
+| [06-external-data-operations.spec.md](./06-external-data-operations.spec.md) | 校验、可操作错误、外部刷新指示、无内置 AI 边界 | 完成 |
+| [07-e2g-flowchart-inspired-plan.md](./07-e2g-flowchart-inspired-plan.md) | 借鉴 Everything2Galgame 后的流程图增强计划 | 规划中 |
+| [15-graph-aware-choice-preview.spec.md](./15-graph-aware-choice-preview.spec.md) | choice 路径预览与正式整图播放器 | Spec 11 后续 Stage 2/3 |
+| [16-graph-undo-redo.spec.md](./16-graph-undo-redo.spec.md) | graph command stack 与 undo/redo | Spec 09 后续 Stage 6 |
+| [00-feature-plan.md](./00-feature-plan.md) | 原始高层产品计划与早期设想 | 历史背景 |
+| [archive/08-node-content-validation.spec.md](./archive/08-node-content-validation.spec.md) | 节点 `Instruction[]` 内容校验接入全局报告与 CLI | 已归档 |
+| [archive/09-safe-persistence-collaboration.spec.md](./archive/09-safe-persistence-collaboration.spec.md) | 文件 revision、冲突检测、可恢复删除、graph patch 保存 | 已归档 |
+| [archive/10-block-instruction-editor.spec.md](./archive/10-block-instruction-editor.spec.md) | 从 JSON 编辑升级到指令块编辑，同时保留 JSON 高级模式 | 已归档 |
+| [archive/11-branch-choice-semantics.spec.md](./archive/11-branch-choice-semantics.spec.md) | `choice` 指令、graph 分支语义、分支校验与预览路线 | 已归档 |
+| [archive/12-assets-renderer-productization.spec.md](./archive/12-assets-renderer-productization.spec.md) | 资产选择/预览/批量清理与 renderer 管理/契约/回归 | 已归档 |
+| [archive/13-documentation-convergence.spec.md](./archive/13-documentation-convergence.spec.md) | 收敛 AGENTS、overview、历史 spec、项目自描述和 schema 文档 | 已归档 |
+| [archive/14-release-readiness.spec.md](./archive/14-release-readiness.spec.md) | CI、smoke/e2e、打包版本、示例项目与发布 checklist | 已归档 |
 
 ## 如何阅读
 
-1. **先读 [00-feature-plan.md](./00-feature-plan.md)** 了解整体目标与 6 阶段划分。
-2. **再读 [overview.md](./overview.md)** —— 它锁定所有 phase 共享的横切决策（数据格式、命名、路径安全、热重载、测试约定）。每个 phase spec 都假设你已读过 overview。
-3. 按阶段顺序读 01 → 06。**阶段间有依赖**：01 是 UI 地基；02 是数据契约（几乎其它所有 phase 依赖它）；03/04 可并行；05 依赖 03+04；06 依赖 02+05。
-4. 读 08 → 14 时，把它们视作“完善到可归档状态”的后续执行规格：每份都含当前状态、推进阶段、TDD/验收清单和可归档标准。
+1. 先读 [overview.md](./overview.md) 和 [node-and-graph-schema.md](./node-and-graph-schema.md) 了解当前契约。
+2. 再读 01 → 06，理解已经落地的主干能力。
+3. 读 07、15、16 时，把它们当作仍在推进的后续规格，按顶部状态判断当前阶段。
+4. 需要回看路线图时再读 [00-feature-plan.md](./00-feature-plan.md)；它保留历史脉络，不代表当前契约。
 
-## 推荐实施顺序
+## 归档规则
 
-按原 plan 文档的建议：**Phase 1 + Phase 2 一起做**。UI 暴露新形态的同时后端长出图数据契约，
-之后图画布（Phase 3）可增量推进，不阻塞编辑器（Phase 4）。
+- `docs/script-graph/archive/` 存放已归档的历史文档、截面或替代版本。
+- 已归档文档可以保留历史说法，但不能冒充当前产品契约。
+- 如果某份规格已被新规格完全替代，优先在原文件顶部链接新规格，再考虑迁移到 `archive/`。
 
 ## 与 AGENTS.md 的关系
 

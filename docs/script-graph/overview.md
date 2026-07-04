@@ -1,5 +1,6 @@
 # Overview — 横切决策与统一模型
 
+> 状态：完成。
 > 本文档锁定所有 phase spec 共享的横切决策。**每个 phase spec 都假设你已读过本文。**
 > 锁定项标注 🔒（实现时不应随意偏离）；标注 🟡 的为「当前如此，可 revisit」。
 
@@ -16,7 +17,7 @@
 ]
 ```
 
-- **格式 = `Instruction[]`**，沿用 `packages/engine/src/schema.ts` 的 `t` 判别联合（`bg`/`bgm`/`sfx`/`voice`/`char`/`say`/`narrate`/`wait`/`effect`/`transition`）。
+- **格式 = `Instruction[]`**，沿用 `packages/engine/src/schema.ts` 的 `t` 判别联合（`bg`/`bgm`/`sfx`/`voice`/`char`/`say`/`narrate`/`choice`/`wait`/`effect`/`transition`）。
 - **否决**早期草案里的 `{ "type": "say", "speaker": ... }`。那只是示意，不是契约。
 - 好处：`validateContent`、`NovelPlayer`、`InstructionSchema`、`useProjectPlayer` 全部零改写复用；
   外部工具/Agent 写节点时可直接参考既有 schema，且预览/校验链路天然打通。
@@ -25,12 +26,13 @@
 
 不强制「节点 = 章节」或「节点 = 场景」。一个节点就是一段 `Instruction[]`，长短随意。
 - 线性故事也用图表达：把节点按顺序连成 `start -> scene-a -> ending` 即可。
-- 旧 `content/meta.json` 的 `chapters` 字段和 `content/chapters/` 目录不再作为剧本入口，也不会被合成为图。
+- 旧 `content/meta.json` 的 `chapters` 字段和 `content/chapters/` 目录只保留为历史背景，不再作为剧本入口，也不会被合成为图。
 
-### 🔒 1.3 预览只播放「选中节点」
+### 🔒 1.3 单节点预览只播放「选中节点」
 
 - 把选中节点当作**单章节**喂给 `NovelPlayer` 播放（`chapters: [{ file: node.file, data: nodeData }]`）。
-- 整图从 entry 遍历播放留作后续扩展（引擎当前无 `choice` 分支指令，无法沿 edge 分支推进）。
+- `choice` 指令会展示选项并停住；Stage 1 点击选项只提示目标，不加载下一节点。
+- 整图从 entry 沿 choice/edge 播放留作 Spec 15。
 - meta 级播放参数（`typingSpeedCps` 等）仍从 `content/meta.json` 取。
 
 ### 🔒 1.4 画布用 React Flow (`@xyflow/react`)
@@ -40,10 +42,12 @@
 - 约定：把 `project.graph` 通过纯函数映射成 React Flow 的 `nodes`/`edges`，
   编辑动作（拖拽/连线/删除）反向写回 `project.graph` 再落盘。映射层是纯函数、可单测。
 
-### 🟡 1.5 edge.condition 当前恒为 null
+### 🔒 1.5 choice 分支语义
 
-- `graph.json` 的 `edge.condition` 字段保留为 `null`，引擎目前没有 `choice` 指令，无法表达分支条件。
-- spec 中保留该字段位，分支/选项作为后续扩展点显式标注，本期不实现分支语义。
+- 选择项写在节点文件内：`{ "t": "choice", "choices": [{ "text": "留下", "to": "stay" }] }`。
+- 每个 `choice.choices[].to` 应有一条 `edge.from == 当前节点 && edge.to == choice.to` 的 graph edge。
+- edge 仍是可视化索引；展示文本从 choice item 推导，不复制到 edge。
+- `edge.condition` 继续保留给未来 flags/条件分支，当前通常为 `null`。
 
 ### 🔒 1.6 热重载无需新增 watch 路径
 
@@ -269,6 +273,6 @@ pub struct NodeEntry {
 | plan 提出的问题 | 本规格的处置 |
 |----------------|--------------|
 | 节点 = 章/场景/任意？ | 🟡 任意，推荐场景级；迁移时 1 章=1 节点（§1.2） |
-| 选项放节点内/边上/两者？ | 🔒 当前放节点内（沿用 `Instruction`，引擎暂无 choice）；edge.condition 保留位，分支留后续 |
+| 选项放节点内/边上/两者？ | 🔒 放节点内（`choice` 指令）；edge 作为可视化索引，edge.condition 保留给未来条件分支 |
 | 预览播放选中节点还是整图？ | 🔒 选中节点（§1.3），整图播放留后续 |
 | Render 是工作台还是右侧面板？ | 🟡 Phase 1 先做成工作台（保住既有预览体验），后续可降级为面板 |

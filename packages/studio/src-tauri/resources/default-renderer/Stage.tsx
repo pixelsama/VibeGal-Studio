@@ -14,9 +14,10 @@ import { DialogueBox } from "./DialogueBox";
 import { Effects } from "./Effects";
 import { useShake } from "./useShake";
 
-export function Stage({ state, manifest, contentBase, onAdvance, onToggleAuto, onToggleRecording, onSeekBy, onStepOnce, onPrevChapter, onNextChapter }: RendererProps) {
+export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onToggleAuto, onToggleRecording, onSeekBy, onStepOnce, onPrevChapter, onNextChapter }: RendererProps) {
   // 控制层是否可见：录制模式隐藏
   const [showHelp, setShowHelp] = useState(true);
+  const [choiceHint, setChoiceHint] = useState<string | null>(null);
   const hideControls = state.flags.isRecording;
   const { containerStyle: shakeStyle, keyframes: shakeKeyframes } = useShake(state);
 
@@ -26,6 +27,10 @@ export function Stage({ state, manifest, contentBase, onAdvance, onToggleAuto, o
     const t = setTimeout(() => setShowHelp(false), 3000);
     return () => clearTimeout(t);
   }, [hideControls]);
+
+  useEffect(() => {
+    setChoiceHint(null);
+  }, [state.choice]);
 
   return (
     <div
@@ -49,6 +54,39 @@ export function Stage({ state, manifest, contentBase, onAdvance, onToggleAuto, o
       </div>
       <Effects state={state} />
       <style>{shakeKeyframes}</style>
+
+      {state.choice && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 150,
+            transform: "translateX(-50%)",
+            zIndex: 70,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            minWidth: 280,
+            maxWidth: "min(560px, calc(100vw - 48px))",
+          }}
+        >
+          {state.choice.choices.map((choice) => (
+            <button
+              key={`${choice.text}:${choice.to}`}
+              type="button"
+              onClick={() => {
+                setChoiceHint(`将跳转到 ${choice.to}`);
+                onChoose?.(choice.to);
+              }}
+              style={choiceButtonStyle}
+            >
+              {choice.text}
+            </button>
+          ))}
+          {choiceHint && <div style={choiceHintStyle}>{choiceHint}</div>}
+        </div>
+      )}
 
       {!hideControls && showHelp && (
         <div
@@ -105,6 +143,25 @@ export function Stage({ state, manifest, contentBase, onAdvance, onToggleAuto, o
     </div>
   );
 }
+
+const choiceButtonStyle: React.CSSProperties = {
+  background: "rgba(0,0,0,0.72)",
+  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.35)",
+  borderRadius: 6,
+  padding: "12px 18px",
+  fontSize: 17,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  textAlign: "center",
+};
+
+const choiceHintStyle: React.CSSProperties = {
+  color: "rgba(255,255,255,0.75)",
+  fontSize: 13,
+  textAlign: "center",
+  textShadow: "0 1px 2px rgba(0,0,0,0.8)",
+};
 
 function btnStyle(active: boolean): React.CSSProperties {
   return {

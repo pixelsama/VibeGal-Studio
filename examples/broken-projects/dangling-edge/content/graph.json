@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "entryNodeId": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "title": "开始",
+      "file": "nodes/start.json",
+      "position": {
+        "x": 120,
+        "y": 120
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "start__missing",
+      "from": "start",
+      "to": "missing",
+      "condition": null
+    }
+  ]
+}

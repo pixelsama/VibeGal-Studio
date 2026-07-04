@@ -16,6 +16,13 @@ export interface ProjectListItem {
   meta: ProjectMeta;
 }
 
+export interface FileRevision {
+  relPath: string;
+  mtimeMs: number;
+  size: number;
+  sha256?: string;
+}
+
 /** 图节点（graph.json 中的一项） */
 export interface GraphNode {
   id: string;
@@ -39,6 +46,11 @@ export interface ProjectGraph {
   entryNodeId: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+export interface GraphPositionPatch {
+  id: string;
+  position: { x: number; y: number };
 }
 
 /** 单个节点的指令数据（open_project 已读好的） */
@@ -79,7 +91,7 @@ export interface AssetReport {
 // ──────────────────────────────────────────────
 
 /** 问题来源，决定全局面板的分组 */
-export type ProjectIssueSource = "graph" | "asset" | "manifest";
+export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest";
 
 export interface ProjectIssue {
   severity: GraphIssueSeverity;
@@ -101,6 +113,7 @@ export interface GraphIssueFocusRequest {
   requestId: number;
   nodeId?: string;
   edgeId?: string;
+  jsonPath?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -153,6 +166,7 @@ export interface AssetEntry {
   /** 文件字节数 */
   size: number;
   kind: AssetKind;
+  revision?: FileRevision;
 }
 
 /** 打开项目后拿到的完整数据 */
@@ -166,10 +180,15 @@ export interface ProjectData {
   };
   /** 项目内可用的渲染层 id 列表（= renderers/ 子目录名） */
   rendererIds: string[];
+  /** gal.project.json 的 revision，用于渲染层切换等项目级写入冲突检测 */
+  projectRevision?: FileRevision;
   /** 图结构；项目剧本入口来自 content/graph.json */
   graph?: ProjectGraph;
   /** 各节点的指令数据（按 graph.nodes 的 file 读取） */
   nodes?: NodeEntry[];
+  graphRevision?: FileRevision;
+  manifestRevision?: FileRevision;
+  nodeRevisions?: Record<string, FileRevision | null>;
   /** 图结构一致性报告；问题不阻断项目加载 */
   graphReport?: GraphReport;
   /** 资产一致性报告；问题不阻断项目加载 */

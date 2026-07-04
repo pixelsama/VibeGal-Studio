@@ -163,6 +163,7 @@ fn run_validate(path: &str, format: OutputFormat) -> i32 {
 fn source_label(source: &str) -> &str {
     match source {
         "graph" => "图结构",
+        "node" => "节点内容",
         "asset" => "资产",
         "manifest" => "manifest",
         _ => source,
@@ -233,12 +234,28 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn write_text(path: &std::path::Path, text: &str) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(path, text).unwrap();
+    }
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    fn examples_path() -> PathBuf {
+        workspace_root().join("examples")
+    }
+
+    fn example_project(name: &str) -> PathBuf {
+        examples_path().join(name)
     }
 
     fn make_project(root: &std::path::Path, graph_json: Option<&str>) {
@@ -384,5 +401,85 @@ mod tests {
         let code = run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Json);
         assert_eq!(code, 0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_cli_reports_node_instruction_error_as_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "galstudio-cli-node-json-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","title":"A","file":"nodes/a.json","position":{"x":0,"y":0}}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            r#"[{"t":"say","who":"ghost","text":"hi"}]"#,
+        );
+
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let project_issues = project.project_report.unwrap().project_issues;
+        let node_issue = project_issues
+            .iter()
+            .find(|issue| issue.source == "node" && issue.code == "missing_character_ref")
+            .expect("CLI 应复用 projectIssues 中的 node 问题");
+
+        assert_eq!(node_issue.file.as_deref(), Some("content/nodes/a.json"));
+        assert_eq!(node_issue.json_path.as_deref(), Some("$[0].who"));
+        assert_eq!(node_issue.node_id.as_deref(), Some("a"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_cli_exits_one_for_node_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "galstudio-cli-node-exit-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","title":"A","file":"nodes/a.json","position":{"x":0,"y":0}}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            r#"[{"t":"say","who":"ghost","text":"hi"}]"#,
+        );
+
+        let code = run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Json);
+
+        assert_eq!(code, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_examples_sample_novel_is_clean() {
+        let path = example_project("sample-novel");
+        let code = run_validate(path.to_string_lossy().as_ref(), OutputFormat::Json);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn validate_example_broken_project_missing_node_file_is_warn_only() {
+        let path = example_project("broken-projects/missing-node-file");
+        let code = run_validate(path.to_string_lossy().as_ref(), OutputFormat::Text);
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn validate_example_broken_project_dangling_edge_is_warn_only() {
+        let path = example_project("broken-projects/dangling-edge");
+        let code = run_validate(path.to_string_lossy().as_ref(), OutputFormat::Text);
+        assert_eq!(code, 2);
     }
 }

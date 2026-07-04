@@ -87,6 +87,7 @@ export class NovelPlayer {
    */
   advance() {
     if (this.state.flags.isWaiting) return; // wait 期间忽略
+    if (this.state.choice) return; // choice 由 onChoose/整图播放器处理，普通推进不跨分支
     if (!this.isCurrentTextDone()) {
       this.state = revealFully(this.state);
       this.emit();
@@ -208,6 +209,9 @@ export class NovelPlayer {
         break;
       case "wait":
         this.startWait(instr.ms);
+        break;
+      case "choice":
+        this.clearAuto();
         break;
       default:
         // 无文本、无等待的指令：自动顺延，让画面连续

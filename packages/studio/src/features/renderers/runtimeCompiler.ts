@@ -167,6 +167,30 @@ export function __rewriteBareImportsForTest(code: string): { code: string; unkno
   return rewriteBareImports(code);
 }
 
+export type RuntimeCompilerError =
+  | { kind: "unsupported-import"; file: string; specs: string[] }
+  | { kind: "esbuild"; message: string };
+
+export function formatRuntimeCompilerError({
+  rendererId,
+  error,
+}: {
+  rendererId: string;
+  error: RuntimeCompilerError;
+}): string {
+  if (error.kind === "unsupported-import") {
+    return `渲染层 ${rendererId} 的 ${error.file} 使用了未支持的 bare import：${error.specs.join(", ")}。仅支持 react、react/jsx-runtime、react-dom、@galstudio/engine 与相对路径 import。`;
+  }
+  return `渲染层 ${rendererId} 编译失败：${error.message}`;
+}
+
+export function formatRuntimeCompilerErrorForTest(args: {
+  rendererId: string;
+  error: RuntimeCompilerError;
+}): string {
+  return formatRuntimeCompilerError(args);
+}
+
 function memoryPlugin(files: Map<string, string>): Plugin {
   return {
     name: "galstudio-memory",
@@ -235,7 +259,11 @@ export async function compileRenderer(files: RendererFile[]): Promise<unknown> {
     // 2. 改写 bare import 为全局变量
     const { code, unknownSpecs } = rewriteBareImports(result.code);
     if (unknownSpecs.length > 0) {
-      console.warn(`[compiler] ${f.path} 引用了未映射的 bare import: ${unknownSpecs.join(", ")}`);
+      throw {
+        kind: "unsupported-import",
+        file: f.path,
+        specs: unknownSpecs,
+      } satisfies RuntimeCompilerError;
     }
     compiled.set(stripExt(f.path), code);
   }

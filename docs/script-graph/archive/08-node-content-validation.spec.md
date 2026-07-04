@@ -1,6 +1,6 @@
 # Spec 08 — 节点内容校验接入全局报告与 CLI
 
-> 状态：规划中。
+> 状态：已归档。
 > 前置：当前 `open_project` 已聚合 graph / asset / manifest 问题；`galstudio-cli validate` 已能输出结构化 `projectIssues`。
 > 目标：把每个 `content/nodes/*.json` 的 `Instruction[]` 结构错误与资源引用错误纳入同一套问题闭环。
 

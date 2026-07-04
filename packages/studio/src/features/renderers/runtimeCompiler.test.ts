@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __rewriteBareImportsForTest } from "./runtimeCompiler";
+import { __rewriteBareImportsForTest, formatRuntimeCompilerErrorForTest } from "./runtimeCompiler";
 
 describe("rewriteBareImports", () => {
   it("rewrites mixed default and named React imports", () => {
@@ -33,5 +33,21 @@ describe("rewriteBareImports", () => {
     expect(code).toContain("const { memo: rendererMemo, useState } =");
     expect(code).toContain("export { rendererMemo, useState };");
     expect(code).not.toContain("export { memo as rendererMemo");
+  });
+
+  it("reports unsupported bare imports with renderer and file context", () => {
+    const message = formatRuntimeCompilerErrorForTest({
+      rendererId: "mobile",
+      error: {
+        kind: "unsupported-import",
+        file: "Stage.tsx",
+        specs: ["lodash-es"],
+      },
+    });
+
+    expect(message).toContain("渲染层 mobile");
+    expect(message).toContain("Stage.tsx");
+    expect(message).toContain("lodash-es");
+    expect(message).toContain("仅支持");
   });
 });

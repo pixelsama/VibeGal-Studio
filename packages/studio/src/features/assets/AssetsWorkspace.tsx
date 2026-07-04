@@ -13,7 +13,7 @@
  */
 import { useMemo, useState } from "react";
 import { ManifestSchema } from "@galstudio/engine";
-import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type Manifest } from "../../lib/types";
+import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
 import {
   deleteAsset,
   importAsset,
@@ -114,7 +114,7 @@ export function AssetsWorkspace({
     if (newPaths.length > 0) {
       const next = applyAssetRegistrations(manifest, newPaths);
       try {
-        await saveManifest(project.path, next);
+        await saveManifest(project.path, next, project.manifestRevision);
         setDraftManifest(null);
       } catch (e) {
         console.warn("saveManifest 失败:", e);
@@ -127,7 +127,7 @@ export function AssetsWorkspace({
     await onSaved();
   }
 
-  async function handleDelete(relPath: string) {
+  async function handleDelete(relPath: string, assetRevision?: FileRevision) {
     if (readOnly) return;
     // 删除资产时同步移除所有指向它的 manifest 引用，
     // 否则会立刻制造 missing_asset（悬空引用）。
@@ -136,6 +136,8 @@ export function AssetsWorkspace({
       relPath,
       manifest,
       refCountByPath,
+      assetRevision,
+      manifestRevision: project.manifestRevision,
       deleteAssetFn: deleteAsset,
       saveManifestFn: saveManifest,
     });
@@ -151,11 +153,7 @@ export function AssetsWorkspace({
 
   function handleRegisterOrphan(entry: AssetEntry) {
     if (readOnly) return;
-    // 把孤儿文件登记进 manifest（id = 文件名，按 kind 放对应子表）
-    const next = applyAssetRegistrations(manifest, [
-      { id: baseName(entry.relPath), path: entry.relPath, kind: entry.kind as "background" | "bgm" | "sfx" | "voice" },
-    ]);
-    void persistManifest(next);
+    void persistManifest(registerOrphanAssets(manifest, [entry]));
   }
 
   function handleRemoveDanglingRef(source: string) {
@@ -165,10 +163,33 @@ export function AssetsWorkspace({
     void persistManifest(next);
   }
 
+  async function handleRegisterAllOrphans() {
+    if (readOnly) return;
+    const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
+    if (candidates.length === 0) return;
+    await persistManifest(registerOrphanAssets(manifest, candidates));
+  }
+
+  async function handleRemoveAllDanglingRefs() {
+    if (readOnly || filteredDangling.length === 0) return;
+    await persistManifest(removeDanglingRefs(manifest, filteredDangling.map((entry) => entry.source)));
+  }
+
+  async function handleDeleteAllOrphans() {
+    if (readOnly) return;
+    const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
+    if (candidates.length === 0) return;
+    const confirmed = window.confirm(`确定删除当前筛选下的 ${candidates.length} 个孤儿资源？`);
+    if (!confirmed) return;
+    for (const entry of candidates) {
+      await handleDelete(entry.relPath, entry.revision);
+    }
+  }
+
   async function persistManifest(next: Manifest) {
     if (readOnly) return;
     try {
-      await saveManifest(project.path, next);
+      await saveManifest(project.path, next, project.manifestRevision);
       setDraftManifest(null);
       await onSaved();
     } catch (e) {
@@ -211,6 +232,11 @@ export function AssetsWorkspace({
               onSearch={setSearch}
               onImport={handleImport}
               count={totalShown}
+              orphanCount={filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath)).length}
+              danglingCount={filteredDangling.length}
+              onRegisterOrphans={handleRegisterAllOrphans}
+              onRemoveDanglingRefs={handleRemoveAllDanglingRefs}
+              onDeleteOrphans={handleDeleteAllOrphans}
               disabled={readOnly}
             />
             <div style={scrollStyle}>
@@ -262,8 +288,10 @@ export interface DeleteAssetAndPruneManifestRefsParams {
   relPath: string;
   manifest: Manifest;
   refCountByPath: Map<string, number>;
-  deleteAssetFn: (projectPath: string, relPath: string) => Promise<void>;
-  saveManifestFn: (projectPath: string, manifest: Manifest) => Promise<void>;
+  deleteAssetFn: (projectPath: string, relPath: string, expectedRevision?: FileRevision | null) => Promise<void>;
+  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<void>;
+  assetRevision?: FileRevision;
+  manifestRevision?: FileRevision | null;
 }
 
 export interface DeleteAssetAndPruneManifestRefsResult {
@@ -278,6 +306,8 @@ export async function deleteAssetAndPruneManifestRefs({
   relPath,
   manifest,
   refCountByPath,
+  assetRevision,
+  manifestRevision,
   deleteAssetFn,
   saveManifestFn,
 }: DeleteAssetAndPruneManifestRefsParams): Promise<DeleteAssetAndPruneManifestRefsResult> {
@@ -286,7 +316,7 @@ export async function deleteAssetAndPruneManifestRefs({
   const nextManifest = refs > 0 ? removeAllRefsToPath(manifest, normalized) : manifest;
 
   try {
-    await deleteAssetFn(projectPath, relPath);
+    await deleteAssetFn(projectPath, relPath, assetRevision);
   } catch (error) {
     return { deleted: false, manifestSaved: false, manifestSaveFailed: false, error };
   }
@@ -296,7 +326,7 @@ export async function deleteAssetAndPruneManifestRefs({
   }
 
   try {
-    await saveManifestFn(projectPath, nextManifest);
+    await saveManifestFn(projectPath, nextManifest, manifestRevision);
     return { deleted: true, manifestSaved: true, manifestSaveFailed: false };
   } catch (error) {
     return { deleted: true, manifestSaved: false, manifestSaveFailed: true, error };
@@ -350,6 +380,18 @@ export function applyAssetRegistrations(
   return next;
 }
 
+export function registerOrphanAssets(manifest: Manifest, entries: AssetEntry[]): Manifest {
+  const registrations = entries
+    .filter((entry): entry is AssetEntry & { kind: "background" | "bgm" | "sfx" | "voice" } =>
+      entry.kind === "background" || entry.kind === "bgm" || entry.kind === "sfx" || entry.kind === "voice")
+    .map((entry) => ({
+      id: baseName(entry.relPath),
+      path: entry.relPath,
+      kind: entry.kind,
+    }));
+  return applyAssetRegistrations(manifest, registrations);
+}
+
 /**
  * 按 source 路径移除 manifest 条目。
  * source 形如 "backgrounds.sky" / "audio.bgm.theme" / "characters.h.sprites.default"。
@@ -381,6 +423,10 @@ export function removeManifestEntry(manifest: Manifest, source: string): Manifes
     };
   }
   return manifest;
+}
+
+export function removeDanglingRefs(manifest: Manifest, sources: string[]): Manifest {
+  return sources.reduce((next, source) => removeManifestEntry(next, source), manifest);
 }
 
 /** 统计每个磁盘路径被多少 manifest 条目引用。 */

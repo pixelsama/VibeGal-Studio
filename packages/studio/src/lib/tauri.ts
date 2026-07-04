@@ -9,6 +9,8 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type {
   AssetEntry,
   AssetKind,
+  FileRevision,
+  GraphPositionPatch,
   Manifest,
   ProjectData,
   ProjectGraph,
@@ -64,6 +66,13 @@ export async function initializeProject(path: string): Promise<ProjectData> {
   return invoke<ProjectData>("initialize_project", { path });
 }
 
+function withExpectedRevision<T extends Record<string, unknown>>(
+  args: T,
+  expectedRevision?: FileRevision | null,
+): T & { expectedRevision?: FileRevision | null } {
+  return expectedRevision === undefined ? args : { ...args, expectedRevision };
+}
+
 /** 开始监听项目目录变化，后端会 debounce 后发 project_changed 事件 */
 export async function watchProject(projectPath: string): Promise<void> {
   await invoke("watch_project", { projectPath });
@@ -75,23 +84,49 @@ export async function unwatchProject(projectPath: string): Promise<void> {
 }
 
 /** 保存单个文件（相对项目根的路径） */
-export async function saveFile(projectPath: string, relPath: string, content: string): Promise<void> {
-  await invoke("save_file", { projectPath, relPath, content });
+export async function saveFile(
+  projectPath: string,
+  relPath: string,
+  content: string,
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("save_file", withExpectedRevision({ projectPath, relPath, content }, expectedRevision));
 }
 
 /** 保存图结构到 content/graph.json */
-export async function saveGraph(projectPath: string, graph: ProjectGraph): Promise<void> {
-  await invoke("save_graph", { projectPath, graph });
+export async function saveGraph(
+  projectPath: string,
+  graph: ProjectGraph,
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("save_graph", withExpectedRevision({ projectPath, graph }, expectedRevision));
+}
+
+/** 只保存图节点 position patch，避免拖拽覆盖外部新增节点/边 */
+export async function saveGraphPositions(
+  projectPath: string,
+  updates: GraphPositionPatch[],
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("save_graph_positions", withExpectedRevision({ projectPath, updates }, expectedRevision));
 }
 
 /** 删除 content/ 下的单个文件（relPath 相对 content 根） */
-export async function deleteFile(projectPath: string, relPath: string): Promise<void> {
-  await invoke("delete_file", { projectPath, relPath });
+export async function deleteFile(
+  projectPath: string,
+  relPath: string,
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("delete_file", withExpectedRevision({ projectPath, relPath }, expectedRevision));
 }
 
 /** 更新 gal.project.json（用于持久化 activeRendererId 等） */
-export async function saveProjectMeta(projectPath: string, meta: ProjectMeta): Promise<void> {
-  await invoke("save_project_meta", { projectPath, meta });
+export async function saveProjectMeta(
+  projectPath: string,
+  meta: ProjectMeta,
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("save_project_meta", withExpectedRevision({ projectPath, meta }, expectedRevision));
 }
 
 /** 读取一个渲染层目录的所有 .ts/.tsx 源码（供前端运行时编译） */
@@ -101,6 +136,22 @@ export interface RendererFile {
 }
 export async function readRendererFiles(projectPath: string, rendererId: string): Promise<RendererFile[]> {
   return invoke<RendererFile[]>("read_renderer_files", { projectPath, rendererId });
+}
+
+export async function createRenderer(projectPath: string, rendererId: string, templateId = "default"): Promise<void> {
+  await invoke("create_renderer", { projectPath, rendererId, templateId });
+}
+
+export async function duplicateRenderer(projectPath: string, sourceId: string, newId: string): Promise<void> {
+  await invoke("duplicate_renderer", { projectPath, sourceId, newId });
+}
+
+export async function renameRenderer(projectPath: string, oldId: string, newId: string): Promise<void> {
+  await invoke("rename_renderer", { projectPath, oldId, newId });
+}
+
+export async function deleteRenderer(projectPath: string, rendererId: string): Promise<void> {
+  await invoke("delete_renderer", { projectPath, rendererId });
 }
 
 // ──────────────────────────────────────────────
@@ -127,8 +178,12 @@ export async function importAsset(
 }
 
 /** 删除 content/ 下的资产文件（relPath 相对 content 根，幂等）。只删文件，不改 manifest。 */
-export async function deleteAsset(projectPath: string, relPath: string): Promise<void> {
-  await invoke("delete_asset", { projectPath, relPath });
+export async function deleteAsset(
+  projectPath: string,
+  relPath: string,
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("delete_asset", withExpectedRevision({ projectPath, relPath }, expectedRevision));
 }
 
 /** 读取 content/ 下的图片资产预览，返回 data URL（后端校验路径不越界）。 */
@@ -137,8 +192,12 @@ export async function readAssetPreviewDataUrl(projectPath: string, relPath: stri
 }
 
 /** 保存 content/manifest.json（整体覆盖，类型化输入） */
-export async function saveManifest(projectPath: string, manifest: Manifest): Promise<void> {
-  await invoke("save_manifest", { projectPath, manifest });
+export async function saveManifest(
+  projectPath: string,
+  manifest: Manifest,
+  expectedRevision?: FileRevision | null,
+): Promise<void> {
+  await invoke("save_manifest", withExpectedRevision({ projectPath, manifest }, expectedRevision));
 }
 
 // ──────────────────────────────────────────────

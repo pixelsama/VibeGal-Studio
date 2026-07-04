@@ -1,5 +1,6 @@
 # Phase 6 — 外部数据操作（External Data Operations）规格
 
+> 状态：完成。
 > 前置：Phase 2（数据契约）、Phase 5（图编辑/写入）。
 > 已读 [overview.md](./overview.md)（§1.6 热重载、§5 热重载约定）。
 > 本阶段面向外部工具/Agent 直接编辑项目数据的工作流：可操作的校验错误 + 外部刷新指示 + schema 文档。
@@ -91,7 +92,7 @@ let graph_report = GraphReport { graph_issues: issues };
 // 塞入 ProjectData.graph_report
 ```
 
-- 合成图（`synthetic: true`）也校验（理论上不会有悬空边/缺失文件，但重复 stem id 兜底去重后仍可能有 `duplicate_node_id` 残留——实际 `ensure_unique` 已防住，校验作为二次保险）。
+- 图模式和空图都校验（理论上不会有悬空边/缺失文件，但重复 node id 兜底去重后仍可能有 `duplicate_node_id` 残留——校验作为二次保险）。
 - `graph_report` 始终存在（图模式下），即使 issues 为空数组。
 
 ## 3. 前端：问题面板与刷新指示
@@ -226,7 +227,7 @@ GalStudio 不实现以下能力：
 |------|------|
 | 多种问题同时存在 | issues 全部列出，不互相抑制 |
 | error 级问题 | 不阻断加载，仅高亮（§2.2） |
-| 合成图的问题 | 理论无悬空边；`ensure_unique` 防住重复 id；校验作二次保险 |
+| 图为空或图数据完整但边较少 | 理论无悬空边；重复 id 由校验兜底；校验作二次保险 |
 | 外部改动在 `syncing` 中到达 | debounce 合并，仍一次刷新；状态点最终回 synced |
 | 刷新失败（如 graph.json 被改成非法 JSON） | `open_project` Err → 顶栏「刷新失败」+ 保留上次可用 project 不崩 |
 

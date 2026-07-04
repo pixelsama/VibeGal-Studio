@@ -14,10 +14,27 @@ interface AssetsToolbarProps {
   onSearch: (value: string) => void;
   onImport: () => void;
   count: number;
+  orphanCount?: number;
+  danglingCount?: number;
+  onRegisterOrphans?: () => void;
+  onRemoveDanglingRefs?: () => void;
+  onDeleteOrphans?: () => void;
   disabled?: boolean;
 }
 
-export function AssetsToolbar({ section, search, onSearch, onImport, count, disabled = false }: AssetsToolbarProps) {
+export function AssetsToolbar({
+  section,
+  search,
+  onSearch,
+  onImport,
+  count,
+  orphanCount = 0,
+  danglingCount = 0,
+  onRegisterOrphans,
+  onRemoveDanglingRefs,
+  onDeleteOrphans,
+  disabled = false,
+}: AssetsToolbarProps) {
   const importLabel =
     section === "overview" || section === "character"
       ? null
@@ -47,6 +64,21 @@ export function AssetsToolbar({ section, search, onSearch, onImport, count, disa
           title={disabled ? "manifest 结构异常，修复后才能导入资产" : undefined}
         >
           {importLabel}
+        </button>
+      )}
+      {orphanCount > 0 && onRegisterOrphans && (
+        <button type="button" style={secondaryBtnStyle} onClick={onRegisterOrphans} disabled={disabled}>
+          {`登记 ${orphanCount} 个孤儿`}
+        </button>
+      )}
+      {danglingCount > 0 && onRemoveDanglingRefs && (
+        <button type="button" style={secondaryBtnStyle} onClick={onRemoveDanglingRefs} disabled={disabled}>
+          {`清理 ${danglingCount} 个悬空引用`}
+        </button>
+      )}
+      {orphanCount > 0 && onDeleteOrphans && (
+        <button type="button" style={dangerBtnStyle} onClick={onDeleteOrphans} disabled={disabled}>
+          {`删除 ${orphanCount} 个孤儿`}
         </button>
       )}
     </div>
@@ -100,4 +132,19 @@ const importBtnStyle: React.CSSProperties = {
   background: "var(--bg-active)",
   color: "var(--text-bright)",
   cursor: "pointer",
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  fontSize: 12,
+  padding: "5px 10px",
+  borderRadius: 6,
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+};
+
+const dangerBtnStyle: React.CSSProperties = {
+  ...secondaryBtnStyle,
+  color: "var(--status-error-text)",
 };

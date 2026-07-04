@@ -15,10 +15,12 @@ import {
   canMutateAssets,
   countRefs,
   deleteAssetAndPruneManifestRefs,
+  registerOrphanAssets,
+  removeDanglingRefs,
   removeAllRefsToPath,
   removeManifestEntry,
 } from "./AssetsWorkspace";
-import type { Manifest, ProjectData } from "../../lib/types";
+import type { FileRevision, Manifest, ProjectData } from "../../lib/types";
 
 const base: Manifest = {
   characters: {
@@ -53,6 +55,25 @@ describe("applyAssetRegistrations", () => {
       { id: "night", path: "assets/backgrounds/night.png", kind: "background" },
     ]);
     expect(base).toEqual(before);
+  });
+});
+
+describe("bulk asset cleanup helpers", () => {
+  it("registers multiple orphan assets into the matching manifest tables", () => {
+    const next = registerOrphanAssets(base, [
+      { relPath: "assets/backgrounds/night.png", size: 1, kind: "background" },
+      { relPath: "assets/audio/voice/line02.ogg", size: 1, kind: "voice" },
+    ]);
+
+    expect(next.backgrounds.night).toBe("assets/backgrounds/night.png");
+    expect(next.audio.voice.line02).toBe("assets/audio/voice/line02.ogg");
+  });
+
+  it("removes multiple dangling refs in one pass", () => {
+    const next = removeDanglingRefs(base, ["backgrounds.sky", "audio.bgm.theme"]);
+
+    expect(next.backgrounds.sky).toBeUndefined();
+    expect(next.audio.bgm.theme).toBeUndefined();
   });
 });
 
@@ -165,20 +186,31 @@ describe("asset mutation guards", () => {
 
   it("saves a pruned manifest only after deleting the asset succeeds", async () => {
     let savedManifest: Manifest | null = null;
+    let deletedRevision: FileRevision | null | undefined;
+    let savedRevision: FileRevision | null | undefined;
+    const assetRevision: FileRevision = { relPath: "content/assets/backgrounds/sky.png", mtimeMs: 1, size: 3 };
+    const manifestRevision: FileRevision = { relPath: "content/manifest.json", mtimeMs: 2, size: 5 };
     const result = await deleteAssetAndPruneManifestRefs({
       projectPath: "/project",
       relPath: "assets/backgrounds/sky.png",
       manifest: base,
       refCountByPath: countRefs(base),
-      deleteAssetFn: async () => {},
-      saveManifestFn: async (_projectPath, manifest) => {
+      assetRevision,
+      manifestRevision,
+      deleteAssetFn: async (_projectPath, _relPath, expectedRevision) => {
+        deletedRevision = expectedRevision;
+      },
+      saveManifestFn: async (_projectPath, manifest, expectedRevision) => {
         savedManifest = manifest;
+        savedRevision = expectedRevision;
       },
     });
 
     expect(result.deleted).toBe(true);
     expect(result.manifestSaved).toBe(true);
     expect(savedManifest?.backgrounds.sky).toBeUndefined();
+    expect(deletedRevision).toBe(assetRevision);
+    expect(savedRevision).toBe(manifestRevision);
   });
 });
 
