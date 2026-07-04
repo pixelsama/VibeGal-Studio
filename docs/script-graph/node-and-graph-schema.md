@@ -109,6 +109,24 @@ renderers/
 
 `manifest.json` 中定义角色、背景和音频资源 id。剧本指令应引用这些 id，而不是直接写资源路径。
 
+## meta.json
+
+`content/meta.json` 存放项目级播放参数和固定舞台尺寸：
+
+```json
+{
+  "title": "Project Title",
+  "typingSpeedCps": 30,
+  "autoAdvanceMs": 1200,
+  "chapterGapMs": 1500,
+  "stage": { "width": 1280, "height": 720 }
+}
+```
+
+`stage.width` / `stage.height` 是 galgame 的固定内部分辨率。Studio 预览会把该舞台等比缩放进当前面板，renderer 应以这个固定尺寸作为坐标系，而不是以编辑器窗口大小作为坐标系。
+
+`galstudio-cli validate . --format json` 会校验 meta 字段类型和舞台尺寸范围；相关问题会以 `source: "meta"` 进入 `projectIssues`。
+
 ## 外部 Agent 操作流程
 
 新增节点：
@@ -141,6 +159,7 @@ GalStudio 打开项目时会为关键文件返回轻量 revision：
 - `projectRevision`：`gal.project.json`
 - `graphRevision`：`content/graph.json`
 - `manifestRevision`：`content/manifest.json`
+- `metaRevision`：`content/meta.json`
 - `nodeRevisions`：各 `content/nodes/*.json`
 
 Studio 自身保存这些文件时会带上对应 revision；若外部 Agent 在此期间修改了文件，保存会返回 `write_conflict`，并保留当前草稿而不是静默覆盖。外部 Agent 仍可直接读写普通项目文件；写完后运行 `galstudio-cli validate . --format json` 即可得到结构化问题报告。

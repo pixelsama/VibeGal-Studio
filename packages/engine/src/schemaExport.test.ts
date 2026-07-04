@@ -25,6 +25,7 @@ describe("schemaExport", () => {
     expect(all.graph.properties).toHaveProperty("nodes");
     expect(all.manifest.type).toBe("object");
     expect(all.meta.type).toBe("object");
+    expect(all.meta.properties).toHaveProperty("stage");
   });
 
   it("graph nodes are objects with id/title/file/position", () => {

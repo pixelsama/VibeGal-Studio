@@ -13,6 +13,7 @@ import {
 } from "@galstudio/engine";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
+import { readStageResolution } from "../../lib/projectMeta";
 import type { ProjectPlayerResult } from "../preview/useProjectPlayer";
 
 export function buildNodePreviewContent(project: ProjectData, node: GraphNode | null, nodeData: unknown | null) {
@@ -88,11 +89,13 @@ export function useNodePreview(
 
   const manifest = (playerRef.current?.deps_.manifest ?? null) as Manifest | null;
   const contentBase = convertFileSrc(`${project.path}/content`);
+  const stage = readStageResolution(project.content.meta);
 
   const rendererProps: RendererProps = {
     state,
     manifest: manifest ?? EMPTY_MANIFEST,
     contentBase,
+    stage,
     onAdvance: advance,
     onToggleAuto: toggleAuto,
     onToggleRecording: toggleRecording,

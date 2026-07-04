@@ -52,8 +52,8 @@ export default function App() {
   }, []);
 
   const openSettings = useCallback(() => {
-    navigate(project ? { type: "workspace", workspace: "settings" } : { type: "settings" });
-  }, [navigate, project]);
+    navigate({ type: "settings" });
+  }, [navigate]);
 
   if (loading) {
     return <div role="status" aria-label={t("app.loadingSettings")} style={bootstrapStyle} />;
@@ -96,8 +96,7 @@ export default function App() {
       onNavigate={navigate}
       onReplaceLocation={replaceNavigation}
       onProjectChanged={handleProjectChanged}
-      settings={settings}
-      onUpdateSettings={updateSettings}
+      onOpenSettings={openSettings}
     />
   );
 }

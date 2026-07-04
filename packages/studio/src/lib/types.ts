@@ -91,7 +91,7 @@ export interface AssetReport {
 // ──────────────────────────────────────────────
 
 /** 问题来源，决定全局面板的分组 */
-export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest";
+export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta";
 
 export interface ProjectIssue {
   severity: GraphIssueSeverity;
@@ -188,6 +188,8 @@ export interface ProjectData {
   nodes?: NodeEntry[];
   graphRevision?: FileRevision;
   manifestRevision?: FileRevision;
+  /** content/meta.json 的 revision，用于项目全局设置写入冲突检测 */
+  metaRevision?: FileRevision;
   nodeRevisions?: Record<string, FileRevision | null>;
   /** 图结构一致性报告；问题不阻断项目加载 */
   graphReport?: GraphReport;

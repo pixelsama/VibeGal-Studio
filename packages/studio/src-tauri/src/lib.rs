@@ -26,7 +26,7 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 - `content/graph.json` is the script graph entry point.
 - `content/nodes/*.json` are node script files. Each node file is an `Instruction[]` JSON array, not an object wrapper.
 - `content/manifest.json` defines character, background, and audio ids used by instructions.
-- `content/meta.json` stores global playback settings.
+- `content/meta.json` stores global playback settings and the fixed stage size.
 - `renderers/<id>/index.tsx` is a renderer layer entry file.
 
 ## Script Graph Rules
@@ -49,6 +49,7 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 - A renderer layer lives in `renderers/<id>/`.
 - Its entry file must be `renderers/<id>/index.tsx`.
 - Renderer ids should be filesystem-safe plain names.
+- Renderers should fill their parent (`width: "100%"`, `height: "100%"`) and use the `stage` prop as the fixed coordinate system.
 
 ## Validation
 
@@ -59,7 +60,7 @@ galstudio-cli validate . --format json
 ```
 
 The command validates graph structure, node `Instruction[]` shape, node resource references,
-manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
+meta structure, manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
 exit code when the project has errors or warnings.
 
 ## Local Reference
@@ -143,6 +144,22 @@ Local JSON Schema snapshots are in `.galstudio/schemas/`:
 
 These files are copied from the GalStudio product at project initialization time.
 
+## Project Meta
+
+`content/meta.json` stores playback timing and the fixed galgame stage size:
+
+```json
+{
+  "title": "Project Title",
+  "typingSpeedCps": 30,
+  "autoAdvanceMs": 1200,
+  "chapterGapMs": 1500,
+  "stage": { "width": 1280, "height": 720 }
+}
+```
+
+Studio previews scale this stage to fit the available panel with letterboxing.
+
 ## Renderers
 
 Renderer contract notes are copied to `.galstudio/renderer-contract.md`.
@@ -158,7 +175,7 @@ galstudio-cli validate . --format json
 ```
 
 Validation reports graph issues, node `Instruction[]` structure errors, missing character /
-background / audio references from node instructions, manifest structure problems, and asset
+background / audio references from node instructions, meta structure problems, manifest structure problems, and asset
 consistency issues as structured `projectIssues`. Node content issues use `source: "node"` and
 include `file`, `jsonPath`, and `nodeId` when available.
 
@@ -375,6 +392,8 @@ pub struct ProjectData {
     pub graph_revision: Option<FileRevision>,
     #[serde(rename = "manifestRevision", skip_serializing_if = "Option::is_none")]
     pub manifest_revision: Option<FileRevision>,
+    #[serde(rename = "metaRevision", skip_serializing_if = "Option::is_none")]
+    pub meta_revision: Option<FileRevision>,
     #[serde(rename = "nodeRevisions", skip_serializing_if = "Option::is_none")]
     pub node_revisions: Option<HashMap<String, Option<FileRevision>>>,
     #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]
@@ -583,6 +602,7 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let (graph, nodes, mut graph_issues) = load_project_graph_data(&content_root)?;
     let graph_revision = file_revision(&project_path, "content/graph.json")?;
     let manifest_revision = file_revision(&project_path, "content/manifest.json")?;
+    let meta_revision = file_revision(&project_path, "content/meta.json")?;
     let mut node_revisions = HashMap::new();
     for node in &nodes {
         node_revisions.insert(
@@ -600,6 +620,7 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     // 全局聚合：图结构 + 节点内容 + 资产 + manifest 结构问题汇总成一个报告
     let node_issues = validate_node_contents(&graph, &nodes, &manifest);
     let manifest_issues = validate_manifest_structure(&manifest);
+    let meta_issues = validate_meta_structure(&meta_json);
     let mut project_issues: Vec<ProjectIssue> = vec![];
     project_issues.extend(
         graph_report
@@ -615,6 +636,7 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
             .map(|i| graph_issue_to_project(i, "asset")),
     );
     project_issues.extend(manifest_issues);
+    project_issues.extend(meta_issues);
     project_issues.sort_by(|a, b| {
         (
             project_issue_source_order(&a.source),
@@ -644,6 +666,7 @@ fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         nodes: Some(nodes),
         graph_revision,
         manifest_revision,
+        meta_revision,
         node_revisions: Some(node_revisions),
         graph_report: Some(graph_report),
         asset_report: Some(asset_report),
@@ -656,8 +679,9 @@ fn project_issue_source_order(source: &str) -> u8 {
         "graph" => 0,
         "node" => 1,
         "asset" => 2,
-        "manifest" => 3,
-        _ => 4,
+        "meta" => 3,
+        "manifest" => 4,
+        _ => 5,
     }
 }
 
@@ -2153,6 +2177,134 @@ pub fn validate_manifest_structure(manifest: &serde_json::Value) -> Vec<ProjectI
     issues
 }
 
+// ──────────────────────────────────────────────
+// meta 结构校验（对应 engine MetaSchema 的输入侧约束）
+// ──────────────────────────────────────────────
+
+pub fn validate_meta_structure(meta: &serde_json::Value) -> Vec<ProjectIssue> {
+    let mut issues = vec![];
+    let obj = match meta.as_object() {
+        Some(obj) => obj,
+        None => {
+            issues.push(meta_issue(
+                "meta_not_object",
+                "meta.json 不是一个 JSON 对象",
+                "$",
+            ));
+            return issues;
+        }
+    };
+
+    if let Some(title) = obj.get("title") {
+        if !title.is_string() {
+            issues.push(meta_issue("meta_invalid_title", "meta.title 必须是字符串", "$.title"));
+        }
+    }
+
+    if let Some(typing_speed) = obj.get("typingSpeedCps") {
+        if !typing_speed.as_f64().is_some_and(|value| value > 0.0) {
+            issues.push(meta_issue(
+                "meta_invalid_timing",
+                "meta.typingSpeedCps 必须是正数",
+                "$.typingSpeedCps",
+            ));
+        }
+    }
+
+    validate_optional_nonnegative_int(
+        obj,
+        "autoAdvanceMs",
+        "$.autoAdvanceMs",
+        &mut issues,
+    );
+    validate_optional_nonnegative_int(obj, "chapterGapMs", "$.chapterGapMs", &mut issues);
+
+    if let Some(stage) = obj.get("stage") {
+        let Some(stage_obj) = stage.as_object() else {
+            issues.push(meta_issue(
+                "meta_invalid_stage",
+                "meta.stage 必须是对象",
+                "$.stage",
+            ));
+            return issues;
+        };
+
+        validate_optional_int_range(
+            stage_obj,
+            "width",
+            "$.stage.width",
+            320,
+            7680,
+            &mut issues,
+        );
+        validate_optional_int_range(
+            stage_obj,
+            "height",
+            "$.stage.height",
+            180,
+            4320,
+            &mut issues,
+        );
+    }
+
+    issues
+}
+
+fn meta_issue(code: &str, message: &str, json_path: &str) -> ProjectIssue {
+    ProjectIssue {
+        severity: GraphIssueSeverity::Error,
+        source: "meta".to_string(),
+        code: code.to_string(),
+        message: message.to_string(),
+        file: Some("content/meta.json".to_string()),
+        json_path: Some(json_path.to_string()),
+        node_id: None,
+        edge_id: None,
+    }
+}
+
+fn validate_optional_nonnegative_int(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    json_path: &str,
+    issues: &mut Vec<ProjectIssue>,
+) {
+    if let Some(value) = obj.get(key) {
+        if json_int(value).is_none_or(|number| number < 0) {
+            issues.push(meta_issue(
+                "meta_invalid_timing",
+                &format!("meta.{key} 必须是非负整数"),
+                json_path,
+            ));
+        }
+    }
+}
+
+fn validate_optional_int_range(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    json_path: &str,
+    min: i64,
+    max: i64,
+    issues: &mut Vec<ProjectIssue>,
+) {
+    if let Some(value) = obj.get(key) {
+        if json_int(value).is_none_or(|number| number < min || number > max) {
+            issues.push(meta_issue(
+                "meta_invalid_stage",
+                &format!("meta.stage.{key} 必须是 {min} 到 {max} 之间的整数"),
+                json_path,
+            ));
+        }
+    }
+}
+
+fn json_int(value: &serde_json::Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
+}
+
 /// 把 GraphIssue 映射成 ProjectIssue（补 source 字段，保留 nodeId/edgeId 供 UI 定位）。
 fn graph_issue_to_project(issue: &GraphIssue, source: &str) -> ProjectIssue {
     ProjectIssue {
@@ -2493,7 +2645,8 @@ fn initialize_project_root(
         "title": &name,
         "typingSpeedCps": 30,
         "autoAdvanceMs": 1200,
-        "chapterGapMs": 1500
+        "chapterGapMs": 1500,
+        "stage": { "width": 1280, "height": 720 }
     });
     write_json(&project_path.join("content/meta.json"), &meta)?;
 
@@ -4138,6 +4291,10 @@ mod tests {
         assert_eq!(
             opened.manifest_revision.as_ref().unwrap().rel_path,
             "content/manifest.json"
+        );
+        assert_eq!(
+            opened.meta_revision.as_ref().unwrap().rel_path,
+            "content/meta.json"
         );
         assert_eq!(
             node_revisions
@@ -5797,6 +5954,28 @@ mod tests {
                 .map(|i| &i.code)
                 .collect::<Vec<_>>()
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_project_report_includes_meta_stage_error() {
+        let dir = unique_temp_dir("report-meta-stage-err");
+        write_minimal_project(&dir);
+        write_text(
+            &dir.join("content/meta.json"),
+            r#"{"title":"T","stage":{"width":100,"height":720}}"#,
+        );
+
+        let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
+        let report = data.project_report.expect("应有 project_report");
+        let issue = report
+            .project_issues
+            .iter()
+            .find(|issue| issue.source == "meta" && issue.code == "meta_invalid_stage")
+            .expect("meta stage 错误应进入 project_report");
+
+        assert_eq!(issue.file.as_deref(), Some("content/meta.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.stage.width"));
         let _ = fs::remove_dir_all(&dir);
     }
 

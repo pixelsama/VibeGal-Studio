@@ -19,6 +19,7 @@ import {
 } from "@galstudio/engine";
 import type { GraphNode, NodeEntry, ProjectData, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
+import { readStageResolution } from "../../lib/projectMeta";
 
 export interface ProjectPlayerResult {
   state: NovelState;
@@ -132,11 +133,13 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
 
   // 渲染层需要的资源根：convertFileSrc 转成 webview 可访问 URL（img/audio 才能加载）
   const contentBase = convertFileSrc(`${project.path}/content`);
+  const stage = readStageResolution(project.content.meta);
 
   const rendererProps: RendererProps = {
     state,
     manifest: manifest ?? EMPTY_MANIFEST,
     contentBase,
+    stage,
     onAdvance: advance,
     onToggleAuto: toggleAuto,
     onToggleRecording: toggleRecording,

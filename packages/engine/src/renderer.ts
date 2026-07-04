@@ -7,7 +7,7 @@
  */
 import type { ComponentType } from "react";
 import type { NovelState } from "./state";
-import type { Manifest } from "./types";
+import type { Manifest, Meta } from "./types";
 
 /** 渲染层组件接收的 props。引擎把「当前场景状态 + 资源表 + 控制回调」交给它。 */
 export interface RendererProps {
@@ -17,6 +17,8 @@ export interface RendererProps {
   manifest: Manifest;
   /** 资源根路径（相对），用于拼绝对 URL */
   contentBase: string;
+  /** 项目固定舞台尺寸，renderer 的坐标系应以它为准 */
+  stage: Meta["stage"];
   /** 玩家推进（点击/空格）回调 */
   onAdvance: () => void;
   /** 玩家选择分支目标。Stage 1 可只提示目标，不必加载下个节点。 */

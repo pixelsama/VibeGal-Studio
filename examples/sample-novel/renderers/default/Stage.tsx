@@ -32,8 +32,8 @@ export function Stage({ state, manifest, contentBase, onAdvance, onToggleAuto, o
       onClick={onAdvance}
       style={{
         position: "relative",
-        width: "100vw",
-        height: "100vh",
+        width: "100%",
+        height: "100%",
         overflow: "hidden",
         background: "#000",
         cursor: hideControls ? "none" : "pointer",

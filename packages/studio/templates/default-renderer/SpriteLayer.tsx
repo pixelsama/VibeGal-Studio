@@ -71,7 +71,7 @@ function SpriteItem({ sprite, manifest, contentBase }: { sprite: ActiveSprite; m
         left: resolvePos(sprite.pos),
         transform: "translateX(-50%)",
         height: "100%",
-        maxHeight: "100vh",
+        maxHeight: "100%",
         objectFit: "contain",
         objectPosition: "bottom center",
         filter: "drop-shadow(0 8px 30px rgba(0,0,0,0.6))",

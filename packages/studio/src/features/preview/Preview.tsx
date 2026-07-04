@@ -4,6 +4,7 @@
 import type { ProjectData } from "../../lib/types";
 import { useProjectPlayer } from "./useProjectPlayer";
 import { useRendererComponent } from "./useRendererComponent";
+import { StageFrame } from "./StageFrame";
 
 interface Props {
   project: ProjectData;
@@ -26,9 +27,9 @@ export function Preview({ project, rendererId }: Props) {
 
   const Renderer = renderer.Component;
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <StageFrame stage={player.rendererProps.stage}>
       <Renderer {...player.rendererProps} />
-    </div>
+    </StageFrame>
   );
 }
 

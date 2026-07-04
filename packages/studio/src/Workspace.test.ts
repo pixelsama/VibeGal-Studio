@@ -25,8 +25,8 @@ vi.mock("./features/assets/AssetsWorkspace", () => ({
   AssetsWorkspace: () => createElement("div", { "data-testid": "assets-workspace" }),
 }));
 
-vi.mock("./features/settings/Settings", () => ({
-  Settings: () => createElement("div", { "data-testid": "settings-workspace" }, "设置内容"),
+vi.mock("./features/project/ProjectSettings", () => ({
+  ProjectSettings: () => createElement("div", { "data-testid": "project-settings-workspace" }, "项目设置内容"),
 }));
 
 vi.mock("./features/common/StatusPanel", () => ({
@@ -102,6 +102,10 @@ describe("projectIssueSourceLabel", () => {
   it("labels node issues as node content", () => {
     expect(projectIssueSourceLabel("node")).toBe("节点内容");
   });
+
+  it("labels meta issues as project settings", () => {
+    expect(projectIssueSourceLabel("meta")).toBe("项目设置");
+  });
 });
 
 const project: ProjectData = {
@@ -126,8 +130,7 @@ describe("Workspace renderer chrome", () => {
       onNavigate: () => {},
       onReplaceLocation: () => {},
       onProjectChanged: () => {},
-      settings: { theme: "dark" },
-      onUpdateSettings: () => {},
+      onOpenSettings: () => {},
     }));
 
     expect(html).toContain("当前渲染层");
@@ -135,10 +138,10 @@ describe("Workspace renderer chrome", () => {
     expect(html).not.toContain("<select");
   });
 
-  it("renders Chinese workspace tabs with Settings alongside the project workspaces", () => {
+  it("renders project workspace tabs and keeps global settings as a gear action", () => {
     const html = renderToStaticMarkup(createElement(Workspace, {
       project,
-      location: { type: "workspace", workspace: "settings" },
+      location: { type: "workspace", workspace: "project" },
       canGoBack: false,
       canGoForward: false,
       onBack: () => {},
@@ -146,17 +149,19 @@ describe("Workspace renderer chrome", () => {
       onNavigate: () => {},
       onReplaceLocation: () => {},
       onProjectChanged: () => {},
-      settings: { theme: "dark" },
-      onUpdateSettings: () => {},
+      onOpenSettings: () => {},
     }));
 
     expect(html).toContain("渲染");
     expect(html).toContain("脚本");
     expect(html).toContain("资产");
-    expect(html).toContain("设置");
+    expect(html).toContain("项目");
     expect(html).not.toContain(">Render<");
     expect(html).not.toContain(">Script<");
     expect(html).not.toContain(">Assets<");
-    expect(html).toContain("设置内容");
+    expect(html).not.toContain(">设置<");
+    expect(html).toContain('aria-label="设置"');
+    expect(html).toContain("⚙");
+    expect(html).toContain("项目设置内容");
   });
 });

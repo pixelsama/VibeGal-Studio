@@ -5,7 +5,7 @@ const zhCN = {
   "workspace.tab.render": "渲染",
   "workspace.tab.script": "脚本",
   "workspace.tab.assets": "资产",
-  "workspace.tab.settings": "设置",
+  "workspace.tab.project": "项目",
   "workspace.currentRenderer": "当前渲染层",
   "workspace.noRenderer": "无渲染层",
   "settings.title": "设置",

@@ -33,7 +33,7 @@
 - 把选中节点当作**单章节**喂给 `NovelPlayer` 播放（`chapters: [{ file: node.file, data: nodeData }]`）。
 - `choice` 指令会展示选项并停住；Stage 1 点击选项只提示目标，不加载下一节点。
 - 整图从 entry 沿 choice/edge 播放留作 Spec 15。
-- meta 级播放参数（`typingSpeedCps` 等）仍从 `content/meta.json` 取。
+- meta 级播放参数（`typingSpeedCps` 等）和固定舞台尺寸（`stage.width` / `stage.height`）仍从 `content/meta.json` 取。
 
 ### 🔒 1.4 画布用 React Flow (`@xyflow/react`)
 
@@ -72,7 +72,7 @@ AGENTS.md                 # 项目根 Agent 指令
     meta.json
 content/
   manifest.json          # 已有，资源表（不动）
-  meta.json              # 已有，全局播放参数（不动）
+  meta.json              # 已有，全局播放参数与固定舞台尺寸
   graph.json             # 叙事结构图（必需）
   nodes/                 # 节点指令文件目录
     prologue.json

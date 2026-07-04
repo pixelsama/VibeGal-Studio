@@ -65,7 +65,7 @@ describe("semantic navigation history", () => {
   it("maps project locations to workspace tabs", () => {
     expect(workspaceFromLocation({ type: "workspace", workspace: "render" })).toBe("render");
     expect(workspaceFromLocation({ type: "workspace", workspace: "assets" })).toBe("assets");
-    expect(workspaceFromLocation({ type: "workspace", workspace: "settings" })).toBe("settings");
+    expect(workspaceFromLocation({ type: "workspace", workspace: "project" })).toBe("project");
     expect(workspaceFromLocation({ type: "script-node", nodeId: "intro" })).toBe("script");
     expect(workspaceFromLocation({ type: "script-graph" })).toBe("script");
     expect(workspaceFromLocation({ type: "project-list" })).toBeNull();
@@ -75,13 +75,21 @@ describe("semantic navigation history", () => {
     expect(workspaceFromLocation({ type: "settings" })).toBeNull();
   });
 
-  it("can navigate to settings and back", () => {
+  it("can navigate to project settings and back", () => {
     let state = createNavigationState({ type: "workspace", workspace: "render" });
-    state = pushLocation(state, { type: "workspace", workspace: "settings" });
-    expect(currentLocation(state)).toEqual({ type: "workspace", workspace: "settings" });
+    state = pushLocation(state, { type: "workspace", workspace: "project" });
+    expect(currentLocation(state)).toEqual({ type: "workspace", workspace: "project" });
     expect(canGoBack(state)).toBe(true);
 
     state = goBack(state);
     expect(currentLocation(state)).toEqual({ type: "workspace", workspace: "render" });
+  });
+
+  it("can navigate to global app settings without selecting a workspace tab", () => {
+    let state = createNavigationState({ type: "workspace", workspace: "render" });
+    state = pushLocation(state, { type: "settings" });
+
+    expect(currentLocation(state)).toEqual({ type: "settings" });
+    expect(workspaceFromLocation(currentLocation(state))).toBeNull();
   });
 });

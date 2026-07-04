@@ -3,6 +3,7 @@ import type { Instruction, Manifest as EngineManifest } from "@galstudio/engine"
 import { saveFile } from "../../lib/tauri";
 import type { GraphIssueFocusRequest, GraphNode, ProjectData } from "../../lib/types";
 import { ResourcePicker } from "../assets/ResourcePicker";
+import { StageFrame } from "../preview/StageFrame";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { useNodePreview } from "./useNodePreview";
 import {
@@ -780,7 +781,11 @@ function NodePreviewPanel({ project, rendererId, node, nodeData }: {
   if (nodeData == null) return <PreviewMessage>节点无内容。保存后会在这里预览。</PreviewMessage>;
 
   const Renderer = renderer.Component;
-  return <div style={{ width: "100%", height: "100%" }}><Renderer {...player.rendererProps} /></div>;
+  return (
+    <StageFrame stage={player.rendererProps.stage}>
+      <Renderer {...player.rendererProps} />
+    </StageFrame>
+  );
 }
 
 function PreviewMessage({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {

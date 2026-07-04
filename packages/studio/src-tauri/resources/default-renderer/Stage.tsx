@@ -37,8 +37,8 @@ export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onTog
       onClick={onAdvance}
       style={{
         position: "relative",
-        width: "100vw",
-        height: "100vh",
+        width: "100%",
+        height: "100%",
         overflow: "hidden",
         background: "#000",
         cursor: hideControls ? "none" : "pointer",
@@ -68,7 +68,7 @@ export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onTog
             flexDirection: "column",
             gap: 10,
             minWidth: 280,
-            maxWidth: "min(560px, calc(100vw - 48px))",
+            maxWidth: "min(560px, calc(100% - 48px))",
           }}
         >
           {state.choice.choices.map((choice) => (

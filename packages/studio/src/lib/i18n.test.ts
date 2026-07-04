@@ -6,6 +6,6 @@ describe("i18n messages", () => {
     expect(t("workspace.tab.render")).toBe("渲染");
     expect(t("workspace.tab.script")).toBe("脚本");
     expect(t("workspace.tab.assets")).toBe("资产");
-    expect(t("workspace.tab.settings")).toBe("设置");
+    expect(t("workspace.tab.project")).toBe("项目");
   });
 });

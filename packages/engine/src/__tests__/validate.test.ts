@@ -10,6 +10,16 @@ const manifest = {
 };
 
 describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => {
+  it("meta 未写 stage 时，解析后应带默认固定舞台尺寸", () => {
+    const { meta } = validateContent({
+      meta: { title: "T" },
+      manifest,
+      chapters: [],
+    });
+
+    expect(meta.stage).toEqual({ width: 1280, height: 720 });
+  });
+
   it("bgm 指令未写 loop/fade 时，解析后应带默认值 loop=true/fade=1500", () => {
     // 修复前：player 拿到的是原始 JSON，loop 是 undefined → BGM 不循环
     // 修复后：validateContent 返回 Zod 解析后的 chapters，默认值已应用

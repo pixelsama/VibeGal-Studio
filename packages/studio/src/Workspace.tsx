@@ -2,7 +2,7 @@
  * Workspace —— 打开项目后的工作台。
  *
  * 顶部：项目名 + 渲染层状态 + 返回
- * 内容区：渲染 / 脚本 / 资产 / 设置
+ * 内容区：渲染 / 脚本 / 资产 / 项目
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -11,7 +11,7 @@ import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "./lib/ty
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
-import { Settings } from "./features/settings/Settings";
+import { ProjectSettings } from "./features/project/ProjectSettings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
 import { RendererSidebar } from "./features/renderers/RendererSidebar";
@@ -26,7 +26,6 @@ import {
   watchProject,
 } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
-import type { AppSettings } from "./lib/theme";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
 import { t } from "./lib/i18n";
 
@@ -41,8 +40,7 @@ interface Props {
   onReplaceLocation: (next: NavigationLocation) => void;
   /** 项目被刷新后（编辑保存触发）通知上层更新 */
   onProjectChanged: (p: ProjectData) => void;
-  settings: AppSettings;
-  onUpdateSettings: (next: Partial<AppSettings>) => void | Promise<void>;
+  onOpenSettings: () => void;
 }
 
 type SyncState = "synced" | "syncing" | "error";
@@ -78,6 +76,7 @@ export function projectIssueSourceLabel(source: string): string {
   if (source === "graph") return "图结构";
   if (source === "node") return "节点内容";
   if (source === "asset") return "资产";
+  if (source === "meta") return "项目设置";
   if (source === "manifest") return "manifest";
   return source;
 }
@@ -102,8 +101,7 @@ export function Workspace({
   onNavigate,
   onReplaceLocation,
   onProjectChanged,
-  settings,
-  onUpdateSettings,
+  onOpenSettings,
 }: Props) {
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -272,7 +270,7 @@ export function Workspace({
           <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>{t("workspace.tab.render")}</TabBtn>
           <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>{t("workspace.tab.script")}</TabBtn>
           <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>{t("workspace.tab.assets")}</TabBtn>
-          <TabBtn active={workspace === "settings"} onClick={() => onNavigate({ type: "workspace", workspace: "settings" })}>{t("workspace.tab.settings")}</TabBtn>
+          <TabBtn active={workspace === "project"} onClick={() => onNavigate({ type: "workspace", workspace: "project" })}>{t("workspace.tab.project")}</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
@@ -281,6 +279,7 @@ export function Workspace({
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle}>{t("workspace.currentRenderer")}</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
+          <IconBtn onClick={onOpenSettings} label="设置" ariaLabel="设置">⚙</IconBtn>
         </div>
       </header>
 
@@ -334,11 +333,10 @@ export function Workspace({
             onSaved={handleSaved}
           />
         )}
-        {workspace === "settings" && (
-          <Settings
-            settings={settings}
-            onUpdate={onUpdateSettings}
-            presentation="embedded"
+        {workspace === "project" && (
+          <ProjectSettings
+            project={project}
+            onSaved={handleSaved}
           />
         )}
       </div>
@@ -441,6 +439,22 @@ function NavBtn({ onClick, disabled, children, label, ariaLabel }: {
   );
 }
 
+function IconBtn({ onClick, children, label, ariaLabel }: {
+  onClick: () => void; children: React.ReactNode; label: string; ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      title={label}
+      style={iconBtnStyle}
+    >
+      {children}
+    </button>
+  );
+}
+
 const titleBarStyle: React.CSSProperties = {
   position: "relative",
   display: "flex",
@@ -471,6 +485,20 @@ const navBtnStyle: React.CSSProperties = {
   borderRadius: 6,
   color: "var(--text-secondary)",
   fontSize: 18,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+const iconBtnStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "transparent",
+  border: "1px solid var(--border-strong)",
+  borderRadius: 6,
+  color: "var(--text-secondary)",
+  fontSize: 15,
   lineHeight: 1,
   cursor: "pointer",
 };

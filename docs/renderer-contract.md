@@ -50,6 +50,7 @@ Optional fields:
 - `state`: current `NovelState`
 - `manifest`: project manifest with backgrounds / characters / audio registries
 - `contentBase`: webview-accessible base URL for `content/`
+- `stage`: fixed project stage size from `content/meta.json`, `{ width, height }`
 - `onAdvance`
 - `onToggleAuto`
 - `onToggleRecording`
@@ -59,6 +60,18 @@ Optional fields:
 - `onNextChapter?`
 
 Renderers should treat these callbacks as the only control surface. They should not read project files directly.
+
+## Stage Size
+
+GalStudio presents renderers inside a fixed-size stage defined by `content/meta.json`:
+
+```json
+{
+  "stage": { "width": 1280, "height": 720 }
+}
+```
+
+The Studio preview scales that stage to fit the available panel with letterboxing. Renderer components should size their root to `width: "100%"` and `height: "100%"` and treat `props.stage` as the coordinate system. Avoid `100vw` / `100vh` for renderer layout because project renderers are embedded inside Studio panels and may later be recorded or exported at the project stage size.
 
 ## NovelState
 

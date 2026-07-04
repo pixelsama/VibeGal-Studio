@@ -2,5 +2,9 @@
   "title": "broken - dangling edge",
   "typingSpeedCps": 30,
   "autoAdvanceMs": 1200,
-  "chapterGapMs": 1500
+  "chapterGapMs": 1500,
+  "stage": {
+    "width": 1280,
+    "height": 720
+  }
 }

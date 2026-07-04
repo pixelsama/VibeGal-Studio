@@ -140,11 +140,17 @@ export const ManifestSchema = z.strictObject({
 // meta：全局播放参数
 // ──────────────────────────────────────────────
 
+export const StageConfigSchema = z.object({
+  width: z.number().int().min(320).max(7680).default(1280),
+  height: z.number().int().min(180).max(4320).default(720),
+}).default({ width: 1280, height: 720 });
+
 export const MetaSchema = z.object({
   title: z.string().default(""),
   typingSpeedCps: z.number().positive().default(30), // 每秒字符数
   autoAdvanceMs: z.number().int().nonnegative().default(1200),
   chapterGapMs: z.number().int().nonnegative().default(1500),
+  stage: StageConfigSchema,
 });
 
 // ──────────────────────────────────────────────
