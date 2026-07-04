@@ -35,6 +35,17 @@ describe("rewriteBareImports", () => {
     expect(code).not.toContain("export { memo as rendererMemo");
   });
 
+  it("leaves relative renderer imports for the bundler", () => {
+    const { code, unknownSpecs } = __rewriteBareImportsForTest(
+      'import { Stage } from "./Stage";\nexport { Effects } from "../Effects";\nconst mod = import("./lazy");',
+    );
+
+    expect(unknownSpecs).toEqual([]);
+    expect(code).toContain('import { Stage } from "./Stage";');
+    expect(code).toContain('export { Effects } from "../Effects";');
+    expect(code).toContain('import("./lazy")');
+  });
+
   it("reports unsupported bare imports with renderer and file context", () => {
     const message = formatRuntimeCompilerErrorForTest({
       rendererId: "mobile",

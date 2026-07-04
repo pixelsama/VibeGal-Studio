@@ -69,6 +69,10 @@ function bareKey(spec: string): string | null {
   return null;
 }
 
+function isRelativeSpecifier(spec: string): boolean {
+  return spec.startsWith("./") || spec.startsWith("../");
+}
+
 function normalizeNamedImports(names: string): string {
   return names
     .split(",")
@@ -112,6 +116,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
   code = code.replace(
     /import\s+([A-Za-z_$][\w$]*)\s*,\s*\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
     (_m, def: string, names: string, spec: string) => {
+      if (isRelativeSpecifier(spec)) return _m;
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
       const vendor = vendorLocalName(key);
@@ -121,6 +126,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
   code = code.replace(
     /import\s+\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
     (_m, names: string, spec: string) => {
+      if (isRelativeSpecifier(spec)) return _m;
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
       return `const { ${normalizeNamedImports(names)} } = ${vendorAccess(key)};`;
@@ -129,6 +135,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
   code = code.replace(
     /import\s+(\w+)\s+from\s+["']([^"']+)["']/g,
     (_m, def: string, spec: string) => {
+      if (isRelativeSpecifier(spec)) return _m;
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
       return `const ${def} = (${vendorAccess(key)}).default ?? ${vendorAccess(key)};`;
@@ -137,6 +144,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
   code = code.replace(
     /import\s+\*\s+as\s+(\w+)\s+from\s+["']([^"']+)["']/g,
     (_m, ns: string, spec: string) => {
+      if (isRelativeSpecifier(spec)) return _m;
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
       return `const ${ns} = ${vendorAccess(key)};`;
@@ -147,6 +155,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
   code = code.replace(
     /export\s+\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
     (_m, names: string, spec: string) => {
+      if (isRelativeSpecifier(spec)) return _m;
       const key = bareKey(spec);
       if (!key) { unknown.push(spec); return _m; }
       return `const { ${normalizeNamedImports(names)} } = ${vendorAccess(key)}; export { ${exportLocalNames(names)} };`;
@@ -155,6 +164,7 @@ function rewriteBareImports(code: string): { code: string; unknownSpecs: string[
 
   // 3. 动态 import("spec") —— bare 的改写
   code = code.replace(/import\(\s*["']([^"']+)["']\s*\)/g, (_m, spec: string) => {
+    if (isRelativeSpecifier(spec)) return _m;
     const key = bareKey(spec);
     if (!key) { unknown.push(spec); return _m; }
     return `Promise.resolve(${vendorAccess(key)})`;
