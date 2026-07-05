@@ -17,9 +17,8 @@ export function contentBaseUrl(projectPath: string): string {
  * 解析成 webview 可加载的完整 URL。
  */
 export function resolveAssetUrl(projectPath: string, relPath: string): string {
-  const base = contentBaseUrl(projectPath);
   const tail = relPath.startsWith("/") ? relPath.slice(1) : relPath;
-  return `${base}/${tail}`;
+  return convertFileSrc(`${projectPath}/content/${tail}`);
 }
 
 /** 判断路径是否为图片扩展名（决定卡片用 <img> 预览）。 */

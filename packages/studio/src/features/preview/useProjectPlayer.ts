@@ -5,7 +5,6 @@
  * 引擎核心（player/interpreter/AudioEngine）零改写复用。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   NovelPlayer,
   AudioEngine,
@@ -91,12 +90,10 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       player.load(chapters);
       playerRef.current = player;
 
-      // contentBase 必须是 webview 可访问的 URL：用 convertFileSrc 把磁盘路径转成
-      // Tauri asset 协议 URL。engine 的 resolveAsset 会做 contentBase + "/" + rel 拼接，
-      // 所以这里传 content 目录转换后的 URL（无尾部斜杠）。
+      // contentBase 传原始 content 目录。engine.resolveAsset 会在最终文件路径级别
+      // 调用 Tauri convertFileSrc，避免把 asset 协议的目录 URL 当普通 URL 继续拼接。
       const contentDirAbs = `${project.path}/content`;
-      const contentBase = convertFileSrc(contentDirAbs);
-      audio = new AudioEngine(validated.manifest as Manifest, contentBase);
+      audio = new AudioEngine(validated.manifest as Manifest, contentDirAbs);
       audioRef.current = audio;
 
       player.subscribe((s) => {
@@ -131,8 +128,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
 
   const manifest = (playerRef.current?.deps_.manifest ?? null) as Manifest | null;
 
-  // 渲染层需要的资源根：convertFileSrc 转成 webview 可访问 URL（img/audio 才能加载）
-  const contentBase = convertFileSrc(`${project.path}/content`);
+  const contentBase = `${project.path}/content`;
   const stage = readStageResolution(project.content.meta);
 
   const rendererProps: RendererProps = {

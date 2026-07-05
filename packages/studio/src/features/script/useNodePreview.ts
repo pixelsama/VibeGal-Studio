@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   AudioEngine,
   NovelPlayer,
@@ -50,8 +49,7 @@ export function useNodePreview(
       playerRef.current = player;
 
       const contentDirAbs = `${project.path}/content`;
-      const contentBase = convertFileSrc(contentDirAbs);
-      audio = new AudioEngine(validated.manifest as Manifest, contentBase);
+      audio = new AudioEngine(validated.manifest as Manifest, contentDirAbs);
       audioRef.current = audio;
 
       player.subscribe((nextState) => {
@@ -88,7 +86,7 @@ export function useNodePreview(
   const nextChapter = useCallback(() => playerRef.current?.nextChapter(), []);
 
   const manifest = (playerRef.current?.deps_.manifest ?? null) as Manifest | null;
-  const contentBase = convertFileSrc(`${project.path}/content`);
+  const contentBase = `${project.path}/content`;
   const stage = readStageResolution(project.content.meta);
 
   const rendererProps: RendererProps = {

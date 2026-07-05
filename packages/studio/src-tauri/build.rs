@@ -8,9 +8,13 @@ fn prepare_cli_sidecar_placeholder() {
         Ok(target) => target,
         Err(_) => return,
     };
-    let exe_suffix = if target.contains("windows") { ".exe" } else { "" };
-    let sidecar = std::path::PathBuf::from("binaries")
-        .join(format!("galstudio-cli-{target}{exe_suffix}"));
+    let exe_suffix = if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    let sidecar =
+        std::path::PathBuf::from("binaries").join(format!("galstudio-cli-{target}{exe_suffix}"));
 
     if sidecar.exists() {
         return;

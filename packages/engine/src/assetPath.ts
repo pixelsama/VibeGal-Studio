@@ -8,7 +8,33 @@
  * 是两边都需要的、稳定的操作，不属于任何一方的私有职责。
  */
 export function resolveAsset(contentBase: string, rel: string): string {
-  const base = contentBase.endsWith("/") ? contentBase.slice(0, -1) : contentBase;
+  const base = stripTrailingSlash(contentBase);
   const tail = rel.startsWith("/") ? rel.slice(1) : rel;
-  return `${base}/${tail}`;
+  const path = `${base}/${tail}`;
+  const convertFileSrc = tauriConvertFileSrc();
+
+  if (convertFileSrc && !isUrlLike(base)) {
+    return convertFileSrc(path, "asset");
+  }
+
+  return path;
+}
+
+function stripTrailingSlash(path: string): string {
+  return path.replace(/[\\/]+$/, "");
+}
+
+function isUrlLike(value: string): boolean {
+  if (/^[A-Za-z]:[\\/]/.test(value)) return false;
+  return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
+}
+
+function tauriConvertFileSrc(): ((path: string, protocol?: string) => string) | null {
+  const internals = (globalThis as {
+    __TAURI_INTERNALS__?: {
+      convertFileSrc?: (path: string, protocol?: string) => string;
+    };
+  }).__TAURI_INTERNALS__;
+
+  return typeof internals?.convertFileSrc === "function" ? internals.convertFileSrc : null;
 }

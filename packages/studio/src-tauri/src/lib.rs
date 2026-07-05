@@ -607,13 +607,36 @@ fn list_renderer_ids(project_path: &Path) -> Vec<String> {
 
 /// 打开项目：读 gal.project.json + content + 渲染层列表
 #[tauri::command]
-fn open_project(path: String) -> Result<ProjectData, String> {
-    open_project_inner(&path)
+fn open_project(path: String, app_handle: tauri::AppHandle) -> Result<ProjectData, String> {
+    open_project_for_app(&path, &app_handle)
 }
 
 /// 供 CLI 直接调用的项目打开入口（无 #[tauri::command] 宏，可跨 crate 调）。
 pub fn open_project_for_cli(path: &str) -> Result<ProjectData, String> {
     open_project_inner(path)
+}
+
+fn open_project_for_app(path: &str, app_handle: &tauri::AppHandle) -> Result<ProjectData, String> {
+    let data = open_project_inner(path)?;
+    allow_project_content_assets(app_handle, Path::new(&data.path))?;
+    Ok(data)
+}
+
+fn allow_project_content_assets(
+    app_handle: &tauri::AppHandle,
+    project_path: &Path,
+) -> Result<(), String> {
+    let content_dir = project_path.join("content").canonicalize().map_err(|e| {
+        format!(
+            "无法定位 content 资源目录 {}: {}",
+            project_path.display(),
+            e
+        )
+    })?;
+    app_handle
+        .asset_protocol_scope()
+        .allow_directory(&content_dir, true)
+        .map_err(|e| format!("授权渲染资产目录失败 ({}): {}", content_dir.display(), e))
 }
 
 fn open_project_inner(path: &str) -> Result<ProjectData, String> {
@@ -2532,8 +2555,8 @@ fn create_project(
     let default_renderer_dir = default_renderer_dir(&app_handle)?;
     initialize_project_root(&project_path, &name, &default_renderer_dir)?;
 
-    // 重新读出来返回
-    open_project(project_path.to_string_lossy().into_owned())
+    // 重新读出来返回，同时把 content/ 加进 asset protocol scope。
+    open_project_for_app(project_path.to_string_lossy().as_ref(), &app_handle)
 }
 
 /// 把用户选择的当前目录初始化为 GalStudio 项目。
@@ -2546,7 +2569,7 @@ fn initialize_project(path: String, app_handle: tauri::AppHandle) -> Result<Proj
         return Err(format!("项目路径不是目录: {}", project_path.display()));
     }
     if project_path.join("gal.project.json").is_file() {
-        return open_project(project_path.to_string_lossy().into_owned());
+        return open_project_for_app(project_path.to_string_lossy().as_ref(), &app_handle);
     }
 
     let name = project_path
@@ -2557,7 +2580,7 @@ fn initialize_project(path: String, app_handle: tauri::AppHandle) -> Result<Proj
         .to_string();
     let default_renderer_dir = default_renderer_dir(&app_handle)?;
     initialize_project_root(&project_path, &name, &default_renderer_dir)?;
-    open_project(project_path.to_string_lossy().into_owned())
+    open_project_for_app(project_path.to_string_lossy().as_ref(), &app_handle)
 }
 
 /// 监听项目目录内的数据/渲染层变化，debounce 后向前端发 project_changed 事件。
@@ -4585,7 +4608,7 @@ mod tests {
             &[("nodes/present.json", serde_json::json!([]))],
         );
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let node_revisions = opened.node_revisions.unwrap();
 
         assert_eq!(
@@ -5255,7 +5278,7 @@ mod tests {
         )
         .unwrap();
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let graph = opened.graph.unwrap();
         assert_eq!(graph.entry_node_id, "prologue");
         assert_eq!(graph.nodes.len(), 2);
@@ -5310,7 +5333,7 @@ mod tests {
             ],
         );
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let graph = opened.graph.unwrap();
         let nodes = opened.nodes.unwrap();
 
@@ -5332,7 +5355,7 @@ mod tests {
         write_legacy_chapter_project(&project, serde_json::json!(["chapters/ch01.json"]));
         write_text(&project.join("content/chapters/ch01.json"), "[]");
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let graph = opened.graph.unwrap();
         let report = opened
             .project_report
@@ -5357,7 +5380,7 @@ mod tests {
         let project = root.join("project");
         write_minimal_project(&project);
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let graph = opened.graph.unwrap();
         let nodes = opened.nodes.unwrap();
         let report = opened
@@ -5401,7 +5424,7 @@ mod tests {
         );
         write_text(&root.join("outside.json"), "[]");
 
-        let result = open_project(project.to_string_lossy().into_owned());
+        let result = open_project_inner(project.to_string_lossy().as_ref());
 
         assert!(result.is_err());
         assert!(result.err().unwrap().contains("路径越界"));
@@ -5439,7 +5462,7 @@ mod tests {
             )],
         );
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let nodes = opened.nodes.unwrap();
 
         assert_eq!(nodes.len(), 2);
@@ -5472,7 +5495,7 @@ mod tests {
             &[("nodes/prologue.json", serde_json::json!([]))],
         );
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let report = opened.graph_report.unwrap();
 
         assert!(report.graph_issues.is_empty());
@@ -5501,7 +5524,7 @@ mod tests {
             &[("nodes/prologue.json", serde_json::json!([]))],
         );
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let issues = opened.graph_report.unwrap().graph_issues;
 
         assert!(issues.iter().any(|issue| {
@@ -5531,7 +5554,7 @@ mod tests {
             &[("nodes/prologue.json", serde_json::json!([]))],
         );
 
-        let result = open_project(project.to_string_lossy().into_owned());
+        let result = open_project_inner(project.to_string_lossy().as_ref());
 
         assert!(result.is_err());
         let _ = fs::remove_dir_all(&root);
@@ -5564,8 +5587,8 @@ mod tests {
         write_legacy_chapter_project(&legacy_project, serde_json::json!(["chapters/ch01.json"]));
         write_text(&legacy_project.join("content/chapters/ch01.json"), "[]");
 
-        open_project(graph_project.to_string_lossy().into_owned()).unwrap();
-        open_project(legacy_project.to_string_lossy().into_owned()).unwrap();
+        open_project_inner(graph_project.to_string_lossy().as_ref()).unwrap();
+        open_project_inner(legacy_project.to_string_lossy().as_ref()).unwrap();
 
         assert_eq!(
             fs::read_to_string(graph_project.join("content/graph.json")).unwrap(),
@@ -5600,7 +5623,7 @@ mod tests {
         write_legacy_chapter_project(&project, serde_json::json!(["../../outside.json"]));
         write_text(&root.join("outside.json"), "[]");
 
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         let issues = opened.project_report.unwrap().project_issues;
 
         assert!(issues.iter().any(|issue| {
@@ -5688,7 +5711,7 @@ mod tests {
             fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
             "export default {};"
         );
-        let opened = open_project(project.to_string_lossy().into_owned()).unwrap();
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
         assert_eq!(opened.meta.name, "Existing Story");
         assert_eq!(opened.renderer_ids, vec!["default".to_string()]);
         let graph = opened.graph.expect("新项目应有 graph.json");
