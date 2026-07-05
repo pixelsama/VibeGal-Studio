@@ -89,11 +89,8 @@ export function createInstructionDraft(kind: EditableInstructionKind): Instructi
         clear: false,
         remove: false,
       };
-    case "choice":
-      return {
-        t: "choice",
-        choices: [{ text: "选项", to: "" }],
-      };
+    case "set":
+      return { t: "set", key: "flag", value: true };
     case "wait":
       return { t: "wait", ms: 1000 };
     case "effect":
@@ -112,13 +109,5 @@ export function instructionIndexFromJsonPath(jsonPath?: string): number | null {
 }
 
 function cloneInstruction(instruction: Instruction): Instruction {
-  switch (instruction.t) {
-    case "choice":
-      return {
-        ...instruction,
-        choices: instruction.choices.map((choice) => ({ ...choice })),
-      };
-    default:
-      return { ...instruction };
-  }
+  return { ...instruction };
 }

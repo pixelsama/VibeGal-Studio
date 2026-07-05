@@ -20,7 +20,6 @@ export function mapGraphToFlow(
   nodeEntries?: NodeEntry[],
 ): { nodes: Node<FlowNodeData, typeof NODE_TYPE>[]; edges: Edge[] } {
   const duplicateNodeIds = collectDuplicateNodeIds(graphReport);
-  const choiceEdgeLabels = collectChoiceEdgeLabels(graph, nodeEntries);
   const suspiciousEdgeIds = new Set(
     graphReport?.graphIssues
       .filter((issue) => issue.code === "dangling_edge" && issue.edgeId)
@@ -34,9 +33,6 @@ export function mapGraphToFlow(
     const hasFile = nodeEntries == null ? true : entry?.data != null;
     const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
     const baseStatus = deriveGraphNodeStatus(graph, node.id, { hasFile, duplicateNodeIds });
-    const status = hasChoiceInstruction(entry?.data) && !["duplicate", "missing-file", "entry"].includes(baseStatus)
-      ? "branch"
-      : baseStatus;
     return {
       id: node.id,
       type: NODE_TYPE,
@@ -44,8 +40,8 @@ export function mapGraphToFlow(
       data: {
         title: node.title,
         fileId: node.file,
-        isEntry: status === "entry",
-        status,
+        isEntry: baseStatus === "entry",
+        status: baseStatus,
         incoming,
         outgoing,
         ...(duplicateNodeIds.has(node.id) ? { duplicateNodeId: true } : {}),
@@ -57,9 +53,10 @@ export function mapGraphToFlow(
     source: edge.from,
     target: edge.to,
     type: "smoothstep",
-    label: choiceEdgeLabels.get(`${edge.from}\0${edge.to}`),
+    label: edgeLabel(edge),
     data: {
       condition: edge.condition,
+      mode: edge.mode ?? "linear",
       ...(suspiciousEdgeIds.has(edge.id) ? { suspicious: true } : {}),
     },
   }));
@@ -115,6 +112,7 @@ export function deriveGraphNodeStatus(
   const isConnected = summary.incoming > 0 || summary.outgoing > 0;
   if (!isConnected) return "orphan";
   if (summary.outgoing === 0) return "ending";
+  if (graph.edges.some((edge) => edge.from === nodeId && edge.from !== edge.to && edge.mode === "choice")) return "branch";
   if (summary.outgoing >= 2) return "branch";
   return "normal";
 }
@@ -160,38 +158,8 @@ export function findNodeData(entries: NodeEntry[] | undefined, file: string): un
   return findNodeEntry(entries, file)?.data ?? null;
 }
 
-function collectChoiceEdgeLabels(graph: ProjectGraph, nodeEntries?: NodeEntry[]): Map<string, string> {
-  const labels = new Map<string, string>();
-  if (!nodeEntries) return labels;
-
-  for (const node of graph.nodes) {
-    const data = findNodeEntry(nodeEntries, node.file)?.data;
-    if (!Array.isArray(data)) continue;
-    for (const instruction of data) {
-      if (!isChoiceInstruction(instruction)) continue;
-      for (const choice of instruction.choices) {
-        if (!labels.has(`${node.id}\0${choice.to}`)) {
-          labels.set(`${node.id}\0${choice.to}`, choice.text);
-        }
-      }
-    }
-  }
-
-  return labels;
-}
-
-function hasChoiceInstruction(data: unknown): boolean {
-  return Array.isArray(data) && data.some(isChoiceInstruction);
-}
-
-function isChoiceInstruction(value: unknown): value is { t: "choice"; choices: { text: string; to: string }[] } {
-  if (!value || typeof value !== "object") return false;
-  const instruction = value as { t?: unknown; choices?: unknown };
-  return instruction.t === "choice" && Array.isArray(instruction.choices) && instruction.choices.some(isChoiceItem);
-}
-
-function isChoiceItem(value: unknown): value is { text: string; to: string } {
-  if (!value || typeof value !== "object") return false;
-  const choice = value as { text?: unknown; to?: unknown };
-  return typeof choice.text === "string" && typeof choice.to === "string";
+function edgeLabel(edge: { mode?: string; label?: string | null; condition?: string | null }): string | undefined {
+  if ((edge.mode ?? "linear") === "choice") return edge.label?.trim() || "选项";
+  if ((edge.mode ?? "linear") === "auto" && edge.condition) return `if ${edge.condition}`;
+  return undefined;
 }

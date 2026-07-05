@@ -70,10 +70,32 @@
             "type": "string",
             "minLength": 1
           },
+          "mode": {
+            "default": "linear",
+            "type": "string",
+            "enum": [
+              "linear",
+              "choice",
+              "auto"
+            ]
+          },
+          "label": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "condition": {
             "default": null,
             "anyOf": [
-              {},
+              {
+                "type": "string"
+              },
               {
                 "type": "null"
               }

@@ -10,12 +10,12 @@ import type { Instruction, Manifest } from "@galstudio/engine";
 export interface InstructionSummary {
   /** 在指令数组中的下标，点击可定位到 JSON 对应行。 */
   index: number;
-  /** say / narrate / bg / bgm / choice —— 块级大纲展示的稳定类别。 */
-  kind: "say" | "narrate" | "bg" | "bgm" | "choice";
+  /** say / narrate / bg / bgm —— 块级大纲展示的稳定类别。 */
+  kind: "say" | "narrate" | "bg" | "bgm";
   label: string;
 }
 
-const SUMMARIZED_KINDS = new Set(["say", "narrate", "bg", "bgm", "choice"]);
+const SUMMARIZED_KINDS = new Set(["say", "narrate", "bg", "bgm"]);
 const LABEL_MAX = 40;
 
 /**
@@ -49,13 +49,6 @@ export function summarizeInstructions(
         summaries.push({ index, kind: "bgm", label: `BGM ${assetName(path, instruction.id)}` });
         break;
       }
-      case "choice":
-        summaries.push({
-          index,
-          kind: "choice",
-          label: `选择 ${instruction.choices.map((choice) => `${choice.text} -> ${choice.to}`).join(" / ")}`,
-        });
-        break;
     }
   });
   return summaries;
@@ -73,7 +66,7 @@ export type InsertableKind =
   | "wait"
   | "effect"
   | "transition"
-  | "choice";
+  | "set";
 
 /**
  * 构造各插入按钮的占位指令对象（带 schema 默认值，对齐 engine/schema.ts）。
@@ -111,8 +104,8 @@ export function defaultInstruction(kind: InsertableKind): Instruction {
       return { t: "effect", type: "shake", intensity: 6, ms: 400 };
     case "transition":
       return { t: "transition", type: "fade_in", ms: 1000 };
-    case "choice":
-      return { t: "choice", choices: [{ text: "选项", to: "" }] };
+    case "set":
+      return { t: "set", key: "flag", value: true };
   }
 }
 

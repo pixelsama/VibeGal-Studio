@@ -60,6 +60,9 @@ export interface PendingTransition {
 }
 
 export interface NovelState {
+  /** 剧情变量。节点内 set 指令写入，graph 自动出口条件读取。 */
+  vars: Record<string, string | number | boolean | null>;
+
   /** 当前背景 id（引用 manifest.backgrounds），null = 黑场 */
   background: string | null;
   backgroundTrans: "fade" | "cut" | "dissolve";
@@ -117,6 +120,7 @@ export interface NovelState {
 
 export function createInitialState(): NovelState {
   return {
+    vars: {},
     background: null,
     backgroundTrans: "fade",
     backgroundMs: 1000,

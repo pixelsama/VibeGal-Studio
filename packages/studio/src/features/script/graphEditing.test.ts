@@ -115,6 +115,8 @@ describe("graphEditing", () => {
       id: "ending__node",
       from: "ending",
       to: "node",
+      mode: "linear",
+      label: null,
       condition: null,
     });
     expect(duplicate.edges).toHaveLength(next.edges.length);
@@ -225,6 +227,8 @@ describe("createSuccessor", () => {
       id: "ending__ending_2",
       from: "ending",
       to: "ending_2",
+      mode: "linear",
+      label: null,
       condition: null,
     });
     expect(graph.nodes).toHaveLength(sampleGraph.nodes.length + 1);

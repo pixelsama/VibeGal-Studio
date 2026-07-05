@@ -17,9 +17,11 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 - Node `file` values are relative to `content/`, for example `nodes/start.json`.
 - GalStudio's node editor may show Scenario DSL text, but project files still persist node content as `Instruction[]` JSON.
 - `pause` is a valid instruction for a pure visual story-frame stop. `wait` is a timed wait; `pause` waits for player input.
+- Do not write `choice` instructions inside node files. Branching lives on graph outgoing edges.
+- Graph edges use `mode`: `linear` for a single automatic next node, `choice` for player-visible options, and `auto` for variable-condition routing.
+- `choice` edges must provide `label`; `auto` edges may provide `condition` and should include one default edge with no condition.
 - If `content/graph.json` is missing, report a `missing_graph` issue rather than synthesizing legacy chapters.
 - Do not use absolute paths, parent-directory traversal, or Windows drive paths in project data.
-- Keep `edge.condition` as `null` unless GalStudio documents branch semantics.
 
 ## Legacy Chapter Rules
 
@@ -132,12 +134,11 @@ Scenario DSL shown by the Studio editor compiles back to this JSON format. For e
 
 akari: 今天也很安静呢。
 
-@choice
-- 开门 -> open_door
-- 装作没听见 -> ignore
+@set affection 3
 ```
 
 Blank lines split story frames. Stage-only frames become `{ "t": "pause" }`, a player-input stop distinct from timed `{ "t": "wait" }`.
+Choices and automatic branches are configured on the selected node's outgoing graph edges, not inside the node text.
 
 ## Schemas
 

@@ -25,7 +25,7 @@ const SCENARIO_COMMANDS: ScenarioCommandOption[] = [
   { kind: "wait", label: "等待", detail: "等待指定毫秒", aliases: ["wait", "等待"] },
   { kind: "effect", label: "效果", detail: "触发画面效果", aliases: ["effect", "fx", "效果"] },
   { kind: "transition", label: "转场", detail: "触发转场覆盖层", aliases: ["transition", "trans", "转场"] },
-  { kind: "choice", label: "选择", detail: "插入分支选项", aliases: ["choice", "branch", "选择"] },
+  { kind: "set", label: "变量", detail: "设置剧情变量", aliases: ["set", "var", "变量"] },
 ];
 
 export interface ScenarioCommandTrigger {
@@ -115,6 +115,8 @@ export function defaultScenarioInstruction(kind: InsertableKind, project: Projec
       return { ...draft, id: firstVoice };
     case "char":
       return { ...draft, id: firstCharacter };
+    case "set":
+      return { ...draft, key: "flag", value: true };
     default:
       return draft;
   }

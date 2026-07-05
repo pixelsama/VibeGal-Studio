@@ -61,12 +61,17 @@ export const NarrateInstruction = z.object({
   ms: z.number().int().nonnegative().optional(), // 该条旁白的自动停顿覆盖（0=跟随全局）
 });
 
-export const ChoiceInstruction = z.object({
-  t: z.literal("choice"),
-  choices: z.array(z.object({
-    text: z.string().min(1),
-    to: z.string().min(1),
-  })).min(1),
+export const VariableValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+
+export const SetInstruction = z.object({
+  t: z.literal("set"),
+  key: z.string().min(1),
+  value: VariableValueSchema,
 });
 
 export const WaitInstruction = z.object({
@@ -99,7 +104,7 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   CharInstruction,
   SayInstruction,
   NarrateInstruction,
-  ChoiceInstruction,
+  SetInstruction,
   WaitInstruction,
   EffectInstruction,
   TransitionInstruction,
@@ -181,8 +186,9 @@ export const GraphEdgeSchema = z.object({
   id: z.string().min(1),
   from: z.string().min(1),
   to: z.string().min(1),
-  // 当前固定 null；分支条件留作后续扩展。用 unknown+nullable 保留任意 JSON。
-  condition: z.unknown().nullable().default(null),
+  mode: z.enum(["linear", "choice", "auto"]).default("linear"),
+  label: z.string().nullable().default(null),
+  condition: z.string().nullable().default(null),
 });
 
 export const ProjectGraphSchema = z.object({

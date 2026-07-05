@@ -37,7 +37,6 @@ describe("InstructionBlock", () => {
       index: 0,
       instruction,
       manifest,
-      graphNodes: [{ id: "stay", title: "留下", file: "nodes/stay.json", position: { x: 0, y: 0 } }],
       issues: [],
       onUpdate: () => {},
       onDuplicate: () => {},
@@ -64,16 +63,16 @@ describe("InstructionBlock", () => {
     expect(renderBlock({ t: "transition", type: "fade_in", ms: 1000 } as Instruction)).toContain("fade_in");
   });
 
-  it("renders choice controls and inline issues", () => {
+  it("renders set controls and inline issues", () => {
     const html = renderBlock(
-      { t: "choice", choices: [{ text: "留下", to: "stay" }] } as Instruction,
-      { issues: [{ code: "choice_missing_graph_edge", message: "缺少边" }] },
+      { t: "set", key: "has_key", value: true } as Instruction,
+      { issues: [{ code: "instruction_invalid_field", message: "变量错误" }] },
     );
 
-    expect(html).toContain("选项文本");
-    expect(html).toContain("目标节点");
-    expect(html).toContain("添加选项");
-    expect(html).toContain("choice_missing_graph_edge");
+    expect(html).toContain("变量名");
+    expect(html).toContain("变量值");
+    expect(html).toContain("has_key");
+    expect(html).toContain("instruction_invalid_field");
   });
 });
 
@@ -180,5 +179,6 @@ describe("NodeEditor scenario surface", () => {
     expect(html).not.toContain("+ 背景");
     expect(html).not.toContain("+ 台词");
     expect(html).toContain("aria-label=\"插入当前行命令\"");
+    expect(html).toContain("节点出口");
   });
 });

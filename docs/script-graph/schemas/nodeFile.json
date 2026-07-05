@@ -196,33 +196,33 @@
         "properties": {
           "t": {
             "type": "string",
-            "const": "choice"
+            "const": "set"
           },
-          "choices": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "text": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "to": {
-                  "type": "string",
-                  "minLength": 1
-                }
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
               },
-              "required": [
-                "text",
-                "to"
-              ]
-            }
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "t",
-          "choices"
+          "key",
+          "value"
         ]
       },
       {

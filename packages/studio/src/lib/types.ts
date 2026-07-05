@@ -37,7 +37,9 @@ export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  condition: unknown | null;
+  mode?: "linear" | "choice" | "auto";
+  label?: string | null;
+  condition: string | null;
 }
 
 /** 完整图 */

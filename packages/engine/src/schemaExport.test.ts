@@ -58,14 +58,21 @@ describe("schemaExport", () => {
     expect(edgeItem.required).toEqual(["id", "from", "to"]);
   });
 
-  it("nodeFile schema includes choice instructions", () => {
+  it("graph edge schema includes route fields", () => {
+    const graph = buildJsonSchema("graph");
+    const edgeItem = (graph.properties as { edges: { items: { properties: Record<string, unknown> } } }).edges.items;
+
+    expect(edgeItem.properties).toHaveProperty("mode");
+    expect(edgeItem.properties).toHaveProperty("label");
+    expect(edgeItem.properties).toHaveProperty("condition");
+  });
+
+  it("nodeFile schema omits choice instructions", () => {
     const nodeFile = buildJsonSchema("nodeFile");
-    const items = nodeFile.items as { oneOf: Array<{ properties: { t: { const: string }; choices?: unknown }; required: string[] }> };
+    const items = nodeFile.items as { oneOf: Array<{ properties: { t: { const: string } } }> };
     const choice = items.oneOf.find((item) => item.properties.t.const === "choice");
 
-    expect(choice).toBeDefined();
-    expect(choice?.required).toEqual(["t", "choices"]);
-    expect(choice?.properties).toHaveProperty("choices");
+    expect(choice).toBeUndefined();
   });
 
   it("nodeFile schema includes pause instructions", () => {

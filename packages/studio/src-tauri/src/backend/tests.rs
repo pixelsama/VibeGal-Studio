@@ -112,7 +112,9 @@ mod tests {
                 id: "prologue__ending".to_string(),
                 from: "prologue".to_string(),
                 to: "ending".to_string(),
-                condition: serde_json::Value::Null,
+                mode: "linear".to_string(),
+                label: None,
+                condition: None,
             }],
         }
     }
@@ -131,7 +133,31 @@ mod tests {
             id: id.to_string(),
             from: from.to_string(),
             to: to.to_string(),
-            condition: serde_json::Value::Null,
+            mode: "linear".to_string(),
+            label: None,
+            condition: None,
+        }
+    }
+
+    fn choice_edge(id: &str, from: &str, to: &str, label: &str) -> GraphEdge {
+        GraphEdge {
+            id: id.to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
+            mode: "choice".to_string(),
+            label: Some(label.to_string()),
+            condition: None,
+        }
+    }
+
+    fn auto_edge(id: &str, from: &str, to: &str, condition: Option<&str>) -> GraphEdge {
+        GraphEdge {
+            id: id.to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
+            mode: "auto".to_string(),
+            label: None,
+            condition: condition.map(|condition| condition.to_string()),
         }
     }
 
@@ -205,25 +231,10 @@ mod tests {
                 graph_node("leave", "nodes/leave.json"),
             ],
             edges: vec![
-                graph_edge("start__stay", "start", "stay"),
-                graph_edge("start__leave", "start", "leave"),
+                choice_edge("start__stay", "start", "stay", "留下"),
+                choice_edge("start__leave", "start", "leave", "离开"),
             ],
         }
-    }
-
-    fn choice_node_entry() -> NodeEntry {
-        node_entry(
-            "nodes/start.json",
-            serde_json::json!([
-                {
-                    "t": "choice",
-                    "choices": [
-                        { "text": "留下", "to": "stay" },
-                        { "text": "离开", "to": "leave" }
-                    ]
-                }
-            ]),
-        )
     }
 
     #[test]
@@ -328,84 +339,68 @@ mod tests {
     }
 
     #[test]
-    fn validate_choice_flags_missing_target_node() {
+    fn validate_graph_flags_choice_edge_missing_label() {
         let mut graph = choice_branch_graph();
-        graph.nodes.retain(|node| node.id != "leave");
-        let nodes = vec![
-            choice_node_entry(),
-            node_entry("nodes/stay.json", serde_json::json!([])),
-        ];
+        graph.edges[1].label = Some(" ".to_string());
+        let nodes = present_node_entries(&graph);
 
         let issues = validate_graph(&graph, &nodes);
 
         let issue = issues
             .iter()
-            .find(|issue| issue.code == "choice_target_missing_node")
-            .expect("choice target should be reported");
+            .find(|issue| issue.code == "choice_edge_missing_label")
+            .expect("choice edge without label should be reported");
         assert_eq!(issue.severity, GraphIssueSeverity::Error);
         assert_eq!(issue.node_id.as_deref(), Some("start"));
-        assert_eq!(issue.file.as_deref(), Some("content/nodes/start.json"));
-        assert_eq!(issue.json_path.as_deref(), Some("$[0].choices[1].to"));
-    }
-
-    #[test]
-    fn validate_choice_flags_missing_graph_edge() {
-        let mut graph = choice_branch_graph();
-        graph.edges.retain(|edge| edge.to != "leave");
-        let nodes = vec![
-            choice_node_entry(),
-            node_entry("nodes/stay.json", serde_json::json!([])),
-            node_entry("nodes/leave.json", serde_json::json!([])),
-        ];
-
-        let issues = validate_graph(&graph, &nodes);
-
-        let issue = issues
-            .iter()
-            .find(|issue| issue.code == "choice_missing_graph_edge")
-            .expect("missing choice edge should be reported");
-        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
-        assert_eq!(issue.node_id.as_deref(), Some("start"));
+        assert_eq!(issue.edge_id.as_deref(), Some("start__leave"));
         assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
-        assert_eq!(issue.json_path.as_deref(), Some("$.edges"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.edges[1].label"));
     }
 
     #[test]
-    fn validate_choice_flags_extra_edge_from_choice_node() {
+    fn validate_graph_flags_mixed_outgoing_modes() {
         let mut graph = choice_branch_graph();
         graph.nodes.push(graph_node("secret", "nodes/secret.json"));
         graph
             .edges
             .push(graph_edge("start__secret", "start", "secret"));
-        let nodes = vec![
-            choice_node_entry(),
-            node_entry("nodes/stay.json", serde_json::json!([])),
-            node_entry("nodes/leave.json", serde_json::json!([])),
-            node_entry("nodes/secret.json", serde_json::json!([])),
-        ];
+        let nodes = present_node_entries(&graph);
 
         let issues = validate_graph(&graph, &nodes);
 
         let issue = issues
             .iter()
-            .find(|issue| issue.code == "edge_missing_choice")
-            .expect("extra choice edge should be reported");
-        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+            .find(|issue| issue.code == "mixed_outgoing_modes")
+            .expect("mixed outgoing modes should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
         assert_eq!(issue.node_id.as_deref(), Some("start"));
-        assert_eq!(issue.edge_id.as_deref(), Some("start__secret"));
     }
 
     #[test]
-    fn validate_choice_flags_linear_multiple_outgoing() {
-        let graph = choice_branch_graph();
-        let nodes = vec![
-            node_entry(
-                "nodes/start.json",
-                serde_json::json!([{ "t": "narrate", "text": "走吧。" }]),
-            ),
-            node_entry("nodes/stay.json", serde_json::json!([])),
-            node_entry("nodes/leave.json", serde_json::json!([])),
-        ];
+    fn validate_graph_warns_duplicate_choice_label() {
+        let mut graph = choice_branch_graph();
+        graph.edges[1].label = Some("留下".to_string());
+        let nodes = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "duplicate_choice_label")
+            .expect("duplicate choice label should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+        assert_eq!(issue.edge_id.as_deref(), Some("start__leave"));
+    }
+
+    #[test]
+    fn validate_graph_flags_linear_multiple_outgoing() {
+        let mut graph = choice_branch_graph();
+        for edge in &mut graph.edges {
+            edge.mode = "linear".to_string();
+            edge.label = None;
+        }
+        let nodes = present_node_entries(&graph);
 
         let issues = validate_graph(&graph, &nodes);
 
@@ -413,6 +408,44 @@ mod tests {
             .iter()
             .find(|issue| issue.code == "linear_node_multiple_outgoing")
             .expect("linear multi-edge node should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn validate_graph_flags_auto_multiple_default_edges() {
+        let mut graph = choice_branch_graph();
+        graph.edges = vec![
+            auto_edge("start__stay", "start", "stay", None),
+            auto_edge("start__leave", "start", "leave", Some("")),
+        ];
+        let nodes = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "auto_multiple_default_edges")
+            .expect("multiple auto default edges should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn validate_graph_warns_auto_without_default_edge() {
+        let mut graph = choice_branch_graph();
+        graph.edges = vec![
+            auto_edge("start__stay", "start", "stay", Some("affection >= 3")),
+            auto_edge("start__leave", "start", "leave", Some("affection < 3")),
+        ];
+        let nodes = present_node_entries(&graph);
+
+        let issues = validate_graph(&graph, &nodes);
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "auto_missing_default_edge")
+            .expect("auto route without default edge should be reported");
         assert_eq!(issue.severity, GraphIssueSeverity::Warn);
         assert_eq!(issue.node_id.as_deref(), Some("start"));
     }
@@ -675,6 +708,29 @@ mod tests {
     }
 
     #[test]
+    fn validate_node_contents_rejects_choice_instruction() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                {
+                    "t": "choice",
+                    "choices": [{ "text": "留下", "to": "stay" }]
+                }
+            ]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "choice_instruction_not_supported");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
+        assert_eq!(issues[0].file.as_deref(), Some("content/nodes/start.json"));
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].t"));
+        assert_eq!(issues[0].node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
     fn validate_node_contents_accepts_pause_instruction() {
         let graph = one_node_graph();
         let nodes = vec![node_entry(
@@ -692,6 +748,39 @@ mod tests {
             issues.is_empty(),
             "pause 应被视为合法剧情帧停点: {issues:?}"
         );
+    }
+
+    #[test]
+    fn validate_node_contents_accepts_set_instruction() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                { "t": "set", "key": "affection", "value": 3 },
+                { "t": "set", "key": "has_key", "value": true },
+                { "t": "set", "key": "route", "value": "stay" },
+                { "t": "set", "key": "unused", "value": null }
+            ]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert!(issues.is_empty(), "set 应支持自动条件路由变量: {issues:?}");
+    }
+
+    #[test]
+    fn validate_node_contents_flags_invalid_set_value() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "set", "key": "route", "value": { "bad": true } }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "instruction_invalid_field");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].value"));
     }
 
     #[test]
@@ -1363,6 +1452,43 @@ mod tests {
         let report = opened.graph_report.unwrap();
 
         assert!(report.graph_issues.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn open_project_reports_non_string_edge_mode() {
+        let root = unique_temp_dir("graph-report-invalid-mode");
+        let project = root.join("project");
+        write_graph_project(
+            &project,
+            serde_json::json!({
+                "version": 1,
+                "entryNodeId": "start",
+                "nodes": [
+                    { "id": "start", "title": "Start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } },
+                    { "id": "ending", "title": "Ending", "file": "nodes/ending.json", "position": { "x": 260, "y": 0 } }
+                ],
+                "edges": [
+                    { "id": "start__ending", "from": "start", "to": "ending", "mode": 7 }
+                ]
+            }),
+            &[
+                ("nodes/start.json", serde_json::json!([])),
+                ("nodes/ending.json", serde_json::json!([])),
+            ],
+        );
+
+        let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+        let report = opened.graph_report.unwrap();
+
+        let issue = report
+            .graph_issues
+            .iter()
+            .find(|issue| issue.code == "edge_invalid_mode")
+            .expect("non-string edge mode should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Error);
+        assert_eq!(issue.edge_id.as_deref(), Some("start__ending"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.edges[0].mode"));
         let _ = fs::remove_dir_all(&root);
     }
 

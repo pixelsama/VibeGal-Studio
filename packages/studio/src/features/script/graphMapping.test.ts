@@ -81,43 +81,27 @@ describe("graphMapping", () => {
         source: "prologue",
         target: "first-meeting",
         type: "smoothstep",
-        data: { condition: null },
+        data: { condition: null, mode: "linear" },
       },
     ]);
   });
 
-  it("mapGraphToFlow_labels_choice_edges", () => {
-    const flow = mapGraphToFlow(sampleGraph, undefined, [
-      {
-        relPath: "nodes/prologue.json",
-        data: [
-          {
-            t: "choice",
-            choices: [
-              { text: "继续前进", to: "first-meeting" },
-              { text: "回头", to: "missing" },
-            ],
-          },
-        ],
-      },
-      { relPath: "nodes/first-meeting.json", data: [] },
-    ]);
+  it("mapGraphToFlow_labels_choice_edges_from_edge_label", () => {
+    const flow = mapGraphToFlow({
+      ...sampleGraph,
+      edges: [{ ...sampleGraph.edges[0], mode: "choice", label: "继续前进" }],
+    });
 
     expect(flow.edges[0].label).toBe("继续前进");
   });
 
-  it("mapGraphToFlow_marks_choice_node_as_branch", () => {
+  it("mapGraphToFlow_marks_choice_exit_node_as_branch", () => {
     const graphWithNonEntryChoice: ProjectGraph = {
       ...sampleGraph,
       entryNodeId: "first-meeting",
+      edges: [{ ...sampleGraph.edges[0], mode: "choice", label: "继续前进" }],
     };
-    const flow = mapGraphToFlow(graphWithNonEntryChoice, undefined, [
-      {
-        relPath: "nodes/prologue.json",
-        data: [{ t: "choice", choices: [{ text: "继续前进", to: "first-meeting" }] }],
-      },
-      { relPath: "nodes/first-meeting.json", data: [] },
-    ]);
+    const flow = mapGraphToFlow(graphWithNonEntryChoice);
 
     expect(flow.nodes.find((node) => node.id === "prologue")?.data.status).toBe("branch");
   });

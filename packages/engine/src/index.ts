@@ -9,6 +9,8 @@ export * from "./types";
 export * from "./state";
 export * from "./interpreter";
 export * from "./player";
+export * from "./graphPlayer";
+export * from "./graphRouting";
 export * from "./AudioEngine";
 export * from "./validate";
 export * from "./assetPath";

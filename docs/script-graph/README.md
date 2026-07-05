@@ -18,7 +18,7 @@
 | [05-graph-editing.spec.md](./05-graph-editing.spec.md) | 节点增/删/连线/重命名/移位/落盘 | 完成 |
 | [06-external-data-operations.spec.md](./06-external-data-operations.spec.md) | 校验、可操作错误、外部刷新指示、无内置 AI 边界 | 完成 |
 | [07-e2g-flowchart-inspired-plan.md](./07-e2g-flowchart-inspired-plan.md) | 借鉴 Everything2Galgame 后的流程图增强计划 | 规划中 |
-| [15-graph-aware-choice-preview.spec.md](./15-graph-aware-choice-preview.spec.md) | choice 路径预览与正式整图播放器 | Spec 11 后续 Stage 2/3 |
+| [15-graph-aware-choice-preview.spec.md](./15-graph-aware-choice-preview.spec.md) | graph-aware 分支预览与 choice/auto 出口播放器 | 完成 |
 | [16-graph-undo-redo.spec.md](./16-graph-undo-redo.spec.md) | graph command stack 与 undo/redo | Spec 09 后续 Stage 6 |
 | [00-feature-plan.md](./00-feature-plan.md) | 原始高层产品计划与早期设想 | 历史背景 |
 | [archive/08-node-content-validation.spec.md](./archive/08-node-content-validation.spec.md) | 节点 `Instruction[]` 内容校验接入全局报告与 CLI | 已归档 |

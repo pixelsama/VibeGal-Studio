@@ -49,7 +49,9 @@ pub struct GraphEdge {
     pub id: String,
     pub from: String,
     pub to: String,
-    pub condition: serde_json::Value,
+    pub mode: String,
+    pub label: Option<String>,
+    pub condition: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -164,7 +166,14 @@ pub struct GraphEdgeInput {
     pub id: String,
     pub from: String,
     pub to: String,
-    pub condition: serde_json::Value,
+    #[serde(default = "default_edge_mode")]
+    pub mode: String,
+    pub label: Option<String>,
+    pub condition: Option<String>,
+}
+
+fn default_edge_mode() -> String {
+    "linear".to_string()
 }
 
 #[derive(Serialize, Clone)]

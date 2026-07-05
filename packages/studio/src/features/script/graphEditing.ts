@@ -1,4 +1,4 @@
-import type { GraphNode, ProjectGraph } from "../../lib/types";
+import type { GraphEdge, GraphNode, ProjectGraph } from "../../lib/types";
 
 const DEFAULT_NODE_POSITION = { x: 120, y: 120 };
 const NEW_NODE_OFFSET = { x: 260, y: 120 };
@@ -46,7 +46,12 @@ export function removeNodes(graph: ProjectGraph, nodeIds: string[]): { graph: Pr
   };
 }
 
-export function connectNodes(graph: ProjectGraph, from: string, to: string): ProjectGraph {
+export function connectNodes(
+  graph: ProjectGraph,
+  from: string,
+  to: string,
+  options: Partial<Pick<GraphEdge, "mode" | "label" | "condition">> = {},
+): ProjectGraph {
   const existing = graph.edges.some((edge) => edge.from === from && edge.to === to);
   if (existing) return graph;
 
@@ -54,13 +59,40 @@ export function connectNodes(graph: ProjectGraph, from: string, to: string): Pro
     ...graph,
     edges: [
       ...graph.edges,
-      {
-        id: `${from}__${to}`,
+      normalizeGraphEdge({
+        id: generateEdgeId(graph, from, to),
         from,
         to,
-        condition: null,
-      },
+        mode: options.mode ?? "linear",
+        label: options.label ?? null,
+        condition: options.condition ?? null,
+      }),
     ],
+  };
+}
+
+export function getNodeOutgoingEdges(graph: ProjectGraph, nodeId: string): GraphEdge[] {
+  return graph.edges.filter((edge) => edge.from === nodeId).map(normalizeGraphEdge);
+}
+
+export function replaceNodeOutgoingEdges(graph: ProjectGraph, nodeId: string, outgoing: GraphEdge[]): ProjectGraph {
+  const retained = graph.edges.filter((edge) => edge.from !== nodeId);
+  const occupied = new Set(retained.map((edge) => edge.id));
+  const normalized = outgoing.map((edge) => {
+    const preferred = edge.id || `${nodeId}__${edge.to || "target"}`;
+    const id = uniqueEdgeId(preferred, occupied);
+    occupied.add(id);
+    return normalizeGraphEdge({ ...edge, id, from: nodeId });
+  });
+  return { ...graph, edges: [...retained, ...normalized] };
+}
+
+export function normalizeGraphEdge(edge: GraphEdge): GraphEdge {
+  return {
+    ...edge,
+    mode: edge.mode ?? "linear",
+    label: edge.label ?? null,
+    condition: edge.condition ?? null,
   };
 }
 
@@ -161,6 +193,17 @@ function deriveDuplicateFile(sourceFile: string, newId: string): string {
   const lastSlash = sourceFile.lastIndexOf("/");
   const dir = lastSlash >= 0 ? sourceFile.slice(0, lastSlash + 1) : "";
   return `${dir}${newId}.json`;
+}
+
+function generateEdgeId(graph: ProjectGraph, from: string, to: string): string {
+  return uniqueEdgeId(`${from}__${to}`, new Set(graph.edges.map((edge) => edge.id)));
+}
+
+function uniqueEdgeId(base: string, occupied: Set<string>): string {
+  if (!occupied.has(base)) return base;
+  let index = 2;
+  while (occupied.has(`${base}_${index}`)) index += 1;
+  return `${base}_${index}`;
 }
 
 export function generateNodeId(graph: ProjectGraph, base: string): string {

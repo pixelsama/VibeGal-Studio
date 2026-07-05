@@ -115,53 +115,21 @@ describe("applyInstruction: narrate", () => {
   });
 });
 
-describe("choice instruction", () => {
-  it("schema_accepts_choice_instruction", () => {
-    const parsed = InstructionSchema.parse({
-      t: "choice",
-      choices: [
-        { text: "留下", to: "stay" },
-        { text: "离开", to: "leave" },
-      ],
-    });
-
-    expect(parsed).toEqual({
-      t: "choice",
-      choices: [
-        { text: "留下", to: "stay" },
-        { text: "离开", to: "leave" },
-      ],
-    });
-  });
-
-  it("schema_rejects_empty_choice_text", () => {
+describe("set instruction", () => {
+  it("schema_rejects_choice_instruction", () => {
     expect(() =>
       InstructionSchema.parse({
         t: "choice",
-        choices: [{ text: "", to: "stay" }],
+        choices: [{ text: "留下", to: "stay" }],
       }),
     ).toThrow();
   });
 
-  it("applyInstruction_choice_sets_choice_state", () => {
-    let state = applyInstruction(buildInitialState(), { t: "say", who: "protagonist", expr: "default", text: "走吗？" }, deps);
+  it("applyInstruction_set_updates_runtime_vars", () => {
+    let state = applyInstruction(buildInitialState(), { t: "set", key: "has_key", value: true }, deps);
+    state = applyInstruction(state, { t: "set", key: "route", value: "stay" }, deps);
 
-    state = applyInstruction(state, {
-      t: "choice",
-      choices: [
-        { text: "留下", to: "stay" },
-        { text: "离开", to: "leave" },
-      ],
-    }, deps);
-
-    expect(state.dialogue).toBeNull();
-    expect(state.narration).toBeNull();
-    expect(state.choice).toEqual({
-      choices: [
-        { text: "留下", to: "stay" },
-        { text: "离开", to: "leave" },
-      ],
-    });
+    expect(state.vars).toEqual({ has_key: true, route: "stay" });
   });
 });
 

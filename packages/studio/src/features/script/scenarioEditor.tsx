@@ -2,12 +2,11 @@ import type { CSSProperties, ReactNode } from "react";
 import {
   formatScenarioInstruction,
   parseScenarioLine,
-  parseScenarioText,
   type ScenarioDiagnostic,
   type Instruction,
 } from "@galstudio/engine";
 import { ResourcePicker } from "../assets/ResourcePicker";
-import type { GraphNode, Manifest } from "../../lib/types";
+import type { Manifest } from "../../lib/types";
 
 export type ScenarioSelectionKind =
   | "empty"
@@ -21,7 +20,7 @@ export type ScenarioSelectionKind =
   | "wait"
   | "effect"
   | "transition"
-  | "choice"
+  | "set"
   | "pause"
   | "invalid";
 
@@ -41,34 +40,6 @@ export function getScenarioSelection(text: string, cursorOffset: number): Scenar
   const lineIndex = Math.max(0, Math.min(line - 1, lines.length - 1));
   const lineText = lines[lineIndex] ?? "";
   const trimmed = lineText.trim();
-
-  if (trimmed === "@choice" || trimmed.startsWith("-")) {
-    const choiceStart = findChoiceStart(lines, lineIndex);
-    if (choiceStart != null) {
-      const choiceEnd = findChoiceEnd(lines, choiceStart);
-      const block = lines.slice(choiceStart, choiceEnd + 1).join("\n");
-      const result = parseScenarioText(block);
-      const choice = result.instructions.find((instruction) => instruction.t === "choice");
-      if (choice) {
-        return {
-          kind: "choice",
-          line,
-          startLine: choiceStart + 1,
-          endLine: choiceEnd + 1,
-          lineText,
-          instruction: choice,
-        };
-      }
-      return {
-        kind: "invalid",
-        line,
-        startLine: choiceStart + 1,
-        endLine: choiceEnd + 1,
-        lineText,
-        message: result.diagnostics[0]?.message ?? "choice 块格式不合法。",
-      };
-    }
-  }
 
   if (trimmed.length === 0) {
     return { kind: "empty", line, startLine: line, endLine: line, lineText };
@@ -126,13 +97,11 @@ export function ScenarioNodeLayout({
 export function ScenarioInspector({
   selection,
   manifest,
-  graphNodes,
   diagnostics,
   onReplaceInstruction,
 }: {
   selection: ScenarioSelection;
   manifest: Manifest;
-  graphNodes: GraphNode[];
   diagnostics: ScenarioDiagnostic[];
   onReplaceInstruction: (instruction: Instruction) => void;
 }) {
@@ -236,55 +205,15 @@ export function ScenarioInspector({
           />
         </InspectorPanel>
       );
-    case "choice":
+    case "set":
       return (
-        <InspectorPanel title="选择">
-          {instruction.choices.map((choice, index) => (
-            <div key={index} style={choiceRowStyle}>
-              <TextField
-                label="选项文本"
-                value={choice.text}
-                onChange={(text) => {
-                  const choices = instruction.choices.map((item, currentIndex) => (
-                    currentIndex === index ? { ...item, text } : item
-                  ));
-                  onReplaceInstruction({ ...instruction, choices });
-                }}
-              />
-              <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>目标节点</span>
-                <select
-                  value={choice.to}
-                  onChange={(event) => {
-                    const to = event.target.value;
-                    const choices = instruction.choices.map((item, currentIndex) => (
-                      currentIndex === index ? { ...item, to } : item
-                    ));
-                    onReplaceInstruction({ ...instruction, choices });
-                  }}
-                  style={inputStyle}
-                >
-                  <option value="">选择节点</option>
-                  {choice.to && !graphNodes.some((node) => node.id === choice.to) && (
-                    <option value={choice.to}>{`缺失：${choice.to}`}</option>
-                  )}
-                  {graphNodes.map((node) => (
-                    <option key={node.id} value={node.id}>{node.title || node.id}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          ))}
-          <button
-            type="button"
-            style={miniButtonStyle}
-            onClick={() => onReplaceInstruction({
-              ...instruction,
-              choices: [...instruction.choices, { text: "选项", to: "" }],
-            })}
-          >
-            添加选项
-          </button>
+        <InspectorPanel title="变量">
+          <TextField label="变量名" value={instruction.key} onChange={(key) => onReplaceInstruction({ ...instruction, key })} />
+          <TextField
+            label="变量值"
+            value={formatVariableValue(instruction.value)}
+            onChange={(value) => onReplaceInstruction({ ...instruction, value: parseVariableValue(value) })}
+          />
         </InspectorPanel>
       );
     default:
@@ -354,23 +283,18 @@ function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, "\n").split("\n");
 }
 
-function findChoiceStart(lines: string[], lineIndex: number): number | null {
-  if (lines[lineIndex]?.trim() === "@choice") return lineIndex;
-  for (let index = lineIndex; index >= 0; index -= 1) {
-    const line = lines[index]?.trim() ?? "";
-    if (line === "@choice") return index;
-    if (line.length === 0) return null;
-    if (index !== lineIndex && !line.startsWith("-")) return null;
-  }
-  return null;
+function parseVariableValue(raw: string): string | number | boolean | null {
+  const value = raw.trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value === "null") return null;
+  const numberValue = Number(value);
+  if (Number.isFinite(numberValue) && value !== "") return numberValue;
+  return value;
 }
 
-function findChoiceEnd(lines: string[], startIndex: number): number {
-  let index = startIndex;
-  while (index + 1 < lines.length && lines[index + 1].trim().startsWith("-")) {
-    index += 1;
-  }
-  return index;
+function formatVariableValue(value: string | number | boolean | null): string {
+  return value == null ? "null" : String(value);
 }
 
 const layoutStyle: CSSProperties = {
@@ -445,23 +369,6 @@ const inputStyle: CSSProperties = {
   background: "var(--bg-app)",
   color: "var(--text-primary)",
   fontSize: 13,
-};
-
-const choiceRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-  gap: 10,
-};
-
-const miniButtonStyle: CSSProperties = {
-  justifySelf: "start",
-  padding: "5px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-app)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  fontSize: 12,
 };
 
 const mutedTextStyle: CSSProperties = {

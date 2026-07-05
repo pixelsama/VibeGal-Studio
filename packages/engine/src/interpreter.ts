@@ -34,7 +34,7 @@ export function applyInstruction(
   instr: Instruction,
   deps: InterpreterDeps,
 ): NovelState {
-  if (instr.t !== "choice" && state.choice) {
+  if (state.choice) {
     state = { ...state, choice: null };
   }
 
@@ -134,15 +134,11 @@ export function applyInstruction(
         currentCueMs: instr.ms ?? null,
       };
 
-    // ── 分支：展示选择项并暂停，跳转由 graph-aware player 后续阶段负责 ──
-    case "choice":
+    // ── 变量：线性写入，供 graph 自动出口条件读取 ───────────
+    case "set":
       return {
         ...state,
-        speaker: null,
-        dialogue: null,
-        narration: null,
-        choice: { choices: instr.choices.map((choice) => ({ ...choice })) },
-        currentCueMs: null,
+        vars: { ...state.vars, [instr.key]: instr.value },
       };
 
     // ── 音频线索（不在这里播放，只改状态；播放由 player/组件负责） ──

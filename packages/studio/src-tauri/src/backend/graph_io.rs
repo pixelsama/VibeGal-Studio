@@ -119,10 +119,9 @@ fn load_graph_file(
                 id: required_string_field(edge_raw, "id", "edges[].id")?.to_string(),
                 from: required_string_field(edge_raw, "from", "edges[].from")?.to_string(),
                 to: required_string_field(edge_raw, "to", "edges[].to")?.to_string(),
-                condition: edge_raw
-                    .get("condition")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null),
+                mode: edge_mode_field(edge_raw),
+                label: optional_graph_string_field(edge_raw, "label"),
+                condition: optional_graph_string_field(edge_raw, "condition"),
             });
         }
     }
@@ -168,3 +167,17 @@ fn required_string_field<'a>(
         .ok_or_else(|| format!("graph.json 缺少必填字段 {}", label))
 }
 
+fn optional_graph_string_field(value: &serde_json::Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(|field_value| field_value.as_str())
+        .map(|text| text.to_string())
+}
+
+fn edge_mode_field(value: &serde_json::Value) -> String {
+    match value.get("mode") {
+        None => "linear".to_string(),
+        Some(serde_json::Value::String(mode)) => mode.to_string(),
+        Some(_) => "__invalid__".to_string(),
+    }
+}

@@ -27,11 +27,6 @@ const manifest: Manifest = {
   audio: { bgm: { daily: "assets/audio/daily.mp3" }, sfx: {}, voice: {} },
 };
 
-const graphNodes = [
-  { id: "open_door", title: "开门", file: "nodes/open_door.json", position: { x: 0, y: 0 } },
-  { id: "ignore", title: "忽略", file: "nodes/ignore.json", position: { x: 0, y: 0 } },
-];
-
 describe("scenario editor helpers", () => {
   it("selects a say line and replaces it with normalized scenario text", () => {
     const text = "@bg classroom fade\nakari: 早上好。";
@@ -45,51 +40,40 @@ describe("scenario editor helpers", () => {
     )).toBe("@bg classroom fade\nakari: 今天也很安静。");
   });
 
-  it("selects and replaces an entire choice block from a choice item line", () => {
+  it("marks legacy choice blocks invalid because branches live in node exits", () => {
     const text = `@choice
 - 开门 -> open_door
 - 装作没听见 -> ignore`;
     const selection = getScenarioSelection(text, text.indexOf("装作"));
 
-    expect(selection.kind).toBe("choice");
-    expect(selection.startLine).toBe(1);
-    expect(selection.endLine).toBe(3);
-    expect(replaceScenarioSelectionInstruction(
-      text,
-      selection,
-      { t: "choice", choices: [{ text: "离开", to: "ignore" }] } as Instruction,
-    )).toBe(`@choice
-- 离开 -> ignore`);
+    expect(selection.kind).toBe("invalid");
+    expect(selection.message).toContain("分支选项已移到节点出口");
   });
 });
 
 describe("ScenarioInspector", () => {
-  it("renders controls for selected say, bg, char and choice commands", () => {
+  it("renders controls for selected say, bg, char and set commands", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("akari: 早上好。", 0),
       manifest,
-      graphNodes,
       diagnostics: [],
       onReplaceInstruction: () => {},
     }));
     const bg = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("@bg classroom fade", 0),
       manifest,
-      graphNodes,
       diagnostics: [],
       onReplaceInstruction: () => {},
     }));
     const char = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("@char akari smile left", 0),
       manifest,
-      graphNodes,
       diagnostics: [],
       onReplaceInstruction: () => {},
     }));
-    const choice = renderToStaticMarkup(createElement(ScenarioInspector, {
-      selection: getScenarioSelection("@choice\n- 开门 -> open_door", 10),
+    const set = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@set has_key true", 0),
       manifest,
-      graphNodes,
       diagnostics: [],
       onReplaceInstruction: () => {},
     }));
@@ -99,21 +83,20 @@ describe("ScenarioInspector", () => {
     expect(bg).toContain("背景");
     expect(bg).toContain("转场");
     expect(char).toContain("位置槽");
-    expect(choice).toContain("目标节点");
+    expect(set).toContain("变量名");
+    expect(set).toContain("变量值");
   });
 
   it("renders compact current-line text fields for prose", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("akari: 早上好。", 0),
       manifest,
-      graphNodes,
       diagnostics: [],
       onReplaceInstruction: () => {},
     }));
     const narrate = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("新的故事从这里开始。", 0),
       manifest,
-      graphNodes,
       diagnostics: [],
       onReplaceInstruction: () => {},
     }));
@@ -130,7 +113,6 @@ describe("ScenarioInspector", () => {
     const html = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("", 0),
       manifest,
-      graphNodes,
       diagnostics: [{ line: 1, message: "测试诊断" }],
       onReplaceInstruction: () => {},
     }));

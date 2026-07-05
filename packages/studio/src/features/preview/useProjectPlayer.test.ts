@@ -35,9 +35,10 @@ describe("useProjectPlayer helpers", () => {
       meta: project.content.meta,
       manifest: project.content.manifest,
       chapters: [
-        { file: "nodes/start.json", data: [{ t: "narrate", text: "start" }] },
         { file: "nodes/later.json", data: [{ t: "narrate", text: "later" }] },
+        { file: "nodes/start.json", data: [{ t: "narrate", text: "start" }] },
       ],
+      nodeIds: ["later", "start"],
     });
   });
 });

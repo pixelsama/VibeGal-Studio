@@ -258,6 +258,9 @@ fn save_graph(
         if edge.to.is_empty() {
             return Err(format!("graph.edges[{index}].to 不能为空"));
         }
+        if !matches!(edge.mode.as_str(), "linear" | "choice" | "auto") {
+            return Err(format!("graph.edges[{index}].mode 必须是 linear、choice 或 auto"));
+        }
     }
 
     let value = serde_json::json!({
@@ -279,6 +282,8 @@ fn save_graph(
                 "id": edge.id,
                 "from": edge.from,
                 "to": edge.to,
+                "mode": edge.mode,
+                "label": edge.label,
                 "condition": edge.condition,
             })
         }).collect::<Vec<_>>(),
@@ -594,4 +599,3 @@ fn save_manifest(
     }
     write_json(&manifest_path, &value)
 }
-

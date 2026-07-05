@@ -55,6 +55,8 @@ renderers/
       "id": "prologue__ending",
       "from": "prologue",
       "to": "ending",
+      "mode": "linear",
+      "label": null,
       "condition": null
     }
   ]
@@ -75,7 +77,16 @@ renderers/
 | `position` | node | 画布坐标，单位为 px，形如 `{ "x": 120, "y": 180 }`。 |
 | `id` | edge | 边稳定标识，推荐 `<from>__<to>`。 |
 | `from` / `to` | edge | 起点和终点节点 id。 |
-| `condition` | edge | 当前固定写 `null`，分支条件留作后续扩展。 |
+| `mode` | edge | `linear` / `choice` / `auto`。旧图缺省按 `linear` 处理。 |
+| `label` | edge | `choice` 出口展示给玩家的选项文本；其他模式通常为 `null`。 |
+| `condition` | edge | `auto` 出口条件表达式；空值表示默认分支。 |
+
+出口规则：
+
+- `linear`：同一节点最多一条 outgoing edge。
+- `choice`：同一节点所有 outgoing edges 都必须是 `choice`，且每条 edge 必须有非空 `label`。
+- `auto`：同一节点所有 outgoing edges 都必须是 `auto`，表达式按顺序匹配；建议保留一条 `condition: null` 的默认边。
+- 同一节点的 outgoing edges 不能混用 `linear` / `choice` / `auto`。
 
 ## 节点文件
 
@@ -102,11 +113,13 @@ renderers/
 | `char` | 角色立绘入场、退场或切换表情 | `id`, `pos`, `expr`, `trans`, `ms`, `clear`, `remove` |
 | `say` | 角色台词 | `who`, `expr`, `text`, `ms` |
 | `narrate` | 旁白 | `text`, `ms` |
-| `choice` | 选择项 | `choices[].text`, `choices[].to` |
 | `wait` | 等待 | `ms` |
 | `effect` | 舞台效果 | `type`, `intensity`, `ms` |
 | `transition` | 转场 | `type`, `ms` |
 | `pause` | 纯画面剧情帧停点，等待玩家下一次推进 | 无 |
+| `set` | 设置剧情变量，供自动出口条件使用 | `key`, `value` |
+
+`choice` 不再是合法节点指令；分支选项必须写在 `content/graph.json` 的 outgoing edges 上。
 
 `manifest.json` 中定义角色、背景和音频资源 id。剧本指令应引用这些 id，而不是直接写资源路径。
 
@@ -127,9 +140,7 @@ akari: 今天也很安静呢。
 @char akari surprised center
 akari: 咦？
 
-@choice
-- 开门 -> open_door
-- 装作没听见 -> ignore
+@set affection 3
 ```
 
 DSL 规则：
@@ -137,9 +148,10 @@ DSL 规则：
 - 空行分隔剧情帧。每次玩家点击/按键会推进到下一个停点。
 - 同一帧内的 `@bg` / `@bgm` / `@sfx` / `@voice` / `@char` / `@effect` / `@transition` 属于舞台命令，会在同一次推进里连续应用。
 - `角色ID: 文本` 编译为 `say`；普通文本行编译为 `narrate`。
-- 只有舞台命令、没有文本/选择/等待的帧会自动补一个 `{ "t": "pause" }`，用于停在纯画面状态等待玩家继续。
+- 只有舞台命令、没有文本/等待的帧会自动补一个 `{ "t": "pause" }`，用于停在纯画面状态等待玩家继续。
 - `@wait 800` 是时间等待，计时结束后自动继续；`@pause` 是玩家停点，不会自动继续。
-- `@choice` 后接 `- 文本 -> nodeId`，目标节点仍需在 Graph 中有对应 edge；V1 只校验并报告缺失，不自动修改 graph。
+- `@set key value` 设置剧情变量；`value` 可为字符串、数字、布尔值或 `null`。
+- `@choice` 和 `- 文本 -> nodeId` 在节点文本中非法；请在节点编辑页底部的“节点出口”或 `graph.json` outgoing edges 中配置分支。
 - V1 不支持 `@layout`、相对坐标或 renderer layout override；精细布局属于后续能力。
 
 ## meta.json
@@ -166,7 +178,7 @@ DSL 规则：
 
 1. 写入 `content/nodes/<id>.json`，内容必须是 `Instruction[]`。
 2. 更新 `content/graph.json` 的 `nodes`，加入 `{ "id", "title", "file", "position" }`。
-3. 如需接入流程，更新 `edges`，加入 `{ "id", "from", "to", "condition": null }`。
+3. 如需接入流程，更新 `edges`，加入 `{ "id", "from", "to", "mode": "linear", "label": null, "condition": null }`。
 4. 保存文件。GalStudio 会自动热重载并展示最新图。
 
 修改节点剧情：
@@ -183,7 +195,7 @@ DSL 规则：
 调整流程：
 
 1. 修改 `content/graph.json` 的 `edges`。
-2. 不要把 `condition` 改成非 `null`，当前播放器尚未实现分支语义。
+2. 玩家选择使用 `mode: "choice"` + `label`；自动路由使用 `mode: "auto"` + `condition`。
 
 ## Revision 与协作安全
 

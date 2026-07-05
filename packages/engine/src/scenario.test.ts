@@ -11,12 +11,7 @@ describe("scenario text DSL", () => {
 @bgm daily
 @char akari smile left
 
-akari: 今天也很安静呢。
-
-@choice
-- 开门 -> open_door
-- 装作没听见 -> ignore
-`);
+akari: 今天也很安静呢。`);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -27,19 +22,16 @@ akari: 今天也很安静呢。
       { t: "char", id: "akari", expr: "smile", pos: "left", trans: "fade", ms: 600, clear: false, remove: false },
       { t: "pause" },
       { t: "say", who: "akari", expr: "default", text: "今天也很安静呢。" },
-      { t: "choice", choices: [
-        { text: "开门", to: "open_door" },
-        { text: "装作没听见", to: "ignore" },
-      ] },
     ]);
   });
 
-  it("parses narrate, audio, wait, effect and transition commands", () => {
+  it("parses narrate, audio, wait, set, effect and transition commands", () => {
     const result = parseScenarioText(`普通旁白
 @sfx knock
 @voice akari_001
 @wait 800
 
+@set has_key true
 @effect shake
 @transition fade_in
 @pause`);
@@ -52,6 +44,7 @@ akari: 今天也很安静呢。
       { t: "sfx", id: "knock" },
       { t: "voice", id: "akari_001" },
       { t: "wait", ms: 800 },
+      { t: "set", key: "has_key", value: true },
       { t: "effect", type: "shake", intensity: 6, ms: 400 },
       { t: "transition", type: "fade_in", ms: 1000 },
       { t: "pause" },
@@ -71,7 +64,7 @@ akari: 今天也很安静呢。
       message: diagnostic.message,
     }))).toEqual([
       { line: 1, message: "@bg 需要背景 ID。" },
-      { line: 3, message: "选择项格式应为：- 文本 -> nodeId" },
+      { line: 2, message: "分支选项已移到节点出口，请在节点底部的出口块中配置。" },
     ]);
   });
 
@@ -81,10 +74,7 @@ akari: 今天也很安静呢。
       { t: "char", id: "akari", expr: "smile", pos: "left", trans: "fade", ms: 600, clear: false, remove: false },
       { t: "pause" },
       { t: "say", who: "akari", expr: "default", text: "早上好。" },
-      { t: "choice", choices: [
-        { text: "留下", to: "stay" },
-        { text: "离开", to: "leave" },
-      ] },
+      { t: "set", key: "route", value: "stay" },
     ];
 
     expect(formatScenarioText(instructions)).toBe(`@bg classroom fade
@@ -93,8 +83,6 @@ akari: 今天也很安静呢。
 
 akari: 早上好。
 
-@choice
-- 留下 -> stay
-- 离开 -> leave`);
+@set route "stay"`);
   });
 });

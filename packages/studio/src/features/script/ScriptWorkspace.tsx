@@ -448,7 +448,10 @@ export function ScriptWorkspace({
               rendererId={rendererId}
               node={selectedNode}
               nodeData={findNodeData(project.nodes, selectedNode.file)}
+              graph={graph}
+              savingGraph={savingGraph}
               focusRequest={focusRequest}
+              onPersistGraph={persistGraph}
               onSaved={onSaved}
             />
           )

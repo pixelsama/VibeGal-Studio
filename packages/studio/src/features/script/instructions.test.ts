@@ -57,7 +57,7 @@ describe("summarizeInstructions", () => {
     expect(summarizeInstructions([])).toEqual([]);
   });
 
-  it("summarizeInstructions_includes_choice", () => {
+  it("ignores legacy choice instructions", () => {
     const summaries = summarizeInstructions([
       {
         t: "choice",
@@ -68,9 +68,7 @@ describe("summarizeInstructions", () => {
       },
     ] as unknown as Instruction[]);
 
-    expect(summaries).toEqual([
-      { index: 0, kind: "choice", label: "选择 留下 -> stay / 离开 -> leave" },
-    ]);
+    expect(summaries).toEqual([]);
   });
 });
 
@@ -126,10 +124,7 @@ describe("defaultInstruction", () => {
     expect(defaultInstruction("wait")).toEqual({ t: "wait", ms: 1000 });
   });
 
-  it("choiceBlock_adds_choice_item", () => {
-    expect(defaultInstruction("choice")).toEqual({
-      t: "choice",
-      choices: [{ text: "选项", to: "" }],
-    });
+  it("set has default variable assignment", () => {
+    expect(defaultInstruction("set")).toEqual({ t: "set", key: "flag", value: true });
   });
 });

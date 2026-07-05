@@ -3,14 +3,13 @@ import type {
   Instruction,
   Manifest as EngineManifest,
 } from "@galstudio/engine";
-import type { GraphNode, ProjectData } from "../../lib/types";
+import type { ProjectData } from "../../lib/types";
 import { ResourcePicker } from "../assets/ResourcePicker";
 
 export function InstructionBlock({
   index,
   instruction,
   manifest,
-  graphNodes,
   issues,
   onUpdate,
   onDuplicate,
@@ -21,7 +20,6 @@ export function InstructionBlock({
   index: number;
   instruction: Instruction;
   manifest: EngineManifest;
-  graphNodes?: GraphNode[];
   issues: Array<{ code: string; message: string; jsonPath?: string }>;
   onUpdate: (instruction: Instruction) => void;
   onDuplicate: () => void;
@@ -229,79 +227,32 @@ export function InstructionBlock({
           <NumberField label="时长 ms" value={instruction.ms} onChange={(ms) => onUpdate({ ...instruction, ms: ms ?? 0 })} />
         </div>
       ) : null}
-      {instruction.t === "choice" ? (
+      {instruction.t === "set" ? (
         <div style={blockFieldsStyle}>
-          {instruction.choices.map((choice, choiceIndex) => (
-            <div key={choiceIndex} style={choiceRowStyle}>
-              <TextField
-                label="选项文本"
-                value={choice.text}
-                onChange={(text) => {
-                  const choices = instruction.choices.map((item, currentIndex) => (
-                    currentIndex === choiceIndex ? { ...item, text } : item
-                  ));
-                  onUpdate({ ...instruction, choices });
-                }}
-              />
-              <label style={fieldStyle}>
-                <span style={fieldLabelStyle}>目标节点</span>
-                <div style={pickerRowStyle}>
-                  <select
-                    value={choice.to}
-                    onChange={(event) => {
-                      const to = event.target.value;
-                      const choices = instruction.choices.map((item, currentIndex) => (
-                        currentIndex === choiceIndex ? { ...item, to } : item
-                      ));
-                      onUpdate({ ...instruction, choices });
-                    }}
-                    style={selectStyle}
-                  >
-                    <option value="">选择节点</option>
-                    {choice.to && !graphNodes?.some((node) => node.id === choice.to) && (
-                      <option value={choice.to}>{`缺失：${choice.to}`}</option>
-                    )}
-                    {(graphNodes ?? []).map((node) => (
-                      <option key={node.id} value={node.id}>{node.title || node.id}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={choice.to}
-                    onChange={(event) => {
-                      const to = event.target.value;
-                      const choices = instruction.choices.map((item, currentIndex) => (
-                        currentIndex === choiceIndex ? { ...item, to } : item
-                      ));
-                      onUpdate({ ...instruction, choices });
-                    }}
-                    style={inputStyle}
-                  />
-                </div>
-              </label>
-              <button
-                type="button"
-                style={miniButtonStyle}
-                onClick={() => {
-                  const choices = instruction.choices.filter((_, currentIndex) => currentIndex !== choiceIndex);
-                  onUpdate({ ...instruction, choices: choices.length > 0 ? choices : [{ text: "选项", to: "" }] });
-                }}
-              >
-                删除选项
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            style={miniButtonStyle}
-            onClick={() => onUpdate({ ...instruction, choices: [...instruction.choices, { text: "选项", to: "" }] })}
-          >
-            添加选项
-          </button>
+          <TextField label="变量名" value={instruction.key} onChange={(key) => onUpdate({ ...instruction, key })} />
+          <TextField
+            label="变量值"
+            value={formatVariableValue(instruction.value)}
+            onChange={(value) => onUpdate({ ...instruction, value: parseVariableValue(value) })}
+          />
         </div>
       ) : null}
     </div>
   );
+}
+
+function parseVariableValue(raw: string): string | number | boolean | null {
+  const value = raw.trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value === "null") return null;
+  const numberValue = Number(value);
+  if (Number.isFinite(numberValue) && value !== "") return numberValue;
+  return value;
+}
+
+function formatVariableValue(value: string | number | boolean | null): string {
+  return value == null ? "null" : String(value);
 }
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -435,25 +386,12 @@ const selectStyle: CSSProperties = {
   ...inputStyle,
 };
 
-const pickerRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 0.8fr)",
-  gap: 8,
-};
-
 const checkboxFieldStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
   color: "var(--text-secondary)",
   fontSize: 13,
-};
-
-const choiceRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(160px, 1fr) minmax(220px, 1.4fr) auto",
-  gap: 10,
-  alignItems: "end",
 };
 
 const issueListStyle: CSSProperties = {

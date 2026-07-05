@@ -45,35 +45,6 @@ export function parseScenarioText(text: string): ScenarioParseResult {
       continue;
     }
 
-    if (line === "@choice") {
-      const choices: Array<{ text: string; to: string }> = [];
-      let sawChoiceItem = false;
-      let choiceIndex = index + 1;
-      while (choiceIndex < lines.length) {
-        const choiceLine = lines[choiceIndex].trim();
-        if (choiceLine.length === 0) break;
-        if (!choiceLine.startsWith("-")) break;
-        sawChoiceItem = true;
-        const parsed = parseChoiceItem(choiceLine);
-        if (parsed.ok) {
-          choices.push(parsed.choice);
-        } else {
-          diagnostics.push({ line: choiceIndex + 1, message: parsed.message });
-        }
-        choiceIndex += 1;
-      }
-
-      if (choices.length === 0 && !sawChoiceItem) {
-        diagnostics.push({ line: lineNumber, message: "@choice 需要至少一个选择项。" });
-      } else if (choices.length > 0) {
-        instructions.push({ t: "choice", choices } as Instruction);
-        frameHasAnyInstruction = true;
-        frameHasBlockingInstruction = true;
-      }
-      index = choiceIndex;
-      continue;
-    }
-
     const parsed = parseScenarioLine(line);
     if (parsed.ok) {
       if (parsed.instruction) {
@@ -99,7 +70,9 @@ export function parseScenarioText(text: string): ScenarioParseResult {
 export function parseScenarioLine(line: string): ParsedLine {
   const trimmed = line.trim();
   if (trimmed.length === 0) return { ok: true, instruction: null };
-  if (trimmed === "@choice" || trimmed.startsWith("-")) return { ok: true, instruction: null };
+  if (trimmed === "@choice" || /^-\s*.+\s*->\s*\S+/.test(trimmed)) {
+    return { ok: false, message: "分支选项已移到节点出口，请在节点底部的出口块中配置。" };
+  }
 
   if (trimmed.startsWith("@")) {
     const parts = trimmed.split(/\s+/);
@@ -145,6 +118,13 @@ export function parseScenarioLine(line: string): ParsedLine {
       }
       case "@pause":
         return { ok: true, instruction: { t: "pause" } as Instruction };
+      case "@set": {
+        const key = parts[1];
+        const valueRaw = parts.slice(2).join(" ");
+        if (!key) return { ok: false, message: "@set 需要变量名。" };
+        if (!valueRaw) return { ok: false, message: "@set 需要变量值。" };
+        return { ok: true, instruction: { t: "set", key, value: parseScenarioValue(valueRaw) } as Instruction };
+      }
       case "@effect": {
         const type = parts[1];
         if (!type || !EFFECT_TYPES.has(type)) return { ok: false, message: "@effect 类型必须是 shake、flash 或 blur。" };
@@ -203,8 +183,8 @@ export function formatScenarioInstruction(instruction: Instruction): string {
       return `${instruction.who}: ${instruction.text}`;
     case "narrate":
       return instruction.text;
-    case "choice":
-      return ["@choice", ...instruction.choices.map((choice) => `- ${choice.text} -> ${choice.to}`)].join("\n");
+    case "set":
+      return `@set ${instruction.key} ${formatScenarioValue(instruction.value)}`;
     case "wait":
       return `@wait ${instruction.ms}`;
     case "effect":
@@ -219,13 +199,24 @@ export function formatScenarioInstruction(instruction: Instruction): string {
 export function isBlockingInstruction(instruction: Instruction): boolean {
   return instruction.t === "say"
     || instruction.t === "narrate"
-    || instruction.t === "choice"
     || instruction.t === "wait"
     || instruction.t === "pause";
 }
 
-function parseChoiceItem(line: string): { ok: true; choice: { text: string; to: string } } | { ok: false; message: string } {
-  const match = line.match(/^-\s*(.+?)\s*->\s*(\S+)\s*$/);
-  if (!match) return { ok: false, message: "选择项格式应为：- 文本 -> nodeId" };
-  return { ok: true, choice: { text: match[1].trim(), to: match[2].trim() } };
+function parseScenarioValue(raw: string): string | number | boolean | null {
+  const value = raw.trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value === "null") return null;
+  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  const numberValue = Number(value);
+  if (Number.isFinite(numberValue) && value !== "") return numberValue;
+  return value;
+}
+
+function formatScenarioValue(value: string | number | boolean | null): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  return String(value);
 }

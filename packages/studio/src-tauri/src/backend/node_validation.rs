@@ -459,9 +459,29 @@ pub fn validate_node_contents(
                     );
                 }
                 "choice" => {
-                    validate_choice_instruction_fields(
+                    issues.push(node_issue(
+                        "choice_instruction_not_supported",
+                        "choice 指令已废弃；请在节点出口中配置分支".to_string(),
+                        &file,
+                        format!("$[{instruction_index}].t"),
+                        &graph_node.id,
+                    ));
+                }
+                "set" => {
+                    require_nonempty_string_field(
                         obj,
+                        "key",
                         instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    require_variable_value_field(
+                        obj,
+                        "value",
+                        instruction_index,
+                        t,
                         &file,
                         &graph_node.id,
                         &mut issues,
@@ -503,82 +523,6 @@ fn node_issue(
     }
 }
 
-fn validate_choice_instruction_fields(
-    obj: &serde_json::Map<String, serde_json::Value>,
-    index: usize,
-    file: &str,
-    node_id: &str,
-    issues: &mut Vec<ProjectIssue>,
-) -> bool {
-    let Some(choices) = obj.get("choices").and_then(|value| value.as_array()) else {
-        issues.push(node_issue(
-            "instruction_invalid_field",
-            "choice.choices 必须是非空数组".to_string(),
-            file,
-            format!("$[{index}].choices"),
-            node_id,
-        ));
-        return false;
-    };
-    if choices.is_empty() {
-        issues.push(node_issue(
-            "instruction_invalid_field",
-            "choice.choices 必须是非空数组".to_string(),
-            file,
-            format!("$[{index}].choices"),
-            node_id,
-        ));
-        return false;
-    }
-
-    let mut valid = true;
-    for (choice_index, choice) in choices.iter().enumerate() {
-        let Some(choice_obj) = choice.as_object() else {
-            issues.push(node_issue(
-                "instruction_invalid_field",
-                "choice item 必须是对象".to_string(),
-                file,
-                format!("$[{index}].choices[{choice_index}]"),
-                node_id,
-            ));
-            valid = false;
-            continue;
-        };
-        if choice_obj
-            .get("text")
-            .and_then(|value| value.as_str())
-            .map(|text| text.is_empty())
-            .unwrap_or(true)
-        {
-            issues.push(node_issue(
-                "instruction_invalid_field",
-                "choice item.text 必须是非空字符串".to_string(),
-                file,
-                format!("$[{index}].choices[{choice_index}].text"),
-                node_id,
-            ));
-            valid = false;
-        }
-        if choice_obj
-            .get("to")
-            .and_then(|value| value.as_str())
-            .map(|to| to.is_empty())
-            .unwrap_or(true)
-        {
-            issues.push(node_issue(
-                "instruction_invalid_field",
-                "choice item.to 必须是非空字符串".to_string(),
-                file,
-                format!("$[{index}].choices[{choice_index}].to"),
-                node_id,
-            ));
-            valid = false;
-        }
-    }
-
-    valid
-}
-
 fn require_string_field(
     obj: &serde_json::Map<String, serde_json::Value>,
     field: &str,
@@ -593,6 +537,40 @@ fn require_string_field(
     }
     push_invalid_field(
         issue_message(instruction_type, field, "必须是字符串"),
+        field,
+        index,
+        file,
+        node_id,
+        issues,
+    );
+    false
+}
+
+fn require_variable_value_field(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    issues: &mut Vec<ProjectIssue>,
+) -> bool {
+    let Some(value) = obj.get(field) else {
+        push_invalid_field(
+            issue_message(instruction_type, field, "必须存在"),
+            field,
+            index,
+            file,
+            node_id,
+            issues,
+        );
+        return false;
+    };
+    if value.is_string() || value.is_number() || value.is_boolean() || value.is_null() {
+        return true;
+    }
+    push_invalid_field(
+        issue_message(instruction_type, field, "必须是字符串、数字、布尔值或 null"),
         field,
         index,
         file,
@@ -885,4 +863,3 @@ fn check_character_ref(
 // ──────────────────────────────────────────────
 // 资产一致性校验（磁盘文件 ↔ manifest 声明）
 // ──────────────────────────────────────────────
-

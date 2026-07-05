@@ -1,12 +1,3 @@
-#[derive(Clone, Debug)]
-struct ChoiceTarget {
-    text: String,
-    to: String,
-    instruction_index: usize,
-    choice_index: usize,
-    node_file: String,
-}
-
 pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIssue> {
     let mut issues = vec![];
     let mut seen_node_ids = HashSet::new();
@@ -76,7 +67,6 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
     let mut seen_edge_ids = HashSet::new();
     let mut duplicate_edge_ids = HashSet::new();
     let mut outgoing_edges: HashMap<String, Vec<(usize, &GraphEdge)>> = HashMap::new();
-    let mut edge_pairs: HashSet<(String, String)> = HashSet::new();
     for (index, edge) in graph.edges.iter().enumerate() {
         if !seen_edge_ids.insert(edge.id.clone()) {
             duplicate_edge_ids.insert(edge.id.clone());
@@ -85,7 +75,6 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
             .entry(edge.from.clone())
             .or_default()
             .push((index, edge));
-        edge_pairs.insert((edge.from.clone(), edge.to.clone()));
 
         let mut missing = vec![];
         if !seen_node_ids.contains(&edge.from) {
@@ -109,83 +98,118 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
                 edge_id: Some(edge.id.clone()),
             });
         }
+
+        if !matches!(edge.mode.as_str(), "linear" | "choice" | "auto") {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Error,
+                code: "edge_invalid_mode".to_string(),
+                message: format!("边 {} 的 mode 必须是 linear、choice 或 auto", edge.id),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some(format!("$.edges[{index}].mode")),
+                node_id: None,
+                edge_id: Some(edge.id.clone()),
+            });
+        }
+        if edge.mode == "choice"
+            && edge
+                .label
+                .as_deref()
+                .map(|label| label.trim().is_empty())
+                .unwrap_or(true)
+        {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Error,
+                code: "choice_edge_missing_label".to_string(),
+                message: format!("玩家选择边 {} 需要非空 label", edge.id),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some(format!("$.edges[{index}].label")),
+                node_id: Some(edge.from.clone()),
+                edge_id: Some(edge.id.clone()),
+            });
+        }
     }
 
-    let choice_targets = collect_choice_targets(graph, nodes_data);
-    for (node_id, choices) in &choice_targets {
-        let expected_targets: HashSet<&str> =
-            choices.iter().map(|choice| choice.to.as_str()).collect();
-        for choice in choices {
-            if !seen_node_ids.contains(&choice.to) {
-                issues.push(GraphIssue {
-                    severity: GraphIssueSeverity::Error,
-                    code: "choice_target_missing_node".to_string(),
-                    message: format!("选择项「{}」指向不存在的节点：{}", choice.text, choice.to),
-                    file: Some(format!("content/{}", choice.node_file)),
-                    json_path: Some(format!(
-                        "$[{}].choices[{}].to",
-                        choice.instruction_index, choice.choice_index
-                    )),
-                    node_id: Some(node_id.clone()),
-                    edge_id: None,
-                });
-            } else if !edge_pairs.contains(&(node_id.clone(), choice.to.clone())) {
-                issues.push(GraphIssue {
-                    severity: GraphIssueSeverity::Warn,
-                    code: "choice_missing_graph_edge".to_string(),
-                    message: format!(
-                        "选择项「{}」指向 {}，但 graph 中缺少 {} -> {} 的边",
-                        choice.text, choice.to, node_id, choice.to
-                    ),
-                    file: Some("content/graph.json".to_string()),
-                    json_path: Some("$.edges".to_string()),
-                    node_id: Some(node_id.clone()),
-                    edge_id: None,
-                });
-            }
+    for (node_id, outgoing) in &outgoing_edges {
+        let modes = outgoing
+            .iter()
+            .map(|(_, edge)| edge.mode.as_str())
+            .collect::<HashSet<_>>();
+        if modes.len() > 1 {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Error,
+                code: "mixed_outgoing_modes".to_string(),
+                message: format!("节点 {} 的出口不能混用 linear、choice 和 auto", node_id),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some("$.edges".to_string()),
+                node_id: Some(node_id.clone()),
+                edge_id: None,
+            });
+            continue;
         }
 
-        if let Some(outgoing) = outgoing_edges.get(node_id) {
+        let mode = outgoing
+            .first()
+            .map(|(_, edge)| edge.mode.as_str())
+            .unwrap_or("linear");
+        if mode == "linear" && outgoing.len() > 1 {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Error,
+                code: "linear_node_multiple_outgoing".to_string(),
+                message: format!("线性节点 {} 最多只能有一条 outgoing edge", node_id),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some("$.edges".to_string()),
+                node_id: Some(node_id.clone()),
+                edge_id: None,
+            });
+        }
+        if mode == "choice" {
+            let mut labels = HashSet::new();
             for (edge_index, edge) in outgoing {
-                if !expected_targets.contains(edge.to.as_str()) {
+                let label = edge.label.as_deref().unwrap_or("").trim();
+                if !label.is_empty() && !labels.insert(label.to_string()) {
                     issues.push(GraphIssue {
                         severity: GraphIssueSeverity::Warn,
-                        code: "edge_missing_choice".to_string(),
-                        message: format!(
-                            "choice 节点 {} 有额外 outgoing edge {} -> {}，但没有对应选择项",
-                            node_id, edge.from, edge.to
-                        ),
+                        code: "duplicate_choice_label".to_string(),
+                        message: format!("节点 {} 有重复选项文本：{}", node_id, label),
                         file: Some("content/graph.json".to_string()),
-                        json_path: Some(format!("$.edges[{edge_index}]")),
+                        json_path: Some(format!("$.edges[{edge_index}].label")),
                         node_id: Some(node_id.clone()),
                         edge_id: Some(edge.id.clone()),
                     });
                 }
             }
         }
-    }
-
-    for node in &graph.nodes {
-        if choice_targets.contains_key(&node.id) {
-            continue;
-        }
-        let outgoing_count = outgoing_edges
-            .get(&node.id)
-            .map(|edges| edges.len())
-            .unwrap_or(0);
-        if outgoing_count > 1 {
-            issues.push(GraphIssue {
-                severity: GraphIssueSeverity::Warn,
-                code: "linear_node_multiple_outgoing".to_string(),
-                message: format!(
-                    "线性节点 {} 有多条 outgoing edges，但节点内没有 choice 指令",
-                    node.id
-                ),
-                file: Some("content/graph.json".to_string()),
-                json_path: Some("$.edges".to_string()),
-                node_id: Some(node.id.clone()),
-                edge_id: None,
-            });
+        if mode == "auto" {
+            let default_edges = outgoing
+                .iter()
+                .filter(|(_, edge)| {
+                    edge.condition
+                        .as_deref()
+                        .map(|condition| condition.trim().is_empty())
+                        .unwrap_or(true)
+                })
+                .count();
+            if default_edges > 1 {
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Error,
+                    code: "auto_multiple_default_edges".to_string(),
+                    message: format!("节点 {} 的自动出口最多只能有一条默认边", node_id),
+                    file: Some("content/graph.json".to_string()),
+                    json_path: Some("$.edges".to_string()),
+                    node_id: Some(node_id.clone()),
+                    edge_id: None,
+                });
+            } else if outgoing.len() > 1 && default_edges == 0 {
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Warn,
+                    code: "auto_missing_default_edge".to_string(),
+                    message: format!("节点 {} 的自动出口没有默认边，可能无路可走", node_id),
+                    file: Some("content/graph.json".to_string()),
+                    json_path: Some("$.edges".to_string()),
+                    node_id: Some(node_id.clone()),
+                    edge_id: None,
+                });
+            }
         }
     }
 
@@ -205,52 +229,3 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
 
     issues
 }
-
-fn collect_choice_targets(
-    graph: &ProjectGraph,
-    nodes_data: &[NodeEntry],
-) -> HashMap<String, Vec<ChoiceTarget>> {
-    let mut result: HashMap<String, Vec<ChoiceTarget>> = HashMap::new();
-    for (node_index, node) in graph.nodes.iter().enumerate() {
-        let Some(data) = nodes_data
-            .get(node_index)
-            .and_then(|entry| entry.data.as_ref())
-        else {
-            continue;
-        };
-        let Some(instructions) = data.as_array() else {
-            continue;
-        };
-        for (instruction_index, instruction) in instructions.iter().enumerate() {
-            if instruction.get("t").and_then(|value| value.as_str()) != Some("choice") {
-                continue;
-            }
-            let Some(choices) = instruction
-                .get("choices")
-                .and_then(|value| value.as_array())
-            else {
-                continue;
-            };
-            for (choice_index, choice) in choices.iter().enumerate() {
-                let Some(text) = choice.get("text").and_then(|value| value.as_str()) else {
-                    continue;
-                };
-                let Some(to) = choice.get("to").and_then(|value| value.as_str()) else {
-                    continue;
-                };
-                result
-                    .entry(node.id.clone())
-                    .or_default()
-                    .push(ChoiceTarget {
-                        text: text.to_string(),
-                        to: to.to_string(),
-                        instruction_index,
-                        choice_index,
-                        node_file: node.file.clone(),
-                    });
-            }
-        }
-    }
-    result
-}
-
