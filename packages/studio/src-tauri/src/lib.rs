@@ -9,6 +9,8 @@ use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::{
     mpsc::{self, RecvTimeoutError, Sender},
     Mutex,
@@ -61,6 +63,14 @@ Run this from the project root after edits:
 ```bash
 galstudio-cli validate . --format json
 ```
+
+If `galstudio-cli` is not registered in the shell, macOS agents can use the app-bundled CLI directly:
+
+```bash
+/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json
+```
+
+If GalStudio was installed somewhere other than `/Applications/galstudio.app`, replace that prefix with the actual `.app` path.
 
 The command validates graph structure, node `Instruction[]` shape, node resource references,
 meta structure, manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
@@ -191,6 +201,14 @@ Run from the project root:
 ```bash
 galstudio-cli validate . --format json
 ```
+
+If the global command has not been installed, macOS agents can call the CLI bundled in the app:
+
+```bash
+/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json
+```
+
+If the app lives outside `/Applications/galstudio.app`, replace that prefix with the actual `.app` path.
 
 Validation reports graph issues, node `Instruction[]` structure errors, missing character /
 background / audio references from node instructions, meta structure problems, manifest structure problems, and asset
@@ -3760,6 +3778,10 @@ fn cli_sidecar_target_triple() -> Option<&'static str> {
 
 fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
+    if cfg!(target_os = "macos") {
+        paths.push(PathBuf::from("/usr/local/bin").join(CLI_COMMAND_NAME));
+        return paths;
+    }
     if cfg!(unix) {
         paths.push(PathBuf::from("/usr/local/bin").join(CLI_COMMAND_NAME));
     }
@@ -3903,14 +3925,84 @@ fn cli_tool_status_inner(
 
 #[cfg(unix)]
 fn create_cli_tool_symlink(cli_path: &Path, link_path: &Path) -> Result<(), String> {
-    std::os::unix::fs::symlink(cli_path, link_path).map_err(|e| {
-        format!(
-            "创建命令链接失败 ({} -> {}): {}",
-            link_path.display(),
-            cli_path.display(),
-            e
-        )
-    })
+    match std::os::unix::fs::symlink(cli_path, link_path) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            #[cfg(target_os = "macos")]
+            {
+                if error.kind() == std::io::ErrorKind::PermissionDenied {
+                    return create_cli_tool_symlink_with_admin_prompt(cli_path, link_path);
+                }
+            }
+            Err(format!(
+                "创建命令链接失败 ({} -> {}): {}",
+                link_path.display(),
+                cli_path.display(),
+                error
+            ))
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn create_cli_tool_symlink_with_admin_prompt(
+    cli_path: &Path,
+    link_path: &Path,
+) -> Result<(), String> {
+    let script = admin_symlink_script(cli_path, link_path)?;
+    let expression = format!(
+        "do shell script {} with administrator privileges",
+        applescript_string_literal(&script)
+    );
+    let output = Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(expression)
+        .output()
+        .map_err(|e| format!("无法请求管理员权限创建命令链接: {}", e))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        Err("管理员授权创建命令链接失败".to_string())
+    } else {
+        Err(format!("管理员授权创建命令链接失败: {}", stderr))
+    }
+}
+
+fn admin_symlink_script(cli_path: &Path, link_path: &Path) -> Result<String, String> {
+    let Some(parent) = link_path.parent() else {
+        return Err(format!("命令链接路径没有父目录: {}", link_path.display()));
+    };
+    let link = shell_single_quote(&link_path.to_string_lossy());
+    let parent = shell_single_quote(&parent.to_string_lossy());
+    let cli = shell_single_quote(&cli_path.to_string_lossy());
+    Ok(format!(
+        "if [ -e {link} ] || [ -L {link} ]; then echo {occupied} >&2; exit 73; fi\n/bin/mkdir -p {parent}\n/bin/ln -s {cli} {link}",
+        link = link,
+        occupied = shell_single_quote("target command already exists"),
+        parent = parent,
+        cli = cli,
+    ))
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn applescript_string_literal(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 #[cfg(not(unix))]
@@ -3947,6 +4039,24 @@ fn install_cli_tool_inner(
         }
         if let Some(parent) = link_path.parent() {
             if let Err(error) = fs::create_dir_all(parent) {
+                #[cfg(target_os = "macos")]
+                {
+                    if error.kind() == std::io::ErrorKind::PermissionDenied {
+                        match create_cli_tool_symlink_with_admin_prompt(cli_path, link_path) {
+                            Ok(()) => {
+                                return cli_tool_status_inner(
+                                    cli_path,
+                                    candidate_link_paths,
+                                    path_env,
+                                );
+                            }
+                            Err(error) => {
+                                fallback_error = Some(error);
+                                continue;
+                            }
+                        }
+                    }
+                }
                 fallback_error = Some(format!(
                     "创建命令目录失败 ({}): {}",
                     parent.display(),
@@ -5688,6 +5798,9 @@ mod tests {
         assert!(agent_instructions.contains("Instruction[]"));
         assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
         assert!(agent_instructions.contains("galstudio-cli validate . --format json"));
+        assert!(agent_instructions.contains(
+            "/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json"
+        ));
         assert!(agent_instructions.contains("missing_graph"));
         assert!(agent_instructions.contains("content/chapters/"));
         let project_readme = fs::read_to_string(project.join(".galstudio/README.md")).unwrap();
@@ -5696,6 +5809,9 @@ mod tests {
         assert!(project_readme.contains("Legacy Chapters"));
         assert!(project_readme.contains("content/chapters/"));
         assert!(project_readme.contains(".galstudio/renderer-contract.md"));
+        assert!(project_readme.contains(
+            "/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json"
+        ));
         let renderer_contract =
             fs::read_to_string(project.join(".galstudio/renderer-contract.md")).unwrap();
         assert!(renderer_contract.contains("RendererManifest"));
@@ -6525,6 +6641,37 @@ mod tests {
         assert_eq!(status.issue, None);
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cli_tool_candidate_link_paths_use_global_shell_path_on_macos() {
+        assert_eq!(
+            cli_tool_candidate_link_paths(),
+            vec![PathBuf::from("/usr/local/bin/galstudio-cli")]
+        );
+    }
+
+    #[test]
+    fn admin_symlink_script_quotes_paths_for_shell() {
+        let cli = PathBuf::from("/Applications/Gal Studio's.app/Contents/MacOS/galstudio-cli");
+        let link = PathBuf::from("/usr/local/bin/galstudio-cli");
+
+        let script = admin_symlink_script(&cli, &link).unwrap();
+
+        assert!(
+            script.contains("'/Applications/Gal Studio'\\''s.app/Contents/MacOS/galstudio-cli'")
+        );
+        assert!(script.contains("'/usr/local/bin/galstudio-cli'"));
+        assert!(script.contains("/bin/ln -s"));
+    }
+
+    #[test]
+    fn applescript_string_literal_escapes_shell_script() {
+        assert_eq!(
+            applescript_string_literal("echo \"hi\" && echo \\done"),
+            "\"echo \\\"hi\\\" && echo \\\\done\""
+        );
     }
 
     #[test]

@@ -165,10 +165,10 @@ export function CommandLineToolSection({
     : "正在检查 galstudio-cli";
   const detailText = status
     ? status.installed
-      ? `命令链接已创建。若终端无法识别 ${status.command}，请把 ${parentDir(status.linkPath)} 加入 PATH。`
+      ? `命令已注册到全局命令目录，可在终端和外部 Agent 中直接运行 ${status.command}。`
       : status.linkOccupied
         ? "GalStudio 不会覆盖非自己管理的同名命令。"
-        : `将创建命令链接：${status.linkPath}`
+        : `将创建全局命令链接：${status.linkPath}`
     : "GalStudio 会显式创建命令链接，不会静默修改 shell 配置。";
   const installDisabled =
     busy || !status?.cliAvailable || Boolean(status.installed) || Boolean(status?.linkOccupied);
@@ -225,12 +225,6 @@ export function CommandLineToolSection({
       </div>
     </section>
   );
-}
-
-function parentDir(filePath: string): string {
-  const normalized = filePath.replaceAll("\\", "/");
-  const slash = normalized.lastIndexOf("/");
-  return slash > 0 ? normalized.slice(0, slash) : filePath;
 }
 
 /** 主题选择卡片：可视化色块预览 + 名称 + 选中态。 */
