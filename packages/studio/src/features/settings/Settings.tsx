@@ -161,13 +161,17 @@ export function CommandLineToolSection({
       ? `已安装到 ${status.linkPath}`
       : status.linkOccupied
         ? `目标路径已被占用：${status.linkPath}`
-        : "未安装到 PATH"
+        : "未安装命令链接"
     : "正在检查 galstudio-cli";
   const detailText = status
-    ? status.inPath
-      ? `命令目录已在 PATH 中，可直接运行 ${status.command}。`
-      : `命令目录可能不在 PATH 中：${status.linkPath}`
+    ? status.installed
+      ? `命令链接已创建。若终端无法识别 ${status.command}，请把 ${parentDir(status.linkPath)} 加入 PATH。`
+      : status.linkOccupied
+        ? "GalStudio 不会覆盖非自己管理的同名命令。"
+        : `将创建命令链接：${status.linkPath}`
     : "GalStudio 会显式创建命令链接，不会静默修改 shell 配置。";
+  const installDisabled =
+    busy || !status?.cliAvailable || Boolean(status.installed) || Boolean(status?.linkOccupied);
 
   return (
     <section style={sectionStyle}>
@@ -196,10 +200,10 @@ export function CommandLineToolSection({
           <button
             type="button"
             onClick={onInstall}
-            disabled={busy || !status?.cliAvailable || status.installed || status.linkOccupied}
-            style={primaryActionStyle}
+            disabled={installDisabled}
+            style={installDisabled ? disabledPrimaryActionStyle : primaryActionStyle}
           >
-            安装 galstudio-cli
+            {status?.installed ? "已安装" : "安装 galstudio-cli"}
           </button>
           <button
             type="button"
@@ -221,6 +225,12 @@ export function CommandLineToolSection({
       </div>
     </section>
   );
+}
+
+function parentDir(filePath: string): string {
+  const normalized = filePath.replaceAll("\\", "/");
+  const slash = normalized.lastIndexOf("/");
+  return slash > 0 ? normalized.slice(0, slash) : filePath;
 }
 
 /** 主题选择卡片：可视化色块预览 + 名称 + 选中态。 */
@@ -514,6 +524,12 @@ const primaryActionStyle: React.CSSProperties = {
   background: "var(--accent)",
   color: "white",
   cursor: "pointer",
+};
+
+const disabledPrimaryActionStyle: React.CSSProperties = {
+  ...primaryActionStyle,
+  opacity: 0.48,
+  cursor: "not-allowed",
 };
 
 const secondaryActionStyle: React.CSSProperties = {

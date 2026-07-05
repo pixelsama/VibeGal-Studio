@@ -91,7 +91,7 @@ describe("Settings", () => {
 
     expect(html).toContain("命令行工具");
     expect(html).toContain("galstudio-cli");
-    expect(html).toContain("未安装到 PATH");
+    expect(html).toContain("未安装命令链接");
     expect(html).toContain("安装 galstudio-cli");
     expect(html).toContain("重新检查");
   });
@@ -128,8 +128,51 @@ describe("Settings", () => {
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onUninstall).toHaveBeenCalledTimes(1);
-    expect(findButtonByText(tree, "安装 galstudio-cli")?.props.disabled).toBe(true);
+    expect(findButtonByText(tree, "已安装")?.props.disabled).toBe(true);
     expect(onInstall).not.toHaveBeenCalled();
+  });
+
+  it("已安装但 App PATH 未包含命令目录时不显示错误，并让安装按钮视觉禁用", () => {
+    const status: CliToolStatus = {
+      command: "galstudio-cli",
+      cliPath: "/Applications/GalStudio.app/Contents/MacOS/galstudio-cli",
+      linkPath: "/Users/me/.local/bin/galstudio-cli",
+      installed: true,
+      cliAvailable: true,
+      linkOccupied: false,
+      inPath: false,
+      issue: null,
+    };
+
+    const html = renderToStaticMarkup(
+      <CommandLineToolSection
+        status={status}
+        busy={false}
+        error={null}
+        message={null}
+        onRefresh={noop}
+        onInstall={noop}
+        onUninstall={noop}
+      />,
+    );
+    expect(html).toContain("已安装到 /Users/me/.local/bin/galstudio-cli");
+    expect(html).not.toContain("不在 PATH");
+
+    const tree = resolveFunctionComponents(
+      <CommandLineToolSection
+        status={status}
+        busy={false}
+        error={null}
+        message={null}
+        onRefresh={noop}
+        onInstall={noop}
+        onUninstall={noop}
+      />,
+    );
+    const installButton = findButtonByText(tree, "已安装");
+    expect(installButton?.props.disabled).toBe(true);
+    expect(installButton?.props.style?.cursor).toBe("not-allowed");
+    expect(installButton?.props.style?.opacity).toBeLessThan(1);
   });
 });
 
@@ -152,7 +195,7 @@ function resolveFunctionComponents(node: ReactNode): ReactNode {
   };
 }
 
-function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void; disabled?: boolean } } | null {
+function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void; disabled?: boolean; style?: React.CSSProperties } } | null {
   if (Array.isArray(node)) {
     for (const child of node) {
       const found = findButtonByText(child, text);

@@ -3885,12 +3885,6 @@ fn cli_tool_status_inner(
             "目标路径已存在且不是 GalStudio 管理的链接: {}",
             link_path.display()
         ))
-    } else if installed && !in_path {
-        Some(format!(
-            "{} 已安装，但 {} 不在 PATH 中",
-            CLI_COMMAND_NAME,
-            link_path.parent().unwrap_or(link_path).display()
-        ))
     } else {
         None
     };
@@ -6509,6 +6503,26 @@ mod tests {
         assert!(!status.link_occupied);
         assert!(status.in_path);
         assert_eq!(status.link_path, link.to_string_lossy());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cli_tool_status_does_not_report_app_path_as_terminal_issue() {
+        let root = unique_temp_dir("cli-status-no-app-path");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let cli = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(cli.parent().unwrap()).unwrap();
+        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+
+        create_cli_tool_symlink(&cli, &link).unwrap();
+        let status = cli_tool_status_inner(&cli, &[link.clone()], Some("/usr/bin:/bin")).unwrap();
+
+        assert!(status.installed);
+        assert!(!status.in_path);
+        assert_eq!(status.issue, None);
 
         let _ = fs::remove_dir_all(&root);
     }
