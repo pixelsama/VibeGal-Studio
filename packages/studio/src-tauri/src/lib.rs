@@ -67,7 +67,7 @@ galstudio-cli validate . --format json
 If `galstudio-cli` is not registered in the shell, macOS agents can use the app-bundled CLI directly:
 
 ```bash
-/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json
+/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json
 ```
 
 If GalStudio was installed somewhere other than `/Applications/galstudio.app`, replace that prefix with the actual `.app` path.
@@ -205,7 +205,7 @@ galstudio-cli validate . --format json
 If the global command has not been installed, macOS agents can call the CLI bundled in the app:
 
 ```bash
-/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json
+/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json
 ```
 
 If the app lives outside `/Applications/galstudio.app`, replace that prefix with the actual `.app` path.
@@ -3795,7 +3795,7 @@ fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
     paths
 }
 
-fn cli_tool_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
+fn cli_binary_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Ok(path) = env::var("GALSTUDIO_CLI_PATH") {
         candidates.push(PathBuf::from(path));
@@ -3827,8 +3827,36 @@ fn cli_tool_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
     candidates
 }
 
-fn resolve_cli_tool_path(app_handle: &tauri::AppHandle) -> PathBuf {
-    let candidates = cli_tool_path_candidates(app_handle);
+fn resolve_cli_binary_path(app_handle: &tauri::AppHandle) -> PathBuf {
+    let candidates = cli_binary_path_candidates(app_handle);
+    candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned()
+        .or_else(|| candidates.into_iter().next())
+        .unwrap_or_else(|| PathBuf::from(cli_executable_name()))
+}
+
+fn cli_launcher_path_from_resource_dir(resource_dir: &Path) -> PathBuf {
+    resource_dir.join("bin").join(cli_executable_name())
+}
+
+fn cli_launcher_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(path) = env::var("GALSTUDIO_CLI_LAUNCHER_PATH") {
+        candidates.push(PathBuf::from(path));
+    }
+
+    if let Ok(resources) = app_handle.path().resource_dir() {
+        candidates.push(cli_launcher_path_from_resource_dir(&resources));
+        candidates.push(resources.join("resources/bin").join(cli_executable_name()));
+    }
+
+    candidates
+}
+
+fn resolve_cli_launcher_path(app_handle: &tauri::AppHandle) -> PathBuf {
+    let candidates = cli_launcher_path_candidates(app_handle);
     candidates
         .iter()
         .find(|path| path.is_file())
@@ -3877,7 +3905,8 @@ fn path_env_contains_dir(path_env: Option<&str>, dir: &Path) -> bool {
 }
 
 fn cli_tool_status_inner(
-    cli_path: &Path,
+    launcher_path: &Path,
+    sidecar_path: &Path,
     candidate_link_paths: &[PathBuf],
     path_env: Option<&str>,
 ) -> Result<CliToolStatus, String> {
@@ -3886,21 +3915,35 @@ fn cli_tool_status_inner(
     };
     let installed_link_path = candidate_link_paths
         .iter()
-        .find(|path| is_managed_cli_symlink(cli_path, path));
-    let link_path = installed_link_path.unwrap_or(default_link_path);
+        .find(|path| is_managed_cli_symlink(launcher_path, path));
+    let legacy_sidecar_link_path = candidate_link_paths
+        .iter()
+        .find(|path| is_managed_cli_symlink(sidecar_path, path));
+    let link_path = installed_link_path
+        .or(legacy_sidecar_link_path)
+        .unwrap_or(default_link_path);
     let installed = installed_link_path.is_some();
-    let cli_available = cli_path.is_file();
-    let link_occupied =
-        fs::symlink_metadata(link_path).is_ok() && !is_managed_cli_symlink(cli_path, link_path);
+    let launcher_available = launcher_path.is_file();
+    let sidecar_available = sidecar_path.is_file();
+    let cli_available = launcher_available && sidecar_available;
+    let link_occupied = fs::symlink_metadata(link_path).is_ok()
+        && !is_managed_cli_symlink(launcher_path, link_path)
+        && !is_managed_cli_symlink(sidecar_path, link_path);
     let in_path = link_path
         .parent()
         .map(|parent| path_env_contains_dir(path_env, parent))
         .unwrap_or(false);
-    let issue = if !cli_available {
+    let issue = if !launcher_available {
         Some(format!(
-            "找不到随应用提供的 {}: {}",
+            "找不到随应用提供的 {} 启动脚本: {}",
             CLI_COMMAND_NAME,
-            cli_path.display()
+            launcher_path.display()
+        ))
+    } else if !sidecar_available {
+        Some(format!(
+            "找不到随应用提供的 {} 执行文件: {}",
+            CLI_COMMAND_NAME,
+            sidecar_path.display()
         ))
     } else if link_occupied {
         Some(format!(
@@ -3913,7 +3956,7 @@ fn cli_tool_status_inner(
 
     Ok(CliToolStatus {
         command: CLI_COMMAND_NAME.to_string(),
-        cli_path: cli_path.to_string_lossy().to_string(),
+        cli_path: launcher_path.to_string_lossy().to_string(),
         link_path: link_path.to_string_lossy().to_string(),
         installed,
         cli_available,
@@ -4011,15 +4054,23 @@ fn create_cli_tool_symlink(_cli_path: &Path, _link_path: &Path) -> Result<(), St
 }
 
 fn install_cli_tool_inner(
-    cli_path: &Path,
+    launcher_path: &Path,
+    sidecar_path: &Path,
     candidate_link_paths: &[PathBuf],
     path_env: Option<&str>,
 ) -> Result<CliToolStatus, String> {
-    if !cli_path.is_file() {
+    if !launcher_path.is_file() {
         return Err(format!(
-            "找不到随应用提供的 {}: {}",
+            "找不到随应用提供的 {} 启动脚本: {}",
             CLI_COMMAND_NAME,
-            cli_path.display()
+            launcher_path.display()
+        ));
+    }
+    if !sidecar_path.is_file() {
+        return Err(format!(
+            "找不到随应用提供的 {} 执行文件: {}",
+            CLI_COMMAND_NAME,
+            sidecar_path.display()
         ));
     }
     if candidate_link_paths.is_empty() {
@@ -4028,10 +4079,18 @@ fn install_cli_tool_inner(
 
     let mut fallback_error: Option<String> = None;
     for link_path in candidate_link_paths {
-        if is_managed_cli_symlink(cli_path, link_path) {
-            return cli_tool_status_inner(cli_path, candidate_link_paths, path_env);
+        if is_managed_cli_symlink(launcher_path, link_path) {
+            return cli_tool_status_inner(
+                launcher_path,
+                sidecar_path,
+                candidate_link_paths,
+                path_env,
+            );
         }
-        if fs::symlink_metadata(link_path).is_ok() {
+        if is_managed_cli_symlink(sidecar_path, link_path) {
+            fs::remove_file(link_path)
+                .map_err(|e| format!("替换旧版命令链接失败 ({}): {}", link_path.display(), e))?;
+        } else if fs::symlink_metadata(link_path).is_ok() {
             return Err(format!(
                 "目标路径已存在且不是 GalStudio 管理的命令: {}",
                 link_path.display()
@@ -4042,10 +4101,11 @@ fn install_cli_tool_inner(
                 #[cfg(target_os = "macos")]
                 {
                     if error.kind() == std::io::ErrorKind::PermissionDenied {
-                        match create_cli_tool_symlink_with_admin_prompt(cli_path, link_path) {
+                        match create_cli_tool_symlink_with_admin_prompt(launcher_path, link_path) {
                             Ok(()) => {
                                 return cli_tool_status_inner(
-                                    cli_path,
+                                    launcher_path,
+                                    sidecar_path,
                                     candidate_link_paths,
                                     path_env,
                                 );
@@ -4065,8 +4125,15 @@ fn install_cli_tool_inner(
                 continue;
             }
         }
-        match create_cli_tool_symlink(cli_path, link_path) {
-            Ok(()) => return cli_tool_status_inner(cli_path, candidate_link_paths, path_env),
+        match create_cli_tool_symlink(launcher_path, link_path) {
+            Ok(()) => {
+                return cli_tool_status_inner(
+                    launcher_path,
+                    sidecar_path,
+                    candidate_link_paths,
+                    path_env,
+                )
+            }
             Err(error) => fallback_error = Some(error),
         }
     }
@@ -4075,41 +4142,62 @@ fn install_cli_tool_inner(
 }
 
 fn uninstall_cli_tool_inner(
-    cli_path: &Path,
+    launcher_path: &Path,
+    sidecar_path: &Path,
     candidate_link_paths: &[PathBuf],
     path_env: Option<&str>,
 ) -> Result<CliToolStatus, String> {
     for link_path in candidate_link_paths {
-        if is_managed_cli_symlink(cli_path, link_path) {
+        if is_managed_cli_symlink(launcher_path, link_path)
+            || is_managed_cli_symlink(sidecar_path, link_path)
+        {
             fs::remove_file(link_path)
                 .map_err(|e| format!("移除命令链接失败 ({}): {}", link_path.display(), e))?;
         }
     }
-    cli_tool_status_inner(cli_path, candidate_link_paths, path_env)
+    cli_tool_status_inner(launcher_path, sidecar_path, candidate_link_paths, path_env)
 }
 
 #[tauri::command]
 fn cli_tool_status(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let cli_path = resolve_cli_tool_path(&app_handle);
+    let launcher_path = resolve_cli_launcher_path(&app_handle);
+    let sidecar_path = resolve_cli_binary_path(&app_handle);
     let link_paths = cli_tool_candidate_link_paths();
     let path_env = env::var("PATH").ok();
-    cli_tool_status_inner(&cli_path, &link_paths, path_env.as_deref())
+    cli_tool_status_inner(
+        &launcher_path,
+        &sidecar_path,
+        &link_paths,
+        path_env.as_deref(),
+    )
 }
 
 #[tauri::command]
 fn install_cli_tool(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let cli_path = resolve_cli_tool_path(&app_handle);
+    let launcher_path = resolve_cli_launcher_path(&app_handle);
+    let sidecar_path = resolve_cli_binary_path(&app_handle);
     let link_paths = cli_tool_candidate_link_paths();
     let path_env = env::var("PATH").ok();
-    install_cli_tool_inner(&cli_path, &link_paths, path_env.as_deref())
+    install_cli_tool_inner(
+        &launcher_path,
+        &sidecar_path,
+        &link_paths,
+        path_env.as_deref(),
+    )
 }
 
 #[tauri::command]
 fn uninstall_cli_tool(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let cli_path = resolve_cli_tool_path(&app_handle);
+    let launcher_path = resolve_cli_launcher_path(&app_handle);
+    let sidecar_path = resolve_cli_binary_path(&app_handle);
     let link_paths = cli_tool_candidate_link_paths();
     let path_env = env::var("PATH").ok();
-    uninstall_cli_tool_inner(&cli_path, &link_paths, path_env.as_deref())
+    uninstall_cli_tool_inner(
+        &launcher_path,
+        &sidecar_path,
+        &link_paths,
+        path_env.as_deref(),
+    )
 }
 
 fn ensure_initialization_targets_available(
@@ -5799,7 +5887,7 @@ mod tests {
         assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
         assert!(agent_instructions.contains("galstudio-cli validate . --format json"));
         assert!(agent_instructions.contains(
-            "/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json"
+            "/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json"
         ));
         assert!(agent_instructions.contains("missing_graph"));
         assert!(agent_instructions.contains("content/chapters/"));
@@ -5810,7 +5898,7 @@ mod tests {
         assert!(project_readme.contains("content/chapters/"));
         assert!(project_readme.contains(".galstudio/renderer-contract.md"));
         assert!(project_readme.contains(
-            "/Applications/galstudio.app/Contents/MacOS/galstudio-cli validate . --format json"
+            "/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json"
         ));
         let renderer_contract =
             fs::read_to_string(project.join(".galstudio/renderer-contract.md")).unwrap();
@@ -6605,14 +6693,22 @@ mod tests {
         let root = unique_temp_dir("cli-status");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let cli = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
-        fs::create_dir_all(cli.parent().unwrap()).unwrap();
-        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
+        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&launcher, "#!/bin/sh\n").unwrap();
+        fs::write(&sidecar, "#!/bin/sh\n").unwrap();
         let link = bin_dir.join("galstudio-cli");
 
-        create_cli_tool_symlink(&cli, &link).unwrap();
-        let status =
-            cli_tool_status_inner(&cli, &[link.clone()], Some(bin_dir.to_str().unwrap())).unwrap();
+        create_cli_tool_symlink(&launcher, &link).unwrap();
+        let status = cli_tool_status_inner(
+            &launcher,
+            &sidecar,
+            &[link.clone()],
+            Some(bin_dir.to_str().unwrap()),
+        )
+        .unwrap();
 
         assert!(status.installed);
         assert!(status.cli_available);
@@ -6628,13 +6724,18 @@ mod tests {
         let root = unique_temp_dir("cli-status-no-app-path");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let cli = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
-        fs::create_dir_all(cli.parent().unwrap()).unwrap();
-        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
+        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&launcher, "#!/bin/sh\n").unwrap();
+        fs::write(&sidecar, "#!/bin/sh\n").unwrap();
         let link = bin_dir.join("galstudio-cli");
 
-        create_cli_tool_symlink(&cli, &link).unwrap();
-        let status = cli_tool_status_inner(&cli, &[link.clone()], Some("/usr/bin:/bin")).unwrap();
+        create_cli_tool_symlink(&launcher, &link).unwrap();
+        let status =
+            cli_tool_status_inner(&launcher, &sidecar, &[link.clone()], Some("/usr/bin:/bin"))
+                .unwrap();
 
         assert!(status.installed);
         assert!(!status.in_path);
@@ -6653,15 +6754,145 @@ mod tests {
     }
 
     #[test]
+    fn cli_launcher_path_uses_resource_bin_wrapper() {
+        let resources = PathBuf::from("/Applications/galstudio.app/Contents/Resources");
+
+        assert_eq!(
+            cli_launcher_path_from_resource_dir(&resources),
+            resources.join("bin/galstudio-cli")
+        );
+    }
+
+    #[test]
+    fn install_cli_tool_links_global_command_to_wrapper_not_sidecar() {
+        let root = unique_temp_dir("cli-install-wrapper");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
+        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&launcher, "#!/usr/bin/env bash\n").unwrap();
+        fs::write(&sidecar, "#!/usr/bin/env bash\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+
+        let status = install_cli_tool_inner(
+            &launcher,
+            &sidecar,
+            &[link.clone()],
+            Some(bin_dir.to_str().unwrap()),
+        )
+        .unwrap();
+
+        assert!(status.installed);
+        assert_eq!(fs::read_link(&link).unwrap(), launcher);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cli_tool_status_allows_repairing_legacy_sidecar_symlink() {
+        let root = unique_temp_dir("cli-status-legacy-sidecar");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
+        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&launcher, "#!/bin/sh\n").unwrap();
+        fs::write(&sidecar, "#!/bin/sh\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+        create_cli_tool_symlink(&sidecar, &link).unwrap();
+
+        let status = cli_tool_status_inner(
+            &launcher,
+            &sidecar,
+            &[link.clone()],
+            Some(bin_dir.to_str().unwrap()),
+        )
+        .unwrap();
+
+        assert!(!status.installed);
+        assert!(!status.link_occupied);
+        assert!(status.cli_available);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn install_cli_tool_replaces_legacy_sidecar_symlink_with_wrapper() {
+        let root = unique_temp_dir("cli-install-legacy-sidecar");
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
+        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&launcher, "#!/usr/bin/env bash\n").unwrap();
+        fs::write(&sidecar, "#!/usr/bin/env bash\n").unwrap();
+        let link = bin_dir.join("galstudio-cli");
+        create_cli_tool_symlink(&sidecar, &link).unwrap();
+
+        let status = install_cli_tool_inner(
+            &launcher,
+            &sidecar,
+            &[link.clone()],
+            Some(bin_dir.to_str().unwrap()),
+        )
+        .unwrap();
+
+        assert!(status.installed);
+        assert_eq!(fs::read_link(&link).unwrap(), launcher);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundled_cli_wrapper_execs_sidecar_from_symlink() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let root = unique_temp_dir("cli-wrapper-exec");
+        let wrapper = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
+        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        let link = root.join("bin/galstudio-cli");
+        fs::create_dir_all(wrapper.parent().unwrap()).unwrap();
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        fs::write(&wrapper, include_str!("../resources/bin/galstudio-cli")).unwrap();
+        fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+        symlink("/bin/echo", &sidecar).unwrap();
+        symlink(&wrapper, &link).unwrap();
+
+        let output = std::process::Command::new("/usr/bin/env")
+            .arg("bash")
+            .arg(&link)
+            .args(["validate", "."])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "status: {}\nstdout: {}\nstderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "validate .\n");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn admin_symlink_script_quotes_paths_for_shell() {
-        let cli = PathBuf::from("/Applications/Gal Studio's.app/Contents/MacOS/galstudio-cli");
+        let cli =
+            PathBuf::from("/Applications/Gal Studio's.app/Contents/Resources/bin/galstudio-cli");
         let link = PathBuf::from("/usr/local/bin/galstudio-cli");
 
         let script = admin_symlink_script(&cli, &link).unwrap();
 
-        assert!(
-            script.contains("'/Applications/Gal Studio'\\''s.app/Contents/MacOS/galstudio-cli'")
-        );
+        assert!(script
+            .contains("'/Applications/Gal Studio'\\''s.app/Contents/Resources/bin/galstudio-cli'"));
         assert!(script.contains("'/usr/local/bin/galstudio-cli'"));
         assert!(script.contains("/bin/ln -s"));
     }
@@ -6679,13 +6910,20 @@ mod tests {
         let root = unique_temp_dir("cli-install-occupied");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let cli = root.join("galstudio-cli-source");
-        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let launcher = root.join("galstudio-cli-launcher");
+        let sidecar = root.join("galstudio-cli-sidecar");
+        fs::write(&launcher, "#!/bin/sh\n").unwrap();
+        fs::write(&sidecar, "#!/bin/sh\n").unwrap();
         let link = bin_dir.join("galstudio-cli");
         fs::write(&link, "someone else's command").unwrap();
 
-        let error = install_cli_tool_inner(&cli, &[link.clone()], Some(bin_dir.to_str().unwrap()))
-            .unwrap_err();
+        let error = install_cli_tool_inner(
+            &launcher,
+            &sidecar,
+            &[link.clone()],
+            Some(bin_dir.to_str().unwrap()),
+        )
+        .unwrap_err();
 
         assert!(error.contains("已存在"));
         assert_eq!(fs::read_to_string(&link).unwrap(), "someone else's command");
@@ -6698,14 +6936,20 @@ mod tests {
         let root = unique_temp_dir("cli-uninstall");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let cli = root.join("galstudio-cli-source");
-        fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let launcher = root.join("galstudio-cli-launcher");
+        let sidecar = root.join("galstudio-cli-sidecar");
+        fs::write(&launcher, "#!/bin/sh\n").unwrap();
+        fs::write(&sidecar, "#!/bin/sh\n").unwrap();
         let link = bin_dir.join("galstudio-cli");
-        create_cli_tool_symlink(&cli, &link).unwrap();
+        create_cli_tool_symlink(&launcher, &link).unwrap();
 
-        let status =
-            uninstall_cli_tool_inner(&cli, &[link.clone()], Some(bin_dir.to_str().unwrap()))
-                .unwrap();
+        let status = uninstall_cli_tool_inner(
+            &launcher,
+            &sidecar,
+            &[link.clone()],
+            Some(bin_dir.to_str().unwrap()),
+        )
+        .unwrap();
 
         assert!(!link.exists());
         assert!(!status.installed);

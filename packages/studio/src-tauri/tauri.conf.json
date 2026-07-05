@@ -42,9 +42,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "resources/default-renderer/*"
-    ],
+    "resources": {
+      "resources/default-renderer/*": "resources/default-renderer/",
+      "resources/bin/galstudio-cli": "bin/galstudio-cli"
+    },
     "externalBin": [
       "binaries/galstudio-cli"
     ],
