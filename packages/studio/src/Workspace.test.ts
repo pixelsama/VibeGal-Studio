@@ -1,8 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { graphFocusTargetFromIssue, projectIssueSourceLabel, shouldStartWindowDrag } from "./Workspace";
 import { Workspace } from "./Workspace";
+import { SIDEBAR_PREFS_STORAGE_KEY } from "./lib/sidebarPrefs";
 import type { ProjectData } from "./lib/types";
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -18,11 +19,17 @@ vi.mock("./features/preview/Preview", () => ({
 }));
 
 vi.mock("./features/script/ScriptWorkspace", () => ({
-  ScriptWorkspace: () => createElement("div", { "data-testid": "script-workspace" }),
+  ScriptWorkspace: ({ outlineCollapsed }: { outlineCollapsed: boolean }) => createElement("div", {
+    "data-testid": "script-workspace",
+    "data-outline-collapsed": String(outlineCollapsed),
+  }),
 }));
 
 vi.mock("./features/assets/AssetsWorkspace", () => ({
-  AssetsWorkspace: () => createElement("div", { "data-testid": "assets-workspace" }),
+  AssetsWorkspace: ({ sidebarCollapsed }: { sidebarCollapsed: boolean }) => createElement("div", {
+    "data-testid": "assets-workspace",
+    "data-sidebar-collapsed": String(sidebarCollapsed),
+  }),
 }));
 
 vi.mock("./features/project/ProjectSettings", () => ({
@@ -32,6 +39,10 @@ vi.mock("./features/project/ProjectSettings", () => ({
 vi.mock("./features/common/StatusPanel", () => ({
   StatusPanel: () => createElement("div", { "data-testid": "status-panel" }),
 }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function targetWithClosest(result: Element | null): EventTarget {
   return {
@@ -163,5 +174,47 @@ describe("Workspace renderer chrome", () => {
     expect(html).toContain('aria-label="设置"');
     expect(html).toContain("⚙");
     expect(html).toContain("项目设置内容");
+  });
+
+  it("restores persisted sidebar collapse preferences", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn((key: string) => key === SIDEBAR_PREFS_STORAGE_KEY
+        ? JSON.stringify({
+          renderSidebarCollapsed: true,
+          assetsSidebarCollapsed: true,
+          scriptOutlineCollapsed: true,
+        })
+        : null),
+      setItem: vi.fn(),
+    });
+
+    const baseProps = {
+      project,
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      onOpenSettings: () => {},
+    };
+
+    const renderHtml = renderToStaticMarkup(createElement(Workspace, {
+      ...baseProps,
+      location: { type: "workspace", workspace: "render" },
+    }));
+    const scriptHtml = renderToStaticMarkup(createElement(Workspace, {
+      ...baseProps,
+      location: { type: "script-graph" },
+    }));
+    const assetsHtml = renderToStaticMarkup(createElement(Workspace, {
+      ...baseProps,
+      location: { type: "workspace", workspace: "assets" },
+    }));
+
+    expect(renderHtml).toContain('aria-label="展开渲染层"');
+    expect(scriptHtml).toContain('data-outline-collapsed="true"');
+    expect(assetsHtml).toContain('data-sidebar-collapsed="true"');
   });
 });

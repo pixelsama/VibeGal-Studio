@@ -14,6 +14,8 @@ import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
 import { ProjectSettings } from "./features/project/ProjectSettings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
+import { IconButton } from "./features/common/Button";
+import { AlertDialog, ConfirmDialog, PromptDialog } from "./features/common/Dialogs";
 import { RendererSidebar } from "./features/renderers/RendererSidebar";
 import {
   createRenderer,
@@ -27,6 +29,7 @@ import {
 } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
+import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPrefs } from "./lib/sidebarPrefs";
 import { t } from "./lib/i18n";
 
 interface Props {
@@ -45,6 +48,15 @@ interface Props {
 
 type SyncState = "synced" | "syncing" | "error";
 type WindowDragMouseEvent = Pick<React.MouseEvent<HTMLElement>, "button" | "target">;
+
+interface RendererPromptConfig {
+  title: string;
+  label: string;
+  initialValue: string;
+  confirmLabel?: string;
+  allowUnchanged?: boolean;
+  onConfirm: (value: string) => void;
+}
 
 interface ProjectChangedPayload {
   projectPath: string;
@@ -106,13 +118,30 @@ export function Workspace({
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncState, setSyncState] = useState<SyncState>("synced");
-  const [renderSidebarCollapsed, setRenderSidebarCollapsed] = useState(false);
-  const [assetsSidebarCollapsed, setAssetsSidebarCollapsed] = useState(false);
-  const [scriptOutlineCollapsed, setScriptOutlineCollapsed] = useState(false);
+  const [sidebarPrefs, setSidebarPrefs] = useState(loadSidebarPrefs);
   const [graphIssueFocus, setGraphIssueFocus] = useState<GraphIssueFocusRequest | null>(null);
+  const [rendererPrompt, setRendererPrompt] = useState<RendererPromptConfig | null>(null);
+  const [rendererConfirm, setRendererConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [rendererAlert, setRendererAlert] = useState<string | null>(null);
   const graphIssueFocusRequestIdRef = useRef(0);
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
   const workspace = workspaceFromLocation(location) ?? "render";
+
+  const handleSidebarCollapsedChange = useCallback((key: SidebarPrefKey, collapsed: boolean) => {
+    setSidebarPrefs((current) => {
+      const next: SidebarPrefs = { ...current, [key]: collapsed };
+      return saveSidebarPrefs(next);
+    });
+  }, []);
+  const handleRenderSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+    handleSidebarCollapsedChange("renderSidebarCollapsed", collapsed);
+  }, [handleSidebarCollapsedChange]);
+  const handleAssetsSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+    handleSidebarCollapsedChange("assetsSidebarCollapsed", collapsed);
+  }, [handleSidebarCollapsedChange]);
+  const handleScriptOutlineCollapsedChange = useCallback((collapsed: boolean) => {
+    handleSidebarCollapsedChange("scriptOutlineCollapsed", collapsed);
+  }, [handleSidebarCollapsedChange]);
 
   // 切换渲染层：更新本地 + 持久化到 gal.project.json
   const handleRendererChange = useCallback(async (id: string) => {
@@ -180,56 +209,80 @@ export function Workspace({
     await refreshProject(false);
   }, [refreshProject]);
 
-  const handleCreateRenderer = useCallback(async () => {
-    const rendererId = window.prompt("新建渲染层 id", "renderer");
-    if (!rendererId) return;
-    try {
-      await createRenderer(project.path, rendererId, "default");
-      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: rendererId }, project.projectRevision);
-      setRendererId(rendererId);
-      await refreshProject(true);
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
-    }
-  }, [project.meta, project.path, refreshProject]);
+  const handleCreateRenderer = useCallback(() => {
+    setRendererPrompt({
+      title: "新建渲染层",
+      label: "渲染层 id",
+      initialValue: "renderer",
+      confirmLabel: "新建",
+      allowUnchanged: true,
+      onConfirm: async (id) => {
+        try {
+          await createRenderer(project.path, id, "default");
+          await saveProjectMeta(project.path, { ...project.meta, activeRendererId: id }, project.projectRevision);
+          setRendererId(id);
+          await refreshProject(true);
+        } catch (error) {
+          setRendererAlert(error instanceof Error ? error.message : String(error));
+        }
+      },
+    });
+  }, [project.meta, project.path, project.projectRevision, refreshProject]);
 
-  const handleDuplicateRenderer = useCallback(async (sourceId: string) => {
+  const handleDuplicateRenderer = useCallback((sourceId: string) => {
     if (!sourceId) return;
-    const newId = window.prompt("复制为新的渲染层 id", `${sourceId}_copy`);
-    if (!newId) return;
-    try {
-      await duplicateRenderer(project.path, sourceId, newId);
-      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: newId }, project.projectRevision);
-      setRendererId(newId);
-      await refreshProject(true);
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
-    }
-  }, [project.meta, project.path, refreshProject]);
+    setRendererPrompt({
+      title: "复制渲染层",
+      label: "新渲染层 id",
+      initialValue: `${sourceId}_copy`,
+      confirmLabel: "复制",
+      allowUnchanged: true,
+      onConfirm: async (newId) => {
+        try {
+          await duplicateRenderer(project.path, sourceId, newId);
+          await saveProjectMeta(project.path, { ...project.meta, activeRendererId: newId }, project.projectRevision);
+          setRendererId(newId);
+          await refreshProject(true);
+        } catch (error) {
+          setRendererAlert(error instanceof Error ? error.message : String(error));
+        }
+      },
+    });
+  }, [project.meta, project.path, project.projectRevision, refreshProject]);
 
-  const handleRenameRenderer = useCallback(async (sourceId: string) => {
+  const handleRenameRenderer = useCallback((sourceId: string) => {
     if (!sourceId) return;
-    const newId = window.prompt("新的渲染层 id", sourceId);
-    if (!newId || newId === sourceId) return;
-    try {
-      await renameRenderer(project.path, sourceId, newId);
-      if (rendererId === sourceId) setRendererId(newId);
-      await refreshProject(true);
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
-    }
+    setRendererPrompt({
+      title: "重命名渲染层",
+      label: "新渲染层 id",
+      initialValue: sourceId,
+      confirmLabel: "重命名",
+      onConfirm: async (newId) => {
+        if (newId === sourceId) return;
+        try {
+          await renameRenderer(project.path, sourceId, newId);
+          if (rendererId === sourceId) setRendererId(newId);
+          await refreshProject(true);
+        } catch (error) {
+          setRendererAlert(error instanceof Error ? error.message : String(error));
+        }
+      },
+    });
   }, [project.path, refreshProject, rendererId]);
 
-  const handleDeleteRenderer = useCallback(async (sourceId: string) => {
+  const handleDeleteRenderer = useCallback((sourceId: string) => {
     if (!sourceId) return;
-    const confirmed = window.confirm(`确定删除渲染层 ${sourceId}？`);
-    if (!confirmed) return;
-    try {
-      await deleteRenderer(project.path, sourceId);
-      await refreshProject(true);
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
-    }
+    setRendererConfirm({
+      message: `确定删除渲染层 ${sourceId}？`,
+      onConfirm: async () => {
+        try {
+          await deleteRenderer(project.path, sourceId);
+          await refreshProject(true);
+        } catch (error) {
+          setRendererAlert(error instanceof Error ? error.message : String(error));
+        }
+      },
+    });
   }, [project.path, refreshProject]);
 
   const handleTitleBarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
@@ -261,8 +314,8 @@ export function Workspace({
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <NavBtn onClick={onBack} disabled={!canGoBack} label="后退" ariaLabel="后退">‹</NavBtn>
-          <NavBtn onClick={onForward} disabled={!canGoForward} label="前进" ariaLabel="前进">›</NavBtn>
+          <IconButton onClick={onBack} disabled={!canGoBack} title="后退" aria-label="后退" style={navGlyphStyle}>‹</IconButton>
+          <IconButton onClick={onForward} disabled={!canGoForward} title="前进" aria-label="前进" style={navGlyphStyle}>›</IconButton>
         </div>
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
@@ -279,7 +332,7 @@ export function Workspace({
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle}>{t("workspace.currentRenderer")}</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
-          <IconBtn onClick={onOpenSettings} label="设置" ariaLabel="设置">⚙</IconBtn>
+          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置" style={{ fontSize: 15 }}>⚙</IconButton>
         </div>
       </header>
 
@@ -289,8 +342,8 @@ export function Workspace({
           <div style={renderWorkspaceStyle}>
             <CollapsibleSidebar
               title="渲染层"
-              collapsed={renderSidebarCollapsed}
-              onCollapsedChange={setRenderSidebarCollapsed}
+              collapsed={sidebarPrefs.renderSidebarCollapsed}
+              onCollapsedChange={handleRenderSidebarCollapsedChange}
               expandedWidth={180}
               collapsedLabel="渲染层"
             >
@@ -314,8 +367,8 @@ export function Workspace({
             project={project}
             rendererId={rendererId}
             refreshKey={refreshKey}
-            outlineCollapsed={scriptOutlineCollapsed}
-            onOutlineCollapsedChange={setScriptOutlineCollapsed}
+            outlineCollapsed={sidebarPrefs.scriptOutlineCollapsed}
+            onOutlineCollapsedChange={handleScriptOutlineCollapsedChange}
             location={location.type === "script-node" ? { view: "node", nodeId: location.nodeId } : { view: "graph" }}
             focusRequest={graphIssueFocus}
             onOpenGraph={() => onNavigate({ type: "script-graph" })}
@@ -328,8 +381,8 @@ export function Workspace({
           <AssetsWorkspace
             project={project}
             refreshKey={refreshKey}
-            sidebarCollapsed={assetsSidebarCollapsed}
-            onSidebarCollapsedChange={setAssetsSidebarCollapsed}
+            sidebarCollapsed={sidebarPrefs.assetsSidebarCollapsed}
+            onSidebarCollapsedChange={handleAssetsSidebarCollapsedChange}
             onSaved={handleSaved}
           />
         )}
@@ -363,6 +416,29 @@ export function Workspace({
         isIssueClickable={(issue) => Boolean(graphFocusTargetFromIssue(issue, 0, project.graph))}
         onIssueClick={handleProjectIssueClick}
       />
+
+      {/* 渲染层操作弹窗（替换 window.prompt / confirm / alert） */}
+      {rendererPrompt && (
+        <PromptDialog
+          title={rendererPrompt.title}
+          label={rendererPrompt.label}
+          initialValue={rendererPrompt.initialValue}
+          confirmLabel={rendererPrompt.confirmLabel}
+          allowUnchanged={rendererPrompt.allowUnchanged}
+          onConfirm={rendererPrompt.onConfirm}
+          onClose={() => setRendererPrompt(null)}
+        />
+      )}
+      {rendererConfirm && (
+        <ConfirmDialog
+          message={rendererConfirm.message}
+          danger
+          confirmLabel="删除"
+          onConfirm={rendererConfirm.onConfirm}
+          onClose={() => setRendererConfirm(null)}
+        />
+      )}
+      {rendererAlert && <AlertDialog danger message={rendererAlert} onClose={() => setRendererAlert(null)} />}
     </div>
   );
 }
@@ -412,43 +488,11 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
 
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{
-      padding: "0 14px", height: 30, background: active ? "var(--bg-hover)" : "transparent",
-      border: "none", borderRadius: 6, color: active ? "var(--accent-bright)" : "var(--text-muted)",
-      cursor: "pointer", fontSize: 13,
-    }}>
-      {children}
-    </button>
-  );
-}
-
-function NavBtn({ onClick, disabled, children, label, ariaLabel }: {
-  onClick?: () => void; disabled?: boolean; children: React.ReactNode; label: string; ariaLabel: string;
-}) {
-  return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      title={label}
-      style={disabled ? { ...navBtnStyle, opacity: 0.35, cursor: "not-allowed" } : navBtnStyle}
-    >
-      {children}
-    </button>
-  );
-}
-
-function IconBtn({ onClick, children, label, ariaLabel }: {
-  onClick: () => void; children: React.ReactNode; label: string; ariaLabel: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      title={label}
-      style={iconBtnStyle}
+      className={active ? "gs-tab gs-tab--active" : "gs-tab"}
+      aria-pressed={active}
     >
       {children}
     </button>
@@ -474,33 +518,9 @@ const centerGroupStyle: React.CSSProperties = {
   display: "flex",
   gap: 2,
 };
-const navBtnStyle: React.CSSProperties = {
-  width: 28,
-  height: 28,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "transparent",
-  border: "1px solid var(--border-strong)",
-  borderRadius: 6,
-  color: "var(--text-secondary)",
+const navGlyphStyle: React.CSSProperties = {
   fontSize: 18,
   lineHeight: 1,
-  cursor: "pointer",
-};
-const iconBtnStyle: React.CSSProperties = {
-  width: 28,
-  height: 28,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "transparent",
-  border: "1px solid var(--border-strong)",
-  borderRadius: 6,
-  color: "var(--text-secondary)",
-  fontSize: 15,
-  lineHeight: 1,
-  cursor: "pointer",
 };
 const projectNameStyle: React.CSSProperties = {
   fontSize: 12,
