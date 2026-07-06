@@ -18,7 +18,7 @@ fn settings_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
         .join("settings.json"))
 }
 
-/// 加载应用设置。文件不存在时返回默认值（首次运行）。
+/// 加载应用设置。文件不存在时返回默认值（首次运行，默认跟随系统）。
 #[tauri::command]
 fn load_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
     let path = settings_path(&app_handle)?;
@@ -46,4 +46,3 @@ fn save_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Res
 // ──────────────────────────────────────────────
 // 命令行工具安装（显式 symlink，不静默修改 PATH）
 // ──────────────────────────────────────────────
-

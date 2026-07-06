@@ -125,6 +125,11 @@ export function AppearanceSection({
       <p style={sectionDescStyle}>选择编辑器界面的配色主题。预览区（游戏渲染层）不受影响。</p>
       <div style={themeCardRowStyle}>
         <ThemeCard
+          mode="system"
+          active={settings.theme === "system"}
+          onSelect={() => void onUpdate({ theme: "system" })}
+        />
+        <ThemeCard
           mode="dark"
           active={settings.theme === "dark"}
           onSelect={() => void onUpdate({ theme: "dark" })}
@@ -222,7 +227,8 @@ function ThemeCard({
   active: boolean;
   onSelect: () => void;
 }) {
-  const label = mode === "dark" ? "深色" : "浅色";
+  const label = mode === "system" ? "跟随系统" : mode === "dark" ? "深色" : "浅色";
+  const previewMode = mode === "system" ? "dark" : mode;
   return (
     <button
       type="button"
@@ -234,10 +240,10 @@ function ThemeCard({
       }}
     >
       <div style={previewStyle}>
-        <div style={{ ...previewPanelStyle, background: mode === "dark" ? "#0e1116" : "#f4f6f9" }}>
-          <div style={{ ...previewBarStyle, background: mode === "dark" ? "#1a1f29" : "#ffffff" }} />
-          <div style={{ ...previewDotStyle, background: mode === "dark" ? "#d4dae2" : "#2a3340" }} />
-          <div style={{ ...previewDotStyle, background: mode === "dark" ? "#7a8290" : "#828c9a", width: 24 }} />
+        <div style={{ ...previewPanelStyle, background: previewMode === "dark" ? "#0e1116" : "#f4f6f9" }}>
+          <div style={{ ...previewBarStyle, background: previewMode === "dark" ? "#1a1f29" : "#ffffff" }} />
+          <div style={{ ...previewDotStyle, background: previewMode === "dark" ? "#d4dae2" : "#2a3340" }} />
+          <div style={{ ...previewDotStyle, background: previewMode === "dark" ? "#7a8290" : "#828c9a", width: 24 }} />
           <div style={{ ...previewAccentStyle, background: "#3a6ea5" }} />
         </div>
       </div>
@@ -321,7 +327,8 @@ const sectionDescStyle: React.CSSProperties = {
 };
 
 const themeCardRowStyle: React.CSSProperties = {
-  display: "flex",
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: 14,
 };
 
@@ -335,10 +342,12 @@ const themeCardStyle: React.CSSProperties = {
   background: "var(--bg-panel)",
   cursor: "pointer",
   textAlign: "left",
+  width: "100%",
+  minWidth: 0,
 };
 
 const previewStyle: React.CSSProperties = {
-  width: 160,
+  width: "100%",
   height: 100,
   borderRadius: 6,
   overflow: "hidden",
@@ -375,6 +384,7 @@ const previewAccentStyle: React.CSSProperties = {
 const themeCardMetaStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
+  flexWrap: "wrap",
   gap: 8,
 };
 

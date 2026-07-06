@@ -18,6 +18,7 @@ describe("Settings", () => {
       />,
     );
     expect(html).toContain("外观");
+    expect(html).toContain("跟随系统");
     expect(html).toContain("深色");
     expect(html).toContain("浅色");
     // 深色卡片应标记为当前选中
@@ -51,6 +52,21 @@ describe("Settings", () => {
     expect(lightButton).not.toBeNull();
     lightButton?.props.onClick?.();
     expect(onUpdate).toHaveBeenCalledWith({ theme: "light" });
+  });
+
+  it("点击跟随系统卡片会保存原始 system 值", () => {
+    const onUpdate = vi.fn();
+    const tree = resolveFunctionComponents(
+      <AppearanceSection
+        settings={{ theme: "dark" } as AppSettings}
+        onUpdate={onUpdate}
+      />,
+    );
+    const systemButton = findButtonByText(tree, "跟随系统");
+
+    expect(systemButton).not.toBeNull();
+    systemButton?.props.onClick?.();
+    expect(onUpdate).toHaveBeenCalledWith({ theme: "system" });
   });
 
   it("canGoBack 为 false 时返回按钮禁用", () => {

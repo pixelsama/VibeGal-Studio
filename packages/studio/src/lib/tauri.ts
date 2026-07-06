@@ -205,7 +205,7 @@ export async function saveManifest(
 // ──────────────────────────────────────────────
 
 export interface AppSettings {
-  theme: "dark" | "light";
+  theme: "system" | "dark" | "light";
 }
 
 export interface CliToolStatus {
@@ -219,7 +219,7 @@ export interface CliToolStatus {
   issue: string | null;
 }
 
-/** 加载应用设置；文件不存在（首次运行）时后端返回默认值（dark）。 */
+/** 加载应用设置；文件不存在（首次运行）时后端返回默认值（system）。 */
 export async function loadAppSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("load_app_settings");
 }

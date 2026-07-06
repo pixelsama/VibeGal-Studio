@@ -208,13 +208,14 @@ pub struct ProjectData {
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
+    System,
     Dark,
     Light,
 }
 
 impl Default for ThemeMode {
     fn default() -> Self {
-        ThemeMode::Dark
+        ThemeMode::System
     }
 }
 
@@ -225,9 +226,10 @@ impl<'de> Deserialize<'de> for ThemeMode {
     {
         let raw = String::deserialize(deserializer)?;
         Ok(match raw.as_str() {
+            "system" => ThemeMode::System,
             "light" => ThemeMode::Light,
             "dark" => ThemeMode::Dark,
-            _ => ThemeMode::Dark,
+            _ => ThemeMode::System,
         })
     }
 }

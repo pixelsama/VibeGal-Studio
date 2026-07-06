@@ -7,16 +7,17 @@
  *   index.css 里 :root / [data-theme="light"] 定义两套变量值。
  * - useAppSettings() 在 App 顶层调用，加载后再渲染主界面，避免主题未就绪时先画出整套 chrome。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { loadAppSettings, saveAppSettings } from "./tauri";
 
-export type ThemeMode = "dark" | "light";
+export type ThemeMode = "system" | "dark" | "light";
+export type ResolvedTheme = "dark" | "light";
 
 export interface AppSettings {
   theme: ThemeMode;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = { theme: "dark" };
+export const DEFAULT_SETTINGS: AppSettings = { theme: "system" };
 
 export interface LatestSettingsSaver {
   requestSave: (settings: AppSettings) => Promise<void>;
@@ -58,10 +59,54 @@ export function createLatestSettingsSaver(
   };
 }
 
+function getSystemThemeMediaQuery(): MediaQueryList | null {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return null;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)");
+}
+
+/** 读取当前系统配色偏好。 */
+export function getSystemTheme(): ResolvedTheme {
+  const media = getSystemThemeMediaQuery();
+  if (!media) return "dark";
+  return media.matches ? "dark" : "light";
+}
+
+/** 把设置模式解析为实际应用的主题。 */
+export function resolveTheme(mode: ThemeMode, systemTheme: ResolvedTheme = getSystemTheme()): ResolvedTheme {
+  return mode === "system" ? systemTheme : mode;
+}
+
+/** 订阅系统配色偏好变化。 */
+export function subscribeSystemThemeChanges(onChange: () => void): () => void {
+  const media = getSystemThemeMediaQuery();
+  if (!media) return () => {};
+
+  const handler = () => onChange();
+  if (typeof media.addEventListener === "function") {
+    media.addEventListener("change", handler);
+    return () => media.removeEventListener("change", handler);
+  }
+  const legacyMedia = media as MediaQueryList & {
+    addListener?: (listener: () => void) => void;
+    removeListener?: (listener: () => void) => void;
+  };
+  if (typeof legacyMedia.addListener === "function" && typeof legacyMedia.removeListener === "function") {
+    legacyMedia.addListener(handler);
+    return () => legacyMedia.removeListener(handler);
+  }
+  return () => {};
+}
+
+function useSystemTheme(): ResolvedTheme {
+  return useSyncExternalStore(subscribeSystemThemeChanges, getSystemTheme, () => "dark");
+}
+
 /** 把主题模式应用到 <html data-theme>。CSS 变量据此切换。 */
-export function applyTheme(mode: ThemeMode): void {
+export function applyTheme(mode: ThemeMode, systemTheme: ResolvedTheme = getSystemTheme()): void {
   if (typeof document !== "undefined") {
-    document.documentElement.dataset.theme = mode;
+    document.documentElement.dataset.theme = resolveTheme(mode, systemTheme);
   }
 }
 
@@ -82,6 +127,8 @@ export function useAppSettings(): UseAppSettingsResult {
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const userUpdatedRef = useRef(false);
   const saverRef = useRef<LatestSettingsSaver | null>(null);
+  const systemTheme = useSystemTheme();
+  const resolvedTheme = resolveTheme(settings.theme, systemTheme);
 
   if (!saverRef.current) {
     saverRef.current = createLatestSettingsSaver(saveAppSettings, (error) => {
@@ -96,12 +143,10 @@ export function useAppSettings(): UseAppSettingsResult {
         if (!active || userUpdatedRef.current) return;
         settingsRef.current = loaded;
         setSettings(loaded);
-        applyTheme(loaded.theme);
       })
       .catch((e) => {
         // 后端读取失败（首次运行无文件等）—— 用默认值
         console.warn("加载应用设置失败，使用默认值:", e);
-        if (active && !userUpdatedRef.current) applyTheme(DEFAULT_SETTINGS.theme);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -111,13 +156,16 @@ export function useAppSettings(): UseAppSettingsResult {
     };
   }, []);
 
+  useEffect(() => {
+    applyTheme(resolvedTheme);
+  }, [resolvedTheme]);
+
   const updateSettings = useCallback(
     (next: Partial<AppSettings>) => {
       const merged: AppSettings = { ...settingsRef.current, ...next };
       userUpdatedRef.current = true;
       settingsRef.current = merged;
       setSettings(merged);
-      applyTheme(merged.theme);
       return saverRef.current?.requestSave(merged) ?? Promise.resolve();
     },
     [],

@@ -2456,9 +2456,9 @@ mod tests {
     // ── 应用设置（AppSettings）测试 ──
 
     #[test]
-    fn app_settings_defaults_to_dark() {
+    fn app_settings_defaults_to_system() {
         let s = AppSettings::default();
-        assert_eq!(s.theme, ThemeMode::Dark);
+        assert_eq!(s.theme, ThemeMode::System);
     }
 
     #[test]
@@ -2474,16 +2474,27 @@ mod tests {
     }
 
     #[test]
+    fn app_settings_serde_roundtrip_preserves_system_theme() {
+        let s = AppSettings {
+            theme: ThemeMode::System,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""theme":"system""#));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
     fn app_settings_deserialize_missing_theme_uses_default() {
-        // 旧版/部分设置文件缺 theme 字段时应回退到默认 dark
+        // 旧版/部分设置文件缺 theme 字段时应回退到默认 system
         let back: AppSettings = serde_json::from_str("{}").unwrap();
-        assert_eq!(back.theme, ThemeMode::Dark);
+        assert_eq!(back.theme, ThemeMode::System);
     }
 
     #[test]
     fn app_settings_deserialize_unknown_theme_uses_default() {
         let back: AppSettings = serde_json::from_str(r#"{"theme":"solarized"}"#).unwrap();
-        assert_eq!(back.theme, ThemeMode::Dark);
+        assert_eq!(back.theme, ThemeMode::System);
     }
 
     #[test]
