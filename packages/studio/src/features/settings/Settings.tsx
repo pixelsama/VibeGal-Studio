@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppSettings, ThemeMode } from "../../lib/theme";
-import { t } from "../../lib/i18n";
 import { Button, IconButton } from "../common/Button";
 import {
   getCliToolStatus,
@@ -100,10 +99,10 @@ export function Settings({
       {/* 顶部导航条（自定义拖拽区） */}
       <header data-tauri-drag-region style={headerStyle}>
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title={t("navigation.back")} aria-label={t("navigation.back")} style={{ fontSize: 16 }}>‹</IconButton>
+          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title="后退" aria-label="后退" style={{ fontSize: 16 }}>‹</IconButton>
         </div>
         <div data-tauri-drag-region style={titleGroupStyle}>
-          <span style={titleStyle}>{t("settings.title")}</span>
+          <span style={titleStyle}>设置</span>
         </div>
         <div style={{ marginLeft: "auto" }} />
       </header>
@@ -122,8 +121,8 @@ export function AppearanceSection({
 }) {
   return (
     <section style={sectionStyle}>
-      <h2 style={sectionTitleStyle}>{t("settings.appearance.title")}</h2>
-      <p style={sectionDescStyle}>{t("settings.appearance.description")}</p>
+      <h2 style={sectionTitleStyle}>外观</h2>
+      <p style={sectionDescStyle}>选择编辑器界面的配色主题。预览区（游戏渲染层）不受影响。</p>
       <div style={themeCardRowStyle}>
         <ThemeCard
           mode="dark"
@@ -223,7 +222,7 @@ function ThemeCard({
   active: boolean;
   onSelect: () => void;
 }) {
-  const label = mode === "dark" ? t("settings.theme.dark") : t("settings.theme.light");
+  const label = mode === "dark" ? "深色" : "浅色";
   return (
     <button
       type="button"
@@ -244,7 +243,7 @@ function ThemeCard({
       </div>
       <div style={themeCardMetaStyle}>
         <span style={themeCardLabelStyle}>{label}</span>
-        {active && <span style={activeTagStyle}>{t("settings.theme.current")}</span>}
+        {active && <span style={activeTagStyle}>当前</span>}
       </div>
     </button>
   );

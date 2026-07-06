@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { Breadcrumb } from "./Breadcrumb";
 import { buildGraphPositionUpdates, ScriptWorkspace } from "./ScriptWorkspace";
 import type { ProjectData, ProjectGraph } from "../../lib/types";
 
@@ -68,6 +69,20 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("aria-label=\"节点\"");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("序章");
+  });
+
+});
+
+describe("Breadcrumb", () => {
+  it("shows direct Chinese labels for the script graph trail", () => {
+    const html = renderToStaticMarkup(createElement(Breadcrumb, {
+      view: "graph",
+      selectedNodeTitle: null,
+      onBackToGraph: () => {},
+    }));
+
+    expect(html).toContain("脚本");
+    expect(html).toContain("流程图");
   });
 });
 

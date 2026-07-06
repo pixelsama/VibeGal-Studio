@@ -30,7 +30,6 @@ import {
 import { clearRendererCache } from "./features/renderers/rendererLoader";
 import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
 import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPrefs } from "./lib/sidebarPrefs";
-import { t } from "./lib/i18n";
 
 interface Props {
   project: ProjectData;
@@ -294,7 +293,7 @@ export function Workspace({
   }, []);
 
   const report = project.projectReport ?? { projectIssues: [] };
-  const rendererStatusText = rendererId || t("workspace.noRenderer");
+  const rendererStatusText = rendererId || "无渲染层";
 
   const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string }) => {
     const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1, project.graph);
@@ -320,17 +319,17 @@ export function Workspace({
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
         <div data-tauri-drag-region style={centerGroupStyle}>
-          <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>{t("workspace.tab.render")}</TabBtn>
-          <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>{t("workspace.tab.script")}</TabBtn>
-          <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>{t("workspace.tab.assets")}</TabBtn>
-          <TabBtn active={workspace === "project"} onClick={() => onNavigate({ type: "workspace", workspace: "project" })}>{t("workspace.tab.project")}</TabBtn>
+          <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>渲染</TabBtn>
+          <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>脚本</TabBtn>
+          <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>资产</TabBtn>
+          <TabBtn active={workspace === "project"} onClick={() => onNavigate({ type: "workspace", workspace: "project" })}>项目</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={projectNameStyle}>{project.meta.name}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
-          <span style={rendererLabelStyle}>{t("workspace.currentRenderer")}</span>
+          <span style={rendererLabelStyle}>当前渲染层</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
           <IconButton onClick={onOpenSettings} title="设置" aria-label="设置" style={{ fontSize: 15 }}>⚙</IconButton>
         </div>
