@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import {
   formatScenarioInstruction,
   parseScenarioLine,
@@ -78,18 +78,51 @@ export function ScenarioNodeLayout({
   editor,
   preview,
   inspector,
+  rootRef,
+  inspectorPaneId,
+  inspectorCollapsed = false,
+  inspectorPaneWidth,
+  draggingInspector = false,
+  controls,
+  resizeHandle,
 }: {
   editor: ReactNode;
   preview: ReactNode;
   inspector: ReactNode;
+  rootRef?: Ref<HTMLDivElement>;
+  inspectorPaneId?: string;
+  inspectorCollapsed?: boolean;
+  inspectorPaneWidth?: number;
+  draggingInspector?: boolean;
+  controls?: ReactNode;
+  resizeHandle?: ReactNode;
 }) {
+  const rightWidth = inspectorCollapsed ? "0px" : inspectorPaneWidth ? `${inspectorPaneWidth}px` : "minmax(360px, 42%)";
   return (
-    <div style={layoutStyle}>
+    <div
+      ref={rootRef}
+      data-node-view-layout="editor-preview-inspector"
+      data-node-inspector-state={inspectorCollapsed ? "collapsed" : "expanded"}
+      style={{
+        ...layoutStyle,
+        gridTemplateColumns: `minmax(0, 1fr) ${rightWidth}`,
+        transition: draggingInspector ? "none" : "grid-template-columns 160ms ease",
+      }}
+    >
       <section data-region="scenario-editor" style={editorRegionStyle}>{editor}</section>
-      <section style={rightRegionStyle}>
+      <section
+        id={inspectorPaneId}
+        aria-hidden={inspectorCollapsed || undefined}
+        style={{
+          ...rightRegionStyle,
+          visibility: inspectorCollapsed ? "hidden" : "visible",
+        }}
+      >
         <div data-region="node-preview" style={previewRegionStyle}>{preview}</div>
         <div data-region="scenario-inspector" style={inspectorRegionStyle}>{inspector}</div>
       </section>
+      {resizeHandle}
+      {controls}
     </div>
   );
 }
@@ -300,6 +333,7 @@ function formatVariableValue(value: string | number | boolean | null): string {
 const layoutStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 42%)",
+  position: "relative",
   width: "100%",
   height: "100%",
   background: "var(--bg-inset)",

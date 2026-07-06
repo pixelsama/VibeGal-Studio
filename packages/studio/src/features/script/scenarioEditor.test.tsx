@@ -134,4 +134,18 @@ describe("ScenarioNodeLayout", () => {
     expect(html).toContain("data-region=\"node-preview\"");
     expect(html).toContain("data-region=\"scenario-inspector\"");
   });
+
+  it("marks the inspector pane collapsed through explicit layout props", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioNodeLayout, {
+      editor: createElement("div", null, "editor"),
+      preview: createElement("div", null, "preview"),
+      inspector: createElement("div", null, "inspector"),
+      inspectorCollapsed: true,
+      inspectorPaneWidth: 420,
+    }));
+
+    expect(html).toContain("data-node-inspector-state=\"collapsed\"");
+    expect(html).toContain("aria-hidden=\"true\"");
+    expect(html).toContain("minmax(0, 1fr) 0px");
+  });
 });

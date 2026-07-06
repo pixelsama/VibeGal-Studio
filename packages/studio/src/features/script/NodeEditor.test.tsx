@@ -4,12 +4,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Instruction } from "@galstudio/engine";
 import { describe, expect, it, vi } from "vitest";
 import {
+  clampNodeInspectorPaneWidth,
   conflictDraftCopyPath,
   insertScenarioCommandAtCursor,
   InstructionBlock,
   isWriteConflictError,
   NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
+  resolveNodeInspectorPaneLayout,
   scenarioCommandTriggerAtCursor,
   transitionNodeEditorMode,
 } from "./NodeEditor";
@@ -179,8 +181,28 @@ describe("NodeEditor scenario surface", () => {
     expect(html).not.toContain("+ 背景");
     expect(html).not.toContain("+ 台词");
     expect(html).toContain("aria-label=\"插入当前行命令\"");
+    expect(html).toContain("data-node-view-layout=\"editor-preview-inspector\"");
+    expect(html).toContain("aria-label=\"切换 Inspector 面板\"");
+    expect(html).toContain("aria-label=\"调整 Inspector 宽度\"");
     expect(html).not.toContain("节点出口");
     expect(html).not.toContain("连接下一个节点");
     expect(html).not.toContain("添加玩家选择");
+  });
+});
+
+describe("NodeEditor inspector pane layout", () => {
+  it("clamps inspector width to min and dynamic max bounds", () => {
+    expect(clampNodeInspectorPaneWidth(120)).toBe(320);
+    expect(clampNodeInspectorPaneWidth(900)).toBe(720);
+    expect(clampNodeInspectorPaneWidth(900, 800)).toBe(480);
+  });
+
+  it("collapses the right pane without discarding the last usable width", () => {
+    expect(resolveNodeInspectorPaneLayout({ collapsed: true, width: 520 }, 1200)).toEqual({
+      collapsed: true,
+      width: 520,
+      paneWidth: 0,
+      gridTemplateColumns: "minmax(0, 1fr) 0px",
+    });
   });
 });

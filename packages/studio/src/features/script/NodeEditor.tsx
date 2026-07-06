@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import {
   formatScenarioInstruction,
   formatScenarioText,
@@ -60,6 +60,77 @@ interface NodeEditorProps {
   onSaved: () => void;
 }
 
+const NODE_INSPECTOR_PANE_STORAGE_KEY = "galstudio.nodeEditor.inspectorPane";
+const NODE_INSPECTOR_PANE_DEFAULT_WIDTH = 440;
+const NODE_INSPECTOR_PANE_MIN_WIDTH = 320;
+const NODE_INSPECTOR_PANE_MAX_WIDTH = 720;
+const NODE_INSPECTOR_PANE_MAX_RATIO = 0.6;
+const NODE_INSPECTOR_REGION_ID = "node-editor-inspector-pane";
+
+interface NodeInspectorPaneState {
+  collapsed: boolean;
+  width: number;
+}
+
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export function clampNodeInspectorPaneWidth(width: number, containerWidth?: number): number {
+  const maxWidth = Number.isFinite(containerWidth) && (containerWidth ?? 0) > 0
+    ? Math.max(
+      NODE_INSPECTOR_PANE_MIN_WIDTH,
+      Math.min(NODE_INSPECTOR_PANE_MAX_WIDTH, Math.floor((containerWidth ?? 0) * NODE_INSPECTOR_PANE_MAX_RATIO)),
+    )
+    : NODE_INSPECTOR_PANE_MAX_WIDTH;
+  const safeWidth = Number.isFinite(width) ? Math.round(width) : NODE_INSPECTOR_PANE_DEFAULT_WIDTH;
+  return Math.min(Math.max(safeWidth, NODE_INSPECTOR_PANE_MIN_WIDTH), maxWidth);
+}
+
+export function resolveNodeInspectorPaneLayout(state: NodeInspectorPaneState, containerWidth?: number) {
+  const width = clampNodeInspectorPaneWidth(state.width, containerWidth);
+  return {
+    collapsed: state.collapsed,
+    width,
+    paneWidth: state.collapsed ? 0 : width,
+    gridTemplateColumns: `minmax(0, 1fr) ${state.collapsed ? "0px" : `${width}px`}`,
+  };
+}
+
+function getBrowserStorage(): StorageLike | null {
+  return typeof globalThis.localStorage === "undefined" ? null : globalThis.localStorage;
+}
+
+function loadNodeInspectorPaneState(storage: StorageLike | null = getBrowserStorage()): NodeInspectorPaneState {
+  const fallback = { collapsed: false, width: NODE_INSPECTOR_PANE_DEFAULT_WIDTH };
+  if (!storage) return fallback;
+
+  try {
+    const raw = storage.getItem(NODE_INSPECTOR_PANE_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<NodeInspectorPaneState>;
+    return {
+      collapsed: parsed.collapsed === true,
+      width: clampNodeInspectorPaneWidth(parsed.width ?? fallback.width),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveNodeInspectorPaneState(state: NodeInspectorPaneState, storage: StorageLike | null = getBrowserStorage()) {
+  if (!storage) return;
+  try {
+    storage.setItem(NODE_INSPECTOR_PANE_STORAGE_KEY, JSON.stringify({
+      collapsed: state.collapsed,
+      width: clampNodeInspectorPaneWidth(state.width),
+    }));
+  } catch {
+    // localStorage 不可用时静默降级
+  }
+}
+
 export function NodeEditor({
   project,
   rendererId,
@@ -87,9 +158,17 @@ export function NodeEditor({
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const layoutRootRef = useRef<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
   const loadedTextRef = useRef(incomingJsonText);
   const loadedRevisionRef = useRef(project.nodeRevisions?.[node.file] ?? undefined);
+  const [inspectorPane, setInspectorPane] = useState<NodeInspectorPaneState>(() => loadNodeInspectorPaneState());
+  const [layoutWidth, setLayoutWidth] = useState<number | undefined>(undefined);
+  const [draggingInspector, setDraggingInspector] = useState(false);
+  const inspectorPaneLayout = useMemo(
+    () => resolveNodeInspectorPaneLayout(inspectorPane, layoutWidth),
+    [inspectorPane, layoutWidth],
+  );
 
   const nodeIssues = useMemo(() => {
     const file = `content/${node.file}`;
@@ -119,6 +198,31 @@ export function NodeEditor({
     setDraftCopyPath(null);
     setStatus("");
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
+
+  useEffect(() => {
+    saveNodeInspectorPaneState(inspectorPane);
+  }, [inspectorPane]);
+
+  useEffect(() => {
+    const root = layoutRootRef.current;
+    if (!root) return;
+
+    const updateWidth = () => {
+      const nextWidth = root.getBoundingClientRect().width;
+      setLayoutWidth(nextWidth > 0 ? nextWidth : undefined);
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => updateWidth());
+      observer.observe(root);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
 
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
   const scenarioCommandTrigger = useMemo(
@@ -365,6 +469,37 @@ export function NodeEditor({
     setStatus("");
   };
 
+  const handleToggleInspectorPane = useCallback(() => {
+    setInspectorPane((current) => ({ ...current, collapsed: !current.collapsed }));
+  }, []);
+
+  const handleInspectorResizeStart = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const root = layoutRootRef.current;
+    if (!root) return;
+
+    const startX = event.clientX;
+    const startWidth = inspectorPaneLayout.width;
+    setDraggingInspector(true);
+
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      const containerWidth = root.getBoundingClientRect().width;
+      const nextWidth = clampNodeInspectorPaneWidth(startWidth + (startX - moveEvent.clientX), containerWidth);
+      setInspectorPane((current) => ({ ...current, width: nextWidth, collapsed: false }));
+    };
+
+    const handlePointerEnd = () => {
+      setDraggingInspector(false);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerEnd);
+    window.addEventListener("pointercancel", handlePointerEnd);
+  }, [inspectorPaneLayout.width]);
+
   const editor = (
     <div style={editorPaneStyle}>
       <NodeEditorToolbar
@@ -437,7 +572,46 @@ export function NodeEditor({
     </div>
   );
 
-  return <ScenarioNodeLayout editor={editor} preview={preview} inspector={inspector} />;
+  return (
+    <ScenarioNodeLayout
+      rootRef={layoutRootRef}
+      editor={editor}
+      preview={preview}
+      inspector={inspector}
+      inspectorPaneId={NODE_INSPECTOR_REGION_ID}
+      inspectorCollapsed={inspectorPaneLayout.collapsed}
+      inspectorPaneWidth={inspectorPaneLayout.width}
+      draggingInspector={draggingInspector}
+      resizeHandle={!inspectorPaneLayout.collapsed && (
+        <div
+          role="separator"
+          aria-label="调整 Inspector 宽度"
+          aria-orientation="vertical"
+          onPointerDown={handleInspectorResizeStart}
+          style={{
+            ...inspectorResizeHandleStyle,
+            right: inspectorPaneLayout.paneWidth - 3,
+            cursor: draggingInspector ? "col-resize" : "ew-resize",
+          }}
+        />
+      )}
+      controls={(
+        <button
+          type="button"
+          aria-label="切换 Inspector 面板"
+          aria-controls={NODE_INSPECTOR_REGION_ID}
+          aria-expanded={!inspectorPaneLayout.collapsed}
+          onClick={handleToggleInspectorPane}
+          style={{
+            ...inspectorToggleButtonStyle,
+            right: inspectorPaneLayout.collapsed ? 12 : Math.max(12, inspectorPaneLayout.paneWidth - 120),
+          }}
+        >
+          {inspectorPaneLayout.collapsed ? "显示 Inspector" : "收起 Inspector"}
+        </button>
+      )}
+    />
+  );
 }
 
 const editorPaneStyle: CSSProperties = {
@@ -478,4 +652,27 @@ const issueItemStyle: CSSProperties = {
   color: "var(--status-error-text)",
   fontSize: 12,
   lineHeight: 1.5,
+};
+
+const inspectorToggleButtonStyle: CSSProperties = {
+  position: "absolute",
+  top: 10,
+  zIndex: 5,
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: "1px solid var(--border-input)",
+  background: "color-mix(in srgb, var(--bg-panel) 92%, transparent)",
+  color: "var(--text-primary)",
+  cursor: "pointer",
+  fontSize: 12,
+  whiteSpace: "nowrap",
+};
+
+const inspectorResizeHandleStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  zIndex: 4,
+  width: 6,
+  background: "transparent",
 };
