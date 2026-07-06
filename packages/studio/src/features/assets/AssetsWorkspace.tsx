@@ -57,12 +57,9 @@ export function AssetsWorkspace({
   // （如旧 flat audio）。用 ManifestSchema.safeParse 兜底——解析失败则用
   // EMPTY_MANIFEST，避免 Object.values(undefined) 崩溃。坏 manifest 的结构错误
   // 已由后端 validate_manifest_structure 进全局 projectReport，资产页只需保证不崩。
-  const parsedManifest = useMemo(() => {
-    if (draftManifest) return { success: true as const, data: draftManifest };
-    return ManifestSchema.safeParse(project.content.manifest);
-  }, [draftManifest, project.content.manifest]);
-  const manifest: Manifest = parsedManifest.success ? parsedManifest.data : EMPTY_MANIFEST;
-  const manifestInvalid = !parsedManifest.success;
+  const projectParsedManifest = useMemo(() => ManifestSchema.safeParse(project.content.manifest), [project.content.manifest]);
+  const manifest: Manifest = draftManifest ?? (projectParsedManifest.success ? projectParsedManifest.data : EMPTY_MANIFEST);
+  const manifestInvalid = !projectParsedManifest.success;
   const readOnly = !canMutateAssets(manifestInvalid);
   const isDirty = draftManifest !== null;
 
@@ -295,9 +292,20 @@ export function AssetsWorkspace({
       </div>
 
       {/* 草稿提示（角色编辑等本地未保存时） */}
-      {isDirty && (
-        <div style={draftHintStyle}>有未保存的改动…</div>
-      )}
+      <DraftManifestBanner
+        isDirty={isDirty}
+        canSave={!readOnly && !manifestInvalid}
+        onSave={() => void saveDraftManifest({
+          projectPath: project.path,
+          draftManifest,
+          expectedRevision: project.manifestRevision,
+          saveManifestFn: saveManifest,
+          onSaved,
+          setDraftManifest,
+          notify,
+        })}
+        onDiscard={() => discardDraftManifest(setDraftManifest)}
+      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
 
@@ -318,6 +326,41 @@ export function AssetsWorkspace({
 
 export function canMutateAssets(manifestInvalid: boolean): boolean {
   return !manifestInvalid;
+}
+
+export interface SaveDraftManifestParams {
+  projectPath: string;
+  draftManifest: Manifest | null;
+  expectedRevision?: FileRevision | null;
+  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<void>;
+  onSaved: () => void | Promise<void>;
+  setDraftManifest: (manifest: Manifest | null) => void;
+  notify: (toast: ToastInput) => void;
+}
+
+export async function saveDraftManifest({
+  projectPath,
+  draftManifest,
+  expectedRevision,
+  saveManifestFn,
+  onSaved,
+  setDraftManifest,
+  notify,
+}: SaveDraftManifestParams): Promise<void> {
+  if (!draftManifest) return;
+  await persistManifestWithFeedback({
+    projectPath,
+    next: draftManifest,
+    expectedRevision,
+    saveManifestFn,
+    onSaved,
+    setDraftManifest,
+    notify,
+  });
+}
+
+export function discardDraftManifest(setDraftManifest: (manifest: Manifest | null) => void): void {
+  setDraftManifest(null);
 }
 
 export interface PersistManifestWithFeedbackParams {
@@ -394,6 +437,32 @@ export function createAssetDeleteFailureToast(
 
 function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export interface DraftManifestBannerProps {
+  isDirty: boolean;
+  canSave: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+}
+
+export function DraftManifestBanner({ isDirty, canSave, onSave, onDiscard }: DraftManifestBannerProps) {
+  if (!isDirty) return null;
+  return (
+    <div style={draftBannerStyle}>
+      <div style={draftBannerTextStyle}>有未保存的改动…</div>
+      <div style={draftBannerActionsStyle}>
+        <button type="button" style={draftDiscardBtnStyle} onClick={onDiscard}>
+          放弃改动
+        </button>
+        {canSave && (
+          <button type="button" style={draftSaveBtnStyle} onClick={onSave}>
+            保存改动
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export interface DeleteAssetAndPruneManifestRefsParams {
@@ -631,16 +700,52 @@ const invalidBannerStyle: React.CSSProperties = {
   borderBottom: `1px solid var(--border-error)`,
 };
 
-const draftHintStyle: React.CSSProperties = {
+const draftBannerStyle: React.CSSProperties = {
   position: "absolute",
   bottom: 10,
   left: "50%",
   transform: "translateX(-50%)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexWrap: "wrap",
+  gap: 8,
   fontSize: 11,
   color: "var(--text-muted)",
   background: "var(--bg-app)",
-  padding: "3px 10px",
+  padding: "5px 10px",
   borderRadius: 6,
   border: `1px solid var(--border)`,
   zIndex: 30,
+  maxWidth: "calc(100% - 24px)",
+};
+
+const draftBannerTextStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+};
+
+const draftBannerActionsStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+};
+
+const draftDiscardBtnStyle: React.CSSProperties = {
+  fontSize: 12,
+  padding: "5px 10px",
+  borderRadius: 6,
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+};
+
+const draftSaveBtnStyle: React.CSSProperties = {
+  fontSize: 12,
+  padding: "5px 12px",
+  borderRadius: 6,
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-active)",
+  color: "var(--text-bright)",
+  cursor: "pointer",
 };
