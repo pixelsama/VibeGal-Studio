@@ -64,6 +64,42 @@
   --tag-bgm-text: #e0b676;
   --tag-choice-bg: #243f46;
   --tag-choice-text: #8ed6df;
+
+  /* ── 几何 token（与主题无关，深/浅色共用）──────────────────────────
+     这些是 UI 尺度的统一依据。新组件优先用 token 而非裸数值；
+     现有组件的内联数值会在 P3 逐步收敛过来，本块先落地、可立刻采用。
+     分档反映现状主流取值，轻微归并了 1px 级漂移（如 5/7 → 4/8）。 */
+
+  /* 圆角：xs 小徽标/tag · sm 按钮/输入 · md 卡片/节点 · lg 大弹窗 · pill 胶囊 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* 间距：4px 基准。space-N = N×4px，便于心算。 */
+  --space-1: 4px;   /* 图标内边距、紧凑 gap */
+  --space-2: 8px;   /* 按钮 padding-y、字段内间距 */
+  --space-3: 12px;  /* 面板内边距、字段组间距 */
+  --space-4: 16px;  /* 卡片/面板主内边距 */
+  --space-5: 20px;
+  --space-6: 24px;  /* 区块间距 */
+  --space-8: 32px;
+  --space-12: 48px; /* 页面级留白 */
+
+  /* 字号：归并现状 9–32px 到命名档。base=13 是正文主流。 */
+  --text-xs: 11px;    /* 标签、辅助说明 */
+  --text-sm: 12px;    /* 次要文案、meta */
+  --text-base: 13px;  /* 正文（现状最高频） */
+  --text-md: 14px;    /* 输入框、强调正文 */
+  --text-lg: 16px;    /* 小标题、弹窗头 */
+  --text-xl: 18px;    /* 导航箭头等图标位字号 */
+  --text-2xl: 24px;   /* 区块标题 */
+  --text-display: 32px; /* 页面大标题 */
+
+  /* 控件高度：收敛到两档。sm=标准图标按钮，lg=指示器/弹窗等稍大控件。 */
+  --control-sm: 28px;
+  --control-lg: 32px;
 }
 
 [data-theme="light"] {
@@ -146,12 +182,12 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 6px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease,
@@ -236,15 +272,15 @@ button:focus-visible {
 .gs-tab {
   display: inline-flex;
   align-items: center;
-  height: 30px;
-  padding: 0 14px;
+  height: var(--control-lg);
+  padding: 0 var(--space-3);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--text-base);
   transition: background-color 120ms ease, color 120ms ease;
 }
 .gs-tab:hover:not(.gs-tab--active) {
