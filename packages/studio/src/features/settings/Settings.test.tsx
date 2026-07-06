@@ -171,8 +171,8 @@ describe("Settings", () => {
     );
     const installButton = findButtonByText(tree, "已安装");
     expect(installButton?.props.disabled).toBe(true);
-    expect(installButton?.props.style?.cursor).toBe("not-allowed");
-    expect(installButton?.props.style?.opacity).toBeLessThan(1);
+    // 禁用态视觉由共享 Button 的 .gs-btn:disabled 规则承担（opacity/cursor 在 CSS 里）
+    expect(installButton?.props.className).toContain("gs-btn");
   });
 });
 
@@ -195,7 +195,7 @@ function resolveFunctionComponents(node: ReactNode): ReactNode {
   };
 }
 
-function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void; disabled?: boolean; style?: React.CSSProperties } } | null {
+function findButtonByText(node: ReactNode, text: string): { props: { onClick?: () => void; disabled?: boolean; style?: React.CSSProperties; className?: string } } | null {
   if (Array.isArray(node)) {
     for (const child of node) {
       const found = findButtonByText(child, text);

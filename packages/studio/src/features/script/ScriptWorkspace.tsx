@@ -7,7 +7,7 @@ import { GraphCanvas } from "./GraphCanvas";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
 import { NodeOutline } from "./NodeOutline";
-import { ConfirmDialog, PromptDialog } from "./Dialogs";
+import { ConfirmDialog, PromptDialog } from "../common/Dialogs";
 import {
   addNode,
   connectNodes,

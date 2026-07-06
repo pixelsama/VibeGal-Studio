@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppSettings, ThemeMode } from "../../lib/theme";
 import { t } from "../../lib/i18n";
+import { Button, IconButton } from "../common/Button";
 import {
   getCliToolStatus,
   installCliTool,
@@ -99,7 +100,7 @@ export function Settings({
       {/* 顶部导航条（自定义拖拽区） */}
       <header data-tauri-drag-region style={headerStyle}>
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <NavBtn onClick={onBack ?? noop} disabled={!canGoBack || !onBack} label={t("navigation.back")} ariaLabel={t("navigation.back")}>‹</NavBtn>
+          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title={t("navigation.back")} aria-label={t("navigation.back")} style={{ fontSize: 16 }}>‹</IconButton>
         </div>
         <div data-tauri-drag-region style={titleGroupStyle}>
           <span style={titleStyle}>{t("settings.title")}</span>
@@ -197,30 +198,15 @@ export function CommandLineToolSection({
         {error && <p role="alert" style={cliIssueStyle}>{error}</p>}
         {message && <p role="status" style={cliMessageStyle}>{message}</p>}
         <div style={cliActionRowStyle}>
-          <button
-            type="button"
-            onClick={onInstall}
-            disabled={installDisabled}
-            style={installDisabled ? disabledPrimaryActionStyle : primaryActionStyle}
-          >
+          <Button variant="primary" onClick={onInstall} disabled={installDisabled}>
             {status?.installed ? "已安装" : "安装 galstudio-cli"}
-          </button>
-          <button
-            type="button"
-            onClick={onUninstall}
-            disabled={busy || !status?.installed}
-            style={secondaryActionStyle}
-          >
+          </Button>
+          <Button variant="secondary" onClick={onUninstall} disabled={busy || !status?.installed}>
             卸载
-          </button>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={busy}
-            style={secondaryActionStyle}
-          >
+          </Button>
+          <Button variant="secondary" onClick={onRefresh} disabled={busy}>
             重新检查
-          </button>
+          </Button>
         </div>
       </div>
     </section>
@@ -265,44 +251,6 @@ function ThemeCard({
 }
 
 function noop() {}
-
-function NavBtn({
-  children,
-  onClick,
-  disabled,
-  label,
-  ariaLabel,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  label: string;
-  ariaLabel: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      title={label}
-      style={{
-        width: 26,
-        height: 26,
-        borderRadius: 6,
-        border: "1px solid var(--border)",
-        background: "transparent",
-        color: "var(--text-secondary)",
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.4 : 1,
-        fontSize: 16,
-        lineHeight: 1,
-      }}
-    >
-      {children}
-    </button>
-  );
-}
 
 // ── 样式 ──
 
@@ -509,28 +457,4 @@ const cliActionRowStyle: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   gap: 8,
-};
-
-const primaryActionStyle: React.CSSProperties = {
-  padding: "7px 12px",
-  borderRadius: 6,
-  border: "1px solid var(--accent)",
-  background: "var(--accent)",
-  color: "white",
-  cursor: "pointer",
-};
-
-const disabledPrimaryActionStyle: React.CSSProperties = {
-  ...primaryActionStyle,
-  opacity: 0.48,
-  cursor: "not-allowed",
-};
-
-const secondaryActionStyle: React.CSSProperties = {
-  padding: "7px 12px",
-  borderRadius: 6,
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-inset)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
 };

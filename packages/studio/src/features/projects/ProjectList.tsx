@@ -4,6 +4,8 @@
 import { useCallback, useState } from "react";
 import { createProject, initializeProject, openProject, pickDirectory } from "../../lib/tauri";
 import type { ProjectData } from "../../lib/types";
+import { Button, IconButton } from "../common/Button";
+import { ConfirmDialog } from "../common/Dialogs";
 
 interface Props {
   onOpen: (project: ProjectData) => void;
@@ -17,6 +19,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   const [error, setError] = useState<string | null>(null);
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
+  const [initTarget, setInitTarget] = useState<string | null>(null);
 
   const openDirectory = useCallback(async (dir: string) => {
     const target = dir.trim();
@@ -30,31 +33,29 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
       onOpen(await openProject(target));
     } catch (e) {
       const message = String(e);
-      if (!message.includes("缺少 gal.project.json")) {
+      if (message.includes("缺少 gal.project.json")) {
+        setInitTarget(target);
+      } else {
         setError(message);
-        return;
-      }
-
-      const confirmed = window.confirm(
-        [
-          "这个目录还不是 GalStudio 项目。",
-          "",
-          "是否在此目录中添加 GalStudio 工程文件？",
-          "将创建 gal.project.json、content/ 和 renderers/default/。",
-          "现有文件不会被删除或覆盖。",
-        ].join("\n"),
-      );
-      if (!confirmed) return;
-
-      try {
-        onOpen(await initializeProject(target));
-      } catch (initError) {
-        setError(String(initError));
       }
     } finally {
       setLoading(false);
     }
   }, [onOpen]);
+
+  const confirmInitialize = useCallback(async () => {
+    if (!initTarget) return;
+    setLoading(true);
+    setError(null);
+    try {
+      onOpen(await initializeProject(initTarget));
+    } catch (initError) {
+      setError(String(initError));
+    } finally {
+      setLoading(false);
+      setInitTarget(null);
+    }
+  }, [initTarget, onOpen]);
 
   const handlePickProject = async () => {
     const dir = await pickDirectory();
@@ -89,10 +90,10 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   return (
     <div style={pageStyle}>
       <div style={navOverlayStyle}>
-        <NavButton disabled label="后退" ariaLabel="后退">‹</NavButton>
-        <NavButton onClick={onForward} disabled={!canGoForward} label="前进到上一个项目工作台" ariaLabel="前进">›</NavButton>
+        <IconButton disabled title="后退" aria-label="后退" style={navGlyphStyle}>‹</IconButton>
+        <IconButton onClick={onForward} disabled={!canGoForward} title="前进到上一个项目工作台" aria-label="前进" style={navGlyphStyle}>›</IconButton>
         {onOpenSettings && (
-          <NavButton onClick={onOpenSettings} label="设置" ariaLabel="设置">⚙</NavButton>
+          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置" style={{ fontSize: 15 }}>⚙</IconButton>
         )}
       </div>
 
@@ -103,8 +104,8 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
 
       <section style={sectionStyle}>
         <div style={workspaceRow}>
-          <button onClick={handlePickProject} style={btnStyle} disabled={loading}>打开项目…</button>
-          <button onClick={handleNew} style={primaryBtn} disabled={loading}>+ 新建项目</button>
+          <Button variant="secondary" onClick={handlePickProject} disabled={loading}>打开项目…</Button>
+          <Button variant="primary" onClick={handleNew} disabled={loading}>+ 新建项目</Button>
         </div>
 
         {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
@@ -129,9 +130,9 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
             />
             {error && <div style={modalErrorStyle}>{error}</div>}
             <div style={modalActionsStyle}>
-              <button
+              <Button
                 type="button"
-                style={btnStyle}
+                variant="secondary"
                 disabled={loading}
                 onClick={() => {
                   setNewProjectParent(null);
@@ -140,34 +141,29 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
                 }}
               >
                 取消
-              </button>
-              <button type="submit" style={primaryBtn} disabled={!newProjectName.trim() || loading}>创建</button>
+              </Button>
+              <Button type="submit" variant="primary" disabled={!newProjectName.trim() || loading}>创建</Button>
             </div>
           </form>
         </div>
       )}
-    </div>
-  );
-}
 
-function NavButton({ onClick, disabled, children, label, ariaLabel }: {
-  onClick?: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-  label: string;
-  ariaLabel: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      title={label}
-      style={disabled ? { ...navButtonStyle, opacity: 0.35, cursor: "not-allowed" } : navButtonStyle}
-    >
-      {children}
-    </button>
+      {initTarget && (
+        <ConfirmDialog
+          message={
+            <>
+              <div>这个目录还不是 GalStudio 项目。</div>
+              <div style={{ marginTop: 10 }}>
+                是否在此目录中添加 GalStudio 工程文件？将创建 gal.project.json、content/ 和 renderers/default/。现有文件不会被删除或覆盖。
+              </div>
+            </>
+          }
+          confirmLabel="添加工程文件"
+          onConfirm={() => void confirmInitialize()}
+          onClose={() => setInitTarget(null)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -189,19 +185,9 @@ const navOverlayStyle: React.CSSProperties = {
   gap: 4,
   zIndex: 10,
 };
-const navButtonStyle: React.CSSProperties = {
-  width: 28,
-  height: 28,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "transparent",
-  border: "1px solid var(--border-strong)",
-  borderRadius: 6,
-  color: "var(--text-secondary)",
+const navGlyphStyle: React.CSSProperties = {
   fontSize: 18,
   lineHeight: 1,
-  cursor: "pointer",
 };
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",
@@ -234,13 +220,6 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
 };
 const modalActionsStyle: React.CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 };
-const btnStyle: React.CSSProperties = {
-  padding: "8px 14px", background: "var(--bg-hover)", border: "1px solid var(--border-strong)",
-  borderRadius: 6, color: "var(--text-primary)", cursor: "pointer", fontSize: 14,
-};
-const primaryBtn: React.CSSProperties = {
-  ...btnStyle, background: "var(--accent)", borderColor: "var(--accent)", color: "var(--text-on-accent)",
-};
 const errorStyle: React.CSSProperties = {
   padding: "10px 14px", background: "var(--bg-error-soft)", border: "1px solid var(--border-error)",
   borderRadius: 6, color: "var(--status-error-text)", fontSize: 13, marginBottom: 16, whiteSpace: "pre-wrap",

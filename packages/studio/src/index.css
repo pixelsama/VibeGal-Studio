@@ -139,3 +139,119 @@ body,
   background: var(--bg-app);
   color: var(--text-primary);
 }
+
+/* ── 按钮组件（features/common/Button.tsx） ──────────────────────────
+   颜色 / 悬停 / 按下 / 禁用统一在此；内联 style 只负责特殊布局。 */
+.gs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease,
+    color 120ms ease, filter 120ms ease, opacity 120ms ease;
+  user-select: none;
+}
+.gs-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 方形图标按钮：宽高由组件按 size 内联指定 */
+.gs-icon-btn {
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* primary：强调色实心 */
+.gs-btn--primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.gs-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.gs-btn--primary:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* danger：危险实心 */
+.gs-btn--danger {
+  background-color: var(--destructive);
+  border-color: var(--destructive);
+  color: var(--text-on-destructive);
+  font-weight: 600;
+}
+.gs-btn--danger:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.gs-btn--danger:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* secondary：面板底 + 边框 */
+.gs-btn--secondary {
+  background-color: var(--bg-panel);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.gs-btn--secondary:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--border-input);
+}
+.gs-btn--secondary:active:not(:disabled) {
+  background-color: var(--bg-active);
+}
+
+/* ghost：透明底 + 边框（导航 / 图标按钮） */
+.gs-btn--ghost {
+  background-color: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+.gs-btn--ghost:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+.gs-btn--ghost:active:not(:disabled) {
+  background-color: var(--bg-active);
+}
+
+/* 键盘焦点环：组件按钮 + 全局兜底（未迁移的原生 button 也可见焦点） */
+.gs-btn:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+}
+
+/* ── 顶部工作台切换标签（Workspace） ── */
+.gs-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gs-tab:hover:not(.gs-tab--active) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.gs-tab--active {
+  background: var(--bg-hover);
+  color: var(--accent-bright);
+}
