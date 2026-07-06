@@ -11,6 +11,7 @@
  *   - 孤儿（磁盘有、manifest 无）：红色边框 + 未登记角标 + 登记按钮
  *   - 悬空（manifest 有、磁盘无）：占位卡片 + 文件缺失（由 DanglingCard 渲染，不走本组件）
  */
+import { FileText, TriangleAlert } from "lucide-react";
 import type { AssetEntry } from "../../lib/types";
 import { baseName, previewKind, resolveAssetUrl } from "./assetPreview";
 import { AssetAudioPreview } from "./AssetAudioPreview";
@@ -62,7 +63,11 @@ export function AssetCard({
           />
         )}
         {kind === "video" && <video src={url} controls style={videoStyle} />}
-        {kind === "other" && <span style={otherPreviewStyle}>📄</span>}
+        {kind === "other" && (
+          <span style={otherPreviewStyle}>
+            <FileText size={28} />
+          </span>
+        )}
         {isOrphan && <span style={orphanBadgeStyle}>未登记</span>}
       </div>
       <div style={metaStyle}>
@@ -113,7 +118,9 @@ export function DanglingCard({
   return (
     <div style={{ ...cardStyle, borderColor: "var(--border-error)", borderStyle: "dashed" }}>
       <div style={{ ...previewStyle, background: "var(--bg-error-soft)" }}>
-        <span style={{ ...otherPreviewStyle, color: "var(--status-error-text)" }}>⚠</span>
+        <span style={{ ...otherPreviewStyle, color: "var(--status-error-text)" }}>
+          <TriangleAlert size={20} />
+        </span>
       </div>
       <div style={metaStyle}>
         <span style={nameStyle} title={path}>{id}</span>

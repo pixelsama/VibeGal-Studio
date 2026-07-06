@@ -172,7 +172,7 @@ describe("Workspace renderer chrome", () => {
     expect(html).not.toContain(">Assets<");
     expect(html).not.toContain(">设置<");
     expect(html).toContain('aria-label="设置"');
-    expect(html).toContain("⚙");
+    expect(html).toContain("lucide-settings");
     expect(html).toContain("项目设置内容");
   });
 

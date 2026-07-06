@@ -2,6 +2,7 @@
  * 项目入口页 —— 打开项目目录，或在父目录下新建项目。
  */
 import { useCallback, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, Settings as SettingsIcon } from "lucide-react";
 import { createProject, initializeProject, openProject, pickDirectory } from "../../lib/tauri";
 import type { ProjectData } from "../../lib/types";
 import { Button, IconButton } from "../common/Button";
@@ -90,10 +91,16 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   return (
     <div style={pageStyle}>
       <div style={navOverlayStyle}>
-        <IconButton disabled title="后退" aria-label="后退" style={navGlyphStyle}>‹</IconButton>
-        <IconButton onClick={onForward} disabled={!canGoForward} title="前进到上一个项目工作台" aria-label="前进" style={navGlyphStyle}>›</IconButton>
+        <IconButton disabled title="后退" aria-label="后退">
+          <ChevronLeft size={18} />
+        </IconButton>
+        <IconButton onClick={onForward} disabled={!canGoForward} title="前进到上一个项目工作台" aria-label="前进">
+          <ChevronRight size={18} />
+        </IconButton>
         {onOpenSettings && (
-          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置" style={{ fontSize: 15 }}>⚙</IconButton>
+          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置">
+            <SettingsIcon size={15} />
+          </IconButton>
         )}
       </div>
 
@@ -105,7 +112,10 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
       <section style={sectionStyle}>
         <div style={workspaceRow}>
           <Button variant="secondary" onClick={handlePickProject} disabled={loading}>打开项目…</Button>
-          <Button variant="primary" onClick={handleNew} disabled={loading}>+ 新建项目</Button>
+          <Button variant="primary" onClick={handleNew} disabled={loading}>
+            <Plus size={15} />
+            新建项目
+          </Button>
         </div>
 
         {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
@@ -184,10 +194,6 @@ const navOverlayStyle: React.CSSProperties = {
   display: "flex",
   gap: 4,
   zIndex: 10,
-};
-const navGlyphStyle: React.CSSProperties = {
-  fontSize: 18,
-  lineHeight: 1,
 };
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",

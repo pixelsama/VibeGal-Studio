@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Check, X } from "lucide-react";
 
 /** 通用问题项。nodeId/edgeId 仅供图结构问题定位使用。 */
 export interface StatusIssue {
@@ -175,12 +176,15 @@ export function StatusDialog({
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label={`关闭 ${dialogTitle}`} style={closeButtonStyle}>
-            ×
+            <X size={14} />
           </button>
         </div>
         <div style={dialogContentStyle}>
           {issues.length === 0 ? (
-            <div style={okStyle}>✓ {emptyDescription ?? okLabel}</div>
+            <div style={{ ...okStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Check size={14} />
+              {emptyDescription ?? okLabel}
+            </div>
           ) : (
             groups.map((group) => (
               <IssueGroup

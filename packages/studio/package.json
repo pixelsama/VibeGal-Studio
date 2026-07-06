@@ -12,11 +12,12 @@
     "postinstall": "node -e \"require('fs').copyFileSync(require.resolve('esbuild-wasm/esbuild.wasm'),'public/esbuild.wasm')\" || node scripts/copy-wasm.mjs"
   },
   "dependencies": {
-    "@xyflow/react": "^12.9.3",
     "@galstudio/engine": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "@xyflow/react": "^12.9.3",
     "esbuild-wasm": "^0.28.1",
+    "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zod": "^4.4.3"

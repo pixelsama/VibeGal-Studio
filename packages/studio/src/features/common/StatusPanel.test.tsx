@@ -117,7 +117,7 @@ describe("StatusDialog (通用弹窗)", () => {
         onClose={() => {}}
       />,
     );
-    expect(html).toContain("✓");
+    expect(html).toContain("lucide-check");
     expect(html).toContain("资产一致");
   });
 });

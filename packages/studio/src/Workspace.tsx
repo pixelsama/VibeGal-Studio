@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
 import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "./lib/types";
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
@@ -313,8 +314,12 @@ export function Workspace({
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <IconButton onClick={onBack} disabled={!canGoBack} title="后退" aria-label="后退" style={navGlyphStyle}>‹</IconButton>
-          <IconButton onClick={onForward} disabled={!canGoForward} title="前进" aria-label="前进" style={navGlyphStyle}>›</IconButton>
+          <IconButton onClick={onBack} disabled={!canGoBack} title="后退" aria-label="后退">
+            <ChevronLeft size={18} />
+          </IconButton>
+          <IconButton onClick={onForward} disabled={!canGoForward} title="前进" aria-label="前进">
+            <ChevronRight size={18} />
+          </IconButton>
         </div>
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
@@ -331,7 +336,9 @@ export function Workspace({
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle}>当前渲染层</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
-          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置" style={{ fontSize: 15 }}>⚙</IconButton>
+          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置">
+            <SettingsIcon size={15} />
+          </IconButton>
         </div>
       </header>
 
@@ -516,10 +523,6 @@ const centerGroupStyle: React.CSSProperties = {
   transform: "translate(-50%, -50%)",
   display: "flex",
   gap: 2,
-};
-const navGlyphStyle: React.CSSProperties = {
-  fontSize: 18,
-  lineHeight: 1,
 };
 const projectNameStyle: React.CSSProperties = {
   fontSize: 12,

@@ -8,6 +8,7 @@
  * 所有改动通过 onChange(manifest) 上抛，由父组件统一 saveManifest 持久化。
  */
 import { useState } from "react";
+import { X } from "lucide-react";
 import type { Manifest, ManifestCharacter } from "../../lib/types";
 import { importAsset, pickAssetFiles } from "../../lib/tauri";
 import type { ToastInput } from "../common/Toast";
@@ -379,7 +380,7 @@ function SpriteExprRow({
           title="删除表情"
           disabled={disabled}
         >
-          ✕
+          <X size={14} />
         </button>
       </div>
     </div>

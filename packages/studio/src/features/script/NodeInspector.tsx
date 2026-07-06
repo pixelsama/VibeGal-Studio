@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Check, TriangleAlert } from "lucide-react";
 import type { GraphEdge, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNode, findNodeData, summarizeNodeConnections } from "./graphMapping";
 
@@ -69,7 +70,10 @@ export function NodeInspector({
               style={titleInputStyle}
             />
           </label>
-          <div style={statusTextStyle(hasContent)}>{hasContent ? "✓ 已有内容" : "⚠ 文件缺失"}</div>
+          <div style={{ ...statusTextStyle(hasContent), display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {hasContent ? <Check size={14} /> : <TriangleAlert size={14} />}
+            {hasContent ? "已有内容" : "文件缺失"}
+          </div>
         </section>
 
         <section style={sectionStyle}>

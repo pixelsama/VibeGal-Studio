@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "lucide-react";
 import { deleteFile, saveFile, saveGraph, saveGraphPositions } from "../../lib/tauri";
 import type { GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
@@ -397,8 +398,9 @@ export function ScriptWorkspace({
             <div style={canvasPaneStyle}>
               <div style={canvasColumnStyle}>
                 <div style={toolbarStyle}>
-                  <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={primaryButtonStyle}>
-                    + 新建节点
+                  <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={{ ...primaryButtonStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <Plus size={15} />
+                    新建节点
                   </button>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (

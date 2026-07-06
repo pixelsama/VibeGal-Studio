@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import type { AppSettings, ThemeMode } from "../../lib/theme";
 import { Button, IconButton } from "../common/Button";
 import {
@@ -99,7 +100,9 @@ export function Settings({
       {/* 顶部导航条（自定义拖拽区） */}
       <header data-tauri-drag-region style={headerStyle}>
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title="后退" aria-label="后退" style={{ fontSize: 16 }}>‹</IconButton>
+          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title="后退" aria-label="后退">
+            <ChevronLeft size={16} />
+          </IconButton>
         </div>
         <div data-tauri-drag-region style={titleGroupStyle}>
           <span style={titleStyle}>设置</span>
