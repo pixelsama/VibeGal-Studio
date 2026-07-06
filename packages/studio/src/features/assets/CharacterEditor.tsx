@@ -10,16 +10,18 @@
 import { useState } from "react";
 import type { Manifest, ManifestCharacter } from "../../lib/types";
 import { importAsset, pickAssetFiles } from "../../lib/tauri";
+import type { ToastInput } from "../common/Toast";
 import { AssetImagePreview } from "./AssetImagePreview";
 
 interface CharacterEditorProps {
   projectPath: string;
   manifest: Manifest;
   onChange: (manifest: Manifest) => void;
+  onFeedback?: (toast: ToastInput) => void;
   disabled?: boolean;
 }
 
-export function CharacterEditor({ projectPath, manifest, onChange, disabled = false }: CharacterEditorProps) {
+export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, disabled = false }: CharacterEditorProps) {
   const characterIds = Object.keys(manifest.characters);
   const [selectedId, setSelectedId] = useState<string | null>(characterIds[0] ?? null);
   const [newExprDraft, setNewExprDraft] = useState<Record<string, string>>({});
@@ -83,7 +85,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, disabled = fa
       updateCharacter(id, { sprites: { ...char.sprites, [normalizedExpr]: destRel } });
       setNewExprDraft((d) => ({ ...d, [id]: "" }));
     } catch (e) {
-      console.warn("导入角色表情失败:", e);
+      onFeedback?.(createCharacterSpriteImportFailureToast(fileName, e));
     } finally {
       setBusy(false);
     }
@@ -248,6 +250,18 @@ export function CharacterEditor({ projectPath, manifest, onChange, disabled = fa
       </div>
     </div>
   );
+}
+
+export function createCharacterSpriteImportFailureToast(fileName: string, error: unknown): ToastInput {
+  return {
+    kind: "error",
+    message: "导入角色表情失败",
+    detail: `${fileName}\n${formatUnknownError(error)}`,
+  };
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /** 中间舞台：渲染选中角色的 default sprite。 */

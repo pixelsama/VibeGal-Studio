@@ -21,6 +21,8 @@ import {
   saveManifest,
 } from "../../lib/tauri";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
+import { ConfirmDialog } from "../common/Dialogs";
+import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
 import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
 import { AssetsToolbar } from "./AssetsToolbar";
@@ -48,6 +50,8 @@ export function AssetsWorkspace({
   const [section, setSection] = useState<AssetSection>("overview");
   const [search, setSearch] = useState("");
   const [draftManifest, setDraftManifest] = useState<Manifest | null>(null);
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // 防崩：project.content.manifest 类型声明为 Manifest，但运行时可能是坏数据
   // （如旧 flat audio）。用 ManifestSchema.safeParse 兜底——解析失败则用
@@ -63,6 +67,10 @@ export function AssetsWorkspace({
   const isDirty = draftManifest !== null;
 
   const view = useAssets(project.path, refreshKey, manifest, project.assetReport);
+
+  function notify(input: ToastInput) {
+    setToast({ id: Date.now(), ...input });
+  }
 
   // 磁盘路径 → 被多少 manifest 条目引用
   const refCountByPath = useMemo(() => countRefs(manifest), [manifest]);
@@ -111,18 +119,30 @@ export function AssetsWorkspace({
     }
 
     // 自动登记到 manifest
+    let manifestSaveError: unknown = null;
     if (newPaths.length > 0) {
       const next = applyAssetRegistrations(manifest, newPaths);
       try {
         await saveManifest(project.path, next, project.manifestRevision);
         setDraftManifest(null);
       } catch (e) {
-        console.warn("saveManifest 失败:", e);
+        manifestSaveError = e;
+        setDraftManifest(next);
       }
     }
 
-    if (errors.length > 0) {
-      console.warn("部分导入失败:", errors.join("; "));
+    if (manifestSaveError) {
+      const failure = createManifestSaveFailureToast(manifestSaveError);
+      notify({
+        ...failure,
+        detail: errors.length > 0
+          ? `${failure.detail}\n\n同时有 ${errors.length} 个资源导入失败：\n${errors.join("\n")}`
+          : failure.detail,
+      });
+    } else if (errors.length > 0) {
+      notify(createImportFailureToast(errors, newPaths.length));
+    } else if (newPaths.length > 0) {
+      notify({ kind: "success", message: `已导入 ${newPaths.length} 个资源` });
     }
     await onSaved();
   }
@@ -141,11 +161,11 @@ export function AssetsWorkspace({
       deleteAssetFn: deleteAsset,
       saveManifestFn: saveManifest,
     });
-    if (!result.deleted) {
-      console.warn("删除资产失败:", result.error);
-    } else if (result.manifestSaveFailed) {
-      console.warn("更新 manifest 失败:", result.error);
-    } else if (result.manifestSaved) {
+    const failureToast = createAssetDeleteFailureToast(result, relPath);
+    if (failureToast) {
+      notify(failureToast);
+    }
+    if (result.manifestSaved) {
       setDraftManifest(null);
     }
     await onSaved();
@@ -175,27 +195,31 @@ export function AssetsWorkspace({
     await persistManifest(removeDanglingRefs(manifest, filteredDangling.map((entry) => entry.source)));
   }
 
-  async function handleDeleteAllOrphans() {
+  function handleDeleteAllOrphans() {
     if (readOnly) return;
     const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
     if (candidates.length === 0) return;
-    const confirmed = window.confirm(`确定删除当前筛选下的 ${candidates.length} 个孤儿资源？`);
-    if (!confirmed) return;
-    for (const entry of candidates) {
-      await handleDelete(entry.relPath, entry.revision);
-    }
+    setConfirm({
+      message: `确定删除当前筛选下的 ${candidates.length} 个孤儿资源？`,
+      onConfirm: async () => {
+        for (const entry of candidates) {
+          await handleDelete(entry.relPath, entry.revision);
+        }
+      },
+    });
   }
 
   async function persistManifest(next: Manifest) {
     if (readOnly) return;
-    try {
-      await saveManifest(project.path, next, project.manifestRevision);
-      setDraftManifest(null);
-      await onSaved();
-    } catch (e) {
-      console.warn("saveManifest 失败:", e);
-      setDraftManifest(next);
-    }
+    await persistManifestWithFeedback({
+      projectPath: project.path,
+      next,
+      expectedRevision: project.manifestRevision,
+      saveManifestFn: saveManifest,
+      onSaved,
+      setDraftManifest,
+      notify,
+    });
   }
 
   const totalShown = filteredDisk.length + filteredDangling.length;
@@ -223,6 +247,7 @@ export function AssetsWorkspace({
             manifest={manifest}
             disabled={readOnly}
             onChange={(m) => void persistManifest(m)}
+            onFeedback={notify}
           />
         ) : (
           <>
@@ -273,6 +298,18 @@ export function AssetsWorkspace({
       {isDirty && (
         <div style={draftHintStyle}>有未保存的改动…</div>
       )}
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {confirm && (
+        <ConfirmDialog
+          message={confirm.message}
+          danger
+          confirmLabel="删除"
+          onConfirm={confirm.onConfirm}
+          onClose={() => setConfirm(null)}
+        />
+      )}
     </div>
   );
 }
@@ -281,6 +318,82 @@ export function AssetsWorkspace({
 
 export function canMutateAssets(manifestInvalid: boolean): boolean {
   return !manifestInvalid;
+}
+
+export interface PersistManifestWithFeedbackParams {
+  projectPath: string;
+  next: Manifest;
+  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<void>;
+  onSaved: () => void | Promise<void>;
+  setDraftManifest: (manifest: Manifest | null) => void;
+  notify: (toast: ToastInput) => void;
+  expectedRevision?: FileRevision | null;
+}
+
+export async function persistManifestWithFeedback({
+  projectPath,
+  next,
+  expectedRevision,
+  saveManifestFn,
+  onSaved,
+  setDraftManifest,
+  notify,
+}: PersistManifestWithFeedbackParams): Promise<void> {
+  try {
+    await saveManifestFn(projectPath, next, expectedRevision);
+    setDraftManifest(null);
+    await onSaved();
+  } catch (error) {
+    setDraftManifest(next);
+    notify(createManifestSaveFailureToast(error));
+  }
+}
+
+export function createManifestSaveFailureToast(error: unknown): ToastInput {
+  return {
+    kind: "error",
+    message: "保存 manifest 失败",
+    detail: `${formatUnknownError(error)}。当前草稿已保留。`,
+  };
+}
+
+export function createImportFailureToast(errors: string[], importedCount: number): ToastInput {
+  const failureCount = errors.length;
+  return {
+    kind: "error",
+    message:
+      importedCount > 0
+        ? `已导入 ${importedCount} 个资源，${failureCount} 个失败`
+        : `导入失败：${failureCount} 个资源失败`,
+    detail: errors.join("\n"),
+  };
+}
+
+export function createAssetDeleteFailureToast(
+  result: DeleteAssetAndPruneManifestRefsResult,
+  relPath: string,
+): ToastInput | null {
+  if (!result.deleted) {
+    return {
+      kind: "error",
+      message: "删除资产失败",
+      detail: `${relPath}\n${formatUnknownError(result.error)}`,
+    };
+  }
+
+  if (result.manifestSaveFailed) {
+    return {
+      kind: "error",
+      message: "资产已删除，但 manifest 更新失败",
+      detail: `${relPath}\n${formatUnknownError(result.error)}。请刷新项目后检查悬空引用。`,
+    };
+  }
+
+  return null;
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export interface DeleteAssetAndPruneManifestRefsParams {

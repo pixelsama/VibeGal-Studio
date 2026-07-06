@@ -8,18 +8,27 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { AssetCard, DanglingCard } from "./AssetCard";
 import { AssetsToolbar } from "./AssetsToolbar";
-import { CharacterEditor, safeAssetFileStem, spriteExprNameForImport } from "./CharacterEditor";
+import {
+  CharacterEditor,
+  createCharacterSpriteImportFailureToast,
+  safeAssetFileStem,
+  spriteExprNameForImport,
+} from "./CharacterEditor";
 import {
   AssetsWorkspace,
   applyAssetRegistrations,
   canMutateAssets,
   countRefs,
+  createImportFailureToast,
+  createAssetDeleteFailureToast,
   deleteAssetAndPruneManifestRefs,
+  persistManifestWithFeedback,
   registerOrphanAssets,
   removeDanglingRefs,
   removeAllRefsToPath,
   removeManifestEntry,
 } from "./AssetsWorkspace";
+import type { ToastInput } from "../common/Toast";
 import type { FileRevision, Manifest, ProjectData } from "../../lib/types";
 
 const base: Manifest = {
@@ -211,6 +220,88 @@ describe("asset mutation guards", () => {
     expect(savedManifest?.backgrounds.sky).toBeUndefined();
     expect(deletedRevision).toBe(assetRevision);
     expect(savedRevision).toBe(manifestRevision);
+  });
+});
+
+describe("asset workspace feedback", () => {
+  it("保存 manifest 失败时保留草稿并显示可见错误反馈", async () => {
+    const next: Manifest = {
+      ...base,
+      backgrounds: { ...base.backgrounds, night: "assets/backgrounds/night.png" },
+    };
+    let draft: Manifest | null = null;
+    let toast: ToastInput | null = null;
+    let refreshed = false;
+
+    await persistManifestWithFeedback({
+      projectPath: "/project",
+      next,
+      expectedRevision: { relPath: "content/manifest.json", mtimeMs: 1, size: 2 },
+      saveManifestFn: async () => {
+        throw new Error("revision conflict");
+      },
+      onSaved: async () => {
+        refreshed = true;
+      },
+      setDraftManifest: (manifest) => {
+        draft = manifest;
+      },
+      notify: (message) => {
+        toast = message;
+      },
+    });
+
+    expect(draft).toBe(next);
+    expect(refreshed).toBe(false);
+    expect(toast?.kind).toBe("error");
+    expect(toast?.message).toContain("保存 manifest 失败");
+    expect(toast?.detail).toContain("revision conflict");
+    expect(toast?.detail).toContain("当前草稿已保留");
+  });
+
+  it("把导入部分失败转换成用户可见错误反馈", () => {
+    const toast = createImportFailureToast([
+      "bad.png: permission denied",
+      "missing.png: not found",
+    ], 1);
+
+    expect(toast.kind).toBe("error");
+    expect(toast.message).toBe("已导入 1 个资源，2 个失败");
+    expect(toast.detail).toContain("bad.png: permission denied");
+    expect(toast.detail).toContain("missing.png: not found");
+  });
+
+  it("把删除资产失败转换成用户可见错误反馈", () => {
+    const toast = createAssetDeleteFailureToast(
+      { deleted: false, manifestSaved: false, manifestSaveFailed: false, error: new Error("permission denied") },
+      "assets/backgrounds/sky.png",
+    );
+
+    expect(toast?.kind).toBe("error");
+    expect(toast?.message).toBe("删除资产失败");
+    expect(toast?.detail).toContain("assets/backgrounds/sky.png");
+    expect(toast?.detail).toContain("permission denied");
+  });
+
+  it("把删除后 manifest 保存失败转换成用户可见错误反馈", () => {
+    const toast = createAssetDeleteFailureToast(
+      { deleted: true, manifestSaved: false, manifestSaveFailed: true, error: new Error("revision conflict") },
+      "assets/backgrounds/sky.png",
+    );
+
+    expect(toast?.kind).toBe("error");
+    expect(toast?.message).toBe("资产已删除，但 manifest 更新失败");
+    expect(toast?.detail).toContain("assets/backgrounds/sky.png");
+    expect(toast?.detail).toContain("revision conflict");
+  });
+
+  it("把角色表情导入失败转换成用户可见错误反馈", () => {
+    const toast = createCharacterSpriteImportFailureToast("hero.png", new Error("permission denied"));
+
+    expect(toast.kind).toBe("error");
+    expect(toast.message).toBe("导入角色表情失败");
+    expect(toast.detail).toContain("hero.png");
+    expect(toast.detail).toContain("permission denied");
   });
 });
 

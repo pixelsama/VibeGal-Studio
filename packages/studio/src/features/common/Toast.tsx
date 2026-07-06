@@ -1,0 +1,143 @@
+import { useEffect } from "react";
+
+export type ToastKind = "success" | "error" | "info";
+
+export interface ToastInput {
+  kind: ToastKind;
+  message: string;
+  detail?: string;
+  /**
+   * false = stay until dismissed. Undefined keeps errors sticky and lets
+   * success/info messages disappear after the default delay.
+   */
+  autoDismissMs?: number | false;
+}
+
+export interface ToastMessage extends ToastInput {
+  id: number;
+}
+
+interface ToastProps {
+  toast: ToastMessage | null;
+  onClose: () => void;
+}
+
+export function Toast({ toast, onClose }: ToastProps) {
+  useEffect(() => {
+    if (!toast) return;
+    const delay = toast.autoDismissMs ?? (toast.kind === "error" ? false : 4200);
+    if (delay === false) return;
+    const timer = window.setTimeout(onClose, delay);
+    return () => window.clearTimeout(timer);
+  }, [toast, onClose]);
+
+  if (!toast) return null;
+
+  const tone = toneForKind(toast.kind);
+  const role = toast.kind === "error" ? "alert" : "status";
+
+  return (
+    <div
+      role={role}
+      aria-live={toast.kind === "error" ? "assertive" : "polite"}
+      style={{
+        ...toastStyle,
+        borderColor: tone.border,
+        background: tone.background,
+      }}
+    >
+      <div style={accentStyle(tone.accent)} />
+      <div style={contentStyle}>
+        <div style={{ ...messageStyle, color: tone.text }}>{toast.message}</div>
+        {toast.detail && <div style={detailStyle}>{toast.detail}</div>}
+      </div>
+      <button type="button" aria-label="关闭消息" onClick={onClose} style={closeStyle}>
+        x
+      </button>
+    </div>
+  );
+}
+
+function toneForKind(kind: ToastKind): {
+  accent: string;
+  background: string;
+  border: string;
+  text: string;
+} {
+  switch (kind) {
+    case "success":
+      return {
+        accent: "var(--status-ok)",
+        background: "var(--bg-panel)",
+        border: "var(--border-ok)",
+        text: "var(--status-ok-text)",
+      };
+    case "error":
+      return {
+        accent: "var(--status-error)",
+        background: "var(--bg-error-soft)",
+        border: "var(--border-error)",
+        text: "var(--status-error-text)",
+      };
+    case "info":
+      return {
+        accent: "var(--accent)",
+        background: "var(--bg-panel)",
+        border: "var(--border-input)",
+        text: "var(--text-bright)",
+      };
+  }
+}
+
+const toastStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 16,
+  bottom: 16,
+  zIndex: 80,
+  display: "grid",
+  gridTemplateColumns: "4px minmax(0, 1fr) auto",
+  alignItems: "stretch",
+  width: "min(420px, calc(100% - 32px))",
+  minHeight: 48,
+  overflow: "hidden",
+  border: "1px solid var(--border-input)",
+  borderRadius: 8,
+  boxShadow: "0 12px 32px var(--overlay-strong)",
+};
+
+function accentStyle(background: string): React.CSSProperties {
+  return { background };
+}
+
+const contentStyle: React.CSSProperties = {
+  minWidth: 0,
+  padding: "10px 12px",
+};
+
+const messageStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 650,
+  lineHeight: 1.35,
+};
+
+const detailStyle: React.CSSProperties = {
+  marginTop: 4,
+  color: "var(--text-secondary)",
+  fontSize: 12,
+  lineHeight: 1.45,
+  whiteSpace: "pre-line",
+  wordBreak: "break-word",
+};
+
+const closeStyle: React.CSSProperties = {
+  alignSelf: "start",
+  margin: 8,
+  width: 24,
+  height: 24,
+  border: "1px solid var(--border-input)",
+  borderRadius: 6,
+  background: "transparent",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  lineHeight: 1,
+};
