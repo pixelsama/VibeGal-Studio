@@ -64,7 +64,7 @@ akari: 今天也很安静呢。`);
       message: diagnostic.message,
     }))).toEqual([
       { line: 1, message: "@bg 需要背景 ID。" },
-      { line: 2, message: "分支选项已移到节点出口，请在节点底部的出口块中配置。" },
+      { line: 2, message: "分支选项已移到流程图出口，请在流程图中配置。" },
     ]);
   });
 

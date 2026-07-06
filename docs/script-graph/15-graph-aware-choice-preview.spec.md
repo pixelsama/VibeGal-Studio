@@ -49,9 +49,9 @@ V1 条件表达式保持轻量，面向外部 Agent 可稳定生成：
 ## 4. Studio UI
 
 - Graph 视图展示 edge label：`choice` 显示 `label`，`auto` 显示 `if <condition>`。
-- 节点编辑页底部提供“节点出口”块：无出边显示自然结束，单条普通出边显示继续目标；只有玩家选择和自动条件作为可切换的分支类型。
+- Graph 视图从同一节点连出第二条边时，默认把该组出口升级为 `choice` 分支；图侧节点 Inspector 负责切换玩家选择/自动条件并编辑 `label` 或 `condition`。
 - Scenario 文本区、Inspector 和 JSON 模式不再提供 `choice` 正文块。
-- 保存节点时若出口配置有错误，保存按钮禁用并显示问题；保存成功时同时落节点文件和 `content/graph.json`。
+- 节点正文保存只落节点文件；出口配置只通过 Graph 视图保存到 `content/graph.json`。
 
 ## 5. 验收测试
 

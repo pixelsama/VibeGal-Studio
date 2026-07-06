@@ -179,6 +179,8 @@ describe("NodeEditor scenario surface", () => {
     expect(html).not.toContain("+ 背景");
     expect(html).not.toContain("+ 台词");
     expect(html).toContain("aria-label=\"插入当前行命令\"");
-    expect(html).toContain("节点出口");
+    expect(html).not.toContain("节点出口");
+    expect(html).not.toContain("连接下一个节点");
+    expect(html).not.toContain("添加玩家选择");
   });
 });

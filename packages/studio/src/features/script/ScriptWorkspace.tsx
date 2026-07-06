@@ -19,6 +19,7 @@ import {
   removeEdge,
   removeNodes,
   renameNode,
+  replaceNodeOutgoingEdges,
   setEntryNode,
 } from "./graphEditing";
 import { findNode, findNodeData } from "./graphMapping";
@@ -125,8 +126,8 @@ export function ScriptWorkspace({
       return;
     }
     if (focusRequest.edgeId && graph.edges.some((edge) => edge.id === focusRequest.edgeId)) {
+      setSelectedNodeId(graph.edges.find((edge) => edge.id === focusRequest.edgeId)?.from ?? null);
       setSelectedEdgeId(focusRequest.edgeId);
-      setSelectedNodeId(null);
     }
   }, [focusRequest, graph]);
 
@@ -193,7 +194,7 @@ export function ScriptWorkspace({
 
   const handleSelectEdge = (id: string) => {
     setSelectedEdgeId(id);
-    setSelectedNodeId(null);
+    setSelectedNodeId(graph.edges.find((edge) => edge.id === id)?.from ?? null);
   };
 
   const handleEnter = (id: string) => {
@@ -281,6 +282,11 @@ export function ScriptWorkspace({
     const next = removeEdge(graph, edgeId);
     if (next.edges.length === graph.edges.length) return;
     if (selectedEdgeId === edgeId) setSelectedEdgeId(null);
+    void persistGraph(next);
+  };
+
+  const handleUpdateOutgoingEdges = (nodeId: string, edges: ProjectGraph["edges"]) => {
+    const next = replaceNodeOutgoingEdges(graph, nodeId, edges);
     void persistGraph(next);
   };
 
@@ -435,6 +441,7 @@ export function ScriptWorkspace({
                 selectedNodeId={selectedNodeId}
                 onEnter={handleEnter}
                 onRename={handleRenameNode}
+                onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
                 onSetEntry={handleSetEntry}
                 saving={savingGraph}
               />
@@ -448,10 +455,7 @@ export function ScriptWorkspace({
               rendererId={rendererId}
               node={selectedNode}
               nodeData={findNodeData(project.nodes, selectedNode.file)}
-              graph={graph}
-              savingGraph={savingGraph}
               focusRequest={focusRequest}
-              onPersistGraph={persistGraph}
               onSaved={onSaved}
             />
           )

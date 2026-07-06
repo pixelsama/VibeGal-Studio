@@ -151,7 +151,7 @@ DSL 规则：
 - 只有舞台命令、没有文本/等待的帧会自动补一个 `{ "t": "pause" }`，用于停在纯画面状态等待玩家继续。
 - `@wait 800` 是时间等待，计时结束后自动继续；`@pause` 是玩家停点，不会自动继续。
 - `@set key value` 设置剧情变量；`value` 可为字符串、数字、布尔值或 `null`。
-- `@choice` 和 `- 文本 -> nodeId` 在节点文本中非法；请在节点编辑页底部的“节点出口”或 `graph.json` outgoing edges 中配置分支。
+- `@choice` 和 `- 文本 -> nodeId` 在节点文本中非法；请在 Graph 视图节点出口或 `graph.json` outgoing edges 中配置分支。
 - V1 不支持 `@layout`、相对坐标或 renderer layout override；精细布局属于后续能力。
 
 ## meta.json

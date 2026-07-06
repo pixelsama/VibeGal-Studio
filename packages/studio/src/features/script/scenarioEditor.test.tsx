@@ -47,7 +47,7 @@ describe("scenario editor helpers", () => {
     const selection = getScenarioSelection(text, text.indexOf("装作"));
 
     expect(selection.kind).toBe("invalid");
-    expect(selection.message).toContain("分支选项已移到节点出口");
+    expect(selection.message).toContain("分支选项已移到流程图出口");
   });
 });
 

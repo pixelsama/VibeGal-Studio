@@ -71,7 +71,7 @@ export function parseScenarioLine(line: string): ParsedLine {
   const trimmed = line.trim();
   if (trimmed.length === 0) return { ok: true, instruction: null };
   if (trimmed === "@choice" || /^-\s*.+\s*->\s*\S+/.test(trimmed)) {
-    return { ok: false, message: "分支选项已移到节点出口，请在节点底部的出口块中配置。" };
+    return { ok: false, message: "分支选项已移到流程图出口，请在流程图中配置。" };
   }
 
   if (trimmed.startsWith("@")) {

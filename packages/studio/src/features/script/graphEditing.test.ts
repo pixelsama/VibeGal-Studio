@@ -122,6 +122,30 @@ describe("graphEditing", () => {
     expect(duplicate.edges).toHaveLength(next.edges.length);
   });
 
+  it("connectNodes upgrades a second outgoing edge into a player choice branch", () => {
+    const next = connectNodes(sampleGraph, "node", "ending");
+    const outgoing = next.edges.filter((edge) => edge.from === "node");
+
+    expect(outgoing).toEqual([
+      {
+        id: "node__node_2",
+        from: "node",
+        to: "node_2",
+        mode: "choice",
+        label: "Node 2",
+        condition: null,
+      },
+      {
+        id: "node__ending",
+        from: "node",
+        to: "ending",
+        mode: "choice",
+        label: "Ending",
+        condition: null,
+      },
+    ]);
+  });
+
   it("renameNode updates title only", () => {
     const next = renameNode(sampleGraph, "node", "Renamed");
 

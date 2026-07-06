@@ -8,7 +8,7 @@ import {
   type ScenarioDiagnostic,
 } from "@galstudio/engine";
 import { saveFile } from "../../lib/tauri";
-import type { GraphEdge, GraphIssueFocusRequest, GraphNode, ProjectData, ProjectGraph } from "../../lib/types";
+import type { GraphIssueFocusRequest, GraphNode, ProjectData } from "../../lib/types";
 import type { InsertableKind } from "./instructions";
 import {
   instructionIndexFromJsonPath,
@@ -38,8 +38,6 @@ import {
   ScenarioNodeLayout,
 } from "./scenarioEditor";
 import { ScenarioTextEditor } from "./ScenarioTextEditor";
-import { getNodeOutgoingEdges, replaceNodeOutgoingEdges } from "./graphEditing";
-import { NodeExitBlock, validateNodeExits } from "./NodeExitBlock";
 
 export { InstructionBlock } from "./InstructionBlock";
 export {
@@ -58,32 +56,18 @@ interface NodeEditorProps {
   rendererId: string;
   node: GraphNode;
   nodeData: unknown | null;
-  graph?: ProjectGraph;
-  savingGraph?: boolean;
   focusRequest?: GraphIssueFocusRequest | null;
-  onPersistGraph?: (graph: ProjectGraph) => Promise<boolean>;
   onSaved: () => void;
 }
-
-const EMPTY_GRAPH = {
-  version: 1,
-  entryNodeId: "",
-  nodes: [],
-  edges: [],
-} satisfies ProjectGraph;
 
 export function NodeEditor({
   project,
   rendererId,
   node,
   nodeData,
-  graph,
-  savingGraph = false,
   focusRequest,
-  onPersistGraph,
   onSaved,
 }: NodeEditorProps) {
-  const activeGraph = graph ?? project.graph ?? EMPTY_GRAPH;
   const incomingJsonText = useMemo(() => serializeNodeData(nodeData), [nodeData]);
   const incomingScenarioText = useMemo(() => scenarioTextFromNodeData(nodeData), [nodeData]);
   const incomingInstructions = useMemo(() => instructionsFromNodeData(nodeData), [nodeData]);
@@ -102,8 +86,6 @@ export function NodeEditor({
   const [draftCopyPath, setDraftCopyPath] = useState<string | null>(null);
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
-  const [exitDraft, setExitDraft] = useState<GraphEdge[]>(() => getNodeOutgoingEdges(activeGraph, node.id));
-  const [exitDirty, setExitDirty] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
   const loadedTextRef = useRef(incomingJsonText);
@@ -138,11 +120,6 @@ export function NodeEditor({
     setStatus("");
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
 
-  useEffect(() => {
-    if (exitDirty) return;
-    setExitDraft(getNodeOutgoingEdges(activeGraph, node.id));
-  }, [activeGraph, exitDirty, node.id]);
-
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
   const scenarioCommandTrigger = useMemo(
     () => (mode === "scenario" ? scenarioCommandTriggerAtCursor(text, cursorOffset) : null),
@@ -153,13 +130,11 @@ export function NodeEditor({
   const commandMenuVisible = mode === "scenario"
     && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
   const lineActionTop = Math.max(8, 16 + (scenarioSelection.line - 1) * 23.8 - textareaScrollTop);
-  const exitIssues = useMemo(() => validateNodeExits(exitDraft), [exitDraft]);
   const canSave = useMemo(() => {
-    if (exitIssues.length > 0) return false;
     if (mode === "scenario") return diagnostics.length === 0;
     if (mode === "json") return parseJsonInstructionText(text).ok;
     return true;
-  }, [diagnostics.length, exitIssues.length, mode, text]);
+  }, [diagnostics.length, mode, text]);
 
   useEffect(() => {
     if (commandMenuSource === "trigger" && !scenarioCommandTrigger) setCommandMenuSource(null);
@@ -229,11 +204,6 @@ export function NodeEditor({
       setStatus(built.message);
       return;
     }
-    const nextExitIssues = validateNodeExits(exitDraft);
-    if (nextExitIssues.length > 0) {
-      setStatus(nextExitIssues[0]);
-      return;
-    }
     setSaving(true);
     setStatus("");
     try {
@@ -250,13 +220,6 @@ export function NodeEditor({
         setHasExternalUpdate(false);
         setWriteConflict(false);
         setDraftCopyPath(null);
-      }
-      if (exitDirty) {
-        const saved = onPersistGraph
-          ? await onPersistGraph(replaceNodeOutgoingEdges(activeGraph, node.id, exitDraft))
-          : true;
-        if (!saved) throw new Error("图结构保存失败");
-        setExitDirty(false);
       }
       setStatus("已保存 ✓");
       onSaved();
@@ -407,11 +370,11 @@ export function NodeEditor({
       <NodeEditorToolbar
         title={node.title}
         file={node.file}
-        dirty={dirty || exitDirty}
+        dirty={dirty}
         diagnosticsCount={diagnostics.length}
         hasExternalUpdate={hasExternalUpdate}
         writeConflict={writeConflict}
-        saving={saving || savingGraph}
+        saving={saving}
         canSave={canSave}
         status={status}
         draftCopyPath={draftCopyPath}
@@ -438,19 +401,6 @@ export function NodeEditor({
         onKeyDown={handleTextareaKeyDown}
         onScroll={setTextareaScrollTop}
       />
-      {mode === "scenario" && (
-        <NodeExitBlock
-          node={node}
-          graphNodes={activeGraph.nodes}
-          edges={exitDraft}
-          issues={exitIssues}
-          onChange={(edges) => {
-            setExitDraft(edges);
-            setExitDirty(true);
-            setStatus("");
-          }}
-        />
-      )}
     </div>
   );
 

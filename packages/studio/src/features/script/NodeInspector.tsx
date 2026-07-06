@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphEdge, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNode, findNodeData, summarizeNodeConnections } from "./graphMapping";
+
+type BranchMode = "choice" | "auto";
 
 interface NodeInspectorProps {
   graph: ProjectGraph;
@@ -8,6 +10,7 @@ interface NodeInspectorProps {
   selectedNodeId: string | null;
   onEnter: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onUpdateOutgoingEdges?: (nodeId: string, edges: GraphEdge[]) => void;
   onSetEntry?: (id: string) => void;
   saving?: boolean;
 }
@@ -18,11 +21,12 @@ export function NodeInspector({
   selectedNodeId,
   onEnter,
   onRename,
+  onUpdateOutgoingEdges,
   onSetEntry,
   saving = false,
 }: NodeInspectorProps) {
   const node = findNode(graph, selectedNodeId);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(node?.title ?? "");
 
   useEffect(() => {
     setTitle(node?.title ?? "");
@@ -40,6 +44,7 @@ export function NodeInspector({
   const hasContent = findNodeData(nodeEntries, node.file) != null;
   const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
   const isEntry = node.id === graph.entryNodeId;
+  const outgoingEdges = graph.edges.filter((edge) => edge.from === node.id).map(normalizeEdge);
 
   return (
     <div style={panelStyle}>
@@ -75,6 +80,14 @@ export function NodeInspector({
           <Field label="连接" value={`入 ${incoming} / 出 ${outgoing}`} mono />
         </section>
 
+        <ExitSection
+          graph={graph}
+          nodeId={node.id}
+          edges={outgoingEdges}
+          disabled={saving || !onUpdateOutgoingEdges}
+          onChange={(edges) => onUpdateOutgoingEdges?.(node.id, edges)}
+        />
+
         <button type="button" onClick={() => onEnter(node.id)} style={actionButtonStyle}>
           进入编辑
         </button>
@@ -86,6 +99,120 @@ export function NodeInspector({
       </div>
     </div>
   );
+}
+
+function ExitSection({
+  graph,
+  nodeId,
+  edges,
+  disabled,
+  onChange,
+}: {
+  graph: ProjectGraph;
+  nodeId: string;
+  edges: GraphEdge[];
+  disabled: boolean;
+  onChange: (edges: GraphEdge[]) => void;
+}) {
+  if (edges.length === 0) {
+    return (
+      <section style={sectionStyle}>
+        <Field label="出口" value="终点" />
+      </section>
+    );
+  }
+
+  if (edges.length === 1) {
+    return (
+      <section style={sectionStyle}>
+        <Field label="出口" value={`继续到 ${targetTitle(graph, edges[0].to)}`} />
+      </section>
+    );
+  }
+
+  const mode: BranchMode = edges.every((edge) => edge.mode === "auto") ? "auto" : "choice";
+
+  const applyMode = (nextMode: BranchMode) => {
+    onChange(edges.map((edge, index) => normalizeBranchEdge(graph, nodeId, edge, index, nextMode)));
+  };
+
+  const updateEdge = (edgeId: string, patch: Partial<GraphEdge>) => {
+    onChange(edges.map((edge, index) => {
+      const normalized = normalizeBranchEdge(graph, nodeId, edge, index, mode);
+      return normalized.id === edgeId ? normalizeEdge({ ...normalized, ...patch, mode }) : normalized;
+    }));
+  };
+
+  return (
+    <section style={sectionStyle}>
+      <label style={titleFieldStyle}>
+        <span style={fieldLabelStyle}>结束方式</span>
+        <select
+          value={mode}
+          onChange={(event) => applyMode(event.target.value as BranchMode)}
+          disabled={disabled}
+          style={titleInputStyle}
+        >
+          <option value="choice">玩家选择</option>
+          <option value="auto">自动判断</option>
+        </select>
+      </label>
+
+      <div style={exitListStyle}>
+        {edges.map((edge) => (
+          <div key={edge.id} style={exitRowStyle}>
+            <div style={fieldValueStyle}>{targetTitle(graph, edge.to)}</div>
+            {mode === "choice" ? (
+              <input
+                value={edge.label ?? targetTitle(graph, edge.to)}
+                onChange={(event) => updateEdge(edge.id, { mode: "choice", label: event.target.value, condition: null })}
+                disabled={disabled}
+                placeholder="选项文本"
+                style={compactInputStyle}
+              />
+            ) : (
+              <input
+                value={edge.condition ?? ""}
+                onChange={(event) => updateEdge(edge.id, { mode: "auto", label: null, condition: event.target.value || null })}
+                disabled={disabled}
+                placeholder="条件；留空为默认"
+                style={compactInputStyle}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function normalizeBranchEdge(
+  graph: ProjectGraph,
+  from: string,
+  edge: GraphEdge,
+  index: number,
+  mode: BranchMode,
+): GraphEdge {
+  return {
+    ...normalizeEdge(edge),
+    from,
+    mode,
+    label: mode === "choice" ? edge.label?.trim() || targetTitle(graph, edge.to) || `选项 ${index + 1}` : null,
+    condition: mode === "auto" ? edge.condition ?? null : null,
+  };
+}
+
+function normalizeEdge(edge: GraphEdge): GraphEdge {
+  return {
+    ...edge,
+    mode: edge.mode ?? "linear",
+    label: edge.label ?? null,
+    condition: edge.condition ?? null,
+  };
+}
+
+function targetTitle(graph: ProjectGraph, nodeId: string): string {
+  return graph.nodes.find((node) => node.id === nodeId)?.title || nodeId || "未选择";
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -189,6 +316,31 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
+};
+
+const exitListStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
+const exitRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(72px, 0.8fr) minmax(0, 1fr)",
+  gap: 8,
+  alignItems: "center",
+};
+
+const compactInputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "7px 9px",
+  borderRadius: 6,
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-inset)",
+  color: "var(--text-primary)",
+  fontSize: 13,
+  outline: "none",
 };
 
 const emptyStyle: React.CSSProperties = {

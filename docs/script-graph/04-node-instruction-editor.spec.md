@@ -40,8 +40,8 @@ akari: 咦？
 - `角色ID: 文本` 编译为 `say`；普通文本行编译为 `narrate`。
 - 只有舞台命令的帧自动补 `{ "t": "pause" }`，作为纯画面玩家停点。
 - `@wait 800` 是计时等待；`@pause` 是玩家输入停点。
-- `@set key value` 编译为变量写入指令，供节点出口的自动条件路由使用。
-- `@choice` 和 `- 文本 -> nodeId` 在节点文本中非法；分支统一在节点底部的“节点出口”中配置。
+- `@set key value` 编译为变量写入指令，供流程图出口的自动条件路由使用。
+- `@choice` 和 `- 文本 -> nodeId` 在节点文本中非法；分支统一在流程图节点出口中配置。
 - V1 不支持 `@layout`、相对坐标或 renderer layout override。
 
 ## 3. 节点编辑页布局
@@ -52,7 +52,7 @@ akari: 咦？
 │ - toolbar / save / status      │ fixed stage frame          │
 │ - command palette / line plus  ├────────────────────────────┤
 │ - textarea DSL or JSON         │ Inspector                  │
-│ - node exit block              │ selected line / node issues │
+│                                │ selected line / node issues │
 └───────────────────────────────┴────────────────────────────┘
 ```
 
@@ -65,7 +65,7 @@ akari: 咦？
   - `@set`：变量名、变量值。
   - 空白或无可编辑行：节点摘要、诊断和问题列表。
 - Inspector 修改必须立即同步 Scenario 文本；用户手写文本也会反向更新 Inspector。
-- 分支编辑不放在正文 Inspector，而放在“节点出口”块：无 outgoing edge 自然视为结束，单条普通 outgoing edge 视为继续到下一节点；只有玩家选择和自动条件需要显式配置分支类型。
+- 分支编辑不进入节点正文编辑页；出口是流程图节点属性，在 Graph 视图中通过连线和节点 Inspector 配置。
 
 ## 4. 播放语义
 
@@ -82,7 +82,7 @@ akari: 咦？
 
 - `pause` 和 `set` 是合法节点指令，进入 engine schema、JSON Schema、Rust/Tauri node validation 和 CLI/projectReport。
 - `choice` 节点指令不合法，CLI/projectReport 立即报 `choice_instruction_not_supported`。
-- graph 校验覆盖节点出口：混用模式、线性多出边、choice 缺 label、auto 多默认边等问题会进入 graphReport/projectReport。
+- graph 校验覆盖流程图出口：混用模式、线性多出边、choice 缺 label、auto 多默认边等问题会进入 graphReport/projectReport。
 - Scenario DSL 解析失败时保留草稿、显示行级诊断、禁用保存。
 - 保存仍带 `nodeRevisions`，发生 `write_conflict` 时保留当前草稿并允许另存副本。
 - 外部更新同一节点文件时，无本地脏改动则自动载入；有脏改动则提示手动载入。
@@ -95,5 +95,5 @@ akari: 咦？
 4. 右上预览跟随最后一次合法草稿。
 5. 右下 Inspector 能编辑 say/bg/char/set 并即时回写文本。
 6. JSON 高级模式能正常切换、保存和返回 Scenario 模式。
-7. 节点出口块能由流程线推断结束/普通继续，并能保存玩家选择和自动条件出口。
+7. 节点正文编辑页不显示出口编辑；流程图能由连线推断结束/普通继续，并能在图侧节点 Inspector 配置玩家选择和自动条件出口。
 8. CLI validate 和全局问题面板接受 `pause`/`set`，拒绝节点内 `choice`，并报告 graph 出口问题。
