@@ -60,8 +60,8 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
 const nodeStyle: React.CSSProperties = {
   minWidth: 220,
   maxWidth: 260,
-  padding: "14px 16px",
-  borderRadius: 8,
+  padding: "14px var(--space-4)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
@@ -70,7 +70,7 @@ const nodeStyle: React.CSSProperties = {
 const headerStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const entryBadgeStyle: React.CSSProperties = {
@@ -79,23 +79,23 @@ const entryBadgeStyle: React.CSSProperties = {
   justifyContent: "center",
   width: 20,
   height: 20,
-  borderRadius: 999,
+  borderRadius: "var(--radius-pill)",
   background: "var(--accent)",
   color: "var(--text-on-accent)",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   fontWeight: 700,
   flexShrink: 0,
 };
 
 const titleStyle: React.CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
 
 const metaStyle: React.CSSProperties = {
-  marginTop: 8,
-  fontSize: 11,
+  marginTop: "var(--space-2)",
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   wordBreak: "break-all",
 };
@@ -103,22 +103,22 @@ const metaStyle: React.CSSProperties = {
 const statusRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  marginTop: 12,
-  fontSize: 12,
+  gap: "var(--space-2)",
+  marginTop: "var(--space-3)",
+  fontSize: "var(--text-sm)",
 };
 
 const statusDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
-  borderRadius: 999,
+  borderRadius: "var(--radius-pill)",
   flexShrink: 0,
 };
 
 const connStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
 };
 
 const connectionHandleStyle: React.CSSProperties = {

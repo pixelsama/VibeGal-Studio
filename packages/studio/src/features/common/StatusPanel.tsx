@@ -181,7 +181,7 @@ export function StatusDialog({
         </div>
         <div style={dialogContentStyle}>
           {issues.length === 0 ? (
-            <div style={{ ...okStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <div style={{ ...okStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>
               <Check size={14} />
               {emptyDescription ?? okLabel}
             </div>
@@ -309,8 +309,8 @@ function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSS
     gap: 5,
     minWidth: hasIssues ? 34 : 24,
     height: 22,
-    padding: hasIssues ? "0 7px" : 0,
-    borderRadius: 6,
+    padding: hasIssues ? "0 var(--space-1)" : 0,
+    borderRadius: "var(--radius-sm)",
     border: "1px solid var(--border)",
     background: "var(--bg-app)",
     color,
@@ -321,14 +321,14 @@ function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSS
 
 function indicatorIconStyle(hasIssues: boolean): React.CSSProperties {
   return {
-    fontSize: hasIssues ? 13 : 12,
+    fontSize: hasIssues ? "var(--text-base)" : "var(--text-sm)",
     fontWeight: 700,
     lineHeight: 1,
   };
 }
 
 const indicatorCountStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   fontWeight: 700,
   lineHeight: 1,
 };
@@ -340,7 +340,7 @@ const overlayStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: 24,
+  padding: "var(--space-6)",
   background: "var(--overlay)",
 };
 
@@ -351,7 +351,7 @@ const dialogStyle: React.CSSProperties = {
   maxHeight: "min(680px, calc(100vh - 48px))",
   background: "var(--bg-panel)",
   border: "1px solid var(--border-input)",
-  borderRadius: 12,
+  borderRadius: "var(--radius-lg)",
   boxShadow: "0 16px 40px var(--overlay-strong)",
   overflow: "hidden",
 };
@@ -361,31 +361,31 @@ const dialogHeaderStyle: React.CSSProperties = {
   alignItems: "flex-start",
   justifyContent: "space-between",
   gap: 18,
-  padding: "16px 18px",
+  padding: "var(--space-4) var(--space-4)",
   borderBottom: "1px solid var(--border)",
 };
 
 const dialogTitleStyle: React.CSSProperties = {
-  fontSize: 15,
+  fontSize: "var(--text-lg)",
   fontWeight: 700,
   color: "var(--text-bright)",
 };
 
 const dialogMetaStyle: React.CSSProperties = {
-  marginTop: 4,
+  marginTop: "var(--space-1)",
   color: "var(--text-muted)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 
 const closeButtonStyle: React.CSSProperties = {
-  width: 30,
-  height: 30,
-  borderRadius: 8,
+  width: "var(--control-lg)",
+  height: "var(--control-lg)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-app)",
   color: "var(--text-secondary)",
   cursor: "pointer",
-  fontSize: 18,
+  fontSize: "var(--text-xl)",
   lineHeight: 1,
 };
 
@@ -393,34 +393,34 @@ const dialogContentStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 14,
-  padding: 16,
+  padding: "var(--space-4)",
   overflowY: "auto",
 };
 
 const okStyle: React.CSSProperties = {
   color: "var(--status-ok-text)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const groupStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const groupTitleStyle: React.CSSProperties = {
   color: "var(--text-muted)",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   textTransform: "uppercase",
 };
 
 const issueButtonStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
-  gap: 10,
+  gap: "var(--space-2)",
   width: "100%",
-  padding: 10,
-  borderRadius: 8,
+  padding: "var(--space-2)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
@@ -431,7 +431,7 @@ const issueButtonStyle: React.CSSProperties = {
 const severityDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
-  borderRadius: 999,
+  borderRadius: "var(--radius-pill)",
   marginTop: 5,
   flexShrink: 0,
 };
@@ -439,9 +439,9 @@ const severityDotStyle: React.CSSProperties = {
 const issueTextStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
+  gap: "var(--space-1)",
   minWidth: 0,
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   lineHeight: 1.35,
   flex: 1,
 };
@@ -450,16 +450,16 @@ const issueTextStyle: React.CSSProperties = {
 const issueHeadStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 /** severity 文字标签：error 红、warn 琥珀，让来源分组下 severity 可辨 */
 function severityTagStyle(severity: "error" | "warn"): React.CSSProperties {
   return {
-    fontSize: 9,
+    fontSize: "var(--text-xs)",
     fontWeight: 700,
-    padding: "1px 5px",
-    borderRadius: 3,
+    padding: "1px var(--space-1)",
+    borderRadius: "var(--radius-xs)",
     textTransform: "uppercase",
     letterSpacing: 0.4,
     background: severity === "error" ? "var(--bg-tag-error)" : "var(--bg-tag-warn)",
@@ -470,12 +470,12 @@ function severityTagStyle(severity: "error" | "warn"): React.CSSProperties {
 const issueCodeStyle: React.CSSProperties = {
   color: "var(--accent-bright)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
 };
 
 const targetStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   wordBreak: "break-all",
 };

@@ -316,9 +316,9 @@ function EnumField({
 const blockStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 10,
-  padding: 12,
-  borderRadius: 8,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   background: "var(--bg-app)",
 };
@@ -327,59 +327,59 @@ const blockHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: 12,
+  gap: "var(--space-3)",
 };
 
 const blockActionsStyle: CSSProperties = {
   display: "flex",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const miniButtonStyle: CSSProperties = {
-  padding: "4px 8px",
-  borderRadius: 6,
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-panel)",
   color: "var(--text-secondary)",
   cursor: "pointer",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
 };
 
 const blockFieldsStyle: CSSProperties = {
   display: "grid",
-  gap: 10,
+  gap: "var(--space-2)",
 };
 
 const fieldStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const fieldLabelStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
 };
 
 const blockTextareaStyle: CSSProperties = {
   minHeight: 90,
-  padding: "8px 10px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   resize: "vertical",
 };
 
 const inputStyle: CSSProperties = {
   minWidth: 0,
-  padding: "7px 9px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const selectStyle: CSSProperties = {
@@ -389,22 +389,22 @@ const selectStyle: CSSProperties = {
 const checkboxFieldStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: "var(--space-2)",
   color: "var(--text-secondary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const issueListStyle: CSSProperties = {
   display: "grid",
-  gap: 4,
-  padding: "8px 10px",
-  borderRadius: 6,
+  gap: "var(--space-1)",
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--status-error)",
   background: "var(--bg-tag-error)",
 };
 
 const issueItemStyle: CSSProperties = {
   color: "var(--status-error-text)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   lineHeight: 1.5,
 };

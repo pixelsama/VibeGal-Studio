@@ -693,8 +693,8 @@ const scrollStyle: React.CSSProperties = {
 };
 
 const invalidBannerStyle: React.CSSProperties = {
-  padding: "8px 14px",
-  fontSize: 12,
+  padding: "var(--space-2) var(--space-3)",
+  fontSize: "var(--text-sm)",
   color: "var(--status-error-text)",
   background: "var(--bg-error-soft)",
   borderBottom: `1px solid var(--border-error)`,
@@ -709,15 +709,15 @@ const draftBannerStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   flexWrap: "wrap",
-  gap: 8,
-  fontSize: 11,
+  gap: "var(--space-2)",
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   background: "var(--bg-app)",
-  padding: "5px 10px",
-  borderRadius: 6,
+  padding: "5px var(--space-3)",
+  borderRadius: "var(--radius-sm)",
   border: `1px solid var(--border)`,
   zIndex: 30,
-  maxWidth: "calc(100% - 24px)",
+  maxWidth: "calc(100% - var(--space-6))",
 };
 
 const draftBannerTextStyle: React.CSSProperties = {
@@ -727,13 +727,13 @@ const draftBannerTextStyle: React.CSSProperties = {
 const draftBannerActionsStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const draftDiscardBtnStyle: React.CSSProperties = {
-  fontSize: 12,
-  padding: "5px 10px",
-  borderRadius: 6,
+  fontSize: "var(--text-sm)",
+  padding: "5px var(--space-3)",
+  borderRadius: "var(--radius-sm)",
   border: `1px solid var(--border-input)`,
   background: "var(--bg-panel)",
   color: "var(--text-secondary)",
@@ -741,9 +741,9 @@ const draftDiscardBtnStyle: React.CSSProperties = {
 };
 
 const draftSaveBtnStyle: React.CSSProperties = {
-  fontSize: 12,
-  padding: "5px 12px",
-  borderRadius: 6,
+  fontSize: "var(--text-sm)",
+  padding: "5px var(--space-3)",
+  borderRadius: "var(--radius-sm)",
   border: `1px solid var(--border-input)`,
   background: "var(--bg-active)",
   color: "var(--text-bright)",

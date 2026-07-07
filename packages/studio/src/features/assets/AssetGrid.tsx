@@ -23,7 +23,7 @@ const gridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))",
   gap: 14,
-  padding: 16,
+  padding: "var(--space-4)",
   alignContent: "start",
 };
 
@@ -34,5 +34,5 @@ const emptyStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };

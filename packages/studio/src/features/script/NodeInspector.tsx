@@ -70,7 +70,7 @@ export function NodeInspector({
               style={titleInputStyle}
             />
           </label>
-          <div style={{ ...statusTextStyle(hasContent), display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <div style={{ ...statusTextStyle(hasContent), display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>
             {hasContent ? <Check size={14} /> : <TriangleAlert size={14} />}
             {hasContent ? "已有内容" : "文件缺失"}
           </div>
@@ -238,9 +238,9 @@ const panelStyle: React.CSSProperties = {
 };
 
 const panelTitleStyle: React.CSSProperties = {
-  padding: "14px 16px",
+  padding: "var(--space-3) var(--space-4)",
   borderBottom: "1px solid var(--border)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
   color: "var(--text-primary)",
 };
@@ -248,17 +248,17 @@ const panelTitleStyle: React.CSSProperties = {
 const contentStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 16,
-  padding: 16,
+  gap: "var(--space-4)",
+  padding: "var(--space-4)",
   overflowY: "auto",
 };
 
 const sectionStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 10,
-  padding: 14,
-  borderRadius: 8,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  borderRadius: "var(--radius-md)",
   background: "var(--bg-panel)",
   border: "1px solid var(--border)",
 };
@@ -266,18 +266,18 @@ const sectionStyle: React.CSSProperties = {
 const titleFieldStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const titleInputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "8px 10px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-inset)",
   color: "var(--text-bright)",
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   fontWeight: 600,
   outline: "none",
 };
@@ -285,75 +285,75 @@ const titleInputStyle: React.CSSProperties = {
 const fieldRowStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const fieldLabelStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   textTransform: "uppercase",
 };
 
 const fieldValueStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   color: "var(--text-primary)",
   wordBreak: "break-all",
 };
 
 const actionButtonStyle: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 8,
+  padding: "var(--space-2) var(--space-3)",
+  borderRadius: "var(--radius-md)",
   background: "var(--accent)",
   border: "1px solid var(--accent)",
   color: "var(--text-on-accent)",
   cursor: "pointer",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 8,
+  padding: "var(--space-2) var(--space-3)",
+  borderRadius: "var(--radius-md)",
   background: "var(--bg-active)",
   border: "1px solid var(--accent)",
   color: "var(--accent-bright)",
   cursor: "pointer",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
 };
 
 const exitListStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 10,
+  gap: "var(--space-2)",
 };
 
 const exitRowStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(72px, 0.8fr) minmax(0, 1fr)",
-  gap: 8,
+  gap: "var(--space-2)",
   alignItems: "center",
 };
 
 const compactInputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "7px 9px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-inset)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   outline: "none",
 };
 
 const emptyStyle: React.CSSProperties = {
-  padding: 16,
+  padding: "var(--space-4)",
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const statusTextStyle = (hasContent: boolean): React.CSSProperties => ({
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   color: hasContent ? "var(--status-ok-text)" : "var(--status-warn-text)",
 });

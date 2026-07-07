@@ -314,22 +314,22 @@ const overlayStyle: React.CSSProperties = {
 const dialogStyle: React.CSSProperties = {
   minWidth: 340,
   maxWidth: 440,
-  padding: 20,
+  padding: "var(--space-5)",
   background: "var(--bg-panel)",
   border: "1px solid var(--border-input)",
-  borderRadius: 12,
+  borderRadius: "var(--radius-lg)",
   boxShadow: "0 16px 40px var(--overlay-strong)",
 };
 
 const dialogTitleStyle: React.CSSProperties = {
-  fontSize: 15,
+  fontSize: "var(--text-lg)",
   fontWeight: 600,
   color: "var(--text-bright)",
   marginBottom: 14,
 };
 
 const dialogMessageStyle: React.CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   lineHeight: 1.6,
   color: "var(--text-primary)",
   marginBottom: 18,
@@ -337,20 +337,20 @@ const dialogMessageStyle: React.CSSProperties = {
 
 const dialogLabelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
-  marginBottom: 6,
+  marginBottom: "var(--space-1)",
 };
 
 const promptInputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "9px 11px",
-  borderRadius: 8,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-inset)",
   color: "var(--text-bright)",
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   outline: "none",
   marginBottom: 18,
 };
@@ -358,5 +358,5 @@ const promptInputStyle: React.CSSProperties = {
 const dialogActionsStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
-  gap: 10,
+  gap: "var(--space-2)",
 };

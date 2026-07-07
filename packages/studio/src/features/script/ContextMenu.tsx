@@ -109,10 +109,10 @@ const menuStyle: React.CSSProperties = {
   zIndex: 1000,
   minWidth: 180,
   maxWidth: MENU_WIDTH,
-  padding: 6,
+  padding: "var(--space-2)",
   background: "var(--bg-panel)",
   border: "1px solid var(--border-input)",
-  borderRadius: 8,
+  borderRadius: "var(--radius-md)",
   boxShadow: "0 12px 32px var(--overlay)",
   display: "flex",
   flexDirection: "column",
@@ -123,16 +123,16 @@ const itemStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   width: "100%",
-  padding: "8px 12px",
+  padding: "var(--space-2) var(--space-3)",
   border: "none",
   background: "transparent",
-  borderRadius: 6,
-  fontSize: 13,
+  borderRadius: "var(--radius-sm)",
+  fontSize: "var(--text-base)",
   textAlign: "left",
 };
 
 const dividerStyle: React.CSSProperties = {
   height: 1,
-  margin: "4px 6px",
+  margin: "var(--space-1) var(--space-1)",
   background: "var(--border)",
 };

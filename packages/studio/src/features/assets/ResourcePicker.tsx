@@ -125,38 +125,38 @@ function resolveOptions(
 const fieldStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: "var(--space-1)",
   minWidth: 0,
 };
 
 const fieldLabelStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
 };
 
 const pickerRowStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 0.9fr)",
-  gap: 8,
+  gap: "var(--space-2)",
   minWidth: 0,
 };
 
 const selectStyle: CSSProperties = {
   minWidth: 0,
-  padding: "7px 9px",
-  borderRadius: 6,
+  padding: "7px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const inputStyle: CSSProperties = {
   minWidth: 0,
-  padding: "7px 9px",
-  borderRadius: 6,
+  padding: "7px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };

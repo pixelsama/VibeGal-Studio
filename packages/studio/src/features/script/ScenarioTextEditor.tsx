@@ -93,18 +93,18 @@ const textareaStyle: CSSProperties = {
   resize: "none",
   border: "none",
   outline: "none",
-  padding: 16,
+  padding: "var(--space-4)",
   background: "var(--bg-inset)",
   color: "var(--text-primary)",
   fontFamily: "ui-monospace, 'SF Mono', monospace",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   lineHeight: 1.6,
 };
 
 const scenarioTextareaStyle: CSSProperties = {
   ...textareaStyle,
   fontFamily: "ui-monospace, 'SF Mono', monospace",
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   lineHeight: 1.7,
   paddingLeft: 46,
 };
@@ -121,12 +121,12 @@ const linePlusButtonStyle: CSSProperties = {
   zIndex: 3,
   width: 24,
   height: 24,
-  borderRadius: 6,
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-panel)",
   color: "var(--text-secondary)",
   cursor: "pointer",
-  fontSize: 16,
+  fontSize: "var(--text-lg)",
   lineHeight: "20px",
 };
 
@@ -135,12 +135,12 @@ const commandMenuStyle: CSSProperties = {
   left: 36,
   zIndex: 4,
   display: "grid",
-  gap: 4,
+  gap: "var(--space-1)",
   width: 240,
   maxHeight: 280,
   overflow: "auto",
-  padding: 6,
-  borderRadius: 8,
+  padding: "var(--space-2)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   boxShadow: "0 14px 34px rgba(15, 23, 42, 0.18)",
@@ -149,9 +149,9 @@ const commandMenuStyle: CSSProperties = {
 const commandMenuButtonStyle: CSSProperties = {
   display: "grid",
   gap: 2,
-  padding: "7px 9px",
+  padding: "7px var(--space-2)",
   border: "none",
-  borderRadius: 6,
+  borderRadius: "var(--radius-sm)",
   background: "transparent",
   color: "var(--text-primary)",
   textAlign: "left",
@@ -159,11 +159,11 @@ const commandMenuButtonStyle: CSSProperties = {
 };
 
 const commandMenuLabelStyle: CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
 };
 
 const commandMenuDetailStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };

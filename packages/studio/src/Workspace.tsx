@@ -313,7 +313,7 @@ export function Workspace({
       {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
-        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
           <IconButton onClick={onBack} disabled={!canGoBack} title="后退" aria-label="后退">
             <ChevronLeft size={18} />
           </IconButton>
@@ -331,7 +331,7 @@ export function Workspace({
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
           <span style={projectNameStyle}>{project.meta.name}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle}>当前渲染层</span>
@@ -509,10 +509,10 @@ const titleBarStyle: React.CSSProperties = {
   position: "relative",
   display: "flex",
   alignItems: "center",
-  gap: 12,
+  gap: "var(--space-3)",
   height: 38,
   // 左侧 88px 为 macOS 红绿灯避让（约 70px）+ 一点间距；右 12px
-  padding: "0 12px 0 88px",
+  padding: "0 var(--space-3) 0 88px",
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
 };
@@ -522,10 +522,10 @@ const centerGroupStyle: React.CSSProperties = {
   top: "50%",
   transform: "translate(-50%, -50%)",
   display: "flex",
-  gap: 2,
+  gap: "var(--space-1)",
 };
 const projectNameStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   fontWeight: 600,
   color: "var(--text-muted)",
   maxWidth: 200,
@@ -534,7 +534,7 @@ const projectNameStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 const rendererLabelStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 const rendererStatusStyle: React.CSSProperties = {
@@ -542,12 +542,12 @@ const rendererStatusStyle: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  padding: "5px 9px",
-  borderRadius: 6,
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 const renderWorkspaceStyle: React.CSSProperties = {
   display: "flex",
@@ -565,16 +565,16 @@ const previewPaneStyle: React.CSSProperties = {
 const syncButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 7,
-  padding: "5px 9px",
-  borderRadius: 999,
+  gap: "var(--space-1)",
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-pill)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 const syncDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
-  borderRadius: 999,
+  borderRadius: "var(--radius-pill)",
   flexShrink: 0,
 };

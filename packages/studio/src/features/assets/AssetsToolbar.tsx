@@ -103,16 +103,16 @@ function sectionLabel(section: AssetSection): string {
 const toolbarStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
-  padding: "10px 14px",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) 14px",
   borderBottom: `1px solid var(--border)`,
 };
 
 const searchInputStyle: React.CSSProperties = {
   width: 220,
-  fontSize: 12,
-  padding: "5px 9px",
-  borderRadius: 6,
+  fontSize: "var(--text-sm)",
+  padding: "5px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: `1px solid var(--border-input)`,
   background: "var(--bg-app)",
   color: "var(--text-primary)",
@@ -120,14 +120,14 @@ const searchInputStyle: React.CSSProperties = {
 };
 
 const countStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 
 const importBtnStyle: React.CSSProperties = {
-  fontSize: 12,
-  padding: "5px 12px",
-  borderRadius: 6,
+  fontSize: "var(--text-sm)",
+  padding: "5px var(--space-3)",
+  borderRadius: "var(--radius-sm)",
   border: `1px solid var(--border-input)`,
   background: "var(--bg-active)",
   color: "var(--text-bright)",
@@ -135,9 +135,9 @@ const importBtnStyle: React.CSSProperties = {
 };
 
 const secondaryBtnStyle: React.CSSProperties = {
-  fontSize: 12,
-  padding: "5px 10px",
-  borderRadius: 6,
+  fontSize: "var(--text-sm)",
+  padding: "5px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: `1px solid var(--border-input)`,
   background: "var(--bg-panel)",
   color: "var(--text-secondary)",

@@ -272,7 +272,7 @@ export function GraphCanvas({
         <Background color="var(--bg-hover)" gap={24} />
         <Controls
           showInteractive={false}
-          style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 8 }}
+          style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}
         >
           {graph.entryNodeId && (
             <ControlButton
@@ -313,17 +313,17 @@ const emptyStateStyle: React.CSSProperties = {
   left: "50%",
   transform: "translateX(-50%)",
   zIndex: 2,
-  padding: "8px 14px",
-  borderRadius: 999,
+  padding: "var(--space-2) var(--space-3)",
+  borderRadius: "var(--radius-pill)",
   background: "var(--bg-panel)",
   border: "1px solid var(--border)",
   color: "var(--text-secondary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   pointerEvents: "none",
 };
 
 const entryLocatorIconStyle: React.CSSProperties = {
   color: "var(--accent-bright)",
-  fontSize: 18,
+  fontSize: "var(--text-xl)",
   lineHeight: 1,
 };

@@ -57,7 +57,7 @@ const sidebarStyle: React.CSSProperties = {
   width: "100%",
   height: "100%",
   boxSizing: "border-box",
-  padding: "10px 8px",
+  padding: "var(--space-3) var(--space-2)",
   gap: 2,
   overflowY: "auto",
 };
@@ -66,9 +66,9 @@ const itemStyle: React.CSSProperties = {
   display: "block",
   width: "100%",
   textAlign: "left",
-  fontSize: 13,
-  padding: "7px 10px",
-  borderRadius: 6,
+  fontSize: "var(--text-base)",
+  padding: "var(--space-2) var(--space-3)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid transparent",
   background: "transparent",
   color: "var(--text-muted)",
@@ -77,6 +77,6 @@ const itemStyle: React.CSSProperties = {
 
 const dividerStyle: React.CSSProperties = {
   height: 1,
-  margin: "6px 4px",
+  margin: "var(--space-1) var(--space-1)",
   background: "var(--border)",
 };

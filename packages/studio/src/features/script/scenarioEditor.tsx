@@ -369,55 +369,55 @@ const inspectorRegionStyle: CSSProperties = {
 const inspectorPanelStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 12,
-  padding: 16,
+  gap: "var(--space-3)",
+  padding: "var(--space-4)",
 };
 
 const inspectorTitleStyle: CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   fontWeight: 700,
   color: "var(--text-bright)",
 };
 
 const inspectorBodyStyle: CSSProperties = {
   display: "grid",
-  gap: 12,
+  gap: "var(--space-3)",
 };
 
 const fieldStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const fieldLabelStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
 };
 
 const inputStyle: CSSProperties = {
   minWidth: 0,
-  padding: "7px 9px",
-  borderRadius: 6,
+  padding: "7px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-app)",
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const mutedTextStyle: CSSProperties = {
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   lineHeight: 1.6,
 };
 
 const issueListStyle: CSSProperties = {
   display: "grid",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const issueTextStyle: CSSProperties = {
   color: "var(--status-error-text)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   lineHeight: 1.5,
 };

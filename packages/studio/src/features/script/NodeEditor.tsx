@@ -623,34 +623,34 @@ const editorPaneStyle: CSSProperties = {
 
 const jsonInspectorStyle: CSSProperties = {
   display: "grid",
-  gap: 12,
-  padding: 16,
+  gap: "var(--space-3)",
+  padding: "var(--space-4)",
 };
 
 const titleStyle: CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
 
 const helperTextStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-dim)",
-  padding: "4px 0",
+  padding: "var(--space-1) 0",
 };
 
 const issueListStyle: CSSProperties = {
   display: "grid",
-  gap: 4,
-  padding: "8px 10px",
-  borderRadius: 6,
+  gap: "var(--space-1)",
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--status-error)",
   background: "var(--bg-tag-error)",
 };
 
 const issueItemStyle: CSSProperties = {
   color: "var(--status-error-text)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   lineHeight: 1.5,
 };
 
@@ -658,13 +658,13 @@ const inspectorToggleButtonStyle: CSSProperties = {
   position: "absolute",
   top: 10,
   zIndex: 5,
-  padding: "6px 10px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "color-mix(in srgb, var(--bg-panel) 92%, transparent)",
   color: "var(--text-primary)",
   cursor: "pointer",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   whiteSpace: "nowrap",
 };
 

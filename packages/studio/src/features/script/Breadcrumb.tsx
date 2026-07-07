@@ -27,25 +27,25 @@ export function Breadcrumb({ view, selectedNodeTitle, onBackToGraph }: Breadcrum
 const containerStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  padding: "10px 16px",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) var(--space-4)",
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
 };
 
 const rootLabelStyle: React.CSSProperties = {
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const separatorStyle: React.CSSProperties = {
   color: "var(--text-dim)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 
 const currentLabelStyle: React.CSSProperties = {
   color: "var(--text-primary)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
 };
 
@@ -55,5 +55,5 @@ const crumbButtonStyle: React.CSSProperties = {
   border: "none",
   color: "var(--accent-bright)",
   cursor: "pointer",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };

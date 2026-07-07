@@ -185,7 +185,7 @@ const pageStyle: CSSProperties = {
   height: "100%",
   overflowY: "auto",
   background: "var(--bg-app)",
-  padding: "32px 48px",
+  padding: "var(--space-8) var(--space-12)",
 };
 
 const sectionStyle: CSSProperties = {
@@ -198,29 +198,29 @@ const sectionStyle: CSSProperties = {
 const headerRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
+  gap: "var(--space-3)",
 };
 
 const sectionTitleStyle: CSSProperties = {
   margin: 0,
-  fontSize: 16,
+  fontSize: "var(--text-lg)",
   fontWeight: 650,
   color: "var(--text-bright)",
 };
 
 const statusStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 
 const fieldGroupStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: "var(--space-3)",
 };
 
 const fieldLabelStyle: CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
   color: "var(--text-primary)",
 };
@@ -228,52 +228,52 @@ const fieldLabelStyle: CSSProperties = {
 const presetRowStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const presetButtonStyle: CSSProperties = {
-  height: 32,
-  padding: "0 12px",
-  borderRadius: 6,
+  height: "var(--control-lg)",
+  padding: "0 var(--space-3)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid",
   background: "var(--bg-panel)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 
 const numberRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "end",
   flexWrap: "wrap",
-  gap: 10,
+  gap: "var(--space-2)",
 };
 
 const numberFieldStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: "var(--space-1)",
 };
 
 const numberLabelStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 
 const numberInputStyle: CSSProperties = {
   width: 120,
-  height: 32,
-  borderRadius: 6,
+  height: "var(--control-lg)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-inset)",
   color: "var(--text-primary)",
-  padding: "0 10px",
+  padding: "0 var(--space-2)",
 };
 
 const saveButtonStyle: CSSProperties = {
-  height: 32,
-  padding: "0 16px",
-  borderRadius: 6,
+  height: "var(--control-lg)",
+  padding: "0 var(--space-4)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--accent)",
   background: "var(--accent)",
-  color: "#fff",
-  fontSize: 13,
+  color: "var(--text-on-accent)",
+  fontSize: "var(--text-base)",
 };

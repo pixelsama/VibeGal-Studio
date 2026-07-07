@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { X } from "lucide-react";
 
 export type ToastKind = "success" | "error" | "info";
 
@@ -52,7 +53,7 @@ export function Toast({ toast, onClose }: ToastProps) {
         {toast.detail && <div style={detailStyle}>{toast.detail}</div>}
       </div>
       <button type="button" aria-label="关闭消息" onClick={onClose} style={closeStyle}>
-        x
+        <X size={13} />
       </button>
     </div>
   );
@@ -101,7 +102,7 @@ const toastStyle: React.CSSProperties = {
   minHeight: 48,
   overflow: "hidden",
   border: "1px solid var(--border-input)",
-  borderRadius: 8,
+  borderRadius: "var(--radius-md)",
   boxShadow: "0 12px 32px var(--overlay-strong)",
 };
 
@@ -111,19 +112,19 @@ function accentStyle(background: string): React.CSSProperties {
 
 const contentStyle: React.CSSProperties = {
   minWidth: 0,
-  padding: "10px 12px",
+  padding: "var(--space-2) var(--space-3)",
 };
 
 const messageStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 650,
   lineHeight: 1.35,
 };
 
 const detailStyle: React.CSSProperties = {
-  marginTop: 4,
+  marginTop: "var(--space-1)",
   color: "var(--text-secondary)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   lineHeight: 1.45,
   whiteSpace: "pre-line",
   wordBreak: "break-word",
@@ -131,11 +132,11 @@ const detailStyle: React.CSSProperties = {
 
 const closeStyle: React.CSSProperties = {
   alignSelf: "start",
-  margin: 8,
+  margin: "var(--space-2)",
   width: 24,
   height: 24,
   border: "1px solid var(--border-input)",
-  borderRadius: 6,
+  borderRadius: "var(--radius-sm)",
   background: "transparent",
   color: "var(--text-secondary)",
   cursor: "pointer",

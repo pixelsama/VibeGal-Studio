@@ -398,7 +398,7 @@ export function ScriptWorkspace({
             <div style={canvasPaneStyle}>
               <div style={canvasColumnStyle}>
                 <div style={toolbarStyle}>
-                  <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={{ ...primaryButtonStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={{ ...primaryButtonStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>
                     <Plus size={15} />
                     新建节点
                   </button>
@@ -529,21 +529,21 @@ const canvasColumnStyle: React.CSSProperties = {
 const toolbarStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
+  gap: "var(--space-2)",
   minHeight: 48,
-  padding: "8px 12px",
+  padding: "var(--space-2) var(--space-3)",
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 8,
+  padding: "var(--space-2) var(--space-3)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--accent)",
   background: "var(--accent)",
   color: "var(--text-on-accent)",
   cursor: "pointer",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
 };
 
@@ -552,7 +552,7 @@ const toolbarSpacerStyle: React.CSSProperties = {
 };
 
 const statusTextStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 
 const inspectorPaneStyle: React.CSSProperties = {

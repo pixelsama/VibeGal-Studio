@@ -34,12 +34,12 @@ function PreviewMessage({ children, mono = false }: { children: ReactNode; mono?
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      padding: 24,
+      padding: "var(--space-6)",
       color: "var(--text-primary)",
       textAlign: "center",
       whiteSpace: "pre-wrap",
       lineHeight: 1.8,
-      fontSize: 14,
+      fontSize: "var(--text-md)",
       fontFamily: mono ? "ui-monospace, monospace" : "inherit",
     }}>
       {children}

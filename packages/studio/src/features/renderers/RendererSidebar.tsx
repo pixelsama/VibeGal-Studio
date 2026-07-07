@@ -59,35 +59,35 @@ export function RendererSidebar({
 const sidebarStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
+  gap: "var(--space-1)",
   width: "100%",
   height: "100%",
   boxSizing: "border-box",
-  padding: "10px 8px",
+  padding: "var(--space-3) var(--space-2)",
   overflowY: "auto",
 };
 
 const toolbarStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 6,
-  marginBottom: 8,
+  gap: "var(--space-1)",
+  marginBottom: "var(--space-2)",
 };
 
 const compactBtnStyle: React.CSSProperties = {
-  minHeight: 30,
-  padding: "0 10px",
-  fontSize: 12,
+  minHeight: "var(--control-lg)",
+  padding: "0 var(--space-3)",
+  fontSize: "var(--text-sm)",
 };
 
 const itemStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: "var(--space-2)",
   width: "100%",
   minHeight: 34,
-  padding: "7px 9px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid transparent",
   background: "transparent",
   cursor: "pointer",
@@ -100,20 +100,20 @@ const itemNameStyle: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };
 
 const activeBadgeStyle: React.CSSProperties = {
   flexShrink: 0,
-  padding: "1px 6px",
-  borderRadius: 999,
+  padding: "1px var(--space-1)",
+  borderRadius: "var(--radius-pill)",
   background: "var(--bg-accent-soft)",
   color: "var(--accent-bright)",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
 };
 
 const emptyStyle: React.CSSProperties = {
-  padding: "8px 4px",
+  padding: "var(--space-2) var(--space-1)",
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };

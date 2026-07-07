@@ -67,8 +67,8 @@ const panelStyle: React.CSSProperties = {
 const listStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 10,
-  padding: 12,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
   overflowY: "auto",
 };
 
@@ -76,9 +76,9 @@ const itemStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "stretch",
-  gap: 8,
-  padding: 12,
-  borderRadius: 8,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   cursor: "pointer",
   color: "var(--text-primary)",
@@ -89,26 +89,26 @@ const itemHeaderStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: 10,
+  gap: "var(--space-2)",
 };
 
 const itemTitleStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
 
 const entryBadgeStyle: React.CSSProperties = {
-  padding: "2px 8px",
-  borderRadius: 999,
+  padding: "2px var(--space-2)",
+  borderRadius: "var(--radius-pill)",
   background: "var(--bg-accent-soft)",
   color: "var(--accent-bright)",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   flexShrink: 0,
 };
 
 const itemMetaStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   wordBreak: "break-all",
 };
@@ -116,19 +116,19 @@ const itemMetaStyle: React.CSSProperties = {
 const statusRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  fontSize: 12,
+  gap: "var(--space-2)",
+  fontSize: "var(--text-sm)",
 };
 
 const statusDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
-  borderRadius: 999,
+  borderRadius: "var(--radius-pill)",
   flexShrink: 0,
 };
 
 const emptyStyle: React.CSSProperties = {
-  padding: "8px 4px",
+  padding: "var(--space-2) var(--space-1)",
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
 };

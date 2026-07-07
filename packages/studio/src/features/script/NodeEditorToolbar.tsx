@@ -82,8 +82,8 @@ function StatusText({ tone, children }: { tone: "warn" | "error" | "ok"; childre
 const toolbarStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
-  padding: "10px 16px",
+  gap: "var(--space-3)",
+  padding: "var(--space-2) var(--space-4)",
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
 };
@@ -91,18 +91,18 @@ const toolbarStyle: CSSProperties = {
 const titleGroupStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
+  gap: "var(--space-1)",
   minWidth: 0,
 };
 
 const titleStyle: CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
 
 const metaStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
   wordBreak: "break-all",
 };
@@ -112,17 +112,17 @@ const toolbarSpacerStyle: CSSProperties = {
 };
 
 const statusTextStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 
 const toggleButtonStyle: CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-2)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
   background: "var(--bg-panel)",
   color: "var(--text-secondary)",
   cursor: "pointer",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
 };
 
 const loadButtonStyle: CSSProperties = {
@@ -132,12 +132,12 @@ const loadButtonStyle: CSSProperties = {
 };
 
 const saveButtonStyle: CSSProperties = {
-  padding: "6px 16px",
-  borderRadius: 6,
+  padding: "var(--space-2) var(--space-4)",
+  borderRadius: "var(--radius-sm)",
   border: "1px solid var(--accent)",
   background: "var(--accent)",
   color: "var(--text-on-accent)",
   cursor: "pointer",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   flexShrink: 0,
 };

@@ -82,7 +82,7 @@ const rootStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  gap: 6,
+  gap: "var(--space-1)",
   width: "100%",
 };
 
@@ -92,9 +92,9 @@ const audioStyle: React.CSSProperties = {
 
 const metaStyle: React.CSSProperties = {
   display: "flex",
-  gap: 8,
+  gap: "var(--space-2)",
   flexWrap: "wrap",
   justifyContent: "center",
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
 };

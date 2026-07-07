@@ -61,9 +61,9 @@ const shellStyle: React.CSSProperties = {
 const headerStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: "var(--space-2)",
   minHeight: 42,
-  padding: "0 8px 0 12px",
+  padding: "0 var(--space-2) 0 var(--space-3)",
   borderBottom: "1px solid var(--border)",
 };
 
@@ -79,7 +79,7 @@ const titleStyle: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
   color: "var(--text-primary)",
 };
@@ -91,11 +91,11 @@ const toggleButtonStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   border: "1px solid var(--border-strong)",
-  borderRadius: 6,
+  borderRadius: "var(--radius-sm)",
   background: "var(--bg-panel)",
   color: "var(--text-secondary)",
   cursor: "pointer",
-  fontSize: 18,
+  fontSize: "var(--text-xl)",
   lineHeight: 1,
   flexShrink: 0,
 };
@@ -113,6 +113,6 @@ const collapsedLabelStyle: React.CSSProperties = {
   justifyContent: "center",
   writingMode: "vertical-rl",
   color: "var(--text-muted)",
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   userSelect: "none",
 };

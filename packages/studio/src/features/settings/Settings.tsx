@@ -99,7 +99,7 @@ export function Settings({
     <div style={pageStyle}>
       {/* 顶部导航条（自定义拖拽区） */}
       <header data-tauri-drag-region style={headerStyle}>
-        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
           <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title="后退" aria-label="后退">
             <ChevronLeft size={16} />
           </IconButton>
@@ -295,7 +295,7 @@ const titleGroupStyle: React.CSSProperties = {
 };
 
 const titleStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
@@ -303,7 +303,7 @@ const titleStyle: React.CSSProperties = {
 const contentStyle: React.CSSProperties = {
   flex: 1,
   overflowY: "auto",
-  padding: "32px 48px",
+  padding: "var(--space-8) var(--space-12)",
   display: "flex",
   flexDirection: "column",
   gap: 28,
@@ -313,19 +313,19 @@ const sectionStyle: React.CSSProperties = {
   maxWidth: 560,
   display: "flex",
   flexDirection: "column",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const sectionTitleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 14,
+  fontSize: "var(--text-md)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
 
 const sectionDescStyle: React.CSSProperties = {
-  margin: "0 0 12px",
-  fontSize: 12,
+  margin: "0 0 var(--space-3)",
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 
@@ -338,9 +338,9 @@ const themeCardRowStyle: React.CSSProperties = {
 const themeCardStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 10,
-  padding: 12,
-  borderRadius: 10,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  borderRadius: "var(--radius-lg)",
   border: "2px solid",
   background: "var(--bg-panel)",
   cursor: "pointer",
@@ -352,7 +352,7 @@ const themeCardStyle: React.CSSProperties = {
 const previewStyle: React.CSSProperties = {
   width: "100%",
   height: 100,
-  borderRadius: 6,
+  borderRadius: "var(--radius-sm)",
   overflow: "hidden",
 };
 
@@ -361,8 +361,8 @@ const previewPanelStyle: React.CSSProperties = {
   height: "100%",
   display: "flex",
   flexDirection: "column",
-  gap: 8,
-  padding: 12,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
 };
 
 const previewBarStyle: React.CSSProperties = {
@@ -388,18 +388,18 @@ const themeCardMetaStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   flexWrap: "wrap",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const themeCardLabelStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   color: "var(--text-primary)",
 };
 
 const activeTagStyle: React.CSSProperties = {
-  fontSize: 10,
-  padding: "1px 6px",
-  borderRadius: 3,
+  fontSize: "var(--text-xs)",
+  padding: "1px var(--space-1)",
+  borderRadius: "var(--radius-xs)",
   background: "var(--bg-accent-soft)",
   color: "var(--accent-bright)",
 };
@@ -407,9 +407,9 @@ const activeTagStyle: React.CSSProperties = {
 const cliPanelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 10,
-  padding: 14,
-  borderRadius: 8,
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   background: "var(--bg-panel)",
 };
@@ -418,55 +418,55 @@ const cliStatusRowStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: 16,
+  gap: "var(--space-4)",
 };
 
 const cliCommandStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--text-base)",
   fontWeight: 600,
   color: "var(--text-bright)",
 };
 
 const cliStatusTextStyle: React.CSSProperties = {
   marginTop: 3,
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
 };
 
 const cliBadgeStyle: React.CSSProperties = {
   flexShrink: 0,
-  padding: "2px 8px",
-  borderRadius: 999,
-  fontSize: 11,
+  padding: "2px var(--space-2)",
+  borderRadius: "var(--radius-pill)",
+  fontSize: "var(--text-xs)",
 };
 
 const cliDetailStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 
 const cliPathStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   wordBreak: "break-all",
 };
 
 const cliIssueStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--status-error-text)",
 };
 
 const cliMessageStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--status-ok-text)",
 };
 
 const cliActionRowStyle: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
-  gap: 8,
+  gap: "var(--space-2)",
 };

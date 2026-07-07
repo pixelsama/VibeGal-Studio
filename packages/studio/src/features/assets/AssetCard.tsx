@@ -148,7 +148,7 @@ const cardStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   width: 168,
-  borderRadius: 8,
+  borderRadius: "var(--radius-md)",
   border: `1px solid var(--border)`,
   background: "var(--bg-panel)",
   overflow: "hidden",
@@ -176,12 +176,12 @@ const videoStyle: React.CSSProperties = {
 };
 
 const otherPreviewStyle: React.CSSProperties = {
-  fontSize: 28,
+  fontSize: "var(--text-display)",
   color: "var(--text-muted)",
 };
 
 const previewPlaceholderStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
 };
 
@@ -189,10 +189,10 @@ const orphanBadgeStyle: React.CSSProperties = {
   position: "absolute",
   top: 6,
   right: 6,
-  fontSize: 10,
+  fontSize: "var(--text-xs)",
   fontWeight: 700,
-  padding: "2px 6px",
-  borderRadius: 4,
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-xs)",
   background: "var(--border-error)",
   color: "var(--text-on-error)",
 };
@@ -200,12 +200,12 @@ const orphanBadgeStyle: React.CSSProperties = {
 const metaStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 2,
-  padding: "8px 10px 4px",
+  gap: "var(--space-1)",
+  padding: "var(--space-2) var(--space-3) var(--space-1)",
 };
 
 const nameStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--text-sm)",
   color: "var(--text-primary)",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -213,7 +213,7 @@ const nameStyle: React.CSSProperties = {
 };
 
 const refStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
 };
 
@@ -221,14 +221,14 @@ const actionsStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "flex-end",
-  gap: 6,
-  padding: "4px 10px 8px",
+  gap: "var(--space-1)",
+  padding: "var(--space-1) var(--space-3) var(--space-2)",
 };
 
 const smallBtnStyle: React.CSSProperties = {
-  fontSize: 11,
-  padding: "3px 8px",
-  borderRadius: 5,
+  fontSize: "var(--text-xs)",
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-xs)",
   border: `1px solid var(--border-input)`,
   background: "var(--bg-app)",
   color: "var(--text-secondary)",
@@ -237,7 +237,7 @@ const smallBtnStyle: React.CSSProperties = {
 
 const danglingSourceStyle: React.CSSProperties = {
   flex: 1,
-  fontSize: 10,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   overflow: "hidden",

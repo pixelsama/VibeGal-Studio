@@ -178,21 +178,21 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
 }
 
 const pageStyle: React.CSSProperties = {
-  padding: "48px 64px",
+  padding: "var(--space-12) var(--space-16)",
   maxWidth: 900,
   margin: "0 auto",
 };
-const headerStyle: React.CSSProperties = { marginBottom: 32 };
-const titleStyle: React.CSSProperties = { fontSize: 32, margin: "0 0 4px", fontWeight: 600 };
-const subtitleStyle: React.CSSProperties = { margin: 0, color: "var(--text-muted)", fontSize: 14 };
+const headerStyle: React.CSSProperties = { marginBottom: "var(--space-8)" };
+const titleStyle: React.CSSProperties = { fontSize: "var(--text-display)", margin: "0 0 var(--space-1)", fontWeight: 600 };
+const subtitleStyle: React.CSSProperties = { margin: 0, color: "var(--text-muted)", fontSize: "var(--text-md)" };
 const sectionStyle: React.CSSProperties = {};
-const workspaceRow: React.CSSProperties = { display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" };
+const workspaceRow: React.CSSProperties = { display: "flex", gap: "var(--space-2)", marginBottom: 20, flexWrap: "wrap" };
 const navOverlayStyle: React.CSSProperties = {
   position: "fixed",
   top: 10,
   left: 88,
   display: "flex",
-  gap: 4,
+  gap: "var(--space-1)",
   zIndex: 10,
 };
 const modalOverlayStyle: React.CSSProperties = {
@@ -200,35 +200,35 @@ const modalOverlayStyle: React.CSSProperties = {
   inset: 0,
   display: "grid",
   placeItems: "center",
-  padding: 24,
+  padding: "var(--space-6)",
   background: "var(--overlay)",
   zIndex: 20,
 };
 const modalStyle: React.CSSProperties = {
   width: "min(480px, 100%)",
-  padding: 20,
+  padding: "var(--space-5)",
   background: "var(--bg-panel)",
   border: "1px solid var(--border-strong)",
-  borderRadius: 8,
+  borderRadius: "var(--radius-md)",
   boxShadow: "0 24px 80px var(--overlay)",
 };
-const modalHeaderStyle: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 8 };
-const parentPathStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", marginBottom: 12, wordBreak: "break-all" };
+const modalHeaderStyle: React.CSSProperties = { fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "var(--space-2)" };
+const parentPathStyle: React.CSSProperties = { fontSize: "var(--text-sm)", color: "var(--text-muted)", marginBottom: "var(--space-3)", wordBreak: "break-all" };
 const inputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "8px 12px",
+  padding: "var(--space-2) var(--space-3)",
   background: "var(--bg-hover)",
   border: "1px solid var(--border-strong)",
-  borderRadius: 6,
+  borderRadius: "var(--radius-sm)",
   color: "var(--text-primary)",
   fontFamily: "inherit",
-  fontSize: 14,
+  fontSize: "var(--text-md)",
 };
-const modalActionsStyle: React.CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 };
+const modalActionsStyle: React.CSSProperties = { display: "flex", justifyContent: "flex-end", gap: "var(--space-2)", marginTop: "var(--space-4)" };
 const errorStyle: React.CSSProperties = {
-  padding: "10px 14px", background: "var(--bg-error-soft)", border: "1px solid var(--border-error)",
-  borderRadius: 6, color: "var(--status-error-text)", fontSize: 13, marginBottom: 16, whiteSpace: "pre-wrap",
+  padding: "var(--space-2) var(--space-3)", background: "var(--bg-error-soft)", border: "1px solid var(--border-error)",
+  borderRadius: "var(--radius-sm)", color: "var(--status-error-text)", fontSize: "var(--text-base)", marginBottom: "var(--space-4)", whiteSpace: "pre-wrap",
 };
-const modalErrorStyle: React.CSSProperties = { ...errorStyle, marginTop: 12, marginBottom: 0 };
-const emptyStyle: React.CSSProperties = { color: "var(--text-dim)", fontSize: 14, padding: 24, textAlign: "center" };
+const modalErrorStyle: React.CSSProperties = { ...errorStyle, marginTop: "var(--space-3)", marginBottom: 0 };
+const emptyStyle: React.CSSProperties = { color: "var(--text-dim)", fontSize: "var(--text-md)", padding: "var(--space-6)", textAlign: "center" };
