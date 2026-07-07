@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface CollapsibleSidebarProps {
   title: string;
@@ -35,7 +36,7 @@ export function CollapsibleSidebar({
           onClick={() => onCollapsedChange(!collapsed)}
           style={toggleButtonStyle}
         >
-          {collapsed ? "›" : "‹"}
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
       {collapsed ? (

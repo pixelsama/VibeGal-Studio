@@ -20,6 +20,8 @@ describe("CollapsibleSidebar", () => {
     expect(html).toContain("渲染层");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("width:180px");
+    expect(html).toContain("lucide-chevron-left");
+    expect(html).not.toContain("&lt;");
     expect(html).toContain("default");
   });
 
@@ -38,6 +40,8 @@ describe("CollapsibleSidebar", () => {
 
     expect(html).toContain("aria-expanded=\"false\"");
     expect(html).toContain("width:44px");
+    expect(html).toContain("lucide-chevron-right");
+    expect(html).not.toContain("&gt;");
     expect(html).toContain("资产");
     expect(html).not.toContain("背景");
   });
