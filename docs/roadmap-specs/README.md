@@ -2,6 +2,8 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
+下一批已决策待开发的 spec 在 [next-batch](./next-batch/)。
+
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
 - [Spec 01 — Runtime Contract Foundation](./archive/01-runtime-contract-foundation.spec.md)
