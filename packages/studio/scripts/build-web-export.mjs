@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -55,6 +55,27 @@ function jsonExit(payload, code) {
   process.exit(code);
 }
 
+function lineColumnAt(source, index) {
+  const before = source.slice(0, Math.max(0, index));
+  const lines = before.split(/\r\n|\n|\r/);
+  const line = lines.length;
+  const column = lines.at(-1).length + 1;
+  const snippet = source.split(/\r\n|\n|\r/)[line - 1] ?? "";
+  return { line, column, snippet };
+}
+
+function rendererDiagnostic({ code, rendererId, step, message, file, source = "", index = 0 }) {
+  return {
+    severity: "error",
+    code,
+    rendererId,
+    step,
+    message,
+    file,
+    ...lineColumnAt(source, index),
+  };
+}
+
 function isBareImport(specifier) {
   return !specifier.startsWith(".") && !specifier.startsWith("/") && !specifier.startsWith("file:");
 }
@@ -84,6 +105,152 @@ function rendererImportLocation(importer, specifier) {
   } catch {
     return { line: 1, column: 1 };
   }
+}
+
+function rendererSourceFiles(dir) {
+  const files = [];
+  function visit(current) {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        visit(full);
+      } else if (entry.isFile() && /\.(tsx?|jsx?)$/.test(entry.name)) {
+        files.push(full);
+      }
+    }
+  }
+  visit(dir);
+  files.sort();
+  return files;
+}
+
+function relativeProjectFile(projectDir, filePath) {
+  return path.relative(projectDir, filePath).replaceAll(path.sep, "/");
+}
+
+function specifierOffset(matchText, specifier) {
+  const doubleQuoted = matchText.indexOf(`"${specifier}"`);
+  if (doubleQuoted >= 0) return doubleQuoted;
+  const singleQuoted = matchText.indexOf(`'${specifier}'`);
+  return singleQuoted >= 0 ? singleQuoted : 0;
+}
+
+function unsupportedImportDiagnostics({ projectDir, rendererDir, rendererId }) {
+  const diagnostics = [];
+  const importPattern = /\b(?:import\s+(?:[^"'()]+?\s+from\s*)?|export\s+[^"']+?\s+from\s*|import\s*\(\s*)["']([^"']+)["']/g;
+  for (const filePath of rendererSourceFiles(rendererDir)) {
+    const source = readFileSync(filePath, "utf8");
+    for (const match of source.matchAll(importPattern)) {
+      const specifier = match[1];
+      if (!isBareImport(specifier) || allowedBareImportPaths.has(specifier)) continue;
+      const quoteIndex = (match.index ?? 0) + specifierOffset(match[0], specifier);
+      diagnostics.push(rendererDiagnostic({
+        code: "renderer_unsupported_import",
+        rendererId,
+        step: "compile",
+        message: `Unsupported renderer bare import: ${specifier}.`,
+        file: relativeProjectFile(projectDir, filePath),
+        source,
+        index: quoteIndex,
+      }));
+    }
+  }
+  return diagnostics;
+}
+
+function propertyIndex(source, propertyName) {
+  const match = new RegExp(`\\b${propertyName}\\s*:`).exec(source);
+  return match?.index ?? 0;
+}
+
+function firstStringProperty(source, propertyName) {
+  const match = new RegExp(`\\b${propertyName}\\s*:\\s*["']([^"']+)["']`).exec(source);
+  return match?.[1];
+}
+
+function firstNumberProperty(source, propertyName) {
+  const match = new RegExp(`\\b${propertyName}\\s*:\\s*(\\d+)`).exec(source);
+  return match ? Number(match[1]) : undefined;
+}
+
+function rendererManifestDiagnostics({ projectDir, rendererDir, rendererId }) {
+  const entry = path.join(rendererDir, "index.tsx");
+  const file = relativeProjectFile(projectDir, entry);
+  const source = readFileSync(entry, "utf8");
+  const diagnostics = [];
+  const exportIndex = source.indexOf("export default");
+  if (exportIndex < 0) {
+    diagnostics.push(rendererDiagnostic({
+      code: "renderer_missing_default_export",
+      rendererId,
+      step: "manifest",
+      message: `Renderer ${rendererId} must default-export a RendererManifest.`,
+      file,
+      source,
+      index: 0,
+    }));
+  }
+
+  const manifestId = firstStringProperty(source, "id");
+  if (manifestId != null && manifestId !== rendererId) {
+    diagnostics.push(rendererDiagnostic({
+      code: "renderer_manifest_id_mismatch",
+      rendererId,
+      step: "manifest",
+      message: `Renderer manifest id must match directory id "${rendererId}".`,
+      file,
+      source,
+      index: propertyIndex(source, "id"),
+    }));
+  }
+
+  const contractVersion = firstNumberProperty(source, "contractVersion");
+  if (contractVersion == null) {
+    diagnostics.push(rendererDiagnostic({
+      code: "renderer_contract_missing",
+      rendererId,
+      step: "contract",
+      message: `Renderer ${rendererId} is missing contractVersion.`,
+      file,
+      source,
+      index: exportIndex >= 0 ? exportIndex : 0,
+    }));
+  } else if (contractVersion !== 1) {
+    diagnostics.push(rendererDiagnostic({
+      code: "renderer_contract_unsupported",
+      rendererId,
+      step: "contract",
+      message: `Unsupported renderer contract version ${contractVersion}; expected 1.`,
+      file,
+      source,
+      index: propertyIndex(source, "contractVersion"),
+    }));
+  }
+
+  return diagnostics;
+}
+
+function rendererDiagnostics({ projectDir, rendererDir, rendererId }) {
+  return [
+    ...unsupportedImportDiagnostics({ projectDir, rendererDir, rendererId }),
+    ...rendererManifestDiagnostics({ projectDir, rendererDir, rendererId }),
+  ];
+}
+
+function diagnosticFailure(diagnostics, fallbackRendererId) {
+  const first = diagnostics[0];
+  return {
+    ok: false,
+    code: first?.code ?? "renderer_check_failed",
+    message: first?.message ?? "Renderer check failed.",
+    step: first?.step ?? "renderer",
+    rendererId: first?.rendererId ?? fallbackRendererId,
+    file: first?.file,
+    line: first?.line,
+    column: first?.column,
+    snippet: first?.snippet,
+    diagnostics,
+  };
 }
 
 function rendererImportGuardPlugin({ projectDir, rendererDir, rendererId }) {
@@ -129,25 +296,35 @@ function firstEsbuildError(error) {
     file: first.location?.file,
     line: first.location?.line,
     column: first.location?.column,
+    snippet: first.location?.lineText,
   };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectDir = realpathSync(path.resolve(args.project ?? ""));
-  const outDir = path.resolve(args.out ?? "");
+  const outDir = args.out ? path.resolve(args.out) : "";
   const rendererId = args.renderer;
-  if (!projectDir || !outDir || !rendererId) {
+  const checkOnly = args["check-only"] === "true";
+  if (!projectDir || (!outDir && !checkOnly) || !rendererId) {
     jsonExit({
       ok: false,
       code: "build_worker_invalid_args",
-      message: "build-web-export requires --project, --out and --renderer.",
+      message: "build-web-export requires --project, --renderer and --out unless --check-only is set.",
       step: "worker",
       rendererId,
     }, 1);
   }
 
   const rendererDir = realpathSync(path.join(projectDir, "renderers", rendererId));
+  const diagnostics = rendererDiagnostics({ projectDir, rendererDir, rendererId });
+  if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    jsonExit(diagnosticFailure(diagnostics, rendererId), 1);
+  }
+  if (checkOnly) {
+    jsonExit({ ok: true, rendererId, diagnostics: [] }, 0);
+  }
+
   const rendererEntry = path.join(rendererDir, "index.tsx");
   const runtimeEntry = path.join(studioRoot, "src/export/webRuntimeHost.ts");
   const tempDir = path.join(outDir, ".galstudio-build");
@@ -208,6 +385,20 @@ async function main() {
       file: first?.file,
       line: first?.line,
       column: first?.column,
+      snippet: first?.snippet,
+      diagnostics: [{
+        severity: "error",
+        code: unsupported ? "renderer_unsupported_import" : "renderer_compile_failed",
+        rendererId,
+        step: "compile",
+        message: unsupported
+          ? "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @galstudio/engine and relative imports."
+          : (first?.text ?? (error instanceof Error ? error.message : String(error))),
+        file: first?.file,
+        line: first?.line,
+        column: first?.column,
+        snippet: first?.snippet,
+      }],
     }, 1);
   }
 }

@@ -104,4 +104,16 @@ describe("schemaExport", () => {
     expect(unlock).toBeDefined();
     expect(unlock?.required).toEqual(["t", "kind", "id"]);
   });
+
+  it("nodeFile schema includes media display instructions", () => {
+    const nodeFile = buildJsonSchema("nodeFile");
+    const items = nodeFile.items as { oneOf: Array<{ properties: { t: { const: string } }; required: string[] }> };
+    const showCg = items.oneOf.find((item) => item.properties.t.const === "showCg");
+    const playVideo = items.oneOf.find((item) => item.properties.t.const === "playVideo");
+
+    expect(showCg).toBeDefined();
+    expect(showCg?.required).toEqual(["t", "id"]);
+    expect(playVideo).toBeDefined();
+    expect(playVideo?.required).toEqual(["t", "id"]);
+  });
 });

@@ -137,6 +137,28 @@ export function parseScenarioLine(line: string): ParsedLine {
         }
         return { ok: true, instruction: { t: "transition", type, ms: 1000 } as Instruction };
       }
+      case "@unlock": {
+        const kind = parts[1];
+        const id = parts[2];
+        if (!kind || !["cg", "music", "replay", "endings"].includes(kind)) {
+          return { ok: false, message: "@unlock 类型必须是 cg、music、replay 或 endings。" };
+        }
+        if (!id) return { ok: false, message: "@unlock 需要解锁 ID。" };
+        return { ok: true, instruction: { t: "unlock", kind, id } as Instruction };
+      }
+      case "@showCg": {
+        const id = parts[1];
+        if (!id) return { ok: false, message: "@showCg 需要 CG ID。" };
+        return { ok: true, instruction: { t: "showCg", id } as Instruction };
+      }
+      case "@playVideo": {
+        const id = parts[1];
+        if (!id) return { ok: false, message: "@playVideo 需要 video ID。" };
+        const skippableRaw = parts[2];
+        const skippable = skippableRaw == null ? undefined : parseScenarioBoolean(skippableRaw);
+        if (skippableRaw != null && skippable == null) return { ok: false, message: "@playVideo skippable 必须是 true 或 false。" };
+        return { ok: true, instruction: { t: "playVideo", id, skippable } as Instruction };
+      }
       default:
         return { ok: false, message: `未知命令：${command}` };
     }
@@ -187,6 +209,10 @@ export function formatScenarioInstruction(instruction: Instruction): string {
       return `@set ${instruction.key} ${formatScenarioValue(instruction.value)}`;
     case "unlock":
       return `@unlock ${instruction.kind} ${instruction.id}`;
+    case "showCg":
+      return `@showCg ${instruction.id}`;
+    case "playVideo":
+      return `@playVideo ${instruction.id}${instruction.skippable == null ? "" : ` ${instruction.skippable}`}`;
     case "wait":
       return `@wait ${instruction.ms}`;
     case "effect":
@@ -216,6 +242,12 @@ function parseScenarioValue(raw: string): string | number | boolean | null {
   const numberValue = Number(value);
   if (Number.isFinite(numberValue) && value !== "") return numberValue;
   return value;
+}
+
+function parseScenarioBoolean(raw: string): boolean | null {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return null;
 }
 
 function formatScenarioValue(value: string | number | boolean | null): string {

@@ -18,6 +18,7 @@ import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
 import { IconButton } from "./features/common/Button";
 import { AlertDialog, ConfirmDialog, PromptDialog } from "./features/common/Dialogs";
 import { RendererSidebar } from "./features/renderers/RendererSidebar";
+import type { RendererDiagnostic } from "./features/renderers/diagnostics";
 import {
   createRenderer,
   deleteRenderer,
@@ -123,6 +124,7 @@ export function Workspace({
   const [rendererPrompt, setRendererPrompt] = useState<RendererPromptConfig | null>(null);
   const [rendererConfirm, setRendererConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [rendererAlert, setRendererAlert] = useState<string | null>(null);
+  const [rendererDiagnostics, setRendererDiagnostics] = useState<RendererDiagnostic[]>([]);
   const graphIssueFocusRequestIdRef = useRef(0);
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
   const workspace = workspaceFromLocation(location) ?? "render";
@@ -356,6 +358,7 @@ export function Workspace({
               <RendererSidebar
                 rendererIds={project.rendererIds}
                 activeRendererId={rendererId}
+                diagnostics={rendererDiagnostics}
                 onSelect={handleRendererChange}
                 onCreate={handleCreateRenderer}
                 onDuplicate={handleDuplicateRenderer}
@@ -364,7 +367,12 @@ export function Workspace({
               />
             </CollapsibleSidebar>
             <div style={previewPaneStyle}>
-              <Preview key={`${rendererId}-${refreshKey}`} project={project} rendererId={rendererId} />
+              <Preview
+                key={`${rendererId}-${refreshKey}`}
+                project={project}
+                rendererId={rendererId}
+                onRendererDiagnosticsChange={setRendererDiagnostics}
+              />
             </div>
           </div>
         )}

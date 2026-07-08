@@ -19,11 +19,12 @@ import {
   type RuntimeControls,
   type RuntimeServices,
   createInMemoryRuntimeServices,
-  RuntimeServiceUnavailableError,
+  createRuntimeSnapshot,
 } from "@galstudio/engine";
 import type { NodeEntry, ProjectData, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 import { readStageResolution } from "../../lib/projectMeta";
+import { parseGraphCondition, type GraphConditionAst } from "../script/graphCondition";
 
 export interface ProjectPlayerResult {
   state: NovelState;
@@ -60,22 +61,128 @@ export function createProjectRendererProps(input: ProjectRendererPropsInput): Re
   };
 }
 
-export function buildProjectPreviewContent(project: ProjectData) {
-  const chapters = graphPreviewChapters(project.graph, project.nodes);
+export type PreviewInitialVars = Record<string, string | number | boolean | null>;
+
+export interface PreviewStartPoint {
+  nodeId: string;
+  instructionId?: string;
+}
+
+export interface ProjectPreviewOptions {
+  start?: PreviewStartPoint;
+  initialVars?: PreviewInitialVars;
+}
+
+export function buildProjectPreviewContent(project: ProjectData, options: ProjectPreviewOptions = {}) {
+  const chapters = graphPreviewChapters(project.graph, project.nodes, options.start);
   return {
     meta: project.content.meta,
     manifest: project.content.manifest,
     chapters: chapters.map((chapter) => ({ file: chapter.file, data: chapter.data })),
     nodeIds: chapters.map((chapter) => chapter.nodeId),
+    entryNodeId: options.start?.nodeId ?? project.graph?.entryNodeId ?? "",
+    initialVars: options.initialVars ?? {},
   };
 }
 
-function graphPreviewChapters(graph: ProjectGraph | undefined, nodeEntries: NodeEntry[] | undefined) {
+function graphPreviewChapters(
+  graph: ProjectGraph | undefined,
+  nodeEntries: NodeEntry[] | undefined,
+  start?: PreviewStartPoint,
+) {
   if (!graph || !nodeEntries) return [];
   const entryByPath = new Map(nodeEntries.map((entry) => [entry.relPath, entry]));
   return graph.nodes.flatMap((node) => {
     const data = entryByPath.get(node.file)?.data;
-    return data == null ? [] : [{ nodeId: node.id, file: node.file, data }];
+    if (data == null) return [];
+    return [{ nodeId: node.id, file: node.file, data: sliceNodePreviewData(node.id, data, start) }];
+  });
+}
+
+function sliceNodePreviewData(nodeId: string, data: unknown, start?: PreviewStartPoint): unknown {
+  if (!start || start.nodeId !== nodeId || !start.instructionId || !Array.isArray(data)) return data;
+  const index = data.findIndex((instruction) => {
+    const obj = typeof instruction === "object" && instruction != null ? instruction as Record<string, unknown> : null;
+    return obj?.id === start.instructionId;
+  });
+  return index >= 0 ? data.slice(index) : data;
+}
+
+export type AutoRoutePreviewResult =
+  | { kind: "target"; edgeId: string; nodeId: string }
+  | { kind: "end" }
+  | { kind: "not_auto" }
+  | { kind: "no_match" };
+
+export function resolveAutoRoutePreview(
+  graph: ProjectGraph,
+  nodeId: string,
+  initialVars: PreviewInitialVars = {},
+): AutoRoutePreviewResult {
+  const outgoing = graph.edges.filter((edge) => edge.from === nodeId);
+  if (outgoing.length === 0) return { kind: "end" };
+  if (!outgoing.every((edge) => (edge.mode ?? "linear") === "auto")) return { kind: "not_auto" };
+  const edge = outgoing.find((candidate) => evaluatePreviewCondition(candidate.condition, initialVars));
+  return edge ? { kind: "target", edgeId: edge.id, nodeId: edge.to } : { kind: "no_match" };
+}
+
+function evaluatePreviewCondition(condition: string | null | undefined, vars: PreviewInitialVars): boolean {
+  const source = condition?.trim();
+  if (!source) return true;
+  const parsed = parseGraphCondition(source);
+  if (!parsed.ok) return false;
+  return truthy(evaluatePreviewAst(parsed.ast, vars));
+}
+
+function evaluatePreviewAst(ast: GraphConditionAst, vars: PreviewInitialVars): string | number | boolean | null {
+  switch (ast.kind) {
+    case "identifier":
+      return vars[ast.name] ?? null;
+    case "literal":
+      return ast.value;
+    case "unary":
+      return !truthy(evaluatePreviewAst(ast.expr, vars));
+    case "logical":
+      return ast.op === "&&"
+        ? truthy(evaluatePreviewAst(ast.left, vars)) && truthy(evaluatePreviewAst(ast.right, vars))
+        : truthy(evaluatePreviewAst(ast.left, vars)) || truthy(evaluatePreviewAst(ast.right, vars));
+    case "comparison": {
+      const left = evaluatePreviewAst(ast.left, vars);
+      const right = evaluatePreviewAst(ast.right, vars);
+      return evaluatePreviewComparison(ast.op, left, right);
+    }
+  }
+}
+
+function evaluatePreviewComparison(
+  op: "==" | "!=" | ">" | "<" | ">=" | "<=",
+  left: string | number | boolean | null,
+  right: string | number | boolean | null,
+): boolean {
+  switch (op) {
+    case "==":
+      return left === right;
+    case "!=":
+      return left !== right;
+    case ">":
+      return typeof left === "number" && typeof right === "number" && left > right;
+    case "<":
+      return typeof left === "number" && typeof right === "number" && left < right;
+    case ">=":
+      return typeof left === "number" && typeof right === "number" && left >= right;
+    case "<=":
+      return typeof left === "number" && typeof right === "number" && left <= right;
+  }
+}
+
+function truthy(value: string | number | boolean | null): boolean {
+  return value === true || (typeof value === "number" && value !== 0) || (typeof value === "string" && value.length > 0);
+}
+
+function createInitialRuntimeSnapshot(state: NovelState) {
+  return createRuntimeSnapshot(state, {
+    currentNodeId: "preview",
+    currentStoryPoint: null,
   });
 }
 
@@ -101,9 +208,23 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       const graph = ProjectGraphSchema.parse(project.graph ?? { version: 1, entryNodeId: "", nodes: [], edges: [] });
 
       const chapters = validated.chapters as Instruction[][];
-      player = new GraphNovelPlayer({ meta: validated.meta as Meta, manifest: validated.manifest as Manifest });
+      player = new GraphNovelPlayer({
+        meta: validated.meta as Meta,
+        manifest: validated.manifest as Manifest,
+        onRuntimeEffect: (effect) => {
+          if (effect.type === "unlock") {
+            void runtimeRef.current?.persistent.unlock(effect.kind, effect.id);
+          }
+        },
+        persistent: {
+          getReadStatus: (key) => runtimeRef.current?.persistent.getReadStatus(key) ?? false,
+          markRead: (key) => runtimeRef.current?.persistent.markRead(key),
+        },
+        replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
+      });
+      const previewContent = buildProjectPreviewContent(project);
       player.loadGraph(
-        graph,
+        { ...graph, entryNodeId: previewContent.entryNodeId || graph.entryNodeId },
         content.nodeIds.map((id, index) => ({ id, instructions: chapters[index] ?? [] })),
       );
       playerRef.current = player;
@@ -152,18 +273,23 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     advance,
     choose,
     setAutoPlay: (on) => playerRef.current?.setAutoPlay(on),
-    setSkipMode: (mode) => {
-      if (mode !== "off") throw new RuntimeServiceUnavailableError("controls", "setSkipMode");
-    },
-    rollbackTo: () => {
-      throw new RuntimeServiceUnavailableError("controls", "rollbackTo");
-    },
+    setSkipMode: (mode) => playerRef.current?.setSkipMode(mode),
+    rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point),
     restart,
   };
   runtimeRef.current ??= createInMemoryRuntimeServices({
     getState: () => playerRef.current?.getState() ?? stateRef.current,
+    manifest: project.content.manifest ?? EMPTY_MANIFEST,
+    createSnapshot: () => playerRef.current?.createSnapshot() ?? createInitialRuntimeSnapshot(stateRef.current),
+    restoreFromSave: (record) => playerRef.current?.restoreFromSave(record) ?? { warnings: [] },
+    decisionLog: () => playerRef.current?.getDecisionLog() ?? [],
+    currentStoryPoint: () => playerRef.current?.getCurrentStoryPoint() ?? null,
+    currentNodeId: () => playerRef.current?.getCurrentNodeId() ?? "preview",
+    getBacklog: () => playerRef.current?.getBacklog() ?? [],
+    rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point),
+    replayVoice: (entryId) => playerRef.current?.replayVoice(entryId),
     audio: {
-      replayVoice: () => audioRef.current?.replayVoice(),
+      replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
       stopBgm: (fadeMs) => audioRef.current?.stopBgm(fadeMs),
       pauseBgm: () => audioRef.current?.pauseBgm(),
       resumeBgm: () => audioRef.current?.resumeBgm(),

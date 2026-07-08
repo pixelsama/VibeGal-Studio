@@ -188,6 +188,8 @@ export function applyInstruction(
       };
 
     case "unlock":
+    case "showCg":
+    case "playVideo":
       return state;
 
     default: {

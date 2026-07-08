@@ -53,7 +53,15 @@ export function useNodePreview(
       const validated = validateContent(content);
 
       const chapters = validated.chapters as Instruction[][];
-      player = new NovelPlayer({ meta: validated.meta as Meta, manifest: validated.manifest as Manifest });
+      player = new NovelPlayer({
+        meta: validated.meta as Meta,
+        manifest: validated.manifest as Manifest,
+        onRuntimeEffect: (effect) => {
+          if (effect.type === "unlock") {
+            void runtimeRef.current?.persistent.unlock(effect.kind, effect.id);
+          }
+        },
+      });
       player.load(chapters);
       playerRef.current = player;
 
@@ -114,6 +122,7 @@ export function useNodePreview(
   };
   runtimeRef.current ??= createInMemoryRuntimeServices({
     getState: () => playerRef.current?.getState() ?? stateRef.current,
+    manifest: manifest ?? EMPTY_MANIFEST,
     audio: {
       replayVoice: () => audioRef.current?.replayVoice(),
       stopBgm: (fadeMs) => audioRef.current?.stopBgm(fadeMs),

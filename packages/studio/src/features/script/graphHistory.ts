@@ -99,6 +99,25 @@ export function redoGraphHistory(state: GraphHistoryState): GraphHistoryState {
   });
 }
 
+export type GraphDraftCommitResult =
+  | { ok: true; graph: ProjectGraph; revisionToken: string | null }
+  | { ok: false; reason: "stale_revision"; expectedRevisionToken: string | null; actualRevisionToken: string | null };
+
+export function commitGraphDraft(
+  state: GraphHistoryState,
+  currentRevisionToken: string | null,
+): GraphDraftCommitResult {
+  if (state.revisionToken !== currentRevisionToken) {
+    return {
+      ok: false,
+      reason: "stale_revision",
+      expectedRevisionToken: state.revisionToken,
+      actualRevisionToken: currentRevisionToken,
+    };
+  }
+  return { ok: true, graph: state.graph, revisionToken: currentRevisionToken };
+}
+
 export function reconcileGraphHistory(
   state: GraphHistoryState,
   incomingGraph: ProjectGraph,

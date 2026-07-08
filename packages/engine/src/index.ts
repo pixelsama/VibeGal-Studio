@@ -17,4 +17,5 @@ export * from "./validate";
 export * from "./assetPath";
 export * from "./renderer";
 export * from "./runtimeContract";
+export * from "./runtimeEffect";
 export * from "./scenario";

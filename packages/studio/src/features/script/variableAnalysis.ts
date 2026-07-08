@@ -130,23 +130,119 @@ export interface RouteCoverageSummary {
   reachableNodes: number;
   endingNodes: number;
   orphanNodes: number;
+  choiceBranches: ChoiceBranchCoverage[];
+  autoBranches: AutoBranchCoverage[];
+}
+
+export interface ChoiceBranchCoverage {
+  edgeId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  label: string;
+  reachesEnding: boolean;
+  endingNodeIds: string[];
+}
+
+export interface AutoBranchCoverage {
+  edgeId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  condition: string | null;
+  conditionState: "default" | "unknown" | "invalid" | "always" | "never";
+  reachesEnding: boolean;
+  endingNodeIds: string[];
 }
 
 export function buildRouteCoverage(graph: ProjectGraph): RouteCoverageSummary {
   const reachable = collectReachableNodeIds(graph);
   const outgoingCounts = new Map<string, number>();
   const incomingCounts = new Map<string, number>();
+  const outgoingByNode = new Map<string, ProjectGraph["edges"]>();
+  graph.nodes.forEach((node) => outgoingByNode.set(node.id, []));
   graph.edges.forEach((edge) => {
     outgoingCounts.set(edge.from, (outgoingCounts.get(edge.from) ?? 0) + 1);
     incomingCounts.set(edge.to, (incomingCounts.get(edge.to) ?? 0) + 1);
+    outgoingByNode.get(edge.from)?.push(edge);
   });
+  const endingNodeIds = graph.nodes
+    .filter((node) => reachable.has(node.id) && (outgoingCounts.get(node.id) ?? 0) === 0)
+    .map((node) => node.id)
+    .sort();
+  const endingNodeSet = new Set(endingNodeIds);
+  const edgeEndingCache = new Map<string, string[]>();
+  const endingsReachableFrom = (nodeId: string) =>
+    collectEndingIdsFromNode(nodeId, outgoingByNode, endingNodeSet, edgeEndingCache);
 
   return {
     totalNodes: graph.nodes.length,
     reachableNodes: reachable.size,
-    endingNodes: graph.nodes.filter((node) => reachable.has(node.id) && (outgoingCounts.get(node.id) ?? 0) === 0).length,
+    endingNodes: endingNodeIds.length,
     orphanNodes: graph.nodes.filter((node) => (incomingCounts.get(node.id) ?? 0) === 0 && (outgoingCounts.get(node.id) ?? 0) === 0).length,
+    choiceBranches: graph.edges
+      .filter((edge) => (edge.mode ?? "linear") === "choice")
+      .map((edge) => {
+        const endingNodeIds = endingsReachableFrom(edge.to);
+        return {
+          edgeId: edge.id,
+          fromNodeId: edge.from,
+          toNodeId: edge.to,
+          label: edge.label?.trim() || edge.to,
+          reachesEnding: endingNodeIds.length > 0,
+          endingNodeIds,
+        };
+      }),
+    autoBranches: graph.edges
+      .filter((edge) => (edge.mode ?? "linear") === "auto")
+      .map((edge) => {
+        const endingNodeIds = endingsReachableFrom(edge.to);
+        return {
+          edgeId: edge.id,
+          fromNodeId: edge.from,
+          toNodeId: edge.to,
+          condition: edge.condition,
+          conditionState: classifyAutoCondition(edge.condition),
+          reachesEnding: endingNodeIds.length > 0,
+          endingNodeIds,
+        };
+      }),
   };
+}
+
+function collectEndingIdsFromNode(
+  startNodeId: string,
+  outgoingByNode: Map<string, ProjectGraph["edges"]>,
+  endingNodeIds: Set<string>,
+  cache: Map<string, string[]>,
+): string[] {
+  const cached = cache.get(startNodeId);
+  if (cached) return cached;
+
+  const endings = new Set<string>();
+  const stack = [startNodeId];
+  const seen = new Set<string>();
+  while (stack.length > 0) {
+    const nodeId = stack.pop()!;
+    if (seen.has(nodeId)) continue;
+    seen.add(nodeId);
+    if (endingNodeIds.has(nodeId)) {
+      endings.add(nodeId);
+      continue;
+    }
+    (outgoingByNode.get(nodeId) ?? []).forEach((edge) => stack.push(edge.to));
+  }
+
+  const result = Array.from(endings).sort();
+  cache.set(startNodeId, result);
+  return result;
+}
+
+function classifyAutoCondition(condition: string | null | undefined): AutoBranchCoverage["conditionState"] {
+  const source = condition?.trim();
+  if (!source) return "default";
+  const parsed = parseGraphCondition(source);
+  if (!parsed.ok) return "invalid";
+  if (parsed.ast.kind === "literal") return parsed.ast.value ? "always" : "never";
+  return "unknown";
 }
 
 function collectReachableNodeIds(graph: ProjectGraph): Set<string> {

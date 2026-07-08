@@ -1,9 +1,11 @@
 import { Button } from "../common/Button";
+import { locationLabel, type RendererDiagnostic } from "./diagnostics";
 
 interface RendererSidebarProps {
   rendererIds: string[];
   activeRendererId: string;
   onSelect: (rendererId: string) => void;
+  diagnostics?: RendererDiagnostic[];
   onCreate?: () => void;
   onDuplicate?: (rendererId: string) => void;
   onRename?: (rendererId: string) => void;
@@ -14,11 +16,13 @@ export function RendererSidebar({
   rendererIds,
   activeRendererId,
   onSelect,
+  diagnostics = [],
   onCreate,
   onDuplicate,
   onRename,
   onDelete,
 }: RendererSidebarProps) {
+  const activeDiagnostics = diagnostics.filter((diagnostic) => diagnostic.rendererId === activeRendererId);
   return (
     <nav style={sidebarStyle} aria-label="渲染层列表">
       <div style={toolbarStyle}>
@@ -51,6 +55,21 @@ export function RendererSidebar({
             </button>
           );
         })
+      )}
+      {activeDiagnostics.length > 0 && (
+        <section style={diagnosticsStyle} aria-label="渲染层诊断">
+          {activeDiagnostics.map((diagnostic, index) => (
+            <article key={`${diagnostic.code}-${diagnostic.file ?? ""}-${diagnostic.line ?? index}`} style={diagnosticItemStyle}>
+              <div style={diagnosticHeaderStyle}>
+                <span>{diagnostic.severity}</span>
+                <code>{diagnostic.code}</code>
+              </div>
+              <div style={diagnosticMessageStyle}>{diagnostic.message}</div>
+              {diagnostic.file && <code style={diagnosticLocationStyle}>{locationLabel(diagnostic)}</code>}
+              {diagnostic.snippet && <pre style={snippetStyle}>{diagnostic.snippet}</pre>}
+            </article>
+          ))}
+        </section>
       )}
     </nav>
   );
@@ -116,4 +135,54 @@ const emptyStyle: React.CSSProperties = {
   padding: "var(--space-2) var(--space-1)",
   color: "var(--text-muted)",
   fontSize: "var(--text-base)",
+};
+
+const diagnosticsStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+  marginTop: "var(--space-3)",
+};
+
+const diagnosticItemStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-1)",
+  padding: "var(--space-2)",
+  border: "1px solid var(--status-error-border)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--status-error-bg)",
+};
+
+const diagnosticHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "var(--space-2)",
+  color: "var(--status-error-text)",
+  fontSize: "var(--text-xs)",
+};
+
+const diagnosticMessageStyle: React.CSSProperties = {
+  color: "var(--text-primary)",
+  fontSize: "var(--text-sm)",
+  lineHeight: 1.5,
+};
+
+const diagnosticLocationStyle: React.CSSProperties = {
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-xs)",
+  whiteSpace: "normal",
+  overflowWrap: "anywhere",
+};
+
+const snippetStyle: React.CSSProperties = {
+  margin: 0,
+  padding: "var(--space-2)",
+  borderRadius: "var(--radius-xs)",
+  background: "var(--bg-sunken)",
+  color: "var(--text-primary)",
+  fontSize: "var(--text-xs)",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
 };

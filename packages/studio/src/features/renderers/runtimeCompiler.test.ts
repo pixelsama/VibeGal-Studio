@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { __rewriteBareImportsForTest, formatRuntimeCompilerErrorForTest } from "./runtimeCompiler";
+import {
+  __findUnsupportedBareImportsForTest,
+  __rewriteBareImportsForTest,
+  formatRuntimeCompilerErrorForTest,
+} from "./runtimeCompiler";
 
 describe("rewriteBareImports", () => {
   it("rewrites mixed default and named React imports", () => {
@@ -51,14 +55,45 @@ describe("rewriteBareImports", () => {
       rendererId: "mobile",
       error: {
         kind: "unsupported-import",
-        file: "Stage.tsx",
+        diagnostics: [{
+          severity: "error",
+          code: "renderer_unsupported_import",
+          rendererId: "mobile",
+          step: "compile",
+          message: "Unsupported renderer bare import: lodash-es.",
+          file: "renderers/mobile/Stage.tsx",
+          line: 2,
+          column: 24,
+          snippet: 'import debounce from "lodash-es";',
+        }],
+        file: "renderers/mobile/Stage.tsx",
         specs: ["lodash-es"],
       },
     });
 
     expect(message).toContain("渲染层 mobile");
-    expect(message).toContain("Stage.tsx");
+    expect(message).toContain("renderers/mobile/Stage.tsx:2:24");
     expect(message).toContain("lodash-es");
     expect(message).toContain("仅支持");
+  });
+
+  it("rendererCheckReportsUnsupportedBareImport", () => {
+    const diagnostics = __findUnsupportedBareImportsForTest(
+      [{ path: "Stage.tsx", content: 'import debounce from "lodash-es";\nexport const Stage = () => null;' }],
+      "mobile",
+    );
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "renderer_unsupported_import",
+        rendererId: "mobile",
+        step: "compile",
+        file: "renderers/mobile/Stage.tsx",
+        line: 1,
+        column: 22,
+        snippet: 'import debounce from "lodash-es";',
+      }),
+    ]);
   });
 });

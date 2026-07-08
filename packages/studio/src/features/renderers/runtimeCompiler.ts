@@ -21,6 +21,12 @@
 import * as esbuild from "esbuild-wasm";
 import type { Plugin } from "esbuild-wasm";
 import type { RendererFile } from "../../lib/tauri";
+import {
+  RendererDiagnosticError,
+  rendererFilePath,
+  sourceLocation,
+  type RendererDiagnostic,
+} from "./diagnostics";
 
 let esbuildReady = false;
 const ESBUILD_READY_GLOBAL = "__GAL_ESBUILD_READY__";
@@ -178,7 +184,7 @@ export function __rewriteBareImportsForTest(code: string): { code: string; unkno
 }
 
 export type RuntimeCompilerError =
-  | { kind: "unsupported-import"; file: string; specs: string[] }
+  | { kind: "unsupported-import"; file: string; specs: string[]; diagnostics?: RendererDiagnostic[] }
   | { kind: "esbuild"; message: string };
 
 export function formatRuntimeCompilerError({
@@ -189,7 +195,11 @@ export function formatRuntimeCompilerError({
   error: RuntimeCompilerError;
 }): string {
   if (error.kind === "unsupported-import") {
-    return `渲染层 ${rendererId} 的 ${error.file} 使用了未支持的 bare import：${error.specs.join(", ")}。仅支持 react、react/jsx-runtime、react-dom、@galstudio/engine 与相对路径 import。`;
+    const diagnostic = error.diagnostics?.[0];
+    const location = diagnostic?.file
+      ? `${diagnostic.file}${diagnostic.line != null && diagnostic.column != null ? `:${diagnostic.line}:${diagnostic.column}` : ""}`
+      : error.file;
+    return `渲染层 ${rendererId} 的 ${location} 使用了未支持的 bare import：${error.specs.join(", ")}。仅支持 react、react/jsx-runtime、react-dom、@galstudio/engine 与相对路径 import。`;
   }
   return `渲染层 ${rendererId} 编译失败：${error.message}`;
 }
@@ -253,8 +263,49 @@ function resolveRel(spec: string, importer: string): string {
   return resolved.join("/");
 }
 
-export async function compileRenderer(files: RendererFile[]): Promise<unknown> {
+function importSpecifierOffset(matchText: string, spec: string): number {
+  const doubleQuoted = matchText.indexOf(`"${spec}"`);
+  if (doubleQuoted >= 0) return doubleQuoted;
+  const singleQuoted = matchText.indexOf(`'${spec}'`);
+  return singleQuoted >= 0 ? singleQuoted : 0;
+}
+
+function findUnsupportedBareImports(files: RendererFile[], rendererId: string): RendererDiagnostic[] {
+  const diagnostics: RendererDiagnostic[] = [];
+  const importPattern = /\b(?:import\s+(?:[^"'()]+?\s+from\s*)?|export\s+[^"']+?\s+from\s*|import\s*\(\s*)["']([^"']+)["']/g;
+  for (const file of files) {
+    if (!file.path.endsWith(".tsx") && !file.path.endsWith(".ts")) continue;
+    for (const match of file.content.matchAll(importPattern)) {
+      const spec = match[1];
+      if (isRelativeSpecifier(spec) || bareKey(spec)) continue;
+      const matchIndex = match.index ?? 0;
+      const quoteIndex = matchIndex + importSpecifierOffset(match[0], spec);
+      const location = sourceLocation(file.content, quoteIndex);
+      diagnostics.push({
+        severity: "error",
+        code: "renderer_unsupported_import",
+        rendererId,
+        step: "compile",
+        message: `Unsupported renderer bare import: ${spec}.`,
+        file: rendererFilePath(rendererId, file.path),
+        ...location,
+      });
+    }
+  }
+  return diagnostics;
+}
+
+export function __findUnsupportedBareImportsForTest(files: RendererFile[], rendererId: string): RendererDiagnostic[] {
+  return findUnsupportedBareImports(files, rendererId);
+}
+
+export async function compileRenderer(files: RendererFile[], options: { rendererId?: string } = {}): Promise<unknown> {
   await ensureEsbuild();
+  const rendererId = options.rendererId ?? "unknown";
+  const unsupportedDiagnostics = findUnsupportedBareImports(files, rendererId);
+  if (unsupportedDiagnostics.length > 0) {
+    throw new RendererDiagnosticError(unsupportedDiagnostics);
+  }
 
   // 1. 逐文件：esbuild transform（tsx→js，jsx automatic 生成 import jsx）
   const compiled = new Map<string, string>();
@@ -269,10 +320,19 @@ export async function compileRenderer(files: RendererFile[]): Promise<unknown> {
     // 2. 改写 bare import 为全局变量
     const { code, unknownSpecs } = rewriteBareImports(result.code);
     if (unknownSpecs.length > 0) {
+      const diagnostics = unknownSpecs.map((spec) => ({
+        severity: "error" as const,
+        code: "renderer_unsupported_import",
+        rendererId,
+        step: "compile" as const,
+        message: `Unsupported renderer bare import: ${spec}.`,
+        file: rendererFilePath(rendererId, f.path),
+      }));
       throw {
         kind: "unsupported-import",
-        file: f.path,
+        file: rendererFilePath(rendererId, f.path),
         specs: unknownSpecs,
+        diagnostics,
       } satisfies RuntimeCompilerError;
     }
     compiled.set(stripExt(f.path), code);

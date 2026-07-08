@@ -125,8 +125,9 @@ export class AudioEngine {
     this.bgmEl?.play().catch((e) => console.warn(`[audio] bgm 恢复播放失败:`, e));
   }
 
-  replayVoice() {
-    if (this.lastVoiceId) this.playOneShot(this.lastVoiceId, "voice");
+  replayVoice(id?: string) {
+    const voiceId = id ?? this.lastVoiceId;
+    if (voiceId) this.playOneShot(voiceId, "voice");
   }
 
   stopVoice() {

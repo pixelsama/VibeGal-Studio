@@ -1,6 +1,6 @@
 # Spec 08 — Studio Authoring Analysis UX
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[Spec 03](../archive/03-editor-ide-features.spec.md)、[Spec 07](./07-playback-history-rollback-and-skip.spec.md) 的 stable story point 能力。
 > 目标：把 V1 的 Studio 分析数据层推进到作者日常会用的创作 UX。
 
@@ -126,3 +126,12 @@ Studio 不实现：
 | `assetCleanupDryRunDoesNotMutateManifest` | dry-run 不修改 manifest |
 | `assetCleanupConfirmRemovesManifestEntryOnly` | confirm 只安全修改 manifest entry |
 | `graphDraftRejectsStaleExternalRevision` | 外部 revision 变化后 draft commit 失败 |
+
+## 8. 归档记录
+
+- 2026-07-08：新增全项目搜索数据层，覆盖 node、instruction、edge、manifest entry，并可定位到具体对象。
+- 2026-07-08：Studio 节点搜索入口升级为项目级搜索入口，支持文本、资源、变量、条件、unlock/replay/ending 检索。
+- 2026-07-08：预览支持从 stable story point 切片开始，并支持 initial vars 影响 auto route preview。
+- 2026-07-08：route coverage 增加 choice/auto branch ending reachability、unknown/default/invalid condition 标记，并在分析面板展示。
+- 2026-07-08：资产 cleanup dry-run 会生成 diff proposal；confirm 只移除 manifest entry，不删除磁盘文件。
+- 2026-07-08：graph draft commit 增加 stale revision guard，外部 revision 改变时拒绝覆盖。

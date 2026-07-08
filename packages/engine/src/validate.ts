@@ -148,6 +148,14 @@ export function validateReferences(
         }
         break;
       }
+      case "showCg":
+        if (!(instr.id in manifest.cg))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 cg id: "${instr.id}"` });
+        break;
+      case "playVideo":
+        if (!(instr.id in manifest.videos))
+          issues.push({ level: "error", file, index, message: `引用了不存在的 video id: "${instr.id}"` });
+        break;
     }
   });
   return issues;

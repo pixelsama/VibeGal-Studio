@@ -173,6 +173,39 @@ describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => 
       }),
     ).toThrow(/missing_unlock/);
   });
+
+  it("showCgReferencesKnownCgAsset", () => {
+    expect(() =>
+      validateContent({
+        meta: { title: "T" },
+        manifest: expandedManifest,
+        chapters: [{ file: "c.json", data: [{ t: "showCg", id: "missing_cg" }] }],
+      }),
+    ).toThrow(/missing_cg/);
+  });
+
+  it("playVideoReferencesKnownVideoAsset", () => {
+    expect(() =>
+      validateContent({
+        meta: { title: "T" },
+        manifest: expandedManifest,
+        chapters: [{ file: "c.json", data: [{ t: "playVideo", id: "missing_video" }] }],
+      }),
+    ).toThrow(/missing_video/);
+  });
+
+  it("acceptsKnownMediaDisplayInstructions", () => {
+    const { chapters } = validateContent({
+      meta: { title: "T" },
+      manifest: expandedManifest,
+      chapters: [{ file: "c.json", data: [{ t: "showCg", id: "cg_001" }, { t: "playVideo", id: "op" }] }],
+    });
+
+    expect(chapters[0]).toEqual([
+      { t: "showCg", id: "cg_001" },
+      { t: "playVideo", id: "op" },
+    ]);
+  });
 });
 
 describe("validateManifest: strict 拒绝旧 flat audio", () => {

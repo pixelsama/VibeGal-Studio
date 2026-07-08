@@ -1,6 +1,6 @@
 # Spec 11 — Export Hardening And Desktop Prep
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[Spec 05](../archive/05-export-packaging.spec.md)、[Spec 06](./06-persistent-runtime-save-and-restore.spec.md)、[Spec 10](./10-renderer-diagnostics-and-contract-tooling.spec.md)。
 > 目标：把 Web export V1 打磨成可复现、可诊断、可包装的发行基础，并为首个 desktop wrapper 做准备。
 
@@ -136,3 +136,12 @@ galstudio-cli smoke <dist-dir> --target web --format json
 | `smokeWebFailsMissingManifestAsset` | 缺 manifest asset smoke 失败 |
 | `buildWebRespectsBasePathInManifest` | base path 写入 manifest 并被 smoke 识别 |
 | `desktopTauriPrepDocExists` | desktop wrapper prep 文档存在并说明非目标 |
+
+## 8. 归档记录
+
+- 2026-07-08：Web build 生成 `asset.manifest.json`，包含资源 kind/id/path/size/sha256。
+- 2026-07-08：`game.manifest.json` 增加 schema/build metadata、renderer contract version、content hash、asset manifest hash、base path。
+- 2026-07-08：相同输入产物除 `builtAt` 外保持稳定，CLI 测试覆盖 manifest reproducibility。
+- 2026-07-08：新增 `galstudio-cli smoke <dist-dir> --target web --format json|text`，检查 host/runtime/content/assets/hash/basePath。
+- 2026-07-08：Web build 先跑 renderer diagnostics，再打包 selected renderer。
+- 2026-07-08：新增 [desktop wrapper prep](../../desktop-tauri-wrapper-prep.md) 文档，明确 Tauri wrapper prototype 与非目标。

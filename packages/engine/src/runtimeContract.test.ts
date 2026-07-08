@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectGraphData } from "./types";
 import {
+  RuntimePersistenceError,
   createReadTextKey,
   createRuntimeSnapshot,
   createSaveSlotRecord,
+  createInMemoryRuntimePersistenceAdapter,
+  migrateSaveSlotRecord,
   replayDecisionLogToNodeId,
 } from "./runtimeContract";
 import type { NovelState } from "./state";
@@ -91,5 +94,51 @@ describe("runtime contract", () => {
         { type: "choice", fromNodeId: "start", toNodeId: "leave", edgeId: "start__leave" },
       ]),
     ).toEqual({ nodeId: "leave", warnings: [] });
+  });
+
+  it("runtimePersistenceAdapterStoresIndependentRuntimeRecords", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const checkpoint = createRuntimeSnapshot({ ...createInitialState(), vars: { route: "a" } }, {
+      currentNodeId: "start",
+      currentStoryPoint: { nodeId: "start", instructionId: "line_01" },
+    });
+    const slot = createSaveSlotRecord({
+      projectId: "project-a",
+      now: "2026-07-08T00:00:00.000Z",
+      checkpoint,
+      label: "Slot A",
+    });
+
+    await adapter.writeSaveSlot("project-a", "slot-1", slot);
+    await adapter.writeGlobal("project-a", {
+      schemaVersion: 1,
+      projectId: "project-a",
+      readText: [{ nodeId: "start", instructionId: "line_01", textHash: "hash-a" }],
+      unlockedCg: ["cg_01"],
+      unlockedMusic: [],
+      unlockedEndings: [],
+      playthroughCount: 1,
+    });
+    await adapter.writeSettings("project-a", {
+      schemaVersion: 1,
+      volumes: { master: 0.5, bgm: 0.4, sfx: 0.3, voice: 0.2 },
+    });
+
+    expect(await adapter.listSaveSlots("project-a")).toEqual(["slot-1"]);
+    expect(await adapter.readSaveSlot("project-a", "slot-1")).toEqual(slot);
+    expect(await adapter.readGlobal("project-a")).toEqual(expect.objectContaining({ unlockedCg: ["cg_01"] }));
+    expect((await adapter.readSettings("project-a")).volumes).toEqual({ master: 0.5, bgm: 0.4, sfx: 0.3, voice: 0.2 });
+
+    await adapter.deleteSaveSlot("project-a", "slot-1");
+
+    expect(await adapter.listSaveSlots("project-a")).toEqual([]);
+    expect(await adapter.readGlobal("project-a")).toEqual(expect.objectContaining({ unlockedCg: ["cg_01"] }));
+  });
+
+  it("saveMigrationRejectsFutureVersion", () => {
+    expect(() => migrateSaveSlotRecord({ schemaVersion: 999, projectId: "project-a" })).toThrow(RuntimePersistenceError);
+    expect(() => migrateSaveSlotRecord({ schemaVersion: 999, projectId: "project-a" })).toThrow(
+      expect.objectContaining({ code: "runtime_record_future_version" }),
+    );
   });
 });

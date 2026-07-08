@@ -9,10 +9,19 @@ import type { ComponentType } from "react";
 import type { NovelState } from "./state";
 import type { Manifest, Meta } from "./types";
 import {
+  RuntimePersistenceError,
   RUNTIME_RECORD_SCHEMA_VERSION,
+  createDefaultGlobalPersistentRecord,
+  createDefaultRuntimeSettingsRecord,
+  createInMemoryRuntimePersistenceAdapter,
   createRuntimeSnapshot,
   createSaveSlotRecord,
+  migrateGlobalPersistentRecord,
+  migrateRuntimeSettingsRecord,
+  type GlobalPersistentRecord,
   type ReadTextKey,
+  type RuntimePersistenceAdapter,
+  type RuntimeRestoreResult,
   type RuntimeSettingsRecord,
   type RuntimeSnapshot,
   type SavePreview,
@@ -31,7 +40,7 @@ export type {
 export const RENDERER_CONTRACT_VERSION = 1;
 
 export type SkipMode = "off" | "read" | "all";
-export type UnlockKind = "cg" | "music" | "ending";
+export type UnlockKind = "cg" | "music" | "replay" | "ending" | "endings";
 
 export interface RuntimeControls {
   advance(): void;
@@ -58,10 +67,10 @@ export interface SaveOptions {
 export interface SaveService {
   listSlots(): Promise<SaveSlotSummary[]>;
   save(slotId: string, options?: SaveOptions): Promise<SaveSlotSummary>;
-  load(slotId: string): Promise<void>;
+  load(slotId: string): Promise<RuntimeRestoreResult & { slotId: string }>;
   delete(slotId: string): Promise<void>;
   quickSave(): Promise<void>;
-  quickLoad(): Promise<void>;
+  quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }>;
   autoSave(reason: "node" | "choice" | "manual"): Promise<void>;
 }
 
@@ -72,6 +81,7 @@ export interface BacklogEntry {
   text: string;
   voiceId?: string;
   readKey?: ReadTextKey;
+  createdOrder?: number;
 }
 
 export interface HistoryService {
@@ -83,6 +93,7 @@ export interface HistoryService {
 export interface UnlockState {
   cg: string[];
   music: string[];
+  replay: string[];
   endings: string[];
 }
 
@@ -100,12 +111,25 @@ export interface RuntimeSettingsService {
 }
 
 export interface AudioService {
-  replayVoice(): void;
+  replayVoice(voiceId?: string): void;
   stopBgm(fadeMs?: number): void;
   pauseBgm(): void;
   resumeBgm(): void;
   stopVoice(): void;
   stopAllSfx(): void;
+}
+
+export interface GalleryService {
+  isUnlocked(kind: UnlockKind, id: string): boolean;
+  listCg(): Array<{ id: string; assetId: string; title?: string; asset: unknown }>;
+  listMusic(): Array<{ id: string; audioId: string; title?: string; asset: unknown }>;
+  listReplays(): Array<{ id: string; nodeId: string; title?: string }>;
+  listEndings(): Array<{ id: string; title: string; nodeId?: string }>;
+}
+
+export interface MediaService {
+  closeCg(): void;
+  skipVideo(): void;
 }
 
 export interface DebugService {
@@ -120,6 +144,8 @@ export interface RuntimeServices {
   persistent: PersistentService;
   settings: RuntimeSettingsService;
   audio: AudioService;
+  gallery: GalleryService;
+  media: MediaService;
   debug?: DebugService;
 }
 
@@ -206,12 +232,20 @@ interface RuntimeAudioBridge extends AudioService {
 export interface InMemoryRuntimeServicesOptions {
   projectId?: string;
   getState: () => NovelState;
+  createSnapshot?: () => RuntimeSnapshot;
+  restoreFromSave?: (record: SaveSlotRecord) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
+  persistenceAdapter?: RuntimePersistenceAdapter;
+  decisionLog?: () => import("./runtimeContract").DecisionLogEvent[];
   currentStoryPoint?: () => StoryPointId | null;
   currentNodeId?: () => string;
   now?: () => string;
   initialBacklog?: BacklogEntry[];
+  initialGlobalPersistent?: GlobalPersistentRecord;
+  getBacklog?: () => BacklogEntry[];
   initialSettings?: RuntimeSettingsRecord;
   audio?: Partial<RuntimeAudioBridge>;
+  manifest?: Manifest;
+  media?: Partial<MediaService>;
   onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
   rollbackTo?: (point: StoryPointId) => void;
   replayVoice?: (entryId: string) => void;
@@ -220,25 +254,29 @@ export interface InMemoryRuntimeServicesOptions {
 }
 
 export function defaultRuntimeSettings(): RuntimeSettingsRecord {
-  return {
-    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
-    volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
-  };
+  return createDefaultRuntimeSettingsRecord();
 }
 
 export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOptions): RuntimeServices {
   const projectId = options.projectId ?? "studio-preview";
   const now = options.now ?? (() => new Date().toISOString());
-  const slots = new Map<string, SaveSlotRecord>();
-  const readText = new Set<string>();
+  const persistenceAdapter = options.persistenceAdapter ?? createInMemoryRuntimePersistenceAdapter();
+  const initialGlobal = migrateGlobalPersistentRecord(
+    options.initialGlobalPersistent ?? createDefaultGlobalPersistentRecord(projectId),
+    projectId,
+  );
+  const readText = new Map<string, ReadTextKey>(
+    initialGlobal.readText.map((key) => [readKeyId(key), { ...key }]),
+  );
   const unlocks: Record<UnlockKind, Set<string>> = {
-    cg: new Set(),
-    music: new Set(),
+    cg: new Set(initialGlobal.unlockedCg),
+    music: new Set(initialGlobal.unlockedMusic),
+    replay: new Set(initialGlobal.unlockedReplays),
     ending: new Set(),
+    endings: new Set(initialGlobal.unlockedEndings),
   };
   const backlog = [...(options.initialBacklog ?? [])];
   let settings = cloneSettings(options.initialSettings ?? defaultRuntimeSettings());
-
   const unavailable = (service: string, method: string): never => {
     throw new RuntimeServiceUnavailableError(service, method);
   };
@@ -247,6 +285,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
     currentNodeId: options.currentNodeId?.() ?? "preview",
     currentStoryPoint: options.currentStoryPoint?.() ?? null,
   });
+  const createSnapshot = options.createSnapshot ?? snapshot;
 
   const toSummary = (slotId: string, slot: SaveSlotRecord): SaveSlotSummary => ({
     slotId,
@@ -259,33 +298,44 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
   return {
     save: {
       async listSlots() {
-        return Array.from(slots, ([slotId, slot]) => toSummary(slotId, slot))
+        const summaries = await Promise.all((await persistenceAdapter.listSaveSlots(projectId)).map(async (slotId) => {
+          const slot = await persistenceAdapter.readSaveSlot(projectId, slotId);
+          return slot ? toSummary(slotId, slot) : null;
+        }));
+        return summaries
+          .filter((summary): summary is SaveSlotSummary => summary != null)
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       },
       async save(slotId, saveOptions) {
-        const existing = slots.get(slotId);
+        const existing = await persistenceAdapter.readSaveSlot(projectId, slotId);
         const slot = createSaveSlotRecord({
           projectId,
           now: now(),
-          checkpoint: snapshot(),
+          checkpoint: createSnapshot(),
+          decisions: options.decisionLog?.() ?? existing?.decisions,
           createdAt: existing?.createdAt,
           label: saveOptions?.label ?? existing?.label,
           preview: saveOptions?.preview ?? existing?.preview,
         });
-        slots.set(slotId, slot);
+        await persistenceAdapter.writeSaveSlot(projectId, slotId, slot);
         return toSummary(slotId, slot);
       },
       async load(slotId) {
-        if (!slots.has(slotId)) unavailable("save", "load");
+        const slot = await persistenceAdapter.readSaveSlot(projectId, slotId);
+        if (!slot) {
+          throw new RuntimePersistenceError("runtime_save_slot_not_found", `Save slot "${slotId}" was not found.`);
+        }
+        const result = await (options.restoreFromSave?.(slot) ?? { warnings: [] });
+        return { ...result, slotId };
       },
       async delete(slotId) {
-        slots.delete(slotId);
+        await persistenceAdapter.deleteSaveSlot(projectId, slotId);
       },
       async quickSave() {
         await this.save("quick");
       },
       async quickLoad() {
-        await this.load("quick");
+        return this.load("quick");
       },
       async autoSave(reason) {
         await this.save(`auto:${reason}`);
@@ -293,7 +343,8 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
     },
     history: {
       getBacklog() {
-        return backlog.map((entry) => ({ ...entry, storyPoint: { ...entry.storyPoint }, readKey: entry.readKey ? { ...entry.readKey } : undefined }));
+        return (options.getBacklog?.() ?? backlog)
+          .map((entry) => ({ ...entry, storyPoint: { ...entry.storyPoint }, readKey: entry.readKey ? { ...entry.readKey } : undefined }));
       },
       replayVoice(entryId) {
         if (options.replayVoice) {
@@ -301,13 +352,14 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
           return;
         }
         if (options.audio?.replayVoice) {
-          options.audio.replayVoice();
+          const entry = (options.getBacklog?.() ?? backlog).find((item) => item.id === entryId);
+          options.audio.replayVoice(entry?.voiceId);
           return;
         }
         unavailable("history", "replayVoice");
       },
       rollbackTo(entryId) {
-        const entry = backlog.find((item) => item.id === entryId);
+        const entry = (options.getBacklog?.() ?? backlog).find((item) => item.id === entryId);
         if (!entry) {
           unavailable("history", "rollbackTo");
           return;
@@ -321,23 +373,29 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         return readText.has(readKeyId(key));
       },
       async markRead(key) {
-        readText.add(readKeyId(key));
+        readText.set(readKeyId(key), { ...key });
+        await persistenceAdapter.writeGlobal(projectId, currentGlobalRecord(projectId, readText, unlocks));
       },
       getUnlocks() {
         return {
           cg: Array.from(unlocks.cg),
           music: Array.from(unlocks.music),
-          endings: Array.from(unlocks.ending),
+          replay: Array.from(unlocks.replay),
+          endings: Array.from(new Set([...unlocks.ending, ...unlocks.endings])),
         };
       },
       async unlock(kind, id) {
         unlocks[kind].add(id);
+        await persistenceAdapter.writeGlobal(projectId, currentGlobalRecord(projectId, readText, unlocks));
       },
       async resetGlobalProgress() {
         readText.clear();
         unlocks.cg.clear();
         unlocks.music.clear();
+        unlocks.replay.clear();
         unlocks.ending.clear();
+        unlocks.endings.clear();
+        await persistenceAdapter.writeGlobal(projectId, createDefaultGlobalPersistentRecord(projectId));
       },
     },
     settings: {
@@ -346,14 +404,15 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
       },
       async updateSettings(patch) {
         settings = mergeSettings(settings, patch);
+        await persistenceAdapter.writeSettings(projectId, settings);
         options.audio?.setVolumes?.(settings.volumes);
         options.onSettingsChanged?.(cloneSettings(settings));
       },
     },
     audio: {
-      replayVoice: () => {
+      replayVoice: (voiceId) => {
         const replayVoice = options.audio?.replayVoice ?? (() => unavailable("audio", "replayVoice"));
-        replayVoice();
+        replayVoice(voiceId);
       },
       stopBgm: (fadeMs) => {
         const stopBgm = options.audio?.stopBgm ?? (() => unavailable("audio", "stopBgm"));
@@ -375,6 +434,51 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         const stopAllSfx = options.audio?.stopAllSfx ?? (() => unavailable("audio", "stopAllSfx"));
         stopAllSfx();
       },
+    },
+    gallery: {
+      isUnlocked(kind, id) {
+        if (kind === "endings") return unlocks.endings.has(id) || unlocks.ending.has(id);
+        return unlocks[kind].has(id);
+      },
+      listCg() {
+        const registry = options.manifest?.unlocks?.cg ?? {};
+        return Object.entries(registry)
+          .filter(([id]) => unlocks.cg.has(id))
+          .map(([id, entry]) => ({
+            id,
+            assetId: entry.assetId,
+            title: entry.title,
+            asset: options.manifest?.cg?.[entry.assetId],
+          }));
+      },
+      listMusic() {
+        const registry = options.manifest?.unlocks?.music ?? {};
+        return Object.entries(registry)
+          .filter(([id]) => unlocks.music.has(id))
+          .map(([id, entry]) => ({
+            id,
+            audioId: entry.audioId,
+            title: entry.title,
+            asset: options.manifest?.audio.bgm[entry.audioId],
+          }));
+      },
+      listReplays() {
+        const registry = options.manifest?.unlocks?.replay ?? {};
+        return Object.entries(registry)
+          .filter(([id]) => unlocks.replay.has(id))
+          .map(([id, entry]) => ({ id, nodeId: entry.nodeId, title: entry.title }));
+      },
+      listEndings() {
+        const registry = options.manifest?.unlocks?.endings ?? {};
+        const endingUnlocks = new Set([...unlocks.ending, ...unlocks.endings]);
+        return Object.entries(registry)
+          .filter(([id]) => endingUnlocks.has(id))
+          .map(([id, entry]) => ({ id, title: entry.title, nodeId: entry.nodeId }));
+      },
+    },
+    media: {
+      closeCg: () => options.media?.closeCg?.(),
+      skipVideo: () => options.media?.skipVideo?.(),
     },
     debug: {
       inspectState: () => options.inspectState?.() ?? options.getState(),
@@ -399,10 +503,27 @@ function cloneSettings(settings: RuntimeSettingsRecord): RuntimeSettingsRecord {
 }
 
 function mergeSettings(current: RuntimeSettingsRecord, patch: Partial<RuntimeSettingsRecord>): RuntimeSettingsRecord {
-  return {
+  return migrateRuntimeSettingsRecord({
     ...current,
     ...patch,
     schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
     volumes: { ...current.volumes, ...patch.volumes },
-  };
+  });
+}
+
+function currentGlobalRecord(
+  projectId: string,
+  readText: Map<string, ReadTextKey>,
+  unlocks: Record<UnlockKind, Set<string>>,
+) {
+  return migrateGlobalPersistentRecord({
+    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
+    projectId,
+    readText: Array.from(readText.values()).map((key) => ({ ...key })),
+    unlockedCg: Array.from(unlocks.cg),
+    unlockedMusic: Array.from(unlocks.music),
+    unlockedReplays: Array.from(unlocks.replay),
+    unlockedEndings: Array.from(new Set([...unlocks.ending, ...unlocks.endings])),
+    playthroughCount: 0,
+  }, projectId);
 }

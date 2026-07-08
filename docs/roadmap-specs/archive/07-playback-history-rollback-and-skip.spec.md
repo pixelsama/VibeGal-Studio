@@ -1,6 +1,6 @@
 # Spec 07 — Playback History Rollback And Skip
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[Spec 01](../archive/01-runtime-contract-foundation.spec.md)、[Spec 02](../archive/02-renderer-runtime-api.spec.md)、[Spec 06](./06-persistent-runtime-save-and-restore.spec.md)。
 > 目标：让 backlog、rollback、read skip、all skip、voice replay 成为真正可用的播放控制能力。
 
@@ -111,3 +111,12 @@ skip loop 需要：
 | `allSkipStopsAtChoice` | 全文跳过在 choice 停止 |
 | `rollbackRestoresPreviousStoryPoint` | rollback 恢复历史停点 |
 | `voiceReplayDoesNotAdvanceStory` | voice replay 不改变 current state progress |
+
+## 8. 归档记录
+
+- 2026-07-08：`GraphNovelPlayer` 暴露 current node、current instruction、current story point、last stable story point、current read key。
+- 2026-07-08：`say` / `narrate` 会进入 backlog；`pause` / `wait` 只作为可恢复 story point。
+- 2026-07-08：文本 fully revealed 后会通过 persistent bridge 标记 read key。
+- 2026-07-08：history service 可读取真实 backlog、按 entry 重播 voice、按 entry rollback。
+- 2026-07-08：`setSkipMode("read")` 在未读文本停止，`setSkipMode("all")` 在 choice / pause / route error 停止。
+- 2026-07-08：Studio preview 与 Web export renderer controls 均接入实际 player skip/rollback 能力。

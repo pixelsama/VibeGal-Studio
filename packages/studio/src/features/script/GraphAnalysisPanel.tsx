@@ -32,6 +32,32 @@ export function GraphAnalysisPanel({ graph, nodeEntries, onSelectNode, onSelectE
             <StatCard label="结局" value={coverage.endingNodes} />
             <StatCard label="孤立" value={coverage.orphanNodes} />
           </div>
+          {coverage.choiceBranches.length > 0 && (
+            <div style={listStyle}>
+              <div style={sectionTitleStyle}>Choice Branches</div>
+              {coverage.choiceBranches.map((branch) => (
+                <button key={branch.edgeId} type="button" style={parseIssueStyle} onClick={() => onSelectEdge(branch.edgeId)}>
+                  <div style={itemTitleStyle}>{branch.label}</div>
+                  <div style={metaStyle}>
+                    {`${branch.fromNodeId} -> ${branch.toNodeId} · ${branch.reachesEnding ? `到达结局 ${branch.endingNodeIds.join(", ")}` : "未发现可达结局"}`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {coverage.autoBranches.length > 0 && (
+            <div style={listStyle}>
+              <div style={sectionTitleStyle}>Auto Branches</div>
+              {coverage.autoBranches.map((branch) => (
+                <button key={branch.edgeId} type="button" style={parseIssueStyle} onClick={() => onSelectEdge(branch.edgeId)}>
+                  <div style={itemTitleStyle}>{branch.edgeId}</div>
+                  <div style={metaStyle}>
+                    {branch.conditionState} · {branch.condition || "default"} · {branch.reachesEnding ? `到达结局 ${branch.endingNodeIds.join(", ")}` : "未发现可达结局"}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <section style={sectionStyle}>

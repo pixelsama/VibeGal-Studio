@@ -111,6 +111,17 @@ export const UnlockInstruction = z.object({
   id: z.string().min(1),
 });
 
+export const ShowCgInstruction = z.object({
+  t: z.literal("showCg"),
+  id: z.string().min(1),
+});
+
+export const PlayVideoInstruction = z.object({
+  t: z.literal("playVideo"),
+  id: z.string().min(1),
+  skippable: z.boolean().optional(),
+});
+
 export const InstructionSchema = z.discriminatedUnion("t", [
   BgInstruction,
   BgmInstruction,
@@ -125,6 +136,8 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   TransitionInstruction,
   PauseInstruction,
   UnlockInstruction,
+  ShowCgInstruction,
+  PlayVideoInstruction,
 ]);
 
 export const ChapterSchema = z.array(InstructionSchema);

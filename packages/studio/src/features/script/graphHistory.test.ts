@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectGraph } from "../../lib/types";
 import {
   applyGraphCommand,
+  commitGraphDraft,
   createGraphHistoryState,
   makeGraphRevisionToken,
   reconcileGraphHistory,
@@ -109,5 +110,18 @@ describe("graphHistory", () => {
     expect(state.canUndo).toBe(true);
     expect(state.canRedo).toBe(false);
     expect(undoGraphHistory(state).graph).toEqual(baseGraph);
+  });
+
+  it("graphDraftRejectsStaleExternalRevision", () => {
+    let state = createGraphHistoryState(baseGraph, revision);
+    state = applyGraphCommand(state, { kind: "renameNode", nodeId: "start", title: "Prologue" });
+
+    const result = commitGraphDraft(
+      state,
+      makeGraphRevisionToken({ relPath: "content/graph.json", mtimeMs: 9, size: 20, sha256: "external" }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("stale_revision");
   });
 });

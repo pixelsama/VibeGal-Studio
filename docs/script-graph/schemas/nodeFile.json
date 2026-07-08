@@ -363,6 +363,43 @@
           "kind",
           "id"
         ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "showCg"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "playVideo"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "skippable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ]
       }
     ]
   }

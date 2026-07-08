@@ -51,6 +51,22 @@ akari: 今天也很安静呢。`);
     ]);
   });
 
+  it("parses media and unlock commands", () => {
+    const result = parseScenarioText(`@showCg cg_001
+@playVideo op true
+@unlock endings true_end`);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.instructions).toEqual([
+      { t: "showCg", id: "cg_001" },
+      { t: "playVideo", id: "op", skippable: true },
+      { t: "unlock", kind: "endings", id: "true_end" },
+      { t: "pause" },
+    ]);
+  });
+
   it("reports line diagnostics for malformed commands", () => {
     const result = parseScenarioText(`@bg
 @choice
@@ -74,6 +90,8 @@ akari: 今天也很安静呢。`);
       { t: "char", id: "akari", expr: "smile", pos: "left", trans: "fade", ms: 600, clear: false, remove: false },
       { t: "pause" },
       { t: "say", who: "akari", expr: "default", text: "早上好。" },
+      { t: "showCg", id: "cg_001" },
+      { t: "playVideo", id: "op", skippable: true },
       { t: "set", key: "route", value: "stay" },
     ];
 
@@ -83,6 +101,8 @@ akari: 今天也很安静呢。`);
 
 akari: 早上好。
 
+@showCg cg_001
+@playVideo op true
 @set route "stay"`);
   });
 });

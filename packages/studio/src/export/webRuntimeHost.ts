@@ -5,14 +5,14 @@ import {
   GraphNovelPlayer,
   ProjectGraphSchema,
   RENDERER_CONTRACT_VERSION,
-  RuntimeServiceUnavailableError,
   RuntimeSettingsRecordSchema,
   createInMemoryRuntimeServices,
-  createRuntimeSnapshot,
-  createSaveSlotRecord,
+  createRuntimeStorageLikePersistenceAdapter,
+  migrateGlobalPersistentRecord,
   validateContent,
   validateRendererManifestContract,
   type GraphPlayerNode,
+  type GlobalPersistentRecord,
   type Instruction,
   type Manifest,
   type Meta,
@@ -21,12 +21,9 @@ import {
   type RendererManifest,
   type RendererProps,
   type RuntimeControls,
+  type RuntimePersistenceAdapter,
   type RuntimeServices,
   type RuntimeSettingsRecord,
-  type SaveOptions,
-  type SaveSlotRecord,
-  type SaveSlotSummary,
-  type UnlockKind,
 } from "@galstudio/engine";
 
 export interface StorageLike {
@@ -35,8 +32,9 @@ export interface StorageLike {
   removeItem(key: string): void;
 }
 
-export interface RuntimeStorageAdapter {
+export interface RuntimeStorageAdapter extends RuntimePersistenceAdapter {
   warnings: string[];
+  readGlobalSync?(projectId: string): GlobalPersistentRecord;
   listSaveSlots(): Promise<string[]>;
   getSaveSlot(slotId: string): Promise<unknown | null>;
   setSaveSlot(slotId: string, record: unknown): Promise<void>;
@@ -97,7 +95,6 @@ export function createWebStorageAdapter(
 ): RuntimeStorageAdapter {
   const warnings: string[] = [];
   const memory = new Map<string, string>();
-  const prefix = `galstudio:${projectId}`;
   const store = storage ?? {
     getItem: (key: string) => memory.get(key) ?? null,
     setItem: (key: string, value: string) => { memory.set(key, value); },
@@ -106,67 +103,73 @@ export function createWebStorageAdapter(
 
   if (!storage) warnings.push("localStorage unavailable; using in-memory runtime storage.");
 
-  function key(kind: "save" | "saveIndex" | "global" | "settings", id?: string) {
-    return id ? `${prefix}:${kind}:${id}` : `${prefix}:${kind}`;
-  }
-
-  function readSaveIndex(): string[] {
-    const raw = read(key("saveIndex"));
-    return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : [];
-  }
-
-  function writeSaveIndex(ids: string[]) {
-    write(key("saveIndex"), Array.from(new Set(ids)).sort());
-  }
-
-  function read(rawKey: string): unknown | null {
+  const safeStore: StorageLike = {
+    getItem: (key) => store.getItem(key),
+    setItem: (key, value) => {
+      try {
+        store.setItem(key, value);
+      } catch {
+        warnings.push(`Failed to write runtime storage key: ${key}`);
+        memory.set(key, value);
+      }
+    },
+    removeItem: (key) => store.removeItem(key),
+  };
+  const adapter = createRuntimeStorageLikePersistenceAdapter({
+    storage: safeStore,
+    keyPrefix: "galstudio",
+    warnings,
+  });
+  const key = (kind: "save" | "saveIndex" | "global" | "settings", id?: string) =>
+    id ? `galstudio:${projectId}:${kind}:${id}` : `galstudio:${projectId}:${kind}`;
+  const readRaw = (storageKey: string): unknown | null => {
     try {
-      const raw = store.getItem(rawKey);
+      const raw = safeStore.getItem(storageKey);
       return raw == null ? null : JSON.parse(raw);
     } catch {
-      warnings.push(`Failed to read runtime storage key: ${rawKey}`);
+      warnings.push(`Failed to read runtime storage key: ${storageKey}`);
       return null;
     }
-  }
-
-  function write(rawKey: string, value: unknown) {
-    try {
-      store.setItem(rawKey, JSON.stringify(value));
-    } catch {
-      warnings.push(`Failed to write runtime storage key: ${rawKey}`);
-      memory.set(rawKey, JSON.stringify(value));
-    }
-  }
+  };
+  const writeRaw = (storageKey: string, value: unknown) => {
+    safeStore.setItem(storageKey, JSON.stringify(value));
+  };
+  const readSaveIndex = () => {
+    const raw = readRaw(key("saveIndex"));
+    return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : [];
+  };
 
   return {
+    ...adapter,
     warnings,
+    readGlobalSync(readProjectId) {
+      const raw = readRaw(`galstudio:${readProjectId}:global`);
+      return migrateGlobalPersistentRecord(raw, readProjectId);
+    },
     async listSaveSlots() {
-      return readSaveIndex();
+      return adapter.listSaveSlots(projectId);
     },
     async getSaveSlot(slotId) {
-      return read(key("save", slotId));
+      return readRaw(key("save", slotId));
     },
     async setSaveSlot(slotId, record) {
-      write(key("save", slotId), record);
-      writeSaveIndex([...readSaveIndex(), slotId]);
+      writeRaw(key("save", slotId), record);
+      writeRaw(key("saveIndex"), Array.from(new Set([...readSaveIndex(), slotId])).sort());
     },
     async deleteSaveSlot(slotId) {
-      store.removeItem(key("save", slotId));
-      writeSaveIndex(readSaveIndex().filter((id) => id !== slotId));
+      await adapter.deleteSaveSlot(projectId, slotId);
     },
     async getGlobalPersistent() {
-      return read(key("global"));
+      return readRaw(key("global"));
     },
     async setGlobalPersistent(record) {
-      write(key("global"), record);
+      writeRaw(key("global"), record);
     },
     async getSettings() {
-      const raw = read(key("settings"));
-      const parsed = RuntimeSettingsRecordSchema.safeParse(raw);
-      return parsed.success ? parsed.data : defaultRuntimeSettings();
+      return adapter.readSettings(projectId);
     },
     async setSettings(settings) {
-      write(key("settings"), RuntimeSettingsRecordSchema.parse(settings));
+      await adapter.writeSettings(projectId, RuntimeSettingsRecordSchema.parse(settings));
     },
   };
 }
@@ -178,11 +181,25 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     chapters: options.nodes.map((node) => ({ file: `${node.id}.json`, data: node.instructions })),
   });
   const graph = ProjectGraphSchema.parse(options.graph);
+  const projectId = options.projectId ?? "web-export";
+  const storage = options.storage ?? createWebStorageAdapter(projectId);
+  let runtimeServices!: RuntimeServices;
+  let audio: AudioEngine | null = null;
   const player = new GraphNovelPlayer({
     meta: content.meta as Meta,
     manifest: content.manifest as Manifest,
+    persistent: {
+      getReadStatus: (key) => runtimeServices?.persistent.getReadStatus(key) ?? false,
+      markRead: (key) => runtimeServices?.persistent.markRead(key),
+    },
+    replayVoice: (voiceId) => audio?.replayVoice(voiceId),
+    onRuntimeEffect: (effect) => {
+      if (effect.type === "unlock") {
+        void runtimeServices?.persistent.unlock(effect.kind, effect.id);
+      }
+    },
   });
-  const audio = typeof Audio === "undefined" ? null : new AudioEngine(content.manifest as Manifest, options.contentBase);
+  audio = typeof Audio === "undefined" ? null : new AudioEngine(content.manifest as Manifest, options.contentBase);
   const listeners = new Set<(state: NovelState) => void>();
   let state = player.getState();
 
@@ -204,19 +221,19 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     advance: () => player.advance(),
     choose: (toNodeId) => player.choose(toNodeId),
     setAutoPlay: (on) => player.setAutoPlay(on),
-    setSkipMode: (mode) => {
-      if (mode !== "off") throw new RuntimeServiceUnavailableError("controls", "setSkipMode");
-    },
-    rollbackTo: () => {
-      throw new RuntimeServiceUnavailableError("controls", "rollbackTo");
-    },
+    setSkipMode: (mode) => player.setSkipMode(mode),
+    rollbackTo: (point) => player.jumpToStoryPoint(point),
     restart: () => player.restart(),
   };
-  const runtimeServices = createWebRuntimeServices({
-    projectId: options.projectId ?? "web-export",
+  runtimeServices = createWebRuntimeServices({
+    projectId,
     state: () => state,
-    graph,
-    storage: options.storage,
+    storage,
+    initialGlobal: storage.readGlobalSync?.(projectId),
+    manifest: content.manifest as Manifest,
+    createSnapshot: () => player.createSnapshot(),
+    restoreFromSave: (record) => player.restoreFromSave(record),
+    decisionLog: () => player.getDecisionLog(),
     audio,
   });
 
@@ -256,13 +273,23 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
 function createWebRuntimeServices(options: {
   projectId: string;
   state: () => NovelState;
-  graph: ProjectGraphData;
   storage?: RuntimeStorageAdapter;
+  initialGlobal?: GlobalPersistentRecord;
+  manifest: Manifest;
+  createSnapshot: () => ReturnType<GraphNovelPlayer["createSnapshot"]>;
+  restoreFromSave: GraphNovelPlayer["restoreFromSave"];
+  decisionLog: GraphNovelPlayer["getDecisionLog"];
   audio: AudioEngine | null;
 }): RuntimeServices {
-  const memory = createInMemoryRuntimeServices({
+  const services = createInMemoryRuntimeServices({
     projectId: options.projectId,
     getState: options.state,
+    persistenceAdapter: options.storage,
+    initialGlobalPersistent: options.initialGlobal,
+    manifest: options.manifest,
+    createSnapshot: options.createSnapshot,
+    restoreFromSave: options.restoreFromSave,
+    decisionLog: options.decisionLog,
     audio: options.audio
       ? {
           replayVoice: () => options.audio?.replayVoice(),
@@ -275,130 +302,8 @@ function createWebRuntimeServices(options: {
         }
       : undefined,
   });
-  if (!options.storage) return memory;
-
-  const storage = options.storage;
-  let settings = defaultRuntimeSettings();
-  const readText = new Set<string>();
-  const unlocks: Record<UnlockKind, Set<string>> = {
-    cg: new Set(),
-    music: new Set(),
-    ending: new Set(),
-  };
-
-  const snapshot = () => createRuntimeSnapshot(options.state(), {
-    currentNodeId: options.graph.entryNodeId || "entry",
-    currentStoryPoint: null,
-  });
-  const toSummary = (slotId: string, slot: SaveSlotRecord): SaveSlotSummary => ({
-    slotId,
-    label: slot.label,
-    preview: slot.preview,
-    updatedAt: slot.updatedAt,
-    position: slot.position,
-  });
-  const readKeyId = (key: { nodeId: string; instructionId: string; textHash: string }) =>
-    `${key.nodeId}\u0000${key.instructionId}\u0000${key.textHash}`;
-  const writeGlobal = async () => {
-    await storage.setGlobalPersistent({
-      schemaVersion: 1,
-      projectId: options.projectId,
-      readText: Array.from(readText),
-      unlockedCg: Array.from(unlocks.cg),
-      unlockedMusic: Array.from(unlocks.music),
-      unlockedEndings: Array.from(unlocks.ending),
-      playthroughCount: 0,
-    });
-  };
-
-  return {
-    ...memory,
-    save: {
-      async listSlots() {
-        const summaries = await Promise.all((await storage.listSaveSlots()).map(async (slotId) => {
-          const raw = await storage.getSaveSlot(slotId);
-          return raw && typeof raw === "object"
-            ? toSummary(slotId, raw as SaveSlotRecord)
-            : null;
-        }));
-        return summaries
-          .filter((summary): summary is SaveSlotSummary => summary != null)
-          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      },
-      async save(slotId: string, saveOptions?: SaveOptions) {
-        const existing = await storage.getSaveSlot(slotId) as SaveSlotRecord | null;
-        const slot = createSaveSlotRecord({
-          projectId: options.projectId,
-          now: new Date().toISOString(),
-          checkpoint: snapshot(),
-          createdAt: existing?.createdAt,
-          label: saveOptions?.label ?? existing?.label,
-          preview: saveOptions?.preview ?? existing?.preview,
-        });
-        await storage.setSaveSlot(slotId, slot);
-        return toSummary(slotId, slot);
-      },
-      async load(slotId: string) {
-        if (!(await storage.getSaveSlot(slotId))) {
-          throw new RuntimeServiceUnavailableError("save", "load");
-        }
-      },
-      async delete(slotId: string) {
-        await storage.deleteSaveSlot(slotId);
-      },
-      async quickSave() {
-        await this.save("quick");
-      },
-      async quickLoad() {
-        await this.load("quick");
-      },
-      async autoSave(reason: "node" | "choice" | "manual") {
-        await this.save(`auto:${reason}`);
-      },
-    },
-    persistent: {
-      getReadStatus(key) {
-        return readText.has(readKeyId(key));
-      },
-      async markRead(key) {
-        readText.add(readKeyId(key));
-        await writeGlobal();
-      },
-      getUnlocks() {
-        return {
-          cg: Array.from(unlocks.cg),
-          music: Array.from(unlocks.music),
-          endings: Array.from(unlocks.ending),
-        };
-      },
-      async unlock(kind, id) {
-        unlocks[kind].add(id);
-        await writeGlobal();
-      },
-      async resetGlobalProgress() {
-        readText.clear();
-        unlocks.cg.clear();
-        unlocks.music.clear();
-        unlocks.ending.clear();
-        await writeGlobal();
-      },
-    },
-    settings: {
-      getSettings() {
-        return { ...settings, volumes: { ...settings.volumes } };
-      },
-      async updateSettings(patch) {
-        settings = RuntimeSettingsRecordSchema.parse({
-          ...settings,
-          ...patch,
-          schemaVersion: 1,
-          volumes: { ...settings.volumes, ...patch.volumes },
-        });
-        await storage.setSettings(settings);
-        options.audio?.setVolumes(settings.volumes);
-      },
-    },
-  };
+  const { debug: _debug, ...runtimeServices } = services;
+  return runtimeServices;
 }
 
 function joinBasePath(basePath: string, relPath: string): string {

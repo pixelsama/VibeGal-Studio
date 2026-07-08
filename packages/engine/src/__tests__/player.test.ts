@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NovelPlayer } from "../player";
 import { GraphNovelPlayer } from "../graphPlayer";
 import type { Manifest, Meta, ProjectGraphData } from "../types";
+import { createSaveSlotRecord } from "../runtimeContract";
 
 const manifest: Manifest = {
   characters: {},
@@ -174,6 +175,122 @@ describe("GraphNovelPlayer routing", () => {
 
     expect(player.getState().vars.has_key).toBe(true);
     expect(player.getState().narration?.text).toBe("开门。");
+    player.dispose();
+  });
+
+  it("graphPlayerRestoresCheckpointSnapshot", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(
+      {
+        ...baseGraph,
+        edges: [{ id: "start__stay", from: "start", to: "stay", mode: "linear", label: null, condition: null }],
+      },
+      [
+        { id: "start", instructions: [
+          { t: "bg", id: "school", trans: "cut", ms: 0 },
+          { t: "set", key: "route", value: "saved" },
+          { t: "narrate", id: "line_01", text: "保存点。" },
+        ] },
+        { id: "stay", instructions: [{ t: "narrate", id: "line_02", text: "之后。" }] },
+      ],
+    );
+
+    player.advance();
+    const snapshot = player.createSnapshot();
+    player.advance();
+    player.advance();
+    expect(player.getState().narration?.text).toBe("之后。");
+
+    expect(player.restoreSnapshot(snapshot)).toEqual({ warnings: [] });
+
+    expect(player.getState().background).toBe("school");
+    expect(player.getState().vars.route).toBe("saved");
+    expect(player.getState().narration?.text).toBe("保存点。");
+    player.dispose();
+  });
+
+  it("graphPlayerRestoreFromSaveReturnsStructuredWarnings", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(baseGraph, [
+      { id: "start", instructions: [{ t: "narrate", id: "line_01", text: "开始。" }] },
+    ]);
+    player.advance();
+    const slot = createSaveSlotRecord({
+      projectId: "project-a",
+      now: "2026-07-08T00:00:00.000Z",
+      checkpoint: {
+        ...player.createSnapshot(),
+        currentStoryPoint: { nodeId: "start", instructionId: "missing_line" },
+      },
+    });
+
+    expect(player.restoreFromSave(slot)).toEqual({
+      warnings: [
+        expect.objectContaining({
+          code: "story_point_not_found",
+          storyPoint: { nodeId: "start", instructionId: "missing_line" },
+        }),
+      ],
+    });
+    player.dispose();
+  });
+
+  it("graphPlayerRestoreFromSaveFallsBackToDecisionLogWhenCheckpointIsStale", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(
+      {
+        ...baseGraph,
+        edges: [
+          { id: "start__stay", from: "start", to: "stay", mode: "auto", label: null, condition: null },
+        ],
+      },
+      [
+        { id: "start", instructions: [{ t: "set", key: "route", value: "saved" }] },
+        { id: "stay", instructions: [{ t: "narrate", id: "line_02", text: "可恢复节点。" }] },
+      ],
+    );
+    player.advance();
+    const slot = createSaveSlotRecord({
+      projectId: "project-a",
+      now: "2026-07-08T00:00:00.000Z",
+      checkpoint: {
+        ...player.createSnapshot(),
+        currentNodeId: "removed",
+        currentStoryPoint: { nodeId: "removed", instructionId: "old_line" },
+      },
+      decisions: [
+        { type: "start", nodeId: "start" },
+        { type: "auto", fromNodeId: "start", toNodeId: "stay", edgeId: "start__stay" },
+      ],
+    });
+
+    expect(player.restoreFromSave(slot).warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "node_not_found", nodeId: "removed" }),
+      expect.objectContaining({ code: "decision_log_replayed", nodeId: "stay" }),
+    ]));
+    expect(player.getCurrentNodeId()).toBe("stay");
+    expect(player.getCurrentStoryPoint()).toBeNull();
+    expect(player.getState().flags.progress).toEqual({ current: 0, total: 1 });
+    player.dispose();
+  });
+
+  it("unlockInstructionWritesRuntimeEffect", () => {
+    const onRuntimeEffect = vi.fn();
+    const player = new GraphNovelPlayer({ manifest, meta, onRuntimeEffect });
+    player.loadGraph(
+      { ...baseGraph, edges: [] },
+      [{ id: "start", instructions: [
+        { t: "unlock", kind: "cg", id: "cg_rooftop" },
+        { t: "showCg", id: "cg_001" },
+        { t: "playVideo", id: "op" },
+      ] }],
+    );
+
+    player.advance();
+
+    expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "unlock", kind: "cg", id: "cg_rooftop" });
+    expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "showCg", id: "cg_001" });
+    expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "playVideo", id: "op" });
     player.dispose();
   });
 });

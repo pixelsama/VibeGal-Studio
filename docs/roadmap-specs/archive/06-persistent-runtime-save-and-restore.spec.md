@@ -1,6 +1,6 @@
 # Spec 06 — Persistent Runtime Save And Restore
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[Spec 01](../archive/01-runtime-contract-foundation.spec.md)、[Spec 02](../archive/02-renderer-runtime-api.spec.md)、[Spec 05](../archive/05-export-packaging.spec.md)。
 > 目标：把 save/load/quick save/auto save 从 V1 的类型与最小服务推进到真实可恢复的 runtime 能力。
 
@@ -120,3 +120,12 @@ restore 不应重播 one-shot SFX/voice；BGM 可恢复到 snapshot 中的语义
 | `autoSaveUsesReasonScopedSlot` | auto save 按 reason 写入 auto slot |
 | `saveMigrationRejectsFutureVersion` | 未知未来版本给 structured error |
 | `webRuntimeSavePersistsAcrossRuntimeInstances` | Web runtime 重建后仍能读到保存记录 |
+
+## 8. 归档记录
+
+- 2026-07-08：新增共享 `RuntimePersistenceAdapter`，并提供 in-memory 与 storage-like adapter。
+- 2026-07-08：`RuntimeServices.save` 已通过 adapter 实现 save/load/delete/list/quick/auto；load 不覆盖 global persistent 或 settings。
+- 2026-07-08：`GraphNovelPlayer` 支持 `createSnapshot()`、`restoreSnapshot()`、`restoreFromSave()`、`jumpToStoryPoint()`，并返回 structured load warning。
+- 2026-07-08：`restoreFromSave()` 在 checkpoint 失效且 save record 带 decision log 时，会 replay 到最近可确定节点并返回 warning。
+- 2026-07-08：save/global/settings migration 从 schema version 1 开始，未来版本会以 structured error 拒绝读取。
+- 2026-07-08：Web export runtime 与 Studio preview 复用同一 runtime service contract，Web runtime 重建后可读回 save slot。

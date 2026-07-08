@@ -5,6 +5,33 @@ import type { NovelState } from "./state";
 
 export const RUNTIME_RECORD_SCHEMA_VERSION = 1;
 
+export type RuntimePersistenceErrorCode =
+  | "runtime_record_future_version"
+  | "runtime_record_invalid"
+  | "runtime_save_slot_not_found";
+
+export class RuntimePersistenceError extends Error {
+  constructor(
+    readonly code: RuntimePersistenceErrorCode,
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "RuntimePersistenceError";
+  }
+}
+
+export interface RuntimeLoadWarning {
+  code: string;
+  message: string;
+  storyPoint?: StoryPointId;
+  nodeId?: string;
+}
+
+export interface RuntimeRestoreResult {
+  warnings: RuntimeLoadWarning[];
+}
+
 export const StoryPointIdSchema = z.strictObject({
   nodeId: z.string().min(1),
   instructionId: z.string().min(1),
@@ -83,6 +110,7 @@ export const GlobalPersistentRecordSchema = z.strictObject({
   readText: z.array(ReadTextKeySchema),
   unlockedCg: z.array(z.string()),
   unlockedMusic: z.array(z.string()),
+  unlockedReplays: z.array(z.string()).default([]),
   unlockedEndings: z.array(z.string()),
   playthroughCount: z.number().int().nonnegative(),
 });
@@ -101,6 +129,45 @@ export const RuntimeSettingsRecordSchema = z.strictObject({
   fullscreen: z.boolean().optional(),
 });
 export type RuntimeSettingsRecord = z.infer<typeof RuntimeSettingsRecordSchema>;
+
+export type RuntimeRecordKind = "saveSlot" | "global" | "settings";
+
+export interface RuntimePersistenceAdapter {
+  listSaveSlots(projectId: string): Promise<string[]>;
+  readSaveSlot(projectId: string, slotId: string): Promise<SaveSlotRecord | null>;
+  writeSaveSlot(projectId: string, slotId: string, record: SaveSlotRecord): Promise<void>;
+  deleteSaveSlot(projectId: string, slotId: string): Promise<void>;
+  readGlobal(projectId: string): Promise<GlobalPersistentRecord>;
+  writeGlobal(projectId: string, record: GlobalPersistentRecord): Promise<void>;
+  readSettings(projectId: string): Promise<RuntimeSettingsRecord>;
+  writeSettings(projectId: string, record: RuntimeSettingsRecord): Promise<void>;
+}
+
+export interface RuntimeStorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export function createDefaultGlobalPersistentRecord(projectId: string): GlobalPersistentRecord {
+  return {
+    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
+    projectId,
+    readText: [],
+    unlockedCg: [],
+    unlockedMusic: [],
+    unlockedReplays: [],
+    unlockedEndings: [],
+    playthroughCount: 0,
+  };
+}
+
+export function createDefaultRuntimeSettingsRecord(): RuntimeSettingsRecord {
+  return {
+    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
+    volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
+  };
+}
 
 export function normalizeReadText(text: string): string {
   return text
@@ -170,6 +237,153 @@ export function createSaveSlotRecord(input: {
     decisions: input.decisions ?? [],
     checkpoint: input.checkpoint,
   });
+}
+
+export function migrateSaveSlotRecord(raw: unknown): SaveSlotRecord {
+  assertSupportedRuntimeRecord(raw, "save slot");
+  const parsed = SaveSlotRecordSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new RuntimePersistenceError("runtime_record_invalid", "Invalid save slot record.", parsed.error.issues);
+  }
+  return parsed.data;
+}
+
+export function migrateGlobalPersistentRecord(raw: unknown, projectId?: string): GlobalPersistentRecord {
+  if (raw == null) return createDefaultGlobalPersistentRecord(projectId ?? "project");
+  assertSupportedRuntimeRecord(raw, "global persistent");
+  const parsed = GlobalPersistentRecordSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new RuntimePersistenceError("runtime_record_invalid", "Invalid global persistent record.", parsed.error.issues);
+  }
+  return parsed.data;
+}
+
+export function migrateRuntimeSettingsRecord(raw: unknown): RuntimeSettingsRecord {
+  if (raw == null) return createDefaultRuntimeSettingsRecord();
+  assertSupportedRuntimeRecord(raw, "runtime settings");
+  const parsed = RuntimeSettingsRecordSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new RuntimePersistenceError("runtime_record_invalid", "Invalid runtime settings record.", parsed.error.issues);
+  }
+  return parsed.data;
+}
+
+export function createInMemoryRuntimePersistenceAdapter(): RuntimePersistenceAdapter {
+  const slots = new Map<string, Map<string, SaveSlotRecord>>();
+  const globals = new Map<string, GlobalPersistentRecord>();
+  const settings = new Map<string, RuntimeSettingsRecord>();
+
+  const projectSlots = (projectId: string) => {
+    let map = slots.get(projectId);
+    if (!map) {
+      map = new Map();
+      slots.set(projectId, map);
+    }
+    return map;
+  };
+
+  return {
+    async listSaveSlots(projectId) {
+      return Array.from(projectSlots(projectId).keys()).sort();
+    },
+    async readSaveSlot(projectId, slotId) {
+      const raw = projectSlots(projectId).get(slotId);
+      return raw ? migrateSaveSlotRecord(raw) : null;
+    },
+    async writeSaveSlot(projectId, slotId, record) {
+      projectSlots(projectId).set(slotId, migrateSaveSlotRecord(record));
+    },
+    async deleteSaveSlot(projectId, slotId) {
+      projectSlots(projectId).delete(slotId);
+    },
+    async readGlobal(projectId) {
+      return globals.get(projectId) ?? createDefaultGlobalPersistentRecord(projectId);
+    },
+    async writeGlobal(projectId, record) {
+      globals.set(projectId, migrateGlobalPersistentRecord(record, projectId));
+    },
+    async readSettings(projectId) {
+      return settings.get(projectId) ?? createDefaultRuntimeSettingsRecord();
+    },
+    async writeSettings(projectId, record) {
+      settings.set(projectId, migrateRuntimeSettingsRecord(record));
+    },
+  };
+}
+
+export function createRuntimeStorageLikePersistenceAdapter(options: {
+  storage: RuntimeStorageLike;
+  keyPrefix?: string;
+  warnings?: string[];
+}): RuntimePersistenceAdapter {
+  const warnings = options.warnings;
+  const prefix = options.keyPrefix ?? "galstudio";
+
+  const key = (projectId: string, kind: "save" | "saveIndex" | "global" | "settings", id?: string) =>
+    id ? `${prefix}:${projectId}:${kind}:${id}` : `${prefix}:${projectId}:${kind}`;
+
+  const readJson = (storageKey: string): unknown | null => {
+    try {
+      const raw = options.storage.getItem(storageKey);
+      return raw == null ? null : JSON.parse(raw);
+    } catch {
+      warnings?.push(`Failed to read runtime storage key: ${storageKey}`);
+      return null;
+    }
+  };
+
+  const writeJson = (storageKey: string, value: unknown) => {
+    options.storage.setItem(storageKey, JSON.stringify(value));
+  };
+
+  const readSaveIndex = (projectId: string): string[] => {
+    const raw = readJson(key(projectId, "saveIndex"));
+    return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : [];
+  };
+
+  const writeSaveIndex = (projectId: string, ids: string[]) => {
+    writeJson(key(projectId, "saveIndex"), Array.from(new Set(ids)).sort());
+  };
+
+  return {
+    async listSaveSlots(projectId) {
+      return readSaveIndex(projectId);
+    },
+    async readSaveSlot(projectId, slotId) {
+      const raw = readJson(key(projectId, "save", slotId));
+      return raw == null ? null : migrateSaveSlotRecord(raw);
+    },
+    async writeSaveSlot(projectId, slotId, record) {
+      writeJson(key(projectId, "save", slotId), migrateSaveSlotRecord(record));
+      writeSaveIndex(projectId, [...readSaveIndex(projectId), slotId]);
+    },
+    async deleteSaveSlot(projectId, slotId) {
+      options.storage.removeItem(key(projectId, "save", slotId));
+      writeSaveIndex(projectId, readSaveIndex(projectId).filter((id) => id !== slotId));
+    },
+    async readGlobal(projectId) {
+      return migrateGlobalPersistentRecord(readJson(key(projectId, "global")), projectId);
+    },
+    async writeGlobal(projectId, record) {
+      writeJson(key(projectId, "global"), migrateGlobalPersistentRecord(record, projectId));
+    },
+    async readSettings(projectId) {
+      return migrateRuntimeSettingsRecord(readJson(key(projectId, "settings")));
+    },
+    async writeSettings(projectId, record) {
+      writeJson(key(projectId, "settings"), migrateRuntimeSettingsRecord(record));
+    },
+  };
+}
+
+function assertSupportedRuntimeRecord(raw: unknown, label: string) {
+  const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+  if (typeof record?.schemaVersion === "number" && record.schemaVersion > RUNTIME_RECORD_SCHEMA_VERSION) {
+    throw new RuntimePersistenceError(
+      "runtime_record_future_version",
+      `Cannot read future ${label} schemaVersion ${record.schemaVersion}; current version is ${RUNTIME_RECORD_SCHEMA_VERSION}.`,
+    );
+  }
 }
 
 export function replayDecisionLogToNodeId(

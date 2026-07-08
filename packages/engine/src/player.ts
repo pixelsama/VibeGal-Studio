@@ -21,9 +21,11 @@ import {
   buildInitialState,
   type InterpreterDeps,
 } from "./interpreter";
+import { runtimeEffectFromInstruction, type RuntimeEffectHandler } from "./runtimeEffect";
 
 export interface PlayerDeps extends InterpreterDeps {
   meta: Meta;
+  onRuntimeEffect?: RuntimeEffectHandler;
 }
 
 type Listener = (state: NovelState) => void;
@@ -150,6 +152,7 @@ export class NovelPlayer {
     const instr = this.flat[this.ip];
     this.ip += 1;
     this.state = applyInstruction(this.state, instr, this.deps);
+    this.emitRuntimeEffect(instr);
     if (instr.t === "say" || instr.t === "narrate") this.state = revealFully(this.state);
     if (instr.t === "wait") this.state.flags.isWaiting = false; // 单步模式下 wait 不阻塞
     this.state.flags.progress.current = this.ip;
@@ -190,6 +193,7 @@ export class NovelPlayer {
       const instr = this.flat[this.ip];
       this.ip += 1;
       this.state = applyInstruction(this.state, instr, this.deps);
+      this.emitRuntimeEffect(instr);
       this.state.flags.progress.current = this.ip;
       this.emit();
 
@@ -314,6 +318,12 @@ export class NovelPlayer {
 
   private emit() {
     for (const l of this.listeners) l(this.state);
+  }
+
+  private emitRuntimeEffect(instr: Instruction) {
+    const effect = runtimeEffectFromInstruction(instr);
+    if (!effect) return;
+    void this.deps.onRuntimeEffect?.(effect);
   }
 
   get deps_(): PlayerDeps { return this.deps; } // 仅供测试用

@@ -429,8 +429,10 @@ export function ScriptWorkspace({
                 <NodeOutline
                   graph={graph}
                   nodeEntries={project.nodes}
+                  manifest={project.content.manifest}
                   selectedNodeId={selectedNodeId}
                   onSelect={handleSelect}
+                  onSelectEdge={handleSelectEdge}
                 />
               </CollapsibleSidebar>
             </div>

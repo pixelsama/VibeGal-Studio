@@ -1,15 +1,18 @@
 import { useMemo, useState } from "react";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
+import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData } from "./graphMapping";
+import { searchProject } from "./projectSearch";
 
 interface NodeOutlineProps {
   graph: ProjectGraph;
   nodeEntries?: NodeEntry[];
+  manifest?: Manifest;
   selectedNodeId: string | null;
   onSelect: (id: string) => void;
+  onSelectEdge?: (id: string) => void;
 }
 
-export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: NodeOutlineProps) {
+export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSelect, onSelectEdge }: NodeOutlineProps) {
   const [query, setQuery] = useState("");
   const orderedNodes = useMemo(() => {
     const entry = graph.nodes.find((node) => node.id === graph.entryNodeId);
@@ -22,6 +25,11 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
       return haystack.includes(normalized);
     });
   }, [graph.entryNodeId, graph.nodes, query]);
+  const searchResults = useMemo(
+    () => searchProject({ graph, nodeEntries, manifest }, query),
+    [graph, manifest, nodeEntries, query],
+  );
+  const showingProjectSearch = query.trim().length > 0;
 
   return (
     <div style={panelStyle}>
@@ -34,7 +42,35 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
         />
       </div>
       <div style={listStyle}>
-        {orderedNodes.length === 0 ? (
+        {showingProjectSearch ? (
+          searchResults.length === 0 ? (
+            <div style={emptyStyle}>没有匹配的结果</div>
+          ) : (
+            searchResults.map((result, index) => (
+              <button
+                key={`${result.kind}-${index}`}
+                type="button"
+                onClick={() => {
+                  if (result.kind === "edge") {
+                    onSelectEdge?.(result.edgeId);
+                    return;
+                  }
+                  if ("nodeId" in result && result.nodeId) onSelect(result.nodeId);
+                }}
+                style={itemStyle}
+              >
+                <div style={itemHeaderStyle}>
+                  <span style={itemTitleStyle}>{result.label}</span>
+                  <span style={entryBadgeStyle}>{searchKindLabel(result.kind)}</span>
+                </div>
+                <div style={itemMetaStyle}>{result.preview}</div>
+                <div style={itemMetaStyle}>
+                  {result.kind === "manifest" ? result.manifestPath : result.file}
+                </div>
+              </button>
+            ))
+          )
+        ) : orderedNodes.length === 0 ? (
           <div style={emptyStyle}>{query.trim() ? "没有匹配的节点" : "暂无节点"}</div>
         ) : (
           orderedNodes.map((node) => {
@@ -70,6 +106,19 @@ export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: No
       </div>
     </div>
   );
+}
+
+function searchKindLabel(kind: "node" | "instruction" | "edge" | "manifest"): string {
+  switch (kind) {
+    case "node":
+      return "节点";
+    case "instruction":
+      return "指令";
+    case "edge":
+      return "边";
+    case "manifest":
+      return "资源";
+  }
 }
 
 const panelStyle: React.CSSProperties = {

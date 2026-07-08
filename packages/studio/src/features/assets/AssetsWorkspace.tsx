@@ -93,6 +93,14 @@ export function AssetsWorkspace({
       return d.id.toLowerCase().includes(q) || d.path.toLowerCase().includes(q);
     });
   }, [view.dangling, section, search]);
+  const cleanupProposal = useMemo(
+    () => buildAssetCleanupProposal(manifest, {
+      unusedManifestPaths: assetUsage.unusedManifestPaths,
+      missingManifestSources: filteredDangling.map((entry) => entry.source),
+      unregisteredDiskPaths: filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath)).map((entry) => entry.relPath),
+    }),
+    [assetUsage.unusedManifestPaths, filteredDangling, filteredDisk, manifest, view.orphanPaths],
+  );
 
   async function handleImport() {
     if (readOnly) return;
@@ -194,6 +202,18 @@ export function AssetsWorkspace({
     await persistManifest(removeDanglingRefs(manifest, filteredDangling.map((entry) => entry.source)));
   }
 
+  function handleCleanupManifestEntries() {
+    if (readOnly || cleanupProposal.removeSources.length === 0) return;
+    setConfirm({
+      message: [
+        `将从 manifest 移除 ${cleanupProposal.removeSources.length} 个未使用或悬空条目。`,
+        "不会删除磁盘文件。",
+        ...cleanupProposal.diffPreview.slice(0, 8),
+      ].join("\n"),
+      onConfirm: () => void persistManifest(applyAssetCleanupProposal(manifest, cleanupProposal)),
+    });
+  }
+
   function handleDeleteAllOrphans() {
     if (readOnly) return;
     const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
@@ -263,6 +283,14 @@ export function AssetsWorkspace({
               onDeleteOrphans={handleDeleteAllOrphans}
               disabled={readOnly}
             />
+            {cleanupProposal.removeSources.length > 0 && (
+              <div style={cleanupBarStyle}>
+                <span>{`Cleanup dry-run: ${cleanupProposal.removeSources.length} 个 manifest 条目可清理，${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未注册`}</span>
+                <button type="button" style={cleanupButtonStyle} onClick={handleCleanupManifestEntries} disabled={readOnly}>
+                  确认清理 manifest
+                </button>
+              </div>
+            )}
             <div style={scrollStyle}>
               <AssetGrid emptyHint="没有匹配的资源">
                 {filteredDisk.map((entry) => (
@@ -608,11 +636,112 @@ export function removeManifestEntry(manifest: Manifest, source: string): Manifes
       characters: { ...manifest.characters, [parts[1]]: { ...char, sprites } },
     };
   }
+  if (parts[0] === "cg" && parts.length === 2) {
+    const next = { ...(manifest.cg ?? {}) };
+    delete next[parts[1]];
+    return { ...manifest, cg: next };
+  }
+  if (parts[0] === "videos" && parts.length === 2) {
+    const next = { ...(manifest.videos ?? {}) };
+    delete next[parts[1]];
+    return { ...manifest, videos: next };
+  }
+  if (parts[0] === "fonts" && parts.length === 2) {
+    const next = { ...(manifest.fonts ?? {}) };
+    delete next[parts[1]];
+    return { ...manifest, fonts: next };
+  }
+  if (parts[0] === "uiSkins" && parts.length === 4 && parts[2] === "assets") {
+    const skin = manifest.uiSkins?.[parts[1]];
+    if (!skin) return manifest;
+    const assets = { ...skin.assets };
+    delete assets[parts[3]];
+    return { ...manifest, uiSkins: { ...manifest.uiSkins, [parts[1]]: { ...skin, assets } } };
+  }
+  if (parts[0] === "animationAtlases" && parts.length === 3) {
+    const atlas = manifest.animationAtlases?.[parts[1]];
+    if (!atlas) return manifest;
+    const nextAtlas = { ...atlas };
+    delete nextAtlas[parts[2] as keyof typeof nextAtlas];
+    return { ...manifest, animationAtlases: { ...manifest.animationAtlases, [parts[1]]: nextAtlas } };
+  }
   return manifest;
 }
 
 export function removeDanglingRefs(manifest: Manifest, sources: string[]): Manifest {
   return sources.reduce((next, source) => removeManifestEntry(next, source), manifest);
+}
+
+export interface AssetCleanupProposalInput {
+  unusedManifestPaths: Set<string>;
+  missingManifestSources: string[];
+  unregisteredDiskPaths: string[];
+}
+
+export interface AssetCleanupProposal {
+  removeSources: string[];
+  unregisteredDiskPaths: string[];
+  diffPreview: string[];
+}
+
+export function buildAssetCleanupProposal(
+  manifest: Manifest,
+  input: AssetCleanupProposalInput,
+): AssetCleanupProposal {
+  const removeSources = new Set<string>();
+  const normalizedUnusedPaths = new Set(Array.from(input.unusedManifestPaths, normalizeAssetPath));
+  collectManifestEntrySources(manifest).forEach((entry) => {
+    if (normalizedUnusedPaths.has(normalizeAssetPath(entry.path))) {
+      removeSources.add(entry.source);
+    }
+  });
+  input.missingManifestSources.forEach((source) => removeSources.add(source));
+
+  const sources = Array.from(removeSources);
+  return {
+    removeSources: sources,
+    unregisteredDiskPaths: [...input.unregisteredDiskPaths].sort(),
+    diffPreview: [
+      ...sources.map((source) => `- manifest:${source}`),
+      ...input.unregisteredDiskPaths.sort().map((path) => `disk-only:${path}`),
+    ],
+  };
+}
+
+export function applyAssetCleanupProposal(
+  manifest: Manifest,
+  proposal: AssetCleanupProposal,
+  _options: { deleteDiskFile?: (path: string) => void } = {},
+): Manifest {
+  return removeDanglingRefs(manifest, proposal.removeSources);
+}
+
+function collectManifestEntrySources(manifest: Manifest): { source: string; path: string }[] {
+  const entries: { source: string; path: string }[] = [];
+  Object.entries(manifest.backgrounds ?? {}).forEach(([id, path]) => entries.push({ source: `backgrounds.${id}`, path }));
+  Object.entries(manifest.characters ?? {}).forEach(([id, character]) => {
+    Object.entries(character.sprites ?? {}).forEach(([expr, path]) => {
+      entries.push({ source: `characters.${id}.sprites.${expr}`, path });
+    });
+  });
+  Object.entries(manifest.audio?.bgm ?? {}).forEach(([id, path]) => entries.push({ source: `audio.bgm.${id}`, path }));
+  Object.entries(manifest.audio?.sfx ?? {}).forEach(([id, path]) => entries.push({ source: `audio.sfx.${id}`, path }));
+  Object.entries(manifest.audio?.voice ?? {}).forEach(([id, path]) => entries.push({ source: `audio.voice.${id}`, path }));
+  Object.entries(manifest.cg ?? {}).forEach(([id, asset]) => entries.push({ source: `cg.${id}`, path: asset.path }));
+  Object.entries(manifest.videos ?? {}).forEach(([id, asset]) => entries.push({ source: `videos.${id}`, path: asset.path }));
+  Object.entries(manifest.fonts ?? {}).forEach(([id, font]) => entries.push({ source: `fonts.${id}`, path: font.path }));
+  Object.entries(manifest.uiSkins ?? {}).forEach(([id, skin]) => {
+    Object.entries(skin.assets ?? {}).forEach(([assetId, path]) => entries.push({ source: `uiSkins.${id}.assets.${assetId}`, path }));
+  });
+  Object.entries(manifest.animationAtlases ?? {}).forEach(([id, atlas]) => {
+    entries.push({ source: `animationAtlases.${id}.image`, path: atlas.image });
+    if (atlas.json) entries.push({ source: `animationAtlases.${id}.json`, path: atlas.json });
+  });
+  return entries;
+}
+
+function normalizeAssetPath(path: string): string {
+  return path.replace(/\\/g, "/");
 }
 
 /** 统计每个磁盘路径被多少 manifest 条目引用。 */
@@ -695,6 +824,29 @@ const mainStyle: React.CSSProperties = {
 const scrollStyle: React.CSSProperties = {
   flex: 1,
   overflowY: "auto",
+};
+
+const cleanupBarStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) 14px",
+  borderBottom: "1px solid var(--border)",
+  fontSize: "var(--text-sm)",
+  color: "var(--text-secondary)",
+  background: "var(--bg-panel)",
+};
+
+const cleanupButtonStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  padding: "5px var(--space-3)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-active)",
+  color: "var(--text-bright)",
+  cursor: "pointer",
+  flexShrink: 0,
 };
 
 const invalidBannerStyle: React.CSSProperties = {

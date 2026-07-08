@@ -17,6 +17,8 @@ import {
 import {
   AssetsWorkspace,
   applyAssetRegistrations,
+  applyAssetCleanupProposal,
+  buildAssetCleanupProposal,
   discardDraftManifest,
   canMutateAssets,
   countRefs,
@@ -86,6 +88,36 @@ describe("bulk asset cleanup helpers", () => {
 
     expect(next.backgrounds.sky).toBeUndefined();
     expect(next.audio.bgm.theme).toBeUndefined();
+  });
+
+  it("assetCleanupDryRunDoesNotMutateManifest", () => {
+    const proposal = buildAssetCleanupProposal(base, {
+      unusedManifestPaths: new Set(["assets/backgrounds/sky.png"]),
+      missingManifestSources: ["audio.bgm.theme"],
+      unregisteredDiskPaths: ["assets/backgrounds/unregistered.png"],
+    });
+
+    expect(proposal.removeSources).toEqual(["backgrounds.sky", "audio.bgm.theme"]);
+    expect(proposal.unregisteredDiskPaths).toEqual(["assets/backgrounds/unregistered.png"]);
+    expect(base.backgrounds.sky).toBe("assets/backgrounds/sky.png");
+    expect(base.audio.bgm.theme).toBe("assets/audio/bgm/theme.mp3");
+  });
+
+  it("assetCleanupConfirmRemovesManifestEntryOnly", () => {
+    const deleteCalls: string[] = [];
+    const proposal = buildAssetCleanupProposal(base, {
+      unusedManifestPaths: new Set(["assets/backgrounds/sky.png"]),
+      missingManifestSources: [],
+      unregisteredDiskPaths: ["assets/backgrounds/unregistered.png"],
+    });
+
+    const next = applyAssetCleanupProposal(base, proposal, {
+      deleteDiskFile: (path) => deleteCalls.push(path),
+    });
+
+    expect(next.backgrounds.sky).toBeUndefined();
+    expect(next.characters.hero.sprites.default).toBe("assets/characters/hero.svg");
+    expect(deleteCalls).toEqual([]);
   });
 });
 

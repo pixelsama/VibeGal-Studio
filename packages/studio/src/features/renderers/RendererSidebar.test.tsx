@@ -54,4 +54,27 @@ describe("RendererSidebar", () => {
     expect(html).toContain("重命名");
     expect(html).toContain("删除");
   });
+
+  it("shows renderer diagnostics with file location, code and snippet", () => {
+    const html = renderToStaticMarkup(createElement(RendererSidebar, {
+      rendererIds: ["default"],
+      activeRendererId: "default",
+      onSelect: () => {},
+      diagnostics: [{
+        severity: "error",
+        code: "renderer_unsupported_import",
+        rendererId: "default",
+        step: "compile",
+        message: "Unsupported renderer bare import: lodash.",
+        file: "renderers/default/index.tsx",
+        line: 1,
+        column: 22,
+        snippet: 'import debounce from "lodash";',
+      }],
+    }));
+
+    expect(html).toContain("renderer_unsupported_import");
+    expect(html).toContain("renderers/default/index.tsx:1:22");
+    expect(html).toContain("import debounce from &quot;lodash&quot;");
+  });
 });

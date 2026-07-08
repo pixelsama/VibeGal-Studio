@@ -1,6 +1,6 @@
 # Spec 09 — Unlock Media Replay Runtime
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[Spec 04](../archive/04-data-contract-expansion.spec.md)、[Spec 06](./06-persistent-runtime-save-and-restore.spec.md)。
 > 目标：让 unlock、CG/video、music、replay、ending 从数据契约进入 runtime side-effect 和 renderer-consumable services。
 
@@ -114,3 +114,12 @@ Validation 检查 id 存在于 manifest。
 | `galleryServiceListsUnlockedCg` | gallery service 只列出已解锁 CG |
 | `replayServiceReturnsKnownReplayEntry` | replay registry 可被 runtime service 查询 |
 | `webRuntimePersistsUnlocksAcrossReload` | Web runtime 重建后 unlock 仍存在 |
+
+## 8. 归档记录
+
+- 2026-07-08：新增 `RuntimeEffect` 与 `runtimeEffectFromInstruction()`，覆盖 `unlock`、`showCg`、`playVideo`。
+- 2026-07-08：`showCg` / `playVideo` 已进入 instruction schema、JSON schema、scenario parser/formatter 与引用校验。
+- 2026-07-08：`GraphNovelPlayer` 执行 runtime effect hook；restore/jump 不重放 one-shot runtime effects。
+- 2026-07-08：unlock side-effect 写入 `GlobalPersistentRecord`，读档不会回滚 unlock。
+- 2026-07-08：`RuntimeServices.gallery` 提供 CG/music/replay/ending 查询，`RuntimeServices.media` 提供 close CG / skip video 命令形状。
+- 2026-07-08：Web export 与 Studio preview 都接入 unlock side-effect，Web runtime 重建后 unlock 可恢复。

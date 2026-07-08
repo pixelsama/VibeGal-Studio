@@ -40,6 +40,8 @@ describe("useProjectPlayer helpers", () => {
         { file: "nodes/start.json", data: [{ t: "narrate", text: "start" }] },
       ],
       nodeIds: ["later", "start"],
+      entryNodeId: "start",
+      initialVars: {},
     });
   });
 

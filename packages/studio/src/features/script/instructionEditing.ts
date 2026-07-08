@@ -101,10 +101,12 @@ export function createInstructionDraft(kind: EditableInstructionKind): Instructi
       return { t: "pause" };
     case "unlock":
       return { t: "unlock", kind: "cg", id: "" };
-    default: {
-      const exhaustive: never = kind;
-      return exhaustive;
-    }
+    case "showCg":
+      return { t: "showCg", id: "" };
+    case "playVideo":
+      return { t: "playVideo", id: "" };
+    default:
+      return { t: "narrate", text: "" };
   }
 }
 

@@ -1,6 +1,6 @@
 # Spec 10 — Renderer Diagnostics And Contract Tooling
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[Spec 02](../archive/02-renderer-runtime-api.spec.md)、[Spec 05](../archive/05-export-packaging.spec.md)。
 > 目标：让 renderer contract 检查和错误定位成为 Studio、CLI、export 共用的正式工具链。
 
@@ -118,3 +118,11 @@ Renderer sidebar/status panel 展示：
 | `rendererCheckReportsMissingContractVersion` | 缺 contractVersion 报错 |
 | `studioRendererDiagnosticsMatchCliCodes` | Studio 与 CLI 对同一错误 code 一致 |
 | `exportBuildUsesRendererDiagnostics` | export build 复用 renderer diagnostics |
+
+## 8. 归档记录
+
+- 2026-07-08：Studio 侧新增共享 `RendererDiagnostic` 模型与 `RendererDiagnosticError`。
+- 2026-07-08：runtime compiler、renderer loader、preview/sidebar 可返回 renderer id、code、file、line、column、snippet、step。
+- 2026-07-08：新增 `galstudio-cli renderer-check <project-path> [--renderer <id>] --format json|text`。
+- 2026-07-08：unsupported bare import、missing default export、manifest id mismatch、missing/unsupported contractVersion 均有稳定 code。
+- 2026-07-08：Web export worker 和 CLI build 复用同形 diagnostics；production Web runtime 不暴露 debug service。
