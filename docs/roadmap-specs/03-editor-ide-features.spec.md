@@ -1,6 +1,6 @@
 # Spec 03 — Studio IDE Features
 
-> 状态：草案。
+> 状态：已决策，待开发。
 > 目标：把 GalStudio 从“能编辑 graph 和节点”推进到“可日常创作、检查、调试大型 gal 项目”的工程 IDE。
 
 ## 1. 背景
@@ -232,10 +232,10 @@ Studio preview 中显示：
 | `assetUsageFindsUnusedManifestEntries` | manifest 未使用资源被发现 |
 | `rendererDiagnosticsReportsUnsupportedBareImport` | unsupported import 定位清晰 |
 
-## 7. 开放问题
+## 7. V1 决策
 
-- “ending 节点”用无 outgoing edge 推断，还是增加显式 node kind？
-- route coverage 是否要考虑 auto condition 可满足性？
-- variable condition 是否先转 AST 再分析？
-- asset cleanup 是否自动改 manifest，还是只给建议？
-- preview from instruction 在缺稳定 id 的旧项目中如何降级？
+- V1 用“reachable 且无 outgoing edge”的节点推断 ending。暂不新增显式 `node.kind`；未来如果需要 true/bad/normal ending 分类，再由 Data Contract spec 增加 ending metadata。
+- Route coverage 不做完整 auto condition 可满足性证明。V1 只解析条件、检查语法、变量读写、缺 default、明显常量 false/重复条件等可确定问题；无法证明的分支标记为 `unknown`，不报 error。
+- Variable condition 必须先转 AST 再分析。禁止用正则从 condition 字符串猜变量；AST parser 应在 engine 侧共享，Studio 和 CLI 复用同一套读点提取逻辑。
+- Asset cleanup V1 只给建议和定位，不自动改 manifest 或删除磁盘文件。后续批量清理必须有明确确认、预览 diff、并走安全持久化。
+- 缺稳定 `id` 的旧项目只能降级到 node-level preview；当前编辑会话内可临时使用 `nodeId + instructionIndex` 跳转，但该定位不可写入 save/backlog/read status，并且 UI/报告必须提示“需要补齐 instruction id”。

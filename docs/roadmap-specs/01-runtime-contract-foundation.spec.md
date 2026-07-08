@@ -1,6 +1,6 @@
 # Spec 01 — Runtime Contract Foundation
 
-> 状态：草案。
+> 状态：已决策，待开发。
 > 来源：[project-wiki.md](../project-wiki.md) 的 Phase C、Fable 审阅意见，以及当前 `@galstudio/engine` 的 graph-aware player 架构。
 > 目标：先建立存档、已读、回滚、backlog、settings、renderer 契约扩展都依赖的运行时地基。
 
@@ -61,7 +61,7 @@ interface StoryPointId {
 }
 ```
 
-建议先给“可停留、可恢复、可统计已读”的指令增加稳定 id：
+V1 先给“可停留、可恢复、可统计已读”的指令增加稳定 id：
 
 - `say`
 - `narrate`
@@ -72,7 +72,7 @@ interface StoryPointId {
 
 #### 3.1.1 指令 id 字段
 
-候选 schema：
+V1 schema：
 
 ```json
 { "t": "say", "id": "line_01hxyz", "who": "hero", "text": "..." }
@@ -92,7 +92,7 @@ interface StoryPointId {
 
 若一条台词 id 不变但文本变了，旧已读不应自动覆盖新文本。
 
-建议已读 key 使用：
+V1 已读 key 使用：
 
 ```ts
 interface ReadTextKey {
@@ -143,7 +143,7 @@ interface RuntimeSnapshot {
 
 重放模型需要记录玩家决策。
 
-建议事件：
+V1 事件：
 
 ```ts
 type DecisionLogEvent =
@@ -156,7 +156,7 @@ type DecisionLogEvent =
 原则：
 
 - 玩家选择必须记录。
-- 自动分支建议记录实际命中的 edge，便于脚本改动后尽力恢复。
+- 自动分支记录实际命中的 edge，便于脚本改动后尽力恢复。
 - 随机数进入引擎后，随机结果也必须记录。
 - `checkpoint` 用于避免从项目开头重放太久。
 
@@ -172,7 +172,7 @@ type DecisionLogEvent =
 
 #### 3.4.1 Save Slot
 
-候选字段：
+V1 字段：
 
 ```ts
 interface SaveSlotRecord {
@@ -191,7 +191,7 @@ interface SaveSlotRecord {
 
 #### 3.4.2 Global Persistent
 
-候选字段：
+V1 字段：
 
 ```ts
 interface GlobalPersistentRecord {
@@ -207,7 +207,7 @@ interface GlobalPersistentRecord {
 
 #### 3.4.3 Runtime Settings
 
-候选字段：
+V1 字段：
 
 ```ts
 interface RuntimeSettingsRecord {
@@ -228,7 +228,7 @@ interface RuntimeSettingsRecord {
 
 `RendererManifest` 需要声明契约版本或能力。
 
-候选字段：
+V1 字段：
 
 ```ts
 interface RendererManifest {
@@ -279,10 +279,10 @@ interface RendererManifest {
 | `rendererManifestAcceptsCurrentContractVersion` | 当前版本 renderer 校验通过 |
 | `rendererManifestWarnsUnsupportedContractVersion` | 超前版本给明确错误或 warning |
 
-## 7. 开放问题
+## 7. V1 决策
 
-- 指令 id 字段名用 `id` 还是 `sid` / `lineId`？
-- 对历史节点缺 id 的项目，是 warning、自动修复，还是保存时补齐？
-- checkpoint 间隔按节点、停点数量，还是用户存档时机？
-- 自动分支脚本改动后，旧 decision log 命中的 edge 不存在时如何降级？
-- textHash 是否忽略空白、全角半角或标点差异？
+- 指令稳定字段统一使用 `id`。`StoryPointId.instructionId` 指向指令对象的 `id`，不再引入 `sid` 或 `lineId`。
+- 历史节点缺 `id` 时，CLI / Studio validation 给 machine-readable warning，并提供可修复 issue；打开项目或运行 validate 不静默改写文件。编辑器中新建、复制、粘贴停点指令必须生成新 `id`；用户保存被编辑器接管的节点草稿时，可由节点 normalizer 为缺失停点指令补齐 `id`。
+- Save slot 的持久 checkpoint 在显式 save、quick save、auto save 时生成；运行时可额外按每 25 个可恢复 story point 或每次 route decision 建立内存 checkpoint，用于降低回滚/恢复重放成本。
+- 旧 decision log 中的 `edgeId` 不存在时，恢复顺序为：先查找同 `fromNodeId -> toNodeId` 的现存 edge；若不存在，则按当前 graph 和 vars 重新计算自动分支；仍无法确定时停在 `fromNodeId`，返回可展示的 load warning，不静默跳到未知位置。
+- `textHash` 只做稳定化规范化：Unicode NFC、CRLF/LF 统一、移除每行行尾空白。不折叠正文中的空白，不转换全角/半角，不忽略标点差异；文本含义变化应产生新的未读状态。

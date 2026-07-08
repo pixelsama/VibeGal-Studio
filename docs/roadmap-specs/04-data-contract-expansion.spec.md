@@ -1,6 +1,6 @@
 # Spec 04 — Data Contract Expansion
 
-> 状态：草案。
+> 状态：已决策，待开发。
 > 目标：扩展 GalStudio 项目的数据表达能力，让正规 galgame 所需资源和解锁项有稳定 schema，同时不把展示方式写进 Studio。
 
 ## 1. 背景
@@ -48,7 +48,7 @@ renderer 应：
 
 ### 3.1 Asset Metadata
 
-建议从纯 `id -> path` 逐步升级到可带元数据的形式。
+V1 从纯 `id -> path` 逐步升级到可带元数据的形式。
 
 兼容策略：
 
@@ -56,27 +56,31 @@ renderer 应：
 - 新形式支持对象；
 - schema parse 后归一化。
 
-候选：
+V1 输入与归一化类型：
 
 ```ts
-type AssetRef = string | {
+type AssetRefInput = string | AssetRef;
+
+interface AssetRef {
   path: string;
   name?: string;
   tags?: string[];
   thumbnail?: string;
-};
+}
 ```
+
+schema 允许旧的字符串形式，但 engine / Studio 读取后应归一化为 `AssetRef` 对象，避免后续分析逻辑到处判断 string/object。
 
 ### 3.2 CG Registry
 
-候选：
+V1 registry：
 
 ```ts
 interface CgRegistry {
-  [id: string]: AssetRef & {
+  [id: string]: AssetRefInput | (AssetRef & {
     group?: string;
     unlockId?: string;
-  };
+  });
 }
 ```
 
@@ -93,14 +97,14 @@ interface CgRegistry {
 
 ### 3.3 Video Registry
 
-候选：
+V1 registry：
 
 ```ts
 interface VideoRegistry {
-  [id: string]: AssetRef & {
+  [id: string]: AssetRefInput | (AssetRef & {
     poster?: string;
     skippable?: boolean;
-  };
+  });
 }
 ```
 
@@ -118,7 +122,7 @@ interface VideoRegistry {
 
 ### 3.4 Font Registry
 
-候选：
+V1 registry：
 
 ```ts
 interface FontRegistry {
@@ -138,7 +142,7 @@ interface FontRegistry {
 
 ### 3.5 UI Skin Registry
 
-候选：
+V1 registry：
 
 ```ts
 interface UiSkinRegistry {
@@ -154,7 +158,7 @@ interface UiSkinRegistry {
 
 ### 3.6 Animation Atlas Registry
 
-候选：
+V1 registry：
 
 ```ts
 interface AnimationAtlasRegistry {
@@ -173,7 +177,7 @@ interface AnimationAtlasRegistry {
 
 ### 4.1 Unlock Registry
 
-候选：
+V1 registry：
 
 ```ts
 interface UnlockRegistry {
@@ -186,13 +190,11 @@ interface UnlockRegistry {
 
 ### 4.2 Unlock Instructions
 
-可新增指令：
+V1 新增显式指令：
 
 ```json
 { "t": "unlock", "kind": "cg", "id": "cg_001" }
 ```
-
-或将 unlock 作为 edge/node metadata，需在设计时决定。
 
 原则：
 
@@ -220,7 +222,7 @@ interface UnlockRegistry {
 - 不允许 renderer 自定义条件脚本；
 - CLI 可给机器可读错误。
 
-建议先设计 AST：
+V1 先设计 AST：
 
 ```ts
 type Expr =
@@ -270,10 +272,11 @@ type Expr =
 | `expressionParserRejectsArbitraryJs` | 条件表达式不能执行任意 JS |
 | `expressionAnalyzerCollectsVariableReads` | 表达式 AST 可提取变量读点 |
 
-## 10. 开放问题
+## 10. V1 决策
 
-- CG/video/font registry 放在 `manifest.json` 顶层，还是 `assets` 子对象下？
-- `unlock` 是指令、node metadata，还是 edge metadata？
-- replay scene 是否引用 nodeId，还是引用稳定 story range？
-- UI skin 是否应该属于 renderer-local config 而不是 global manifest？
-- 资源 display name 是否要本地化？
+- 新 registry 放在 `manifest.json` 顶层，延续现有 `characters`、`backgrounds`、`audio` 的项目级 manifest 模型。V1 字段名为 `cg`、`videos`、`fonts`、`uiSkins`、`animationAtlases`、`unlocks`，不新增 `assets` 包裹层。
+- 解锁采用显式 `unlock` 指令。node/edge metadata 不在 V1 中改写全局进度；这样解锁发生点可被 interpreter、backlog、回放和测试明确捕捉。
+- Replay scene V1 引用 `nodeId` 作为回想入口。稳定 story range 依赖 Spec 01 后续扩展，暂不阻塞 replay registry。
+- `uiSkins` 是全局 manifest 中的项目级资源注册表，Studio 只校验路径和 metadata；renderer-local 的私有配置仍可放在 `renderers/<id>/` 内，但不替代 manifest 中可被导出和分析的资源声明。
+- 资源显示名 V1 只支持单一 `name` 字段，不做本地化 map。未来多语言项目再扩展为 `names: Record<locale, string>`，但不提前增加复杂度。
+- Expression V1 只实现可静态解析的比较、`&&`、`||` 和括号；`set` 的算术、`+=`、`-=` 延后。所有表达式分析基于 AST，禁止任意 JS。

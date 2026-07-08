@@ -1,6 +1,6 @@
 # Spec 05 — Export and Packaging
 
-> 状态：草案。
+> 状态：已决策，待开发。
 > 前置：renderer contract 稳定、runtime persistence contract 初步成型。
 > 目标：把 GalStudio 项目导出为可玩的游戏包，优先 Web，后续桌面。
 
@@ -96,13 +96,13 @@ dist-game/
 
 ## 5. CLI Build
 
-候选命令：
+V1 命令：
 
 ```text
 galstudio-cli build <project-path> --target web --out dist-game
 ```
 
-候选参数：
+V1 参数：
 
 ```text
 --renderer <id>
@@ -143,14 +143,12 @@ CLI 输出应机器可读：
 - preserve sourcemap in dev build；
 - report line/column errors。
 
-开放问题：
+V1 决策：
 
-- Web export 是否允许 renderer 引用第三方 npm 包？
-- 若允许，如何声明依赖？
-- 是否需要 `renderers/<id>/package.json`？
-- 还是保持当前 contract：只允许 React、React DOM、`@galstudio/engine` 和相对 imports？
-
-V1 建议保持当前限制，降低打包复杂度。
+- 保持当前 renderer contract 限制，只允许 React、React DOM、`@galstudio/engine` 和相对 imports。
+- V1 不支持 renderer 自带第三方 npm 依赖，也不引入 `renderers/<id>/package.json`。
+- 裸导入若不在 allowlist 内，build 必须失败并输出 renderer id、文件、行列和 stable error code。
+- CLI/export bundling 使用 Node esbuild；Studio preview 的 runtime compiler 可继续使用现有 esbuild-wasm 路线。
 
 ## 7. Persistence Adapter
 
@@ -160,11 +158,11 @@ Web export 至少需要：
 - global persistent；
 - runtime settings。
 
-候选 storage：
+V1 storage：
 
-- localStorage for V1；
-- IndexedDB for larger save data；
-- pluggable adapter later。
+- 使用与 Spec 02 对齐的可插拔 `RuntimeStorageAdapter`。
+- Web 默认 adapter 使用 `localStorage` 存 save slots、global persistent、runtime settings。
+- V1 save preview 不存截图二进制；需要大体积存档或截图后再迁移 IndexedDB。
 
 接口应与 Spec 02 的 runtime services 对齐。
 
@@ -172,7 +170,7 @@ Web export 至少需要：
 
 桌面导出作为后续目标。
 
-候选：
+后续方向：
 
 - Tauri shell per game；
 - Electron shell；
@@ -198,12 +196,13 @@ Web export 至少需要：
 - 可生成 asset manifest；
 - 后续支持压缩/加密，但 V1 不做。
 
-V1 建议：
+V1 决策：
 
 - 默认复制完整 `content/`；
 - validate 报 missing/unused；
 - 不做资源裁剪；
 - 不做加密。
+- 生成顶层 `game.manifest.json`，记录 project id/title、renderer id、contract version、build target、base path、builtAt 和 GalStudio build schema version。
 
 ## 10. Build Validation
 
@@ -251,10 +250,10 @@ build 前必须执行：
 | `webRuntimeHandlesChoiceRoute` | 导出 runtime 能选择 choice edge |
 | `webRuntimePersistsSettingsSeparatelyFromSaveSlot` | 设置与存档分离 |
 
-## 14. 开放问题
+## 14. V1 决策
 
-- build 实现放在 Rust CLI、Node 脚本，还是混合？
-- renderer bundle 用现有 esbuild-wasm，还是 Node esbuild？
-- Web export 的 base path 如何处理相对部署？
-- 是否要生成 `game.manifest.json` 描述导出信息？
-- 首个 desktop export 是否直接复用 Tauri？
+- `galstudio-cli build` 是唯一对外入口。Rust CLI 负责参数解析、project validation、路径安全、复制文件、机器可读输出；renderer/runtime bundling 委托给随包提供的 Node build worker。
+- Renderer bundle 使用 Node esbuild，不复用浏览器内的 esbuild-wasm。原因是 export 是离线构建任务，需要更可靠的文件系统访问、sourcemap 和错误行列。
+- `--base-path` 默认 `./`，保证导出包可在相对路径和静态文件服务器子目录下运行。用户传入 `/game/` 等路径时写入 `game.manifest.json`，runtime 统一从该 base 解析 content/asset 路径。
+- V1 必须生成 `game.manifest.json`，作为导出产物自描述文件和后续 smoke test 入口。
+- 首个 desktop export 复用 Web export，并优先用 Tauri wrapper；Electron 不作为首选路线。桌面导出不进入 V1 build 的验收范围。

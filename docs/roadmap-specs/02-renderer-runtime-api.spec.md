@@ -1,6 +1,6 @@
 # Spec 02 — Renderer Runtime API
 
-> 状态：草案。
+> 状态：已决策，待开发。
 > 前置：[01-runtime-contract-foundation.spec.md](./01-runtime-contract-foundation.spec.md)。
 > 目标：定义 renderer 可调用的正规 galgame runtime API，让 renderer 能实现正式 UI，而 Studio 不内置正式 UI。
 
@@ -48,7 +48,7 @@ renderer 可以实现这些 UI，并调用 runtime API。
 
 不要把所有回调平铺在 `RendererProps` 顶层。
 
-建议新增一个命名空间对象：
+V1 新增一个命名空间对象：
 
 ```ts
 interface RendererProps {
@@ -71,7 +71,7 @@ interface RendererProps {
 
 负责播放控制。
 
-候选接口：
+V1 接口：
 
 ```ts
 interface RuntimeControls {
@@ -93,7 +93,7 @@ interface RuntimeControls {
 
 ## 5. Save Service
 
-候选接口：
+V1 接口：
 
 ```ts
 interface SaveService {
@@ -123,7 +123,7 @@ engine/host 负责：
 
 ## 6. History and Backlog Service
 
-候选接口：
+V1 接口：
 
 ```ts
 interface HistoryService {
@@ -133,7 +133,7 @@ interface HistoryService {
 }
 ```
 
-候选 `BacklogEntry`：
+V1 `BacklogEntry`：
 
 ```ts
 interface BacklogEntry {
@@ -154,7 +154,7 @@ interface BacklogEntry {
 
 ## 7. Persistent Service
 
-候选接口：
+V1 接口：
 
 ```ts
 interface PersistentService {
@@ -174,7 +174,7 @@ interface PersistentService {
 
 ## 8. Settings Service
 
-候选接口：
+V1 接口：
 
 ```ts
 interface RuntimeSettingsService {
@@ -197,7 +197,7 @@ settings 是用户/设备级数据，不属于 save slot。
 
 ## 9. Audio Service
 
-候选接口：
+V1 接口：
 
 ```ts
 interface AudioService {
@@ -258,9 +258,9 @@ interface DebugService {
 | `historyServiceReturnsBacklogEntriesWithStoryPoint` | backlog entry 可定位回故事点 |
 | `audioServiceAppliesTrackVolumes` | 分轨音量影响对应音频类型 |
 
-## 14. 开放问题
+## 14. V1 决策
 
-- 旧 renderer 兼容期持续多久？
-- `runtime` 是否必须存在，还是按 `capabilities` 可选？
-- 导出 Web runtime 的 storage adapter 用 localStorage、IndexedDB，还是可插拔？
-- debug service 是否应该在 production export 中完全剔除？
+- 旧 renderer 顶层回调兼容整个 `contractVersion: 1` 周期。只有进入未来 `contractVersion: 2` 时才允许移除旧字段；v1 内新增能力必须通过 adapter 或可选字段保持兼容。
+- `controls` 与 `runtime` 在 v1 host 中必须存在。`runtime.debug` 是唯一可选 debug-only service；save/history/persistent/settings/audio 在完成本 spec 后属于 v1 runtime 的正式服务，若宿主暂未实现，必须返回结构化 unavailable error，而不是让字段缺失。
+- Web export V1 使用可插拔 `RuntimeStorageAdapter`，默认实现使用 `localStorage` 存 save slots、global persistent、runtime settings。V1 不把截图二进制塞进 save record；若浏览器禁用 storage，降级为 in-memory adapter 并向 renderer 暴露 warning。
+- `debug` service 在 production export 中默认完全剔除。仅 Studio preview 与显式 dev build 可暴露 `runtime.debug`。
