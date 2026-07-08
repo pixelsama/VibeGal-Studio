@@ -27,6 +27,7 @@ import type { RendererManifest } from "@galstudio/engine";
 const renderer: RendererManifest = {
   id: "default",
   name: "Default Renderer",
+  contractVersion: 1,
   Component,
 };
 
@@ -37,29 +38,59 @@ Required fields:
 
 - `id`: usually matches the directory name
 - `name`: UI label shown in GalStudio
+- `contractVersion`: must be `1` for the current GalStudio renderer contract
 - `Component`: React component receiving `RendererProps`
 
 Optional fields:
 
 - `description`
+- `capabilities`: string feature flags for future contract probing
+
+GalStudio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
 
 ## RendererProps
 
 `RendererProps` comes from `packages/engine/src/renderer.ts`.
 
 - `state`: current `NovelState`
-- `manifest`: project manifest with backgrounds / characters / audio registries
+- `manifest`: project manifest with characters / backgrounds / audio plus optional `cg`, `videos`, `fonts`, `uiSkins`, `animationAtlases`, and `unlocks`
 - `contentBase`: webview-accessible base URL for `content/`
 - `stage`: fixed project stage size from `content/meta.json`, `{ width, height }`
-- `onAdvance`
-- `onToggleAuto`
-- `onToggleRecording`
-- `onSeekBy?`
-- `onStepOnce?`
-- `onPrevChapter?`
-- `onNextChapter?`
+- `controls`: formal playback controls
+- `runtime`: formal galgame runtime services
 
-Renderers should treat these callbacks as the only control surface. They should not read project files directly.
+Renderers should treat `controls` and `runtime` as their only control surface. They should not read project files directly.
+
+```ts
+interface RendererProps {
+  state: NovelState;
+  manifest: Manifest;
+  contentBase: string;
+  stage: Meta["stage"];
+  controls: RuntimeControls;
+  runtime?: RuntimeServices;
+}
+```
+
+`RuntimeControls` owns immediate playback actions:
+
+- `advance()`: click / space semantics
+- `choose(toNodeId)`: choose one of the current `state.choice.choices`
+- `setAutoPlay(on)`
+- `setSkipMode("off" | "read" | "all")`
+- `rollbackTo(point)`
+- `restart()`
+
+`RuntimeServices` groups formal galgame services:
+
+- `save`: list / save / load / delete / quick save / quick load / auto save
+- `history`: backlog entries with `storyPoint`, voice replay, rollback by entry
+- `persistent`: read text state and CG / music / ending unlocks
+- `settings`: user/device settings including master, bgm, sfx, and voice volume
+- `audio`: voice replay, BGM stop/pause/resume, voice stop, SFX stop
+- `debug?`: Studio/dev-only inspection and jump helpers
+
+Hosts that have not implemented a V1 operation must keep the service field present and fail with a structured runtime unavailable error. V1 does not provide an adapter for the removed top-level callbacks.
 
 ## Stage Size
 
@@ -102,7 +133,13 @@ through documented project presets in a later contract revision.
 
 ## Asset Resolution
 
-Manifest values are relative paths under `content/`. Renderers can resolve them with `resolveAsset(contentBase, relPath)` from `@galstudio/engine`, or equivalent string joining.
+Manifest registry paths are relative to `content/`.
+
+- Legacy string registries such as `backgrounds`, `audio.*`, and character `sprites` still store plain relative paths.
+- `cg` / `videos` use `AssetRef`-style objects after parsing, so renderers should read `manifest.cg[id].path` and `manifest.videos[id].path`. Optional metadata such as `name`, `tags`, `thumbnail`, `poster`, `group`, and `unlockId` is renderer-consumable but not Studio-presentational by itself.
+- `fonts`, `uiSkins`, and `animationAtlases` are pure project data contracts; renderers decide how to load or apply them.
+
+Renderers can resolve any relative asset path with `resolveAsset(contentBase, relPath)` from `@galstudio/engine`, or equivalent string joining.
 
 ## Supported Imports
 

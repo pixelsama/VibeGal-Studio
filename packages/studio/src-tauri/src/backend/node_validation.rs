@@ -4,6 +4,10 @@ struct ManifestRefs {
     sfx: HashSet<String>,
     voice: HashSet<String>,
     characters: HashMap<String, HashSet<String>>,
+    unlock_cg: HashSet<String>,
+    unlock_music: HashSet<String>,
+    unlock_replay: HashSet<String>,
+    unlock_endings: HashSet<String>,
 }
 
 fn collect_manifest_refs(manifest: &serde_json::Value) -> Option<ManifestRefs> {
@@ -24,6 +28,18 @@ fn collect_manifest_refs(manifest: &serde_json::Value) -> Option<ManifestRefs> {
         let sprites = raw.get("sprites")?.as_object()?;
         characters.insert(id.clone(), sprites.keys().cloned().collect());
     }
+    let empty_object = serde_json::Map::new();
+    let unlocks = obj
+        .get("unlocks")
+        .and_then(|value| value.as_object())
+        .unwrap_or(&empty_object);
+    let unlock_set = |name: &str| -> HashSet<String> {
+        unlocks
+            .get(name)
+            .and_then(|value| value.as_object())
+            .map(|table| table.keys().cloned().collect())
+            .unwrap_or_default()
+    };
 
     Some(ManifestRefs {
         backgrounds,
@@ -31,6 +47,10 @@ fn collect_manifest_refs(manifest: &serde_json::Value) -> Option<ManifestRefs> {
         sfx: audio_set("sfx")?,
         voice: audio_set("voice")?,
         characters,
+        unlock_cg: unlock_set("cg"),
+        unlock_music: unlock_set("music"),
+        unlock_replay: unlock_set("replay"),
+        unlock_endings: unlock_set("endings"),
     })
 }
 
@@ -486,6 +506,52 @@ pub fn validate_node_contents(
                         &graph_node.id,
                         &mut issues,
                     );
+                }
+                "unlock" => {
+                    valid &= require_enum_field(
+                        obj,
+                        "kind",
+                        &["cg", "music", "replay", "endings"],
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= require_nonempty_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            let exists = match obj["kind"].as_str().unwrap() {
+                                "cg" => refs.unlock_cg.contains(obj["id"].as_str().unwrap()),
+                                "music" => refs.unlock_music.contains(obj["id"].as_str().unwrap()),
+                                "replay" => refs.unlock_replay.contains(obj["id"].as_str().unwrap()),
+                                "endings" => refs.unlock_endings.contains(obj["id"].as_str().unwrap()),
+                                _ => false,
+                            };
+                            check_registry_ref(
+                                exists,
+                                "missing_unlock_ref",
+                                format!(
+                                    "unlock 引用了不存在的 {} unlock id：{}",
+                                    obj["kind"].as_str().unwrap(),
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
                 }
                 "pause" => {}
                 _ => {

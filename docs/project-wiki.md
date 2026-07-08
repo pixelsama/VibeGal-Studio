@@ -440,6 +440,7 @@ import type { RendererManifest } from "@galstudio/engine";
 const renderer: RendererManifest = {
   id: "default",
   name: "Default Renderer",
+  contractVersion: 1,
   Component,
 };
 

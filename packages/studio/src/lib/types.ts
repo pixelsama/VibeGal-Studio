@@ -136,10 +136,60 @@ export interface ManifestAudio {
   voice: Record<string, string>;
 }
 
+export interface ManifestAssetRef {
+  path: string;
+  name?: string;
+  tags?: string[];
+  thumbnail?: string;
+}
+
+export interface ManifestCgAssetRef extends ManifestAssetRef {
+  group?: string;
+  unlockId?: string;
+}
+
+export interface ManifestVideoAssetRef extends ManifestAssetRef {
+  poster?: string;
+  skippable?: boolean;
+}
+
+export interface ManifestFontAsset {
+  path: string;
+  family: string;
+  weight?: string;
+  style?: string;
+}
+
+export interface ManifestUiSkin {
+  name?: string;
+  assets: Record<string, string>;
+  tokens?: Record<string, string | number>;
+}
+
+export interface ManifestAnimationAtlas {
+  image: string;
+  json?: string;
+  frameWidth?: number;
+  frameHeight?: number;
+}
+
+export interface ManifestUnlocks {
+  cg: Record<string, { assetId: string; title?: string }>;
+  music: Record<string, { audioId: string; title?: string }>;
+  replay: Record<string, { nodeId: string; title?: string }>;
+  endings: Record<string, { title: string; nodeId?: string }>;
+}
+
 export interface Manifest {
   characters: Record<string, ManifestCharacter>;
   backgrounds: Record<string, string>;
   audio: ManifestAudio;
+  cg: Record<string, ManifestCgAssetRef>;
+  videos: Record<string, ManifestVideoAssetRef>;
+  fonts: Record<string, ManifestFontAsset>;
+  uiSkins: Record<string, ManifestUiSkin>;
+  animationAtlases: Record<string, ManifestAnimationAtlas>;
+  unlocks: ManifestUnlocks;
 }
 
 /** 空的 manifest 常量，用于渲染层 props 的回退值（保持 audio 三子表结构合法）。 */
@@ -147,6 +197,12 @@ export const EMPTY_MANIFEST: Manifest = {
   characters: {},
   backgrounds: {},
   audio: { bgm: {}, sfx: {}, voice: {} },
+  cg: {},
+  videos: {},
+  fonts: {},
+  uiSkins: {},
+  animationAtlases: {},
+  unlocks: { cg: {}, music: {}, replay: {}, endings: {} },
 };
 
 // ──────────────────────────────────────────────

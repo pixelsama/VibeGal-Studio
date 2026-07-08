@@ -146,6 +146,11 @@
             "type": "string",
             "const": "say"
           },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
           "who": {
             "type": "string"
           },
@@ -175,6 +180,11 @@
           "t": {
             "type": "string",
             "const": "narrate"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
           },
           "text": {
             "type": "string",
@@ -231,6 +241,11 @@
           "t": {
             "type": "string",
             "const": "wait"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
           },
           "ms": {
             "type": "integer",
@@ -311,10 +326,42 @@
           "t": {
             "type": "string",
             "const": "pause"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
           }
         },
         "required": [
           "t"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "unlock"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cg",
+              "music",
+              "replay",
+              "endings"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "t",
+          "kind",
+          "id"
         ]
       }
     ]

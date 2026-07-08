@@ -88,7 +88,7 @@ export interface NovelState {
     fullyRevealed: boolean;
   } | null;
 
-  /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 onChoose。 */
+  /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。 */
   choice: {
     choices: { text: string; to: string }[];
   } | null;

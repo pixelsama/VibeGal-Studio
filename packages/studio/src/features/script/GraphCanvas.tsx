@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Redo2, Undo2 } from "lucide-react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -27,6 +28,8 @@ interface GraphCanvasProps {
   nodeEntries?: NodeEntry[];
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onSelect: (id: string) => void;
   onSelectEdge: (id: string) => void;
   onEnter: (id: string) => void;
@@ -34,6 +37,8 @@ interface GraphCanvasProps {
   onConnect: (from: string, to: string) => void;
   onDeleteNodes: (ids: string[]) => void;
   onDeleteEdge: (id: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   /** Phase 7：在指定画布坐标创建节点。 */
   onCreateNodeAt?: (position: { x: number; y: number }) => void;
   /** Phase 7：节点右键 - 复制。 */
@@ -63,6 +68,8 @@ export function GraphCanvas({
   nodeEntries,
   selectedNodeId,
   selectedEdgeId,
+  canUndo = false,
+  canRedo = false,
   onSelect,
   onSelectEdge,
   onEnter,
@@ -70,6 +77,8 @@ export function GraphCanvas({
   onConnect,
   onDeleteNodes,
   onDeleteEdge,
+  onUndo,
+  onRedo,
   onCreateNodeAt,
   onDuplicateNode,
   onCreateSuccessor,
@@ -274,6 +283,24 @@ export function GraphCanvas({
           showInteractive={false}
           style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}
         >
+          <ControlButton
+            type="button"
+            onClick={() => onUndo?.()}
+            disabled={!canUndo}
+            title="撤销图编辑"
+            aria-label="撤销图编辑"
+          >
+            <Undo2 size={14} />
+          </ControlButton>
+          <ControlButton
+            type="button"
+            onClick={() => onRedo?.()}
+            disabled={!canRedo}
+            title="重做图编辑"
+            aria-label="重做图编辑"
+          >
+            <Redo2 size={14} />
+          </ControlButton>
           {graph.entryNodeId && (
             <ControlButton
               type="button"

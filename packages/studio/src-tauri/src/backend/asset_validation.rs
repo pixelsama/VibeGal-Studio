@@ -152,7 +152,80 @@ fn collect_manifest_asset_paths(manifest: &serde_json::Value) -> Vec<(String, St
         }
     }
 
+    if let Some(obj) = manifest.get("cg").and_then(|v| v.as_object()) {
+        for (id, asset) in obj {
+            collect_asset_ref_path(&mut out, asset, &format!("cg.{id}"), &["thumbnail"]);
+        }
+    }
+
+    if let Some(obj) = manifest.get("videos").and_then(|v| v.as_object()) {
+        for (id, asset) in obj {
+            collect_asset_ref_path(
+                &mut out,
+                asset,
+                &format!("videos.{id}"),
+                &["thumbnail", "poster"],
+            );
+        }
+    }
+
+    if let Some(obj) = manifest.get("fonts").and_then(|v| v.as_object()) {
+        for (id, asset) in obj {
+            if let Some(path) = asset.get("path").and_then(|v| v.as_str()) {
+                out.push((path.to_string(), format!("fonts.{id}.path")));
+            }
+        }
+    }
+
+    if let Some(obj) = manifest.get("uiSkins").and_then(|v| v.as_object()) {
+        for (id, skin) in obj {
+            if let Some(assets) = skin.get("assets").and_then(|v| v.as_object()) {
+                for (asset_key, path) in assets {
+                    if let Some(path) = path.as_str() {
+                        out.push((path.to_string(), format!("uiSkins.{id}.assets.{asset_key}")));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(obj) = manifest.get("animationAtlases").and_then(|v| v.as_object()) {
+        for (id, atlas) in obj {
+            if let Some(path) = atlas.get("image").and_then(|v| v.as_str()) {
+                out.push((path.to_string(), format!("animationAtlases.{id}.image")));
+            }
+            if let Some(path) = atlas.get("json").and_then(|v| v.as_str()) {
+                out.push((path.to_string(), format!("animationAtlases.{id}.json")));
+            }
+        }
+    }
+
     out
+}
+
+fn collect_asset_ref_path(
+    out: &mut Vec<(String, String)>,
+    value: &serde_json::Value,
+    source: &str,
+    extra_string_fields: &[&str],
+) {
+    if let Some(path) = value.as_str() {
+        out.push((path.to_string(), format!("{source}.path")));
+        return;
+    }
+
+    let Some(obj) = value.as_object() else {
+        return;
+    };
+
+    if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
+        out.push((path.to_string(), format!("{source}.path")));
+    }
+    for field in extra_string_fields {
+        if let Some(path) = obj.get(*field).and_then(|v| v.as_str()) {
+            out.push((path.to_string(), format!("{source}.{field}")));
+        }
+    }
 }
 
 /// 校验资产一致性：磁盘文件 ↔ manifest 声明。
@@ -243,4 +316,3 @@ pub fn validate_assets(content_root: &Path, manifest: &serde_json::Value) -> Vec
 // manifest 结构校验（对应前端 Zod 的 .strict()）
 // 非阻断：不阻止项目加载，问题进 projectReport。
 // ──────────────────────────────────────────────
-

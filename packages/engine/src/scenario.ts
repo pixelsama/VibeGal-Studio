@@ -185,6 +185,8 @@ export function formatScenarioInstruction(instruction: Instruction): string {
       return instruction.text;
     case "set":
       return `@set ${instruction.key} ${formatScenarioValue(instruction.value)}`;
+    case "unlock":
+      return `@unlock ${instruction.kind} ${instruction.id}`;
     case "wait":
       return `@wait ${instruction.ms}`;
     case "effect":

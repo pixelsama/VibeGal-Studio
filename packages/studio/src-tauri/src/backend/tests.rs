@@ -185,6 +185,12 @@ mod tests {
                 "bgm": { "theme": "assets/audio/bgm/theme.mp3" },
                 "sfx": { "click": "assets/audio/sfx/click.wav" },
                 "voice": { "line01": "assets/audio/voice/line01.ogg" }
+            },
+            "unlocks": {
+                "cg": { "cg_rooftop": { "assetId": "cg_rooftop_asset", "title": "屋顶" } },
+                "music": { "theme_unlock": { "audioId": "theme", "title": "主题曲" } },
+                "replay": { "start_replay": { "nodeId": "start", "title": "序章" } },
+                "endings": { "true_end": { "title": "True End", "nodeId": "ending" } }
             }
         })
     }
@@ -237,6 +243,23 @@ mod tests {
         }
     }
 
+    fn cyclic_graph_without_ending() -> ProjectGraph {
+        ProjectGraph {
+            version: 1,
+            entry_node_id: "start".to_string(),
+            nodes: vec![
+                graph_node("start", "nodes/start.json"),
+                graph_node("loop_a", "nodes/loop_a.json"),
+                graph_node("loop_b", "nodes/loop_b.json"),
+            ],
+            edges: vec![
+                graph_edge("start__loop_a", "start", "loop_a"),
+                graph_edge("loop_a__loop_b", "loop_a", "loop_b"),
+                graph_edge("loop_b__loop_a", "loop_b", "loop_a"),
+            ],
+        }
+    }
+
     #[test]
     fn validate_graph_flags_dangling_edge() {
         let mut graph = valid_project_graph();
@@ -245,13 +268,15 @@ mod tests {
 
         let issues = validate_graph(&graph, &entries);
 
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].code, "dangling_edge");
-        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
-        assert_eq!(issues[0].edge_id.as_deref(), Some("prologue__missing"));
-        assert_eq!(issues[0].file.as_deref(), Some("content/graph.json"));
-        assert_eq!(issues[0].json_path.as_deref(), Some("$.edges[0]"));
-        assert!(issues[0].message.contains("missing"));
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "dangling_edge")
+            .expect("dangling edge should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.edge_id.as_deref(), Some("prologue__missing"));
+        assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.edges[0]"));
+        assert!(issue.message.contains("missing"));
     }
 
     #[test]
@@ -332,10 +357,12 @@ mod tests {
 
         let issues = validate_graph(&graph, &entries);
 
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].code, "duplicate_edge_id");
-        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
-        assert_eq!(issues[0].edge_id.as_deref(), Some("prologue__ending"));
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "duplicate_edge_id")
+            .expect("duplicate edge id should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.edge_id.as_deref(), Some("prologue__ending"));
     }
 
     #[test]
@@ -448,6 +475,61 @@ mod tests {
             .expect("auto route without default edge should be reported");
         assert_eq!(issue.severity, GraphIssueSeverity::Warn);
         assert_eq!(issue.node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn route_analysis_finds_unreachable_nodes() {
+        let graph = ProjectGraph {
+            version: 1,
+            entry_node_id: "start".to_string(),
+            nodes: vec![
+                graph_node("start", "nodes/start.json"),
+                graph_node("ending", "nodes/ending.json"),
+                graph_node("orphan", "nodes/orphan.json"),
+            ],
+            edges: vec![graph_edge("start__ending", "start", "ending")],
+        };
+
+        let issues = validate_graph(&graph, &present_node_entries(&graph));
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "unreachable_node")
+            .expect("unreachable node should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.node_id.as_deref(), Some("orphan"));
+        assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+    }
+
+    #[test]
+    fn route_analysis_finds_dead_ends() {
+        let graph = cyclic_graph_without_ending();
+
+        let issues = validate_graph(&graph, &present_node_entries(&graph));
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "dead_end_route")
+            .expect("cycle without ending should be a dead-end route");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.node_id.as_deref(), Some("start"));
+    }
+
+    #[test]
+    fn route_analysis_warns_on_cycles() {
+        let graph = cyclic_graph_without_ending();
+
+        let issues = validate_graph(&graph, &present_node_entries(&graph));
+
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == "cycle_warning")
+            .expect("cycle should be reported");
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert!(matches!(
+            issue.node_id.as_deref(),
+            Some("loop_a") | Some("loop_b")
+        ));
     }
 
     #[test]
@@ -626,6 +708,7 @@ mod tests {
                 characters: std::collections::HashMap::new(),
                 backgrounds: std::collections::HashMap::new(),
                 audio: ManifestAudioRegistryInput::default(),
+                ..ManifestInput::default()
             },
             Some(serde_json::to_value(&expected).unwrap()),
         );
@@ -841,6 +924,21 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].code, "missing_character_expr");
         assert_eq!(issues[0].json_path.as_deref(), Some("$[0].expr"));
+    }
+
+    #[test]
+    fn validate_node_contents_flags_missing_unlock_ref() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "unlock", "kind": "cg", "id": "missing_unlock" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "missing_unlock_ref");
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].id"));
     }
 
     #[test]
@@ -2054,6 +2152,129 @@ mod tests {
                 sfx: std::collections::HashMap::new(),
                 voice: std::collections::HashMap::new(),
             },
+            cg: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "cg_rooftop".to_string(),
+                    ManifestCgAssetInput {
+                        path: "assets/cg/rooftop.png".to_string(),
+                        name: Some("屋顶".to_string()),
+                        tags: vec!["night".to_string()],
+                        thumbnail: Some("assets/cg/thumbs/rooftop.png".to_string()),
+                        group: Some("memory".to_string()),
+                        unlock_id: Some("cg_rooftop_unlock".to_string()),
+                    },
+                );
+                m
+            },
+            videos: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "op".to_string(),
+                    ManifestVideoAssetInput {
+                        path: "assets/videos/op.mp4".to_string(),
+                        name: Some("OP".to_string()),
+                        tags: vec![],
+                        thumbnail: None,
+                        poster: Some("assets/videos/op.jpg".to_string()),
+                        skippable: Some(true),
+                    },
+                );
+                m
+            },
+            fonts: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "body".to_string(),
+                    ManifestFontInput {
+                        path: "assets/fonts/body.ttf".to_string(),
+                        family: "Body Sans".to_string(),
+                        weight: Some("400".to_string()),
+                        style: None,
+                    },
+                );
+                m
+            },
+            ui_skins: {
+                let mut skins = std::collections::HashMap::new();
+                skins.insert(
+                    "classic".to_string(),
+                    ManifestUiSkinInput {
+                        name: Some("Classic".to_string()),
+                        assets: {
+                            let mut assets = std::collections::HashMap::new();
+                            assets.insert("frame".to_string(), "assets/ui/classic/frame.png".to_string());
+                            assets
+                        },
+                        tokens: {
+                            let mut tokens = std::collections::HashMap::new();
+                            tokens.insert("radius".to_string(), serde_json::json!(8));
+                            tokens.insert("accent".to_string(), serde_json::json!("#f09"));
+                            tokens
+                        },
+                    },
+                );
+                skins
+            },
+            animation_atlases: {
+                let mut atlases = std::collections::HashMap::new();
+                atlases.insert(
+                    "heroine".to_string(),
+                    ManifestAnimationAtlasInput {
+                        image: "assets/atlases/heroine.png".to_string(),
+                        json: Some("assets/atlases/heroine.json".to_string()),
+                        frame_width: Some(320),
+                        frame_height: Some(240),
+                    },
+                );
+                atlases
+            },
+            unlocks: ManifestUnlockRegistryInput {
+                cg: {
+                    let mut unlocks = std::collections::HashMap::new();
+                    unlocks.insert(
+                        "cg_rooftop_unlock".to_string(),
+                        ManifestCgUnlockInput {
+                            asset_id: "cg_rooftop".to_string(),
+                            title: Some("屋顶 CG".to_string()),
+                        },
+                    );
+                    unlocks
+                },
+                music: {
+                    let mut unlocks = std::collections::HashMap::new();
+                    unlocks.insert(
+                        "theme_unlock".to_string(),
+                        ManifestMusicUnlockInput {
+                            audio_id: "theme".to_string(),
+                            title: Some("主题曲".to_string()),
+                        },
+                    );
+                    unlocks
+                },
+                replay: {
+                    let mut unlocks = std::collections::HashMap::new();
+                    unlocks.insert(
+                        "start_replay".to_string(),
+                        ManifestReplayUnlockInput {
+                            node_id: "start".to_string(),
+                            title: Some("序章".to_string()),
+                        },
+                    );
+                    unlocks
+                },
+                endings: {
+                    let mut unlocks = std::collections::HashMap::new();
+                    unlocks.insert(
+                        "true_end".to_string(),
+                        ManifestEndingUnlockInput {
+                            title: "True End".to_string(),
+                            node_id: Some("ending".to_string()),
+                        },
+                    );
+                    unlocks
+                },
+            },
         };
 
         save_manifest(dir.to_string_lossy().to_string(), manifest, None).unwrap();
@@ -2065,6 +2286,13 @@ mod tests {
             parsed["audio"]["bgm"]["theme"],
             "assets/audio/bgm/theme.mp3"
         );
+        assert_eq!(parsed["cg"]["cg_rooftop"]["path"], "assets/cg/rooftop.png");
+        assert_eq!(parsed["cg"]["cg_rooftop"]["unlockId"], "cg_rooftop_unlock");
+        assert_eq!(parsed["videos"]["op"]["poster"], "assets/videos/op.jpg");
+        assert_eq!(parsed["fonts"]["body"]["family"], "Body Sans");
+        assert_eq!(parsed["uiSkins"]["classic"]["assets"]["frame"], "assets/ui/classic/frame.png");
+        assert_eq!(parsed["animationAtlases"]["heroine"]["image"], "assets/atlases/heroine.png");
+        assert_eq!(parsed["unlocks"]["cg"]["cg_rooftop_unlock"]["assetId"], "cg_rooftop");
         // 三张子表都应存在（即使为空）
         assert!(parsed["audio"]["sfx"].is_object());
         assert!(parsed["audio"]["voice"].is_object());
@@ -2143,6 +2371,45 @@ mod tests {
         let dup = issues.iter().find(|i| i.code == "duplicate_asset_ref");
         assert!(dup.is_some(), "应检出重复引用: {issues:?}");
         assert_eq!(dup.unwrap().severity, GraphIssueSeverity::Warn);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_assets_reports_missing_expanded_registry_files() {
+        let dir = unique_temp_dir("validate-assets-expanded-missing");
+        write_asset_project(
+            &dir,
+            r#"{
+                "characters":{},
+                "backgrounds":{},
+                "audio":{"bgm":{},"sfx":{},"voice":{}},
+                "cg":{"cg_rooftop":{"path":"assets/cg/rooftop.png","thumbnail":"assets/cg/thumbs/rooftop.png"}},
+                "videos":{"op":{"path":"assets/videos/op.mp4","poster":"assets/videos/op.jpg"}},
+                "fonts":{"body":{"path":"assets/fonts/body.ttf","family":"Body Sans"}},
+                "uiSkins":{"classic":{"assets":{"frame":"assets/ui/classic/frame.png"}}},
+                "animationAtlases":{"heroine":{"image":"assets/atlases/heroine.png","json":"assets/atlases/heroine.json"}},
+                "unlocks":{"cg":{},"music":{},"replay":{},"endings":{}}
+            }"#,
+            &[],
+        );
+
+        let content_root = dir.join("content").canonicalize().unwrap();
+        let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+        let issues = validate_assets(&content_root, &manifest);
+        let missing_paths = issues
+            .iter()
+            .filter(|issue| issue.code == "missing_asset")
+            .filter_map(|issue| issue.json_path.as_deref())
+            .collect::<Vec<_>>();
+
+        assert!(missing_paths.contains(&"$.cg.cg_rooftop.path"));
+        assert!(missing_paths.contains(&"$.cg.cg_rooftop.thumbnail"));
+        assert!(missing_paths.contains(&"$.videos.op.path"));
+        assert!(missing_paths.contains(&"$.videos.op.poster"));
+        assert!(missing_paths.contains(&"$.fonts.body.path"));
+        assert!(missing_paths.contains(&"$.uiSkins.classic.assets.frame"));
+        assert!(missing_paths.contains(&"$.animationAtlases.heroine.image"));
+        assert!(missing_paths.contains(&"$.animationAtlases.heroine.json"));
         let _ = fs::remove_dir_all(&dir);
     }
 

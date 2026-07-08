@@ -14,7 +14,7 @@ import { DialogueBox } from "./DialogueBox";
 import { Effects } from "./Effects";
 import { useShake } from "./useShake";
 
-export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onToggleAuto, onToggleRecording, onSeekBy, onStepOnce, onPrevChapter, onNextChapter }: RendererProps) {
+export function Stage({ state, manifest, contentBase, controls }: RendererProps) {
   // 控制层是否可见：录制模式隐藏
   const [showHelp, setShowHelp] = useState(true);
   const [choiceHint, setChoiceHint] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onTog
 
   return (
     <div
-      onClick={onAdvance}
+      onClick={controls.advance}
       style={{
         position: "relative",
         width: "100%",
@@ -77,7 +77,7 @@ export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onTog
               type="button"
               onClick={() => {
                 setChoiceHint(`将跳转到 ${choice.to}`);
-                onChoose?.(choice.to);
+                controls.choose(choice.to);
               }}
               style={choiceButtonStyle}
             >
@@ -101,26 +101,11 @@ export function Stage({ state, manifest, contentBase, onAdvance, onChoose, onTog
             alignItems: "center",
           }}
         >
-          {onPrevChapter && (
-            <button onClick={onPrevChapter} style={btnStyle(false)} title="上一章">⏮ 章</button>
-          )}
-          {onSeekBy && (
-            <button onClick={() => onSeekBy(-1)} style={btnStyle(false)} title="后退一条">◀</button>
-          )}
-          {onStepOnce && (
-            <button onClick={onStepOnce} style={btnStyle(false)} title="单步执行">▶∣</button>
-          )}
-          {onSeekBy && (
-            <button onClick={() => onSeekBy(1)} style={btnStyle(false)} title="前进一条">▶</button>
-          )}
-          {onNextChapter && (
-            <button onClick={onNextChapter} style={btnStyle(false)} title="下一章">章 ⏭</button>
-          )}
-          <button onClick={onToggleAuto} style={btnStyle(state.flags.isAutoPlay)}>
-            自动 {state.flags.isAutoPlay ? "ON" : "OFF"}
+          <button onClick={() => controls.restart()} style={btnStyle(false)}>
+            重开
           </button>
-          <button onClick={onToggleRecording} style={btnStyle(state.flags.isRecording)}>
-            录制 {state.flags.isRecording ? "ON" : "OFF"}
+          <button onClick={() => controls.setAutoPlay(!state.flags.isAutoPlay)} style={btnStyle(state.flags.isAutoPlay)}>
+            自动 {state.flags.isAutoPlay ? "ON" : "OFF"}
           </button>
         </div>
       )}

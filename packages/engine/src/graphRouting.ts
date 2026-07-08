@@ -1,5 +1,6 @@
 import type { GraphEdgeData } from "./types";
 import type { NovelState } from "./state";
+import { evaluateExpression, parseExpression } from "./expression";
 
 export type GraphRouteMode = "linear" | "choice" | "auto";
 export type GraphRouteValue = string | number | boolean | null;
@@ -54,50 +55,9 @@ export function evaluateGraphCondition(
 ): boolean {
   const source = condition?.trim();
   if (!source) return true;
-
-  if (source.startsWith("!")) {
-    return !truthy(vars[source.slice(1).trim()]);
+  try {
+    return evaluateExpression(parseExpression(source), vars);
+  } catch {
+    return false;
   }
-  if (/^[A-Za-z_][\w.-]*$/.test(source)) {
-    return truthy(vars[source]);
-  }
-
-  const match = source.match(/^([A-Za-z_][\w.-]*)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
-  if (!match) return false;
-
-  const left = vars[match[1]];
-  const right = parseConditionLiteral(match[3]);
-  switch (match[2]) {
-    case "==":
-      return left === right;
-    case "!=":
-      return left !== right;
-    case ">":
-      return typeof left === "number" && typeof right === "number" && left > right;
-    case "<":
-      return typeof left === "number" && typeof right === "number" && left < right;
-    case ">=":
-      return typeof left === "number" && typeof right === "number" && left >= right;
-    case "<=":
-      return typeof left === "number" && typeof right === "number" && left <= right;
-    default:
-      return false;
-  }
-}
-
-function parseConditionLiteral(raw: string): GraphRouteValue {
-  const value = raw.trim();
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (value === "null") return null;
-  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-  const numberValue = Number(value);
-  if (Number.isFinite(numberValue) && value !== "") return numberValue;
-  return value;
-}
-
-function truthy(value: GraphRouteValue | undefined): boolean {
-  return value === true || (typeof value === "number" && value !== 0) || (typeof value === "string" && value.length > 0);
 }

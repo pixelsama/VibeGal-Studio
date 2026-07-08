@@ -8,12 +8,15 @@ import {
   type Manifest,
   type Meta,
   type NovelState,
-  type RendererProps,
+  type RuntimeControls,
+  type RuntimeServices,
+  RuntimeServiceUnavailableError,
+  createInMemoryRuntimeServices,
 } from "@galstudio/engine";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 import { readStageResolution } from "../../lib/projectMeta";
-import type { ProjectPlayerResult } from "../preview/useProjectPlayer";
+import { createProjectRendererProps, type ProjectPlayerResult } from "../preview/useProjectPlayer";
 
 export function buildNodePreviewContent(project: ProjectData, node: GraphNode | null, nodeData: unknown | null) {
   return {
@@ -32,6 +35,12 @@ export function useNodePreview(
   const [error, setError] = useState<string | null>(null);
   const playerRef = useRef<NovelPlayer | null>(null);
   const audioRef = useRef<AudioEngine | null>(null);
+  const stateRef = useRef(state);
+  const runtimeRef = useRef<RuntimeServices | null>(null);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     let player: NovelPlayer | null = null;
@@ -89,19 +98,42 @@ export function useNodePreview(
   const contentBase = `${project.path}/content`;
   const stage = readStageResolution(project.content.meta);
 
-  const rendererProps: RendererProps = {
+  const controls: RuntimeControls = {
+    advance,
+    choose: () => {
+      throw new RuntimeServiceUnavailableError("controls", "choose");
+    },
+    setAutoPlay: (on) => playerRef.current?.setAutoPlay(on),
+    setSkipMode: (mode) => {
+      if (mode !== "off") throw new RuntimeServiceUnavailableError("controls", "setSkipMode");
+    },
+    rollbackTo: () => {
+      throw new RuntimeServiceUnavailableError("controls", "rollbackTo");
+    },
+    restart,
+  };
+  runtimeRef.current ??= createInMemoryRuntimeServices({
+    getState: () => playerRef.current?.getState() ?? stateRef.current,
+    audio: {
+      replayVoice: () => audioRef.current?.replayVoice(),
+      stopBgm: (fadeMs) => audioRef.current?.stopBgm(fadeMs),
+      pauseBgm: () => audioRef.current?.pauseBgm(),
+      resumeBgm: () => audioRef.current?.resumeBgm(),
+      stopVoice: () => audioRef.current?.stopVoice(),
+      stopAllSfx: () => audioRef.current?.stopAllSfx(),
+      setVolumes: (volumes) => audioRef.current?.setVolumes(volumes),
+    },
+    inspectState: () => playerRef.current?.getState() ?? stateRef.current,
+  });
+
+  const rendererProps = createProjectRendererProps({
     state,
     manifest: manifest ?? EMPTY_MANIFEST,
     contentBase,
     stage,
-    onAdvance: advance,
-    onToggleAuto: toggleAuto,
-    onToggleRecording: toggleRecording,
-    onSeekBy: seekBy,
-    onStepOnce: stepOnce,
-    onPrevChapter: prevChapter,
-    onNextChapter: nextChapter,
-  };
+    controls,
+    runtime: runtimeRef.current,
+  });
 
   return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps };
 }

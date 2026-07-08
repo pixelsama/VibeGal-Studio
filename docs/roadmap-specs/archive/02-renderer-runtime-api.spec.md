@@ -1,6 +1,6 @@
 # Spec 02 — Renderer Runtime API
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：[01-runtime-contract-foundation.spec.md](./01-runtime-contract-foundation.spec.md)。
 > 目标：定义 renderer 可调用的正规 galgame runtime API，让 renderer 能实现正式 UI，而 Studio 不内置正式 UI。
 
@@ -266,3 +266,14 @@ interface DebugService {
 - `controls` 与 `runtime` 在 v1 host 中必须存在。`runtime.debug` 是唯一可选 debug-only service；save/history/persistent/settings/audio 在完成本 spec 后属于 v1 runtime 的正式服务，若宿主暂未实现，必须返回结构化 unavailable error，而不是让字段缺失。
 - Web export V1 使用可插拔 `RuntimeStorageAdapter`，默认实现使用 `localStorage` 存 save slots、global persistent、runtime settings。V1 不把截图二进制塞进 save record；若浏览器禁用 storage，降级为 in-memory adapter 并向 renderer 暴露 warning。
 - `debug` service 在 production export 中默认完全剔除。仅 Studio preview 与显式 dev build 可暴露 `runtime.debug`。
+
+## 15. 实现记录
+
+- `RendererProps` 已迁移为 `state` / `manifest` / `contentBase` / `stage` / `controls` / `runtime`。旧顶层 `onAdvance`、`onChoose`、`onToggleAuto`、`onToggleRecording`、`onSeekBy`、`onStepOnce`、`onPrevChapter`、`onNextChapter` 不再属于 V1 类型契约。
+- `packages/engine/src/renderer.ts` 定义并导出 `RuntimeControls`、`RuntimeServices`、`SaveService`、`HistoryService`、`PersistentService`、`RuntimeSettingsService`、`AudioService`、`DebugService`、`RuntimeServiceUnavailableError`，并提供 Studio/export 可复用的 `createInMemoryRuntimeServices()` 最小实现。
+- Studio project preview 与 node preview 会构造完整 `controls` / `runtime`；未落地的 skip/rollback/jump 能力以 `RuntimeServiceUnavailableError` 失败，字段不缺失。
+- 默认 renderer 模板与 Tauri resource default renderer 已改为 `controls.advance()`、`controls.choose()`、`controls.setAutoPlay()`、`controls.restart()`。
+- Web export runtime host 已同步生成 V1 `RendererProps`，并继续校验 `contractVersion: 1`。
+- `AudioEngine` 提供 runtime audio service 所需的 BGM stop/pause/resume、voice replay/stop、SFX stop，以及 master/bgm/sfx/voice 分轨音量应用。
+- `docs/renderer-contract.md` 已同步说明 V1 controls/runtime 契约、服务分组和无 v0 adapter 策略。
+- TDD 覆盖：`rendererPropsRequiresControlsAdvance`、`saveServiceDoesNotMutateGlobalPersistentOnLoad`、`settingsServicePersistsVolumeIndependentlyFromSaveSlot`、`historyServiceReturnsBacklogEntriesWithStoryPoint`、`audioServiceAppliesChannelVolumesThroughRuntimeSettings`。

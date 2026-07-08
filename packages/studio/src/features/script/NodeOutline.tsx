@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData } from "./graphMapping";
 
@@ -10,17 +10,32 @@ interface NodeOutlineProps {
 }
 
 export function NodeOutline({ graph, nodeEntries, selectedNodeId, onSelect }: NodeOutlineProps) {
+  const [query, setQuery] = useState("");
   const orderedNodes = useMemo(() => {
     const entry = graph.nodes.find((node) => node.id === graph.entryNodeId);
     const rest = graph.nodes.filter((node) => node.id !== graph.entryNodeId);
-    return entry ? [entry, ...rest] : rest;
-  }, [graph.entryNodeId, graph.nodes]);
+    const ordered = entry ? [entry, ...rest] : rest;
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return ordered;
+    return ordered.filter((node) => {
+      const haystack = `${node.title}\n${node.id}\n${node.file}`.toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [graph.entryNodeId, graph.nodes, query]);
 
   return (
     <div style={panelStyle}>
+      <div style={toolbarStyle}>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索节点 / id"
+          style={searchInputStyle}
+        />
+      </div>
       <div style={listStyle}>
         {orderedNodes.length === 0 ? (
-          <div style={emptyStyle}>暂无节点</div>
+          <div style={emptyStyle}>{query.trim() ? "没有匹配的节点" : "暂无节点"}</div>
         ) : (
           orderedNodes.map((node) => {
             const hasContent = findNodeData(nodeEntries, node.file) != null;
@@ -70,6 +85,19 @@ const listStyle: React.CSSProperties = {
   gap: "var(--space-2)",
   padding: "var(--space-3)",
   overflowY: "auto",
+};
+
+const toolbarStyle: React.CSSProperties = {
+  padding: "var(--space-3) var(--space-3) 0",
+};
+
+const searchInputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "var(--space-2)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border)",
+  background: "var(--bg-panel)",
+  color: "var(--text-primary)",
 };
 
 const itemStyle: React.CSSProperties = {

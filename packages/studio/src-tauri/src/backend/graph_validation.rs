@@ -227,5 +227,215 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
         });
     }
 
+    issues.extend(analyze_graph_routes(graph));
+
     issues
+}
+
+fn analyze_graph_routes(graph: &ProjectGraph) -> Vec<GraphIssue> {
+    if graph.entry_node_id.is_empty() || !graph.nodes.iter().any(|node| node.id == graph.entry_node_id) {
+        return vec![];
+    }
+
+    let node_ids = graph
+        .nodes
+        .iter()
+        .map(|node| node.id.clone())
+        .collect::<HashSet<_>>();
+    let adjacency = build_adjacency(graph, &node_ids);
+    let reachable = collect_reachable_nodes(&graph.entry_node_id, &adjacency);
+    let endings = collect_ending_nodes(graph, &reachable);
+    let can_reach_ending = collect_nodes_that_can_reach_targets(graph, &endings);
+    let cycle_nodes = detect_cycle_nodes(&adjacency, &reachable);
+    let mut issues = vec![];
+
+    for node in &graph.nodes {
+        if !reachable.contains(&node.id) {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "unreachable_node".to_string(),
+                message: format!("节点 {} 从入口不可达", node.id),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some("$.nodes".to_string()),
+                node_id: Some(node.id.clone()),
+                edge_id: None,
+            });
+        }
+    }
+
+    for node in &graph.nodes {
+        if !reachable.contains(&node.id) {
+            continue;
+        }
+        let outgoing = adjacency.get(&node.id).map(|next| next.len()).unwrap_or(0);
+        if outgoing == 0 || can_reach_ending.contains(&node.id) {
+            continue;
+        }
+        issues.push(GraphIssue {
+            severity: GraphIssueSeverity::Warn,
+            code: "dead_end_route".to_string(),
+            message: format!("节点 {} 所在路线无法到达任何结局", node.id),
+            file: Some("content/graph.json".to_string()),
+            json_path: Some("$.nodes".to_string()),
+            node_id: Some(node.id.clone()),
+            edge_id: None,
+        });
+    }
+
+    let mut cycle_nodes = cycle_nodes.into_iter().collect::<Vec<_>>();
+    cycle_nodes.sort();
+    for node_id in cycle_nodes {
+        issues.push(GraphIssue {
+            severity: GraphIssueSeverity::Warn,
+            code: "cycle_warning".to_string(),
+            message: format!("节点 {} 位于循环路径中，请确认这是有意设计", node_id),
+            file: Some("content/graph.json".to_string()),
+            json_path: Some("$.edges".to_string()),
+            node_id: Some(node_id),
+            edge_id: None,
+        });
+    }
+
+    issues
+}
+
+fn build_adjacency(
+    graph: &ProjectGraph,
+    node_ids: &HashSet<String>,
+) -> HashMap<String, Vec<String>> {
+    let mut adjacency = graph
+        .nodes
+        .iter()
+        .map(|node| (node.id.clone(), Vec::new()))
+        .collect::<HashMap<_, _>>();
+    for edge in &graph.edges {
+        if !node_ids.contains(&edge.from) || !node_ids.contains(&edge.to) {
+            continue;
+        }
+        adjacency
+            .entry(edge.from.clone())
+            .or_default()
+            .push(edge.to.clone());
+    }
+    adjacency
+}
+
+fn collect_reachable_nodes(
+    entry_node_id: &str,
+    adjacency: &HashMap<String, Vec<String>>,
+) -> HashSet<String> {
+    let mut reachable = HashSet::new();
+    let mut stack = vec![entry_node_id.to_string()];
+    while let Some(node_id) = stack.pop() {
+        if !reachable.insert(node_id.clone()) {
+            continue;
+        }
+        if let Some(next) = adjacency.get(&node_id) {
+            for target in next.iter().rev() {
+                stack.push(target.clone());
+            }
+        }
+    }
+    reachable
+}
+
+fn collect_ending_nodes(graph: &ProjectGraph, reachable: &HashSet<String>) -> HashSet<String> {
+    let mut outgoing_counts = HashMap::<String, usize>::new();
+    for edge in &graph.edges {
+        *outgoing_counts.entry(edge.from.clone()).or_insert(0) += 1;
+    }
+    graph
+        .nodes
+        .iter()
+        .filter(|node| reachable.contains(&node.id) && outgoing_counts.get(&node.id).copied().unwrap_or(0) == 0)
+        .map(|node| node.id.clone())
+        .collect()
+}
+
+fn collect_nodes_that_can_reach_targets(
+    graph: &ProjectGraph,
+    targets: &HashSet<String>,
+) -> HashSet<String> {
+    let mut reverse = HashMap::<String, Vec<String>>::new();
+    for node in &graph.nodes {
+        reverse.entry(node.id.clone()).or_default();
+    }
+    for edge in &graph.edges {
+        reverse
+            .entry(edge.to.clone())
+            .or_default()
+            .push(edge.from.clone());
+    }
+
+    let mut seen = HashSet::new();
+    let mut stack = targets.iter().cloned().collect::<Vec<_>>();
+    while let Some(node_id) = stack.pop() {
+        if !seen.insert(node_id.clone()) {
+            continue;
+        }
+        if let Some(prev) = reverse.get(&node_id) {
+            for source in prev {
+                stack.push(source.clone());
+            }
+        }
+    }
+    seen
+}
+
+fn detect_cycle_nodes(
+    adjacency: &HashMap<String, Vec<String>>,
+    reachable: &HashSet<String>,
+) -> HashSet<String> {
+    fn visit(
+        node_id: &str,
+        adjacency: &HashMap<String, Vec<String>>,
+        reachable: &HashSet<String>,
+        visited: &mut HashSet<String>,
+        stack: &mut Vec<String>,
+        in_stack: &mut HashMap<String, usize>,
+        cycle_nodes: &mut HashSet<String>,
+    ) {
+        visited.insert(node_id.to_string());
+        in_stack.insert(node_id.to_string(), stack.len());
+        stack.push(node_id.to_string());
+
+        if let Some(next) = adjacency.get(node_id) {
+            for target in next {
+                if !reachable.contains(target) {
+                    continue;
+                }
+                if !visited.contains(target) {
+                    visit(target, adjacency, reachable, visited, stack, in_stack, cycle_nodes);
+                } else if let Some(start_index) = in_stack.get(target).copied() {
+                    for cycle_node in &stack[start_index..] {
+                        cycle_nodes.insert(cycle_node.clone());
+                    }
+                }
+            }
+        }
+
+        stack.pop();
+        in_stack.remove(node_id);
+    }
+
+    let mut visited = HashSet::new();
+    let mut stack = vec![];
+    let mut in_stack = HashMap::new();
+    let mut cycle_nodes = HashSet::new();
+    let mut ordered = reachable.iter().cloned().collect::<Vec<_>>();
+    ordered.sort();
+    for node_id in ordered {
+        if !visited.contains(&node_id) {
+            visit(
+                &node_id,
+                adjacency,
+                reachable,
+                &mut visited,
+                &mut stack,
+                &mut in_stack,
+                &mut cycle_nodes,
+            );
+        }
+    }
+    cycle_nodes
 }

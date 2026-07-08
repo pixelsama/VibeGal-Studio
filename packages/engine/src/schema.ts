@@ -47,8 +47,14 @@ export const CharInstruction = z.object({
   remove: z.boolean().default(false), // true = 让该角色退场
 });
 
+export const StableInstructionIdSchema = z
+  .string()
+  .min(1)
+  .describe("Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause.");
+
 export const SayInstruction = z.object({
   t: z.literal("say"),
+  id: StableInstructionIdSchema.optional(),
   who: z.string(), // 引用 manifest.characters 的 key
   expr: z.string().default("default"),
   text: z.string().min(1),
@@ -57,6 +63,7 @@ export const SayInstruction = z.object({
 
 export const NarrateInstruction = z.object({
   t: z.literal("narrate"),
+  id: StableInstructionIdSchema.optional(),
   text: z.string().min(1),
   ms: z.number().int().nonnegative().optional(), // 该条旁白的自动停顿覆盖（0=跟随全局）
 });
@@ -76,6 +83,7 @@ export const SetInstruction = z.object({
 
 export const WaitInstruction = z.object({
   t: z.literal("wait"),
+  id: StableInstructionIdSchema.optional(),
   ms: z.number().int().nonnegative(),
 });
 
@@ -94,6 +102,13 @@ export const TransitionInstruction = z.object({
 
 export const PauseInstruction = z.object({
   t: z.literal("pause"),
+  id: StableInstructionIdSchema.optional(),
+});
+
+export const UnlockInstruction = z.object({
+  t: z.literal("unlock"),
+  kind: z.enum(["cg", "music", "replay", "endings"]),
+  id: z.string().min(1),
 });
 
 export const InstructionSchema = z.discriminatedUnion("t", [
@@ -109,6 +124,7 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   EffectInstruction,
   TransitionInstruction,
   PauseInstruction,
+  UnlockInstruction,
 ]);
 
 export const ChapterSchema = z.array(InstructionSchema);
@@ -133,6 +149,74 @@ const AudioRegistrySchema = z
   })
   .default({ bgm: {}, sfx: {}, voice: {} });
 
+export const AssetRefSchema = z.strictObject({
+  path: z.string().min(1),
+  name: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  thumbnail: z.string().optional(),
+});
+
+export const AssetRefInputSchema = z
+  .union([z.string().min(1), AssetRefSchema])
+  .transform((value) => (typeof value === "string" ? { path: value } : value));
+
+export const CgAssetRefSchema = AssetRefSchema.extend({
+  group: z.string().optional(),
+  unlockId: z.string().optional(),
+});
+
+export const CgAssetRefInputSchema = z
+  .union([z.string().min(1), CgAssetRefSchema])
+  .transform((value) => (typeof value === "string" ? { path: value } : value));
+
+export const VideoAssetRefSchema = AssetRefSchema.extend({
+  poster: z.string().optional(),
+  skippable: z.boolean().optional(),
+});
+
+export const VideoAssetRefInputSchema = z
+  .union([z.string().min(1), VideoAssetRefSchema])
+  .transform((value) => (typeof value === "string" ? { path: value } : value));
+
+export const FontAssetSchema = z.strictObject({
+  path: z.string().min(1),
+  family: z.string().min(1),
+  weight: z.string().optional(),
+  style: z.string().optional(),
+});
+
+export const UiSkinSchema = z.strictObject({
+  name: z.string().optional(),
+  assets: z.record(z.string(), z.string()).default({}),
+  tokens: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+});
+
+export const AnimationAtlasSchema = z.strictObject({
+  image: z.string().min(1),
+  json: z.string().optional(),
+  frameWidth: z.number().int().positive().optional(),
+  frameHeight: z.number().int().positive().optional(),
+});
+
+export const UnlockRegistrySchema = z.strictObject({
+  cg: z.record(z.string(), z.strictObject({
+    assetId: z.string().min(1),
+    title: z.string().optional(),
+  })).default({}),
+  music: z.record(z.string(), z.strictObject({
+    audioId: z.string().min(1),
+    title: z.string().optional(),
+  })).default({}),
+  replay: z.record(z.string(), z.strictObject({
+    nodeId: z.string().min(1),
+    title: z.string().optional(),
+  })).default({}),
+  endings: z.record(z.string(), z.strictObject({
+    title: z.string().min(1),
+    nodeId: z.string().optional(),
+  })).default({}),
+}).default({ cg: {}, music: {}, replay: {}, endings: {} });
+
 export const ManifestSchema = z.strictObject({
   characters: z.record(
     z.string(),
@@ -144,6 +228,12 @@ export const ManifestSchema = z.strictObject({
   ),
   backgrounds: z.record(z.string(), z.string()), // id → 路径
   audio: AudioRegistrySchema, // 三类音频 id → 路径
+  cg: z.record(z.string(), CgAssetRefInputSchema).default({}),
+  videos: z.record(z.string(), VideoAssetRefInputSchema).default({}),
+  fonts: z.record(z.string(), FontAssetSchema).default({}),
+  uiSkins: z.record(z.string(), UiSkinSchema).default({}),
+  animationAtlases: z.record(z.string(), AnimationAtlasSchema).default({}),
+  unlocks: UnlockRegistrySchema,
 });
 
 // ──────────────────────────────────────────────

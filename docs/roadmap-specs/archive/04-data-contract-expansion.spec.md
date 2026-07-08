@@ -1,6 +1,6 @@
 # Spec 04 — Data Contract Expansion
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 目标：扩展 GalStudio 项目的数据表达能力，让正规 galgame 所需资源和解锁项有稳定 schema，同时不把展示方式写进 Studio。
 
 ## 1. 背景
@@ -280,3 +280,12 @@ type Expr =
 - `uiSkins` 是全局 manifest 中的项目级资源注册表，Studio 只校验路径和 metadata；renderer-local 的私有配置仍可放在 `renderers/<id>/` 内，但不替代 manifest 中可被导出和分析的资源声明。
 - 资源显示名 V1 只支持单一 `name` 字段，不做本地化 map。未来多语言项目再扩展为 `names: Record<locale, string>`，但不提前增加复杂度。
 - Expression V1 只实现可静态解析的比较、`&&`、`||` 和括号；`set` 的算术、`+=`、`-=` 延后。所有表达式分析基于 AST，禁止任意 JS。
+
+## 11. 实际实现记录（2026-07-08）
+
+- engine `ManifestSchema` 已扩展 `cg`、`videos`、`fonts`、`uiSkins`、`animationAtlases`、`unlocks`，并保持旧字符串资产引用兼容；`cg` / `videos` 在 parse 后归一化为对象形式。
+- engine / backend 节点校验均支持 `{"t":"unlock","kind","id"}`，并会对不存在的 unlock id 报错。
+- backend asset report 已覆盖 `cg`、`videos`、`fonts`、`uiSkins`、`animationAtlases` 以及 `thumbnail` / `poster` / atlas `json` 等缺失路径。
+- engine 已新增静态表达式 AST / parser / evaluator / variable-read extraction，支持比较、`&&`、`||`、括号，并拒绝任意 JS、赋值、`+=`、`-=`。
+- JSON Schema 快照已同步导出，`renderer-contract.md` 已补充扩展 manifest registry 的消费说明。
+- 本次按可归档 V1 收束，不扩张到 gallery / video player / UI skin editor / 通用脚本语言；未新增独立的“未使用 manifest 资源”分析入口，只扩展了现有 missing/orphan 资产校验面。

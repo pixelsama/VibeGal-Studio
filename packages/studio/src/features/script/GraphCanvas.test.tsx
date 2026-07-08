@@ -56,6 +56,8 @@ describe("GraphCanvas", () => {
         graph={graph}
         selectedNodeId={null}
         selectedEdgeId={null}
+        canUndo
+        canRedo
         onSelect={noop}
         onSelectEdge={noop}
         onEnter={noop}
@@ -63,12 +65,16 @@ describe("GraphCanvas", () => {
         onConnect={noop}
         onDeleteNodes={noop}
         onDeleteEdge={noop}
+        onUndo={noop}
+        onRedo={noop}
         onCreateNodeAt={noop}
       />,
     );
 
     expect(html).toContain('data-testid="graph-controls"');
     expect(html).toContain('data-control-title="定位入口节点"');
+    expect(html).toContain('data-control-title="撤销图编辑"');
+    expect(html).toContain('data-control-title="重做图编辑"');
     expect(html).not.toContain('title="在视口中心新建节点"');
   });
 
@@ -78,6 +84,8 @@ describe("GraphCanvas", () => {
         graph={graph}
         selectedNodeId={null}
         selectedEdgeId={null}
+        canUndo={false}
+        canRedo={false}
         onSelect={noop}
         onSelectEdge={noop}
         onEnter={noop}
@@ -85,6 +93,8 @@ describe("GraphCanvas", () => {
         onConnect={noop}
         onDeleteNodes={noop}
         onDeleteEdge={noop}
+        onUndo={noop}
+        onRedo={noop}
       />,
     );
 

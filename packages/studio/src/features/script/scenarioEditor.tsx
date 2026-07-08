@@ -22,6 +22,7 @@ export type ScenarioSelectionKind =
   | "transition"
   | "set"
   | "pause"
+  | "unlock"
   | "invalid";
 
 export interface ScenarioSelection {
@@ -54,7 +55,7 @@ export function getScenarioSelection(text: string, cursorOffset: number): Scenar
   }
 
   return {
-    kind: parsed.instruction.t,
+    kind: parsed.instruction.t as ScenarioSelectionKind,
     line,
     startLine: line,
     endLine: line,

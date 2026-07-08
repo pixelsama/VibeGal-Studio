@@ -87,7 +87,7 @@ export class NovelPlayer {
    */
   advance() {
     if (this.state.flags.isWaiting) return; // wait 期间忽略
-    if (this.state.choice) return; // graph-aware 播放器中的 choice 由 onChoose 处理
+    if (this.state.choice) return; // graph-aware 播放器中的 choice 由 controls.choose 处理
     if (!this.isCurrentTextDone()) {
       this.state = revealFully(this.state);
       this.emit();

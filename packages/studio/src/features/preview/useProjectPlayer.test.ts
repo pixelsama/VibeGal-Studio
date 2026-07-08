@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectData } from "../../lib/types";
-import { buildProjectPreviewContent } from "./useProjectPlayer";
+import { createProjectRendererProps, buildProjectPreviewContent } from "./useProjectPlayer";
+import { createInitialState } from "@galstudio/engine";
 
 const project: ProjectData = {
   path: "/tmp/sample-project",
@@ -40,5 +41,31 @@ describe("useProjectPlayer helpers", () => {
       ],
       nodeIds: ["later", "start"],
     });
+  });
+
+  it("rendererPropsRequiresControlsAdvance", () => {
+    const advanceCalls: string[] = [];
+    const props = createProjectRendererProps({
+      state: createInitialState(),
+      manifest: project.content.manifest,
+      contentBase: `${project.path}/content`,
+      stage: { width: 1280, height: 720 },
+      controls: {
+        advance: () => advanceCalls.push("advance"),
+        choose: () => advanceCalls.push("choose"),
+        setAutoPlay: () => advanceCalls.push("auto"),
+        setSkipMode: () => advanceCalls.push("skip"),
+        rollbackTo: () => advanceCalls.push("rollback"),
+        restart: () => advanceCalls.push("restart"),
+      },
+      runtime: null,
+    });
+
+    props.controls.advance();
+
+    expect(advanceCalls).toEqual(["advance"]);
+    expect(props.runtime).toBeTruthy();
+    expect("onAdvance" in props).toBe(false);
+    expect("onChoose" in props).toBe(false);
   });
 });

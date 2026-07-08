@@ -12,6 +12,7 @@ import type { Manifest, Meta, Chapter } from "./types";
 
 export interface ValidationIssue {
   level: "error" | "warn";
+  code?: string;
   file: string;
   index?: number; // 指令序号（chapter 校验时）
   message: string;
@@ -36,7 +37,46 @@ export function validateChapter(raw: unknown, file: string): ValidationIssue[] {
       const idx = typeof err.path[0] === "number" ? err.path[0] : undefined;
       issues.push({ level: "error", file, index: idx, message: err.message });
     }
+    return issues;
   }
+  issues.push(...validateInstructionIdentity(result.data, file));
+  return issues;
+}
+
+const STORY_POINT_INSTRUCTION_TYPES = new Set(["say", "narrate", "wait", "pause"]);
+
+function validateInstructionIdentity(chapter: Chapter, file: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const firstIndexById = new Map<string, number>();
+
+  chapter.forEach((instr, index) => {
+    if (!STORY_POINT_INSTRUCTION_TYPES.has(instr.t)) return;
+    const instructionId = "id" in instr ? instr.id : undefined;
+    if (!instructionId) {
+      issues.push({
+        level: "warn",
+        code: "instruction_id_missing",
+        file,
+        index,
+        message: `${instr.t} 指令缺少稳定 id；存档、已读和回滚将无法稳定定位该停点。`,
+      });
+      return;
+    }
+
+    const firstIndex = firstIndexById.get(instructionId);
+    if (firstIndex != null) {
+      issues.push({
+        level: "error",
+        code: "instruction_id_duplicate",
+        file,
+        index,
+        message: `同一节点内重复的停点 instruction id: "${instructionId}"（首次出现于 #${firstIndex}）。`,
+      });
+      return;
+    }
+    firstIndexById.set(instructionId, index);
+  });
+
   return issues;
 }
 
@@ -99,6 +139,13 @@ export function validateReferences(
         }
         if (!(instr.expr in char.sprites))
           issues.push({ level: "error", file, index, message: `角色 "${charId}" 没有表情 "${instr.expr}"（可用: ${Object.keys(char.sprites).join(", ")}）` });
+        break;
+      }
+      case "unlock": {
+        const table = manifest.unlocks[instr.kind];
+        if (!(instr.id in table)) {
+          issues.push({ level: "error", file, index, message: `引用了不存在的 unlock id: "${instr.id}"` });
+        }
         break;
       }
     }

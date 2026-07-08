@@ -83,4 +83,25 @@ describe("schemaExport", () => {
     expect(pause).toBeDefined();
     expect(pause?.required).toEqual(["t"]);
   });
+
+  it("manifest schema exports expanded top-level registries", () => {
+    const schema = buildJsonSchema("manifest");
+    const props = schema.properties as Record<string, unknown>;
+
+    expect(props).toHaveProperty("cg");
+    expect(props).toHaveProperty("videos");
+    expect(props).toHaveProperty("fonts");
+    expect(props).toHaveProperty("uiSkins");
+    expect(props).toHaveProperty("animationAtlases");
+    expect(props).toHaveProperty("unlocks");
+  });
+
+  it("nodeFile schema includes unlock instructions", () => {
+    const nodeFile = buildJsonSchema("nodeFile");
+    const items = nodeFile.items as { oneOf: Array<{ properties: { t: { const: string } }; required: string[] }> };
+    const unlock = items.oneOf.find((item) => item.properties.t.const === "unlock");
+
+    expect(unlock).toBeDefined();
+    expect(unlock?.required).toEqual(["t", "kind", "id"]);
+  });
 });

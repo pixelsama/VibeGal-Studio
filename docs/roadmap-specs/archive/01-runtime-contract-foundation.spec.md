@@ -1,7 +1,7 @@
 # Spec 01 — Runtime Contract Foundation
 
-> 状态：已决策，待开发。
-> 来源：[project-wiki.md](../project-wiki.md) 的 Phase C、Fable 审阅意见，以及当前 `@galstudio/engine` 的 graph-aware player 架构。
+> 状态：已归档。
+> 来源：[project-wiki.md](../../project-wiki.md) 的 Phase C、Fable 审阅意见，以及当前 `@galstudio/engine` 的 graph-aware player 架构。
 > 目标：先建立存档、已读、回滚、backlog、settings、renderer 契约扩展都依赖的运行时地基。
 
 ## 1. 背景
@@ -286,3 +286,11 @@ interface RendererManifest {
 - Save slot 的持久 checkpoint 在显式 save、quick save、auto save 时生成；运行时可额外按每 25 个可恢复 story point 或每次 route decision 建立内存 checkpoint，用于降低回滚/恢复重放成本。
 - 旧 decision log 中的 `edgeId` 不存在时，恢复顺序为：先查找同 `fromNodeId -> toNodeId` 的现存 edge；若不存在，则按当前 graph 和 vars 重新计算自动分支；仍无法确定时停在 `fromNodeId`，返回可展示的 load warning，不静默跳到未知位置。
 - `textHash` 只做稳定化规范化：Unicode NFC、CRLF/LF 统一、移除每行行尾空白。不折叠正文中的空白，不转换全角/半角，不忽略标点差异；文本含义变化应产生新的未读状态。
+
+## 8. 实现记录
+
+- 2026-07-08：`@galstudio/engine` 新增 runtime contract schema/types 与工具：`StoryPointId`、`ReadTextKey`、`RuntimeSnapshot`、`DecisionLogEvent`、`SaveSlotRecord`、`GlobalPersistentRecord`、`RuntimeSettingsRecord`。
+- 2026-07-08：`say`、`narrate`、`pause`、`wait` 接受稳定 `id` 字段；validation 对缺失停点 id 给 `instruction_id_missing` warning，对同节点重复停点 id 给 `instruction_id_duplicate` error，不自动改写用户文件。
+- 2026-07-08：已读文本 hash 使用 NFC、CRLF/LF 统一、逐行行尾空白移除后的文本。
+- 2026-07-08：`RuntimeSnapshot`/`SaveSlotRecord` 只保存语义状态，不序列化 effect、transition、seq、sprite change id、typing progress 等瞬时字段。
+- 2026-07-08：`RendererManifest` 增加 `contractVersion: 1` 和可选 `capabilities`；默认 renderer 模板、`renderer-contract.md`、project wiki 已同步。

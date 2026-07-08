@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { GraphNode, ProjectData } from "../../lib/types";
+import { RuntimeStateInspector } from "../preview/RuntimeStateInspector";
 import { StageFrame } from "../preview/StageFrame";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { useNodePreview } from "./useNodePreview";
@@ -20,9 +21,14 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
 
   const Renderer = renderer.Component;
   return (
-    <StageFrame stage={player.rendererProps.stage}>
-      <Renderer {...player.rendererProps} />
-    </StageFrame>
+    <div style={layoutStyle}>
+      <div style={stagePaneStyle}>
+        <StageFrame stage={player.rendererProps.stage}>
+          <Renderer {...player.rendererProps} />
+        </StageFrame>
+      </div>
+      <RuntimeStateInspector state={player.state} currentNodeLabel={`${node.title} (${node.id})`} />
+    </div>
   );
 }
 
@@ -46,3 +52,15 @@ function PreviewMessage({ children, mono = false }: { children: ReactNode; mono?
     </div>
   );
 }
+
+const layoutStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
+  width: "100%",
+  height: "100%",
+};
+
+const stagePaneStyle: React.CSSProperties = {
+  minWidth: 0,
+  height: "100%",
+};

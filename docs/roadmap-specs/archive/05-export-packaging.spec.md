@@ -1,8 +1,22 @@
 # Spec 05 — Export and Packaging
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 前置：renderer contract 稳定、runtime persistence contract 初步成型。
 > 目标：把 GalStudio 项目导出为可玩的游戏包，优先 Web，后续桌面。
+
+## 0. V1 实现记录
+
+已实现 Web export V1：
+
+- `galstudio-cli build <project-path> --target web --out <dir> [--renderer <id>] [--strict] [--allow-warnings] [--base-path <path>] [--format json|text]`。
+- build 前复用 CLI project validation；error 默认失败，`--strict` 下 warning 失败，`--allow-warnings` 可覆盖 strict warning gate。
+- Web 产物包含 `index.html`、完整复制的 `content/`、`runtime/bundle.js`、`runtime/bundle.js.map`、`renderer/bundle.js` 和顶层 `game.manifest.json`。
+- `game.manifest.json` 记录 project id/title、renderer id、contract version、build target、base path、builtAt、GalStudio build schema version。
+- renderer/runtime bundling 通过随仓库提供的 Node esbuild worker；V1 仅允许 renderer 裸导入 `react`、`react/jsx-runtime`、`react/jsx-dev-runtime`、`react-dom`、`react-dom/client`、`@galstudio/engine`，以及相对 imports。不支持 renderer 第三方 npm 依赖。
+- 导出 runtime host 复用 `GraphNovelPlayer`、content validation、AudioEngine 与 renderer contract，能从 graph entry node 加载节点文件并播放 linear/choice/auto route。
+- Web runtime storage adapter 提供 save slots、global persistent、runtime settings 三类独立 key；默认使用 `localStorage`，不可用时降级 in-memory 并记录 warning。
+
+V1 明确未实现：桌面导出、应用商店签名/公证、资源加密、补丁更新、云存档、移动端、renderer marketplace、renderer 第三方依赖。
 
 ## 1. 背景
 

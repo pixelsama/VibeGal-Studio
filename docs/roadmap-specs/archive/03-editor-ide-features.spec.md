@@ -1,6 +1,6 @@
 # Spec 03 — Studio IDE Features
 
-> 状态：已决策，待开发。
+> 状态：已归档。
 > 目标：把 GalStudio 从“能编辑 graph 和节点”推进到“可日常创作、检查、调试大型 gal 项目”的工程 IDE。
 
 ## 1. 背景
@@ -239,3 +239,42 @@ Studio preview 中显示：
 - Variable condition 必须先转 AST 再分析。禁止用正则从 condition 字符串猜变量；AST parser 应在 engine 侧共享，Studio 和 CLI 复用同一套读点提取逻辑。
 - Asset cleanup V1 只给建议和定位，不自动改 manifest 或删除磁盘文件。后续批量清理必须有明确确认、预览 diff、并走安全持久化。
 - 缺稳定 `id` 的旧项目只能降级到 node-level preview；当前编辑会话内可临时使用 `nodeId + instructionIndex` 跳转，但该定位不可写入 save/backlog/read status，并且 UI/报告必须提示“需要补齐 instruction id”。
+
+## 8. 实际实现（2026-07）
+
+本轮按“可测试的数据层 + 最小 Studio 入口”收束，未尝试一次做满全部 IDE UI。
+
+- Graph undo/redo：
+  - 已补 `graphHistory` reducer/stack，覆盖 add/remove/connect/remove edge/rename/move/set entry/auto layout；
+  - Studio graph 画布已提供 undo / redo 控件；
+  - 图保存后的自刷新会保留当前 history；外部 revision 变化会清空旧栈。
+- Route analysis：
+  - Rust backend `graphReport -> projectReport` 已新增 unreachable / dead-end / cycle warning；
+  - 既有 missing entry / choice label / linear multiple outgoing / auto default 等问题继续沿用；
+  - 结果仍可通过状态面板定位 node / edge。
+- Route coverage：
+  - V1 先在 Studio 分析面板展示总节点 / reachable / ending / orphan 计数；
+  - 暂未实现完整“每条 choice 是否最终到达 ending”的逐分支 UI。
+- Variable table：
+  - 已新增基于 AST 的 condition 解析与变量读写分析；
+  - 覆盖 `set` 写点、edge condition 读点、read-before-write、write-without-read、type conflict、condition parse errors；
+  - Studio 分析面板提供最小变量表与跳转入口。
+- Preview / state inspector：
+  - 保持 node-level preview 为主；
+  - 已新增最小 runtime state inspector，显示当前预览节点（node preview）、vars、background、sprites、audio、choice。
+- Search / navigation：
+  - V1 先实现 graph 节点列表搜索（title / id / file）；
+  - 变量表支持按变量名过滤与跳转；
+  - 全项目台词 / 角色 / 资源全文搜索留待后续。
+- Asset usage：
+  - 既有 asset report 继续负责 orphan / missing；
+  - 新增 Studio 侧 usage 扫描，给出 manifest 路径是否被剧本实际引用、未使用提示；
+  - V1 不做批量自动清理。
+- Renderer diagnostics：
+  - 继续沿用 runtime compiler diagnostics；
+  - unsupported bare import 的 renderer / file / spec 定位测试已纳入验收。
+
+## 9. 后续
+
+- 如果后续需要真正的“graph draft 与显式保存”模式，可在现有 `graphHistory` 基础上继续收敛；本轮仍保持与当前安全持久化路径兼容的即时保存工作流。
+- Preview from stable story point、完整 route branch coverage UI、全项目全文搜索、资产批量整理入口，留给后续 spec / worker。

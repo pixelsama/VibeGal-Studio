@@ -21,6 +21,7 @@ import type {
   EffectInstruction,
   TransitionInstruction,
   PauseInstruction,
+  UnlockInstruction,
   ProjectGraphSchema,
   GraphNodeSchema,
   GraphEdgeSchema,
@@ -51,6 +52,7 @@ export type WaitInstr = z.infer<typeof WaitInstruction>;
 export type EffectInstr = z.infer<typeof EffectInstruction>;
 export type TransitionInstr = z.infer<typeof TransitionInstruction>;
 export type PauseInstr = z.infer<typeof PauseInstruction>;
+export type UnlockInstr = z.infer<typeof UnlockInstruction>;
 
 // 运行时指令的判别 tag
 export type InstructionType = Instruction["t"];

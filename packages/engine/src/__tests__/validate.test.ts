@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateContent, validateManifest } from "../validate";
+import { validateChapter, validateContent, validateManifest } from "../validate";
 
 const manifest = {
   characters: {
@@ -7,6 +7,65 @@ const manifest = {
   },
   backgrounds: { bg1: "bg.svg" },
   audio: { bgm: { bgm1: "bgm.mp3" }, sfx: { sfx1: "sfx.mp3" }, voice: {} },
+};
+
+const expandedManifest = {
+  ...manifest,
+  cg: {
+    cg_001: "assets/cg/cg_001.png",
+    cg_002: {
+      path: "assets/cg/cg_002.png",
+      name: "屋顶",
+      tags: ["night", "rain"],
+      thumbnail: "assets/cg/thumbs/cg_002.png",
+      group: "memory",
+      unlockId: "cg_rooftop",
+    },
+  },
+  videos: {
+    op: {
+      path: "assets/videos/op.mp4",
+      name: "OP",
+      poster: "assets/videos/op.jpg",
+      skippable: true,
+    },
+  },
+  fonts: {
+    body: {
+      path: "assets/fonts/body.ttf",
+      family: "Body Sans",
+      weight: "400",
+    },
+  },
+  uiSkins: {
+    classic: {
+      name: "Classic",
+      assets: { frame: "assets/ui/classic/frame.png" },
+      tokens: { radius: 8, accent: "#f09" },
+    },
+  },
+  animationAtlases: {
+    heroine: {
+      image: "assets/atlases/heroine.png",
+      json: "assets/atlases/heroine.json",
+      frameWidth: 320,
+      frameHeight: 240,
+    },
+  },
+  unlocks: {
+    cg: {
+      cg_rooftop: { assetId: "cg_002", title: "屋顶 CG" },
+    },
+    music: {
+      music_theme: { audioId: "bgm1", title: "主题曲" },
+    },
+    replay: {
+      replay_start: { nodeId: "start", title: "序章" },
+    },
+    endings: {
+      ending_true: { title: "True End", nodeId: "ending_true" },
+    },
+  },
 };
 
 describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => {
@@ -75,6 +134,45 @@ describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => 
       }),
     ).toThrow(/ghost/);
   });
+
+  it("manifestAcceptsLegacyStringAssetRefs", () => {
+    const { manifest: parsed } = validateContent({
+      meta: { title: "T" },
+      manifest: expandedManifest,
+      chapters: [],
+    });
+
+    expect(parsed.cg.cg_001).toEqual({ path: "assets/cg/cg_001.png" });
+  });
+
+  it("manifestAcceptsObjectAssetRefs", () => {
+    const { manifest: parsed } = validateContent({
+      meta: { title: "T" },
+      manifest: expandedManifest,
+      chapters: [],
+    });
+
+    expect(parsed.cg.cg_002).toEqual({
+      path: "assets/cg/cg_002.png",
+      name: "屋顶",
+      tags: ["night", "rain"],
+      thumbnail: "assets/cg/thumbs/cg_002.png",
+      group: "memory",
+      unlockId: "cg_rooftop",
+    });
+    expect(parsed.videos.op.poster).toBe("assets/videos/op.jpg");
+    expect(parsed.unlocks.cg.cg_rooftop.assetId).toBe("cg_002");
+  });
+
+  it("unlockInstructionReferencesKnownUnlockId", () => {
+    expect(() =>
+      validateContent({
+        meta: { title: "T" },
+        manifest: expandedManifest,
+        chapters: [{ file: "c.json", data: [{ t: "unlock", kind: "cg", id: "missing_unlock" }] }],
+      }),
+    ).toThrow(/missing_unlock/);
+  });
 });
 
 describe("validateManifest: strict 拒绝旧 flat audio", () => {
@@ -99,5 +197,45 @@ describe("validateManifest: strict 拒绝旧 flat audio", () => {
       audio: { bgm: { theme: "bgm.mp3" }, sfx: {}, voice: {} },
     });
     expect(issues).toEqual([]);
+  });
+});
+
+describe("runtime instruction identity", () => {
+  it("instructionIdentityWarnsMissingBlockingInstructionId", () => {
+    const issues = validateChapter(
+      [
+        { t: "say", who: "p", text: "缺少 id" },
+        { t: "narrate", text: "缺少 id" },
+        { t: "pause" },
+        { t: "wait", ms: 100 },
+      ],
+      "nodes/start.json",
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({ level: "warn", file: "nodes/start.json", index: 0, code: "instruction_id_missing" }),
+      expect.objectContaining({ level: "warn", file: "nodes/start.json", index: 1, code: "instruction_id_missing" }),
+      expect.objectContaining({ level: "warn", file: "nodes/start.json", index: 2, code: "instruction_id_missing" }),
+      expect.objectContaining({ level: "warn", file: "nodes/start.json", index: 3, code: "instruction_id_missing" }),
+    ]);
+  });
+
+  it("instructionIdentityRejectsDuplicateIdsInNode", () => {
+    const issues = validateChapter(
+      [
+        { t: "say", id: "line_01", who: "p", text: "第一句" },
+        { t: "narrate", id: "line_01", text: "重复 id" },
+      ],
+      "nodes/start.json",
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        level: "error",
+        file: "nodes/start.json",
+        index: 1,
+        code: "instruction_id_duplicate",
+      }),
+    ]);
   });
 });

@@ -187,6 +187,9 @@ export function applyInstruction(
         currentCueMs: null,
       };
 
+    case "unlock":
+      return state;
+
     default: {
       // 穷尽性检查：如果新增指令类型忘了处理，编译期就会报错
       const _exhaustive: never = instr;

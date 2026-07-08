@@ -99,6 +99,12 @@ export function createInstructionDraft(kind: EditableInstructionKind): Instructi
       return { t: "transition", type: "fade_in", ms: 1000 };
     case "pause":
       return { t: "pause" };
+    case "unlock":
+      return { t: "unlock", kind: "cg", id: "" };
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
   }
 }
 

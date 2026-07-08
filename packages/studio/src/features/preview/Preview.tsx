@@ -2,6 +2,7 @@
  * 预览面板 —— 用引擎跑项目，挂载当前选中的渲染层。
  */
 import type { ProjectData } from "../../lib/types";
+import { RuntimeStateInspector } from "./RuntimeStateInspector";
 import { useProjectPlayer } from "./useProjectPlayer";
 import { useRendererComponent } from "./useRendererComponent";
 import { StageFrame } from "./StageFrame";
@@ -27,9 +28,14 @@ export function Preview({ project, rendererId }: Props) {
 
   const Renderer = renderer.Component;
   return (
-    <StageFrame stage={player.rendererProps.stage}>
-      <Renderer {...player.rendererProps} />
-    </StageFrame>
+    <div style={layoutStyle}>
+      <div style={stagePaneStyle}>
+        <StageFrame stage={player.rendererProps.stage}>
+          <Renderer {...player.rendererProps} />
+        </StageFrame>
+      </div>
+      <RuntimeStateInspector state={player.state} />
+    </div>
   );
 }
 
@@ -44,3 +50,15 @@ function Centered({ children, mono }: { children: React.ReactNode; mono?: boolea
     </div>
   );
 }
+
+const layoutStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
+  width: "100%",
+  height: "100%",
+};
+
+const stagePaneStyle: React.CSSProperties = {
+  minWidth: 0,
+  height: "100%",
+};

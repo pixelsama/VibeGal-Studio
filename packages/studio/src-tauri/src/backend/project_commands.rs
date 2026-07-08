@@ -532,7 +532,97 @@ pub struct ManifestAudioRegistryInput {
     pub voice: std::collections::HashMap<String, String>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestCgAssetInput {
+    pub path: String,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub thumbnail: Option<String>,
+    pub group: Option<String>,
+    #[serde(rename = "unlockId")]
+    pub unlock_id: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestVideoAssetInput {
+    pub path: String,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub thumbnail: Option<String>,
+    pub poster: Option<String>,
+    pub skippable: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestFontInput {
+    pub path: String,
+    pub family: String,
+    pub weight: Option<String>,
+    pub style: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestUiSkinInput {
+    pub name: Option<String>,
+    #[serde(default)]
+    pub assets: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub tokens: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestAnimationAtlasInput {
+    pub image: String,
+    pub json: Option<String>,
+    #[serde(rename = "frameWidth")]
+    pub frame_width: Option<u32>,
+    #[serde(rename = "frameHeight")]
+    pub frame_height: Option<u32>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestCgUnlockInput {
+    #[serde(rename = "assetId")]
+    pub asset_id: String,
+    pub title: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestMusicUnlockInput {
+    #[serde(rename = "audioId")]
+    pub audio_id: String,
+    pub title: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestReplayUnlockInput {
+    #[serde(rename = "nodeId")]
+    pub node_id: String,
+    pub title: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestEndingUnlockInput {
+    pub title: String,
+    #[serde(rename = "nodeId")]
+    pub node_id: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct ManifestUnlockRegistryInput {
+    #[serde(default)]
+    pub cg: std::collections::HashMap<String, ManifestCgUnlockInput>,
+    #[serde(default)]
+    pub music: std::collections::HashMap<String, ManifestMusicUnlockInput>,
+    #[serde(default)]
+    pub replay: std::collections::HashMap<String, ManifestReplayUnlockInput>,
+    #[serde(default)]
+    pub endings: std::collections::HashMap<String, ManifestEndingUnlockInput>,
+}
+
+#[derive(Deserialize, Clone, Default)]
 pub struct ManifestInput {
     #[serde(default)]
     pub characters: std::collections::HashMap<String, ManifestCharacterInput>,
@@ -540,6 +630,18 @@ pub struct ManifestInput {
     pub backgrounds: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub audio: ManifestAudioRegistryInput,
+    #[serde(default)]
+    pub cg: std::collections::HashMap<String, ManifestCgAssetInput>,
+    #[serde(default)]
+    pub videos: std::collections::HashMap<String, ManifestVideoAssetInput>,
+    #[serde(default)]
+    pub fonts: std::collections::HashMap<String, ManifestFontInput>,
+    #[serde(rename = "uiSkins", default)]
+    pub ui_skins: std::collections::HashMap<String, ManifestUiSkinInput>,
+    #[serde(rename = "animationAtlases", default)]
+    pub animation_atlases: std::collections::HashMap<String, ManifestAnimationAtlasInput>,
+    #[serde(default)]
+    pub unlocks: ManifestUnlockRegistryInput,
 }
 
 /// 保存 content/manifest.json。镜像 save_graph 的模式：
@@ -591,6 +693,12 @@ fn save_manifest(
             "sfx": manifest.audio.sfx,
             "voice": manifest.audio.voice,
         },
+        "cg": manifest.cg,
+        "videos": manifest.videos,
+        "fonts": manifest.fonts,
+        "uiSkins": manifest.ui_skins,
+        "animationAtlases": manifest.animation_atlases,
+        "unlocks": manifest.unlocks,
     });
 
     let manifest_path = content_dir.join("manifest.json");

@@ -19,9 +19,13 @@ export class AudioEngine {
   private bgmEl: HTMLAudioElement | null = null;
   private currentBgmId: string | null = null;
   private bgmFadeTimer: ReturnType<typeof setInterval> | null = null;
+  private sfxEls = new Set<HTMLAudioElement>();
+  private voiceEl: HTMLAudioElement | null = null;
+  private lastVoiceId: string | null = null;
   private playedSfxSeqs = new Set<number>();
   private playedVoiceSeqs = new Set<number>();
   private muted = false;
+  private volumes = { master: 1, bgm: 0.8, sfx: 1, voice: 1 };
 
   constructor(manifest: Manifest, contentBase: string) {
     this.manifest = manifest;
@@ -35,6 +39,15 @@ export class AudioEngine {
   setMuted(muted: boolean) {
     this.muted = muted;
     if (this.bgmEl) this.bgmEl.muted = muted;
+    if (this.voiceEl) this.voiceEl.muted = muted;
+    for (const el of this.sfxEls) el.muted = muted;
+  }
+
+  setVolumes(volumes: Partial<typeof this.volumes>) {
+    this.volumes = { ...this.volumes, ...volumes };
+    if (this.bgmEl) this.bgmEl.volume = this.channelVolume("bgm");
+    if (this.voiceEl) this.voiceEl.volume = this.channelVolume("voice");
+    for (const el of this.sfxEls) el.volume = this.channelVolume("sfx");
   }
 
   /** 上层在每次 NovelState 变化时调用。AudioEngine 内部做 diff，按需播放。 */
@@ -52,14 +65,15 @@ export class AudioEngine {
     for (const sfx of state.audio.sfx) {
       if (this.playedSfxSeqs.has(sfx.seq)) continue;
       this.playedSfxSeqs.add(sfx.seq);
-      this.playOneShot(sfx.id);
+      this.playOneShot(sfx.id, "sfx");
     }
 
     // ── Voice：同样按 seq 去重 ──
     const voice = state.audio.voice;
     if (voice && !this.playedVoiceSeqs.has(voice.seq)) {
       this.playedVoiceSeqs.add(voice.seq);
-      this.playOneShot(voice.id);
+      this.lastVoiceId = voice.id;
+      this.playOneShot(voice.id, "voice");
     }
   }
 
@@ -95,7 +109,7 @@ export class AudioEngine {
     this.fadeIn(el, fadeMs);
   }
 
-  private stopBgm(fadeMs: number) {
+  stopBgm(fadeMs = 1000) {
     if (this.bgmEl) {
       this.fadeOutAndStop(this.bgmEl, fadeMs);
       this.bgmEl = null;
@@ -103,23 +117,57 @@ export class AudioEngine {
     this.currentBgmId = null;
   }
 
-  private playOneShot(id: string) {
+  pauseBgm() {
+    this.bgmEl?.pause();
+  }
+
+  resumeBgm() {
+    this.bgmEl?.play().catch((e) => console.warn(`[audio] bgm 恢复播放失败:`, e));
+  }
+
+  replayVoice() {
+    if (this.lastVoiceId) this.playOneShot(this.lastVoiceId, "voice");
+  }
+
+  stopVoice() {
+    if (!this.voiceEl) return;
+    this.voiceEl.pause();
+    this.voiceEl.remove();
+    this.voiceEl = null;
+  }
+
+  stopAllSfx() {
+    for (const el of this.sfxEls) {
+      el.pause();
+      el.remove();
+    }
+    this.sfxEls.clear();
+  }
+
+  private playOneShot(id: string, channel: "sfx" | "voice") {
     const url = this.resolveAudioId(id);
     if (!url) {
       console.warn(`[audio] 未找到 sfx/voice id: ${id}`);
       return;
     }
+    if (channel === "voice") this.stopVoice();
     const el = new Audio(url);
     el.muted = this.muted;
-    el.volume = 1;
+    el.volume = this.channelVolume(channel);
+    if (channel === "voice") this.voiceEl = el;
+    else this.sfxEls.add(el);
     el.play().catch((e) => console.warn(`[audio] one-shot 播放失败 (${id}):`, e));
-    el.addEventListener("ended", () => el.remove());
+    el.addEventListener("ended", () => {
+      el.remove();
+      if (channel === "voice" && this.voiceEl === el) this.voiceEl = null;
+      if (channel === "sfx") this.sfxEls.delete(el);
+    });
   }
 
   private fadeIn(el: HTMLAudioElement, ms: number) {
     this.clearFadeTimer();
     const steps = 20;
-    const target = 0.6; // BGM 默认音量
+    const target = this.channelVolume("bgm");
     const stepMs = Math.max(20, ms / steps);
     let i = 0;
     this.bgmFadeTimer = setInterval(() => {
@@ -152,6 +200,10 @@ export class AudioEngine {
     }
   }
 
+  private channelVolume(channel: "bgm" | "sfx" | "voice"): number {
+    return Math.max(0, Math.min(1, this.volumes.master * this.volumes[channel]));
+  }
+
   dispose() {
     this.clearFadeTimer();
     if (this.bgmEl) {
@@ -159,6 +211,8 @@ export class AudioEngine {
       this.bgmEl.remove();
       this.bgmEl = null;
     }
+    this.stopVoice();
+    this.stopAllSfx();
     this.playedSfxSeqs.clear();
     this.playedVoiceSeqs.clear();
     this.currentBgmId = null;

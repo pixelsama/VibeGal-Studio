@@ -23,6 +23,8 @@ interface AssetCardProps {
   isOrphan: boolean;
   /** 引用数（被多少 manifest 条目引用）。0 = 未登记。 */
   refCount: number;
+  usageCount?: number;
+  unusedInStory?: boolean;
   onDelete: (relPath: string, revision: AssetEntry["revision"]) => void;
   /** 孤儿登记：把该文件加进 manifest（kind 决定放哪张子表）。可选。 */
   onRegisterOrphan?: (entry: AssetEntry) => void;
@@ -35,6 +37,8 @@ export function AssetCard({
   projectPath,
   isOrphan,
   refCount,
+  usageCount = 0,
+  unusedInStory = false,
   onDelete,
   onRegisterOrphan,
   readOnly = false,
@@ -76,7 +80,10 @@ export function AssetCard({
           {isOrphan ? (
             "剧本无法引用"
           ) : (
-            <>引用 {refCount}</>
+            <>
+              manifest {refCount} / 剧本 {usageCount}
+              {unusedInStory && " · 未使用"}
+            </>
           )}
         </span>
       </div>

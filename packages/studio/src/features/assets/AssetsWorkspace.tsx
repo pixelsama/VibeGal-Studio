@@ -28,6 +28,7 @@ import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
 import { AssetsToolbar } from "./AssetsToolbar";
 import { AssetGrid } from "./AssetGrid";
 import { AssetCard, DanglingCard } from "./AssetCard";
+import { analyzeAssetUsage } from "./assetUsage";
 import { CharacterEditor } from "./CharacterEditor";
 import { useAssets } from "./useAssets";
 import { baseName } from "./assetPreview";
@@ -64,6 +65,7 @@ export function AssetsWorkspace({
   const isDirty = draftManifest !== null;
 
   const view = useAssets(project.path, refreshKey, manifest, project.assetReport);
+  const assetUsage = useMemo(() => analyzeAssetUsage(manifest, project.nodes), [manifest, project.nodes]);
 
   function notify(input: ToastInput) {
     setToast({ id: Date.now(), ...input });
@@ -270,6 +272,8 @@ export function AssetsWorkspace({
                     projectPath={project.path}
                     isOrphan={view.orphanPaths.has(entry.relPath)}
                     refCount={refCountByPath.get(entry.relPath) ?? 0}
+                    usageCount={assetUsage.usageCountByPath.get(entry.relPath) ?? 0}
+                    unusedInStory={assetUsage.unusedManifestPaths.has(entry.relPath)}
                     readOnly={readOnly}
                     onDelete={handleDelete}
                     onRegisterOrphan={handleRegisterOrphan}
@@ -658,6 +662,7 @@ export function removeAllRefsToPath(manifest: Manifest, path: string): Manifest 
   };
 
   return {
+    ...manifest,
     backgrounds,
     characters,
     audio: {

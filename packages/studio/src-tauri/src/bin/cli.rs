@@ -12,7 +12,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "console")]
 
 use clap::{Parser, Subcommand, ValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
 #[command(name = "galstudio-cli", about = "GalStudio 项目校验命令行")]
@@ -31,12 +35,51 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
+    /// 导出项目为可运行游戏包
+    Build {
+        /// 项目根目录路径
+        path: String,
+        /// 导出目标。V1 仅支持 web。
+        #[arg(long, value_enum)]
+        target: BuildTarget,
+        /// 输出目录
+        #[arg(long = "out")]
+        out_dir: PathBuf,
+        /// 指定要导出的 renderer id。默认使用 gal.project.json activeRendererId。
+        #[arg(long)]
+        renderer: Option<String>,
+        /// strict 模式下 warning 也会让 build 失败。
+        #[arg(long)]
+        strict: bool,
+        /// 允许 warning，即使 strict 被同时传入也以允许 warning 为准。
+        #[arg(long)]
+        allow_warnings: bool,
+        /// Web 包资源 base path，默认 ./。
+        #[arg(long, default_value = "./")]
+        base_path: String,
+        /// 输出格式：text（默认，人类可读）或 json（结构化）
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum OutputFormat {
     Text,
     Json,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum BuildTarget {
+    Web,
+}
+
+impl BuildTarget {
+    fn as_str(self) -> &'static str {
+        match self {
+            BuildTarget::Web => "web",
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -50,6 +93,58 @@ struct ValidateOutput {
     graph_issues: Vec<app_lib::GraphIssue>,
     #[serde(rename = "assetIssues")]
     asset_issues: Vec<app_lib::GraphIssue>,
+}
+
+#[derive(Debug)]
+struct BuildOptions {
+    project_path: String,
+    target: BuildTarget,
+    out_dir: PathBuf,
+    renderer_id: Option<String>,
+    strict: bool,
+    allow_warnings: bool,
+    base_path: String,
+}
+
+#[derive(Serialize, Debug)]
+struct BuildOutput {
+    ok: bool,
+    target: String,
+    #[serde(rename = "outDir")]
+    out_dir: String,
+    #[serde(rename = "rendererId")]
+    renderer_id: String,
+    warnings: Vec<app_lib::ProjectIssue>,
+}
+
+#[derive(Serialize, Debug)]
+struct BuildError {
+    ok: bool,
+    code: String,
+    message: String,
+    step: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
+    #[serde(rename = "rendererId", skip_serializing_if = "Option::is_none")]
+    renderer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column: Option<u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    issues: Vec<app_lib::ProjectIssue>,
+}
+
+#[derive(Deserialize, Debug)]
+struct WorkerBuildError {
+    code: String,
+    message: String,
+    step: String,
+    file: Option<String>,
+    #[serde(rename = "rendererId")]
+    renderer_id: Option<String>,
+    line: Option<u32>,
+    column: Option<u32>,
 }
 
 fn build_open_error_output(path: &str, message: &str) -> ValidateOutput {
@@ -223,10 +318,442 @@ fn print_issue_detail(issue: &app_lib::ProjectIssue) {
     }
 }
 
+fn build_error(
+    code: &str,
+    message: impl Into<String>,
+    step: &str,
+    file: Option<String>,
+    renderer_id: Option<String>,
+    issues: Vec<app_lib::ProjectIssue>,
+) -> BuildError {
+    BuildError {
+        ok: false,
+        code: code.to_string(),
+        message: message.into(),
+        step: step.to_string(),
+        file,
+        renderer_id,
+        line: None,
+        column: None,
+        issues,
+    }
+}
+
+fn project_issue_is_error(issue: &app_lib::ProjectIssue) -> bool {
+    issue.severity == app_lib::GraphIssueSeverity::Error
+}
+
+fn validation_issues(project: &app_lib::ProjectData) -> Vec<app_lib::ProjectIssue> {
+    project
+        .project_report
+        .as_ref()
+        .map(|report| report.project_issues.clone())
+        .unwrap_or_default()
+}
+
+fn ensure_export_out_dir_safe(project_root: &Path, out_dir: &Path) -> Result<(), BuildError> {
+    let project_root = project_root.canonicalize().map_err(|e| {
+        build_error(
+            "build_path_error",
+            format!("无法定位项目目录 {}: {}", project_root.display(), e),
+            "prepare",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    let out_abs = if out_dir.exists() {
+        out_dir.canonicalize().map_err(|e| {
+            build_error(
+                "build_path_error",
+                format!("无法定位输出目录 {}: {}", out_dir.display(), e),
+                "prepare",
+                None,
+                None,
+                vec![],
+            )
+        })?
+    } else {
+        let parent = out_dir.parent().unwrap_or_else(|| Path::new("."));
+        let parent = parent.canonicalize().map_err(|e| {
+            build_error(
+                "build_path_error",
+                format!("无法定位输出目录父目录 {}: {}", parent.display(), e),
+                "prepare",
+                None,
+                None,
+                vec![],
+            )
+        })?;
+        parent.join(out_dir.file_name().unwrap_or_default())
+    };
+
+    if out_abs == project_root {
+        return Err(build_error(
+            "build_path_error",
+            "输出目录不能是项目根目录",
+            "prepare",
+            None,
+            None,
+            vec![],
+        ));
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("创建目录失败 {}: {}", dst.display(), e))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录失败 {}: {}", src.display(), e))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else if from.is_file() {
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("创建目录失败 {}: {}", parent.display(), e))?;
+            }
+            fs::copy(&from, &to).map_err(|e| {
+                format!(
+                    "复制文件失败 ({} -> {}): {}",
+                    from.display(),
+                    to.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn write_json_file(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败 {}: {}", parent.display(), e))?;
+    }
+    let text = serde_json::to_string_pretty(value).map_err(|e| format!("序列化 JSON 失败: {}", e))?;
+    fs::write(path, text).map_err(|e| format!("写文件失败 {}: {}", path.display(), e))
+}
+
+fn write_text_file(path: &Path, text: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败 {}: {}", parent.display(), e))?;
+    }
+    fs::write(path, text).map_err(|e| format!("写文件失败 {}: {}", path.display(), e))
+}
+
+fn build_worker_path() -> PathBuf {
+    if let Ok(path) = std::env::var("GALSTUDIO_EXPORT_WORKER") {
+        return PathBuf::from(path);
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/build-web-export.mjs")
+}
+
+fn node_executable() -> String {
+    std::env::var("GALSTUDIO_NODE").unwrap_or_else(|_| "node".to_string())
+}
+
+fn parse_worker_error(stderr: &str, renderer_id: &str) -> Option<BuildError> {
+    let start = stderr.find('{')?;
+    let json = &stderr[start..];
+    let worker: WorkerBuildError = serde_json::from_str(json).ok()?;
+    Some(BuildError {
+        ok: false,
+        code: worker.code,
+        message: worker.message,
+        step: worker.step,
+        file: worker.file,
+        renderer_id: worker.renderer_id.or_else(|| Some(renderer_id.to_string())),
+        line: worker.line,
+        column: worker.column,
+        issues: vec![],
+    })
+}
+
+fn run_build_worker(options: &BuildOptions, renderer_id: &str) -> Result<(), BuildError> {
+    let worker = build_worker_path();
+    let output = Command::new(node_executable())
+        .arg(worker)
+        .arg("--project")
+        .arg(&options.project_path)
+        .arg("--out")
+        .arg(&options.out_dir)
+        .arg("--renderer")
+        .arg(renderer_id)
+        .arg("--base-path")
+        .arg(&options.base_path)
+        .output()
+        .map_err(|e| {
+            build_error(
+                "build_worker_failed",
+                format!("无法启动 Web build worker: {}", e),
+                "worker",
+                None,
+                Some(renderer_id.to_string()),
+                vec![],
+            )
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if let Some(error) = parse_worker_error(&stderr, renderer_id) {
+        return Err(error);
+    }
+    Err(build_error(
+        "build_worker_failed",
+        stderr.trim().to_string(),
+        "worker",
+        None,
+        Some(renderer_id.to_string()),
+        vec![],
+    ))
+}
+
+fn built_at_iso() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format!("unix:{secs}")
+}
+
+fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
+    let project = app_lib::open_project_for_cli(&options.project_path).map_err(|message| {
+        build_error(
+            "open_project_failed",
+            message,
+            "validate",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    let issues = validation_issues(&project);
+    let errors: Vec<_> = issues.iter().filter(|issue| project_issue_is_error(issue)).collect();
+    if let Some(first) = errors.first() {
+        return Err(build_error(
+            "project_validation_failed",
+            "项目校验存在 error，build 已停止",
+            "validate",
+            first.file.clone(),
+            None,
+            issues,
+        ));
+    }
+    if options.strict && !options.allow_warnings && !issues.is_empty() {
+        let first = &issues[0];
+        return Err(build_error(
+            "project_validation_warnings",
+            "strict 模式下项目 warning 会阻止 build",
+            "validate",
+            first.file.clone(),
+            None,
+            issues,
+        ));
+    }
+
+    let renderer_id = options
+        .renderer_id
+        .clone()
+        .unwrap_or_else(|| project.meta.active_renderer_id.clone());
+    if !project.renderer_ids.iter().any(|id| id == &renderer_id) {
+        return Err(build_error(
+            "renderer_not_found",
+            format!("渲染层不存在或缺少 index.tsx: {renderer_id}"),
+            "renderer",
+            Some(format!("renderers/{renderer_id}/index.tsx")),
+            Some(renderer_id),
+            vec![],
+        ));
+    }
+
+    let project_root = PathBuf::from(&project.path);
+    ensure_export_out_dir_safe(&project_root, &options.out_dir)?;
+    if options.out_dir.exists() {
+        fs::remove_dir_all(&options.out_dir).map_err(|e| {
+            build_error(
+                "prepare_out_dir_failed",
+                format!("清理输出目录失败 {}: {}", options.out_dir.display(), e),
+                "prepare",
+                None,
+                Some(renderer_id.clone()),
+                vec![],
+            )
+        })?;
+    }
+    fs::create_dir_all(options.out_dir.join("runtime")).map_err(|e| {
+        build_error(
+            "prepare_out_dir_failed",
+            format!("创建输出目录失败 {}: {}", options.out_dir.display(), e),
+            "prepare",
+            None,
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+    fs::create_dir_all(options.out_dir.join("renderer")).map_err(|e| {
+        build_error(
+            "prepare_out_dir_failed",
+            format!("创建 renderer 输出目录失败: {}", e),
+            "prepare",
+            None,
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+
+    copy_dir_recursive(&project_root.join("content"), &options.out_dir.join("content")).map_err(|message| {
+        build_error(
+            "copy_content_failed",
+            message,
+            "content",
+            Some("content".to_string()),
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+
+    let title = project
+        .content
+        .meta
+        .get("title")
+        .and_then(|value| value.as_str())
+        .unwrap_or(&project.meta.name);
+    let game_manifest = serde_json::json!({
+        "projectId": project.meta.name,
+        "title": title,
+        "rendererId": renderer_id.clone(),
+        "contractVersion": 1,
+        "buildTarget": options.target.as_str(),
+        "basePath": options.base_path.clone(),
+        "builtAt": built_at_iso(),
+        "galstudioBuildSchemaVersion": 1,
+    });
+    write_json_file(&options.out_dir.join("game.manifest.json"), &game_manifest).map_err(|message| {
+        build_error(
+            "write_manifest_failed",
+            message,
+            "manifest",
+            Some("game.manifest.json".to_string()),
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+    write_text_file(
+        &options.out_dir.join("index.html"),
+        r#"<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GalStudio Export</title>
+    <style>
+      html, body, #root { width: 100%; height: 100%; margin: 0; background: #000; }
+      body { overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./runtime/bundle.js"></script>
+  </body>
+</html>
+"#,
+    )
+    .map_err(|message| {
+        build_error(
+            "write_index_failed",
+            message,
+            "host",
+            Some("index.html".to_string()),
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+
+    run_build_worker(&options, &renderer_id)?;
+
+    Ok(BuildOutput {
+        ok: true,
+        target: options.target.as_str().to_string(),
+        out_dir: options.out_dir.to_string_lossy().to_string(),
+        renderer_id,
+        warnings: issues,
+    })
+}
+
+fn print_build_json<T: Serialize>(output: &T) {
+    println!("{}", serde_json::to_string_pretty(output).unwrap());
+}
+
+fn print_build_error_text(error: &BuildError) {
+    eprintln!("[{}] {} (step={})", error.code, error.message, error.step);
+    if let Some(renderer_id) = &error.renderer_id {
+        eprintln!("renderer: {renderer_id}");
+    }
+    if let Some(file) = &error.file {
+        if let (Some(line), Some(column)) = (error.line, error.column) {
+            eprintln!("file: {file}:{line}:{column}");
+        } else {
+            eprintln!("file: {file}");
+        }
+    }
+    for issue in &error.issues {
+        eprintln!("[{:?}] {} (code={})", issue.severity, issue.message, issue.code);
+    }
+}
+
+fn run_build(options: BuildOptions, format: OutputFormat) -> i32 {
+    match build_web_project(options) {
+        Ok(output) => {
+            match format {
+                OutputFormat::Json => print_build_json(&output),
+                OutputFormat::Text => println!(
+                    "✓ Web build 完成: {} (renderer={})",
+                    output.out_dir, output.renderer_id
+                ),
+            }
+            0
+        }
+        Err(error) => {
+            match format {
+                OutputFormat::Json => print_build_json(&error),
+                OutputFormat::Text => print_build_error_text(&error),
+            }
+            if error.code == "open_project_failed" {
+                70
+            } else {
+                1
+            }
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let code = match cli.command {
         Commands::Validate { path, format } => run_validate(&path, format),
+        Commands::Build {
+            path,
+            target,
+            out_dir,
+            renderer,
+            strict,
+            allow_warnings,
+            base_path,
+            format,
+        } => run_build(
+            BuildOptions {
+                project_path: path,
+                target,
+                out_dir,
+                renderer_id: renderer,
+                strict,
+                allow_warnings,
+                base_path,
+            },
+            format,
+        ),
     };
     std::process::exit(code);
 }
@@ -273,6 +800,37 @@ mod tests {
         );
         if let Some(graph) = graph_json {
             write_text(&root.join("content/graph.json"), graph);
+        }
+    }
+
+    fn make_exportable_project(root: &std::path::Path) {
+        make_project(
+            root,
+            Some(
+                r#"{"version":1,"entryNodeId":"start","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}},{"id":"end","title":"End","file":"nodes/end.json","position":{"x":200,"y":0}}],"edges":[{"id":"start__end","from":"start","to":"end","mode":"linear","label":null,"condition":null}]}"#,
+            ),
+        );
+        write_text(&root.join("content/nodes/start.json"), r#"[{"t":"narrate","text":"start"}]"#);
+        write_text(&root.join("content/nodes/end.json"), r#"[{"t":"narrate","text":"end"}]"#);
+        write_text(
+            &root.join("renderers/default/index.tsx"),
+            r#"export default { id: "default", name: "Default", Component: () => null };"#,
+        );
+        write_text(
+            &root.join("renderers/alt/index.tsx"),
+            r#"export default { id: "alt", name: "Alt Selected Renderer", Component: () => null };"#,
+        );
+    }
+
+    fn build_options(project: &std::path::Path, out_dir: &std::path::Path) -> BuildOptions {
+        BuildOptions {
+            project_path: project.to_string_lossy().to_string(),
+            target: BuildTarget::Web,
+            out_dir: out_dir.to_path_buf(),
+            renderer_id: None,
+            strict: false,
+            allow_warnings: false,
+            base_path: "./".to_string(),
         }
     }
 
@@ -467,6 +1025,101 @@ mod tests {
         let path = example_project("sample-novel");
         let code = run_validate(path.to_string_lossy().as_ref(), OutputFormat::Json);
         assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn build_web_fails_when_project_validation_has_errors() {
+        let dir = std::env::temp_dir().join(format!(
+            "galstudio-cli-build-invalid-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let out_dir = dir.join("dist-game");
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"ghost","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}}],"edges":[]}"#,
+            ),
+        );
+        write_text(&dir.join("content/nodes/start.json"), "[]");
+        write_text(
+            &dir.join("renderers/default/index.tsx"),
+            r#"export default { id: "default", name: "Default", Component: () => null };"#,
+        );
+
+        let err = build_web_project(build_options(&dir, &out_dir)).expect_err("validation error should fail build");
+
+        assert_eq!(err.code, "project_validation_failed");
+        assert_eq!(err.step, "validate");
+        assert_eq!(err.file.as_deref(), Some("content/graph.json"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn build_web_uses_selected_renderer_and_copies_content_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "galstudio-cli-build-selected-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let out_dir = dir.join("dist-game");
+        make_exportable_project(&dir);
+        let mut options = build_options(&dir, &out_dir);
+        options.renderer_id = Some("alt".to_string());
+        options.base_path = "/games/test/".to_string();
+
+        let output = build_web_project(options).expect("build should succeed");
+
+        assert!(output.ok);
+        assert_eq!(output.renderer_id, "alt");
+        assert!(out_dir.join("index.html").is_file());
+        assert!(out_dir.join("content/graph.json").is_file());
+        assert!(out_dir.join("content/manifest.json").is_file());
+        assert!(out_dir.join("content/meta.json").is_file());
+        assert!(out_dir.join("content/nodes/start.json").is_file());
+        assert!(out_dir.join("runtime/bundle.js").is_file());
+
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out_dir.join("game.manifest.json")).unwrap()).unwrap();
+        assert_eq!(manifest["rendererId"], "alt");
+        assert_eq!(manifest["basePath"], "/games/test/");
+        assert_eq!(manifest["buildTarget"], "web");
+        let bundle = std::fs::read_to_string(out_dir.join("runtime/bundle.js")).unwrap();
+        assert!(bundle.contains("Alt Selected Renderer"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn build_web_reports_renderer_compile_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "galstudio-cli-build-renderer-error-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let out_dir = dir.join("dist-game");
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("renderers/alt/index.tsx"),
+            "import debounce from \"lodash\";\nexport default { id: \"alt\", name: \"Alt\", Component: () => debounce(null) };",
+        );
+        let mut options = build_options(&dir, &out_dir);
+        options.renderer_id = Some("alt".to_string());
+
+        let err = build_web_project(options).expect_err("unsupported renderer import should fail build");
+
+        assert_eq!(err.code, "renderer_unsupported_import");
+        assert_eq!(err.step, "renderer");
+        assert_eq!(err.renderer_id.as_deref(), Some("alt"));
+        assert_eq!(err.file.as_deref(), Some("renderers/alt/index.tsx"));
+        assert_eq!(err.line, Some(1));
+        assert_eq!(err.column, Some(22));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
