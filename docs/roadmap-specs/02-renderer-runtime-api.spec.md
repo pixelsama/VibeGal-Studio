@@ -61,11 +61,13 @@ interface RendererProps {
 }
 ```
 
-兼容策略：
+迁移策略：
 
-- 旧 renderer 仍可收到旧字段，或通过 adapter 转换。
-- 新 renderer 使用 `runtime`。
-- contract version 决定哪些字段可用。
+- GalStudio 尚未发布正式版本，V1 采用 breaking change。
+- 旧的 `onAdvance`、`onChoose`、`onToggleAuto`、`onToggleRecording`、`onSeekBy` 等顶层回调从 `RendererProps` 移除。
+- 新 renderer 必须使用 `controls` 和 `runtime`。
+- 默认 renderer、项目模板、Studio preview host、export runtime host 同步迁移到 `contractVersion: 1`。
+- 不提供 v0 adapter；不把旧契约写进新项目模板。
 
 ## 4. RuntimeControls
 
@@ -241,7 +243,7 @@ interface DebugService {
 
 ## 12. 验收标准
 
-- `RendererProps` 有扩展方案且兼容旧 renderer。
+- `RendererProps` 改为 `controls` / `runtime` 分组契约，不保留旧顶层回调。
 - 新 runtime API 分组清晰。
 - save/global/settings 三层不会互相覆盖。
 - renderer 能通过 API 实现正式 UI。
@@ -252,7 +254,7 @@ interface DebugService {
 
 | 测试名 | 断言 |
 | --- | --- |
-| `rendererPropsKeepsLegacyAdvanceCallback` | 旧 renderer 仍可使用旧推进回调 |
+| `rendererPropsRequiresControlsAdvance` | renderer 通过 `controls.advance()` 推进，不再接收 `onAdvance` |
 | `saveServiceDoesNotMutateGlobalPersistentOnLoad` | load save slot 不回滚全局解锁/已读 |
 | `settingsServicePersistsVolumeIndependentlyFromSaveSlot` | 读档不覆盖音量设置 |
 | `historyServiceReturnsBacklogEntriesWithStoryPoint` | backlog entry 可定位回故事点 |
@@ -260,7 +262,7 @@ interface DebugService {
 
 ## 14. V1 决策
 
-- 旧 renderer 顶层回调兼容整个 `contractVersion: 1` 周期。只有进入未来 `contractVersion: 2` 时才允许移除旧字段；v1 内新增能力必须通过 adapter 或可选字段保持兼容。
+- V1 是 breaking renderer contract。旧顶层回调在实现本 spec 时移除；当前项目内已有 renderer 需要随工程迁移。
 - `controls` 与 `runtime` 在 v1 host 中必须存在。`runtime.debug` 是唯一可选 debug-only service；save/history/persistent/settings/audio 在完成本 spec 后属于 v1 runtime 的正式服务，若宿主暂未实现，必须返回结构化 unavailable error，而不是让字段缺失。
 - Web export V1 使用可插拔 `RuntimeStorageAdapter`，默认实现使用 `localStorage` 存 save slots、global persistent、runtime settings。V1 不把截图二进制塞进 save record；若浏览器禁用 storage，降级为 in-memory adapter 并向 renderer 暴露 warning。
 - `debug` service 在 production export 中默认完全剔除。仅 Studio preview 与显式 dev build 可暴露 `runtime.debug`。

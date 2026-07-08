@@ -242,8 +242,8 @@ interface RendererManifest {
 
 原则：
 
-- Studio 支持旧 renderer 的兼容加载。
-- 新 runtime API 不应突然破坏旧 renderer。
+- GalStudio 尚未发布正式版本，V1 允许 breaking renderer contract migration。
+- Studio、默认 renderer 模板、项目初始化模板直接迁移到当前 `contractVersion: 1`，不保留旧顶层回调契约。
 - validation 应能发现明显不兼容的 renderer。
 - 完整 TSX 编译校验可以由 Studio 或后续 CLI renderer-check 完成，不强求立刻塞进现有 Rust validate。
 
