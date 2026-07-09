@@ -1,12 +1,12 @@
 # Spec 01 — Runtime Contract Foundation
 
 > 状态：已归档。
-> 来源：[project-wiki.md](../../project-wiki.md) 的 Phase C、Fable 审阅意见，以及当前 `@galstudio/engine` 的 graph-aware player 架构。
+> 来源：[project-wiki.md](../../project-wiki.md) 的 Phase C、Fable 审阅意见，以及当前 `@vibegal/engine` 的 graph-aware player 架构。
 > 目标：先建立存档、已读、回滚、backlog、settings、renderer 契约扩展都依赖的运行时地基。
 
 ## 1. 背景
 
-当前 GalStudio 已有：
+当前 VibeGal-Studio 已有：
 
 - graph-first 项目结构；
 - `Instruction[]` 节点文件；
@@ -26,7 +26,7 @@
 
 ## 2. 产品边界
 
-GalStudio 不实现正式存档菜单、backlog 菜单、设置菜单或标题画面。
+VibeGal-Studio 不实现正式存档菜单、backlog 菜单、设置菜单或标题画面。
 
 本 spec 负责：
 
@@ -242,7 +242,7 @@ interface RendererManifest {
 
 原则：
 
-- GalStudio 尚未发布正式版本，V1 允许 breaking renderer contract migration。
+- VibeGal-Studio 尚未发布正式版本，V1 允许 breaking renderer contract migration。
 - Studio、默认 renderer 模板、项目初始化模板直接迁移到当前 `contractVersion: 1`，不保留旧顶层回调契约。
 - validation 应能发现明显不兼容的 renderer。
 - 完整 TSX 编译校验可以由 Studio 或后续 CLI renderer-check 完成，不强求立刻塞进现有 Rust validate。
@@ -289,7 +289,7 @@ interface RendererManifest {
 
 ## 8. 实现记录
 
-- 2026-07-08：`@galstudio/engine` 新增 runtime contract schema/types 与工具：`StoryPointId`、`ReadTextKey`、`RuntimeSnapshot`、`DecisionLogEvent`、`SaveSlotRecord`、`GlobalPersistentRecord`、`RuntimeSettingsRecord`。
+- 2026-07-08：`@vibegal/engine` 新增 runtime contract schema/types 与工具：`StoryPointId`、`ReadTextKey`、`RuntimeSnapshot`、`DecisionLogEvent`、`SaveSlotRecord`、`GlobalPersistentRecord`、`RuntimeSettingsRecord`。
 - 2026-07-08：`say`、`narrate`、`pause`、`wait` 接受稳定 `id` 字段；validation 对缺失停点 id 给 `instruction_id_missing` warning，对同节点重复停点 id 给 `instruction_id_duplicate` error，不自动改写用户文件。
 - 2026-07-08：已读文本 hash 使用 NFC、CRLF/LF 统一、逐行行尾空白移除后的文本。
 - 2026-07-08：`RuntimeSnapshot`/`SaveSlotRecord` 只保存语义状态，不序列化 effect、transition、seq、sprite change id、typing progress 等瞬时字段。

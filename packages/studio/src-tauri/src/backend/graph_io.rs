@@ -23,7 +23,7 @@ fn missing_graph_issue() -> GraphIssue {
     GraphIssue {
         severity: GraphIssueSeverity::Error,
         code: "missing_graph".to_string(),
-        message: "缺少 content/graph.json：GalStudio 项目必须以脚本图作为剧本入口。".to_string(),
+        message: "缺少 content/graph.json：VibeGal-Studio 项目必须以脚本图作为剧本入口。".to_string(),
         file: Some("content/graph.json".to_string()),
         json_path: Some("$".to_string()),
         node_id: None,

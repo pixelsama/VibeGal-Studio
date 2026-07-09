@@ -12,7 +12,7 @@ import {
   type RuntimeServices,
   RuntimeServiceUnavailableError,
   createInMemoryRuntimeServices,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 import { readStageResolution } from "../../lib/projectMeta";

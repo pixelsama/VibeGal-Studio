@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { RendererManifest } from "@galstudio/engine";
+import type { RendererManifest } from "@vibegal/engine";
 import { getRendererDiagnostics, loadRenderer, type RendererDiagnostic } from "../renderers/rendererLoader";
 
 export function useRendererComponent(projectPath: string, rendererId: string) {

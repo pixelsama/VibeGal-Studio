@@ -61,7 +61,7 @@ export async function createProject(parentDir: string, name: string): Promise<Pr
   return invoke<ProjectData>("create_project", { parentDir, name });
 }
 
-/** 把指定目录初始化为 GalStudio 项目（不额外套子目录），然后打开 */
+/** 把指定目录初始化为 VibeGal-Studio 项目（不额外套子目录），然后打开 */
 export async function initializeProject(path: string): Promise<ProjectData> {
   return invoke<ProjectData>("initialize_project", { path });
 }
@@ -229,17 +229,17 @@ export async function saveAppSettings(settings: AppSettings): Promise<void> {
   await invoke("save_app_settings", { settings });
 }
 
-/** 检查 galstudio-cli 是否已通过 GalStudio 管理的 symlink 安装到 PATH。 */
+/** 检查 vibegal-cli 是否已通过 VibeGal-Studio 管理的 symlink 安装到 PATH。 */
 export async function getCliToolStatus(): Promise<CliToolStatus> {
   return invoke<CliToolStatus>("cli_tool_status");
 }
 
-/** 显式安装 galstudio-cli 命令行链接。 */
+/** 显式安装 vibegal-cli 命令行链接。 */
 export async function installCliTool(): Promise<CliToolStatus> {
   return invoke<CliToolStatus>("install_cli_tool");
 }
 
-/** 卸载 GalStudio 管理的 galstudio-cli 命令行链接。 */
+/** 卸载 VibeGal-Studio 管理的 vibegal-cli 命令行链接。 */
 export async function uninstallCliTool(): Promise<CliToolStatus> {
   return invoke<CliToolStatus>("uninstall_cli_tool");
 }

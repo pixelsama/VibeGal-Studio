@@ -1,4 +1,4 @@
-# GalStudio 发布清单
+# VibeGal-Studio 发布清单
 
 用于 PR/发布前的人工核对与自动化验收记录。日期记录格式建议 `YYYY-MM-DD HH:mm`。
 
@@ -14,9 +14,9 @@
 ## 核心验收场景
 - [ ] `pnpm smoke:release` 成功（clean sample exit 0，broken samples exit 非零）
 - [ ] CLI：
-  - [ ] `galstudio-cli validate examples/sample-novel --format json` 出口码 0
-  - [ ] `galstudio-cli validate examples/broken-projects/dangling-edge --format json` 出口码 非 0
-  - [ ] `galstudio-cli validate examples/broken-projects/missing-node-file --format json` 出口码 2
+  - [ ] `vibegal-cli validate examples/sample-novel --format json` 出口码 0
+  - [ ] `vibegal-cli validate examples/broken-projects/dangling-edge --format json` 出口码 非 0
+  - [ ] `vibegal-cli validate examples/broken-projects/missing-node-file --format json` 出口码 2
 - [ ] 打开 `examples/sample-novel`，主工作区可切换 Render / Script / Assets
 - [ ] 记录一次热重载/外部改文件验收（有脚本：`docs/script-graph/14-release-readiness.spec.md` 的 Smoke 模板）
 

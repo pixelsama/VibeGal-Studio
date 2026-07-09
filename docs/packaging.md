@@ -9,12 +9,12 @@
 
 ## 常用命令（本地）
 - 安装依赖：`pnpm install`
-- 生成前端产物：`pnpm --filter @galstudio/studio build`
+- 生成前端产物：`pnpm --filter @vibegal/studio build`
 - 导出 schema 并校验漂移：`pnpm run check:schemas`
 - 版本一致性校验：`pnpm run check:versions`
 - 发布前 smoke：`pnpm smoke:release`
 - 打包（未签名）：
-  - `pnpm --filter @galstudio/studio tauri build`
+  - `pnpm --filter @vibegal/studio tauri build`
 - 产物目录（默认）：
   - `packages/studio/src-tauri/target/release/bundle/`
 

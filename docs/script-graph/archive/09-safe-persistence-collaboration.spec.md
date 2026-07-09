@@ -2,12 +2,12 @@
 
 > 状态：已归档。
 > 前置：当前 watcher 可感知外部文件变化；`NodeEditor` 已能在未保存时提示外部更新。
-> 目标：让 GalStudio 和外部 Agent 同时编辑项目文件时，减少静默覆盖和不可恢复删除。
+> 目标：让 VibeGal-Studio 和外部 Agent 同时编辑项目文件时，减少静默覆盖和不可恢复删除。
 > 归档记录：2026-07-04 落地 project/graph/manifest/node revision 检测、atomic write、trash delete、graph position patch 与冲突草稿保留；graph undo/redo 拆至 [16-graph-undo-redo.spec.md](../16-graph-undo-redo.spec.md)。
 
 ## 1. 需求
 
-GalStudio 的数据源是项目目录。外部 Agent、脚本和用户都可能直接修改 `content/`、`renderers/`、`gal.project.json`。
+VibeGal-Studio 的数据源是项目目录。外部 Agent、脚本和用户都可能直接修改 `content/`、`renderers/`、`gal.project.json`。
 因此写入操作必须具备基本协作安全：
 
 - 保存前检测被写文件是否自加载后发生变化。
@@ -238,7 +238,7 @@ saveGraphPositions(projectPath, updates: { id: string; position: { x: number; y:
 - 2026-07-04：Rust TDD 覆盖删除节点文件与资产文件移动到 `.galstudio/trash/<timestamp>/content/...`，并写入 `trash.json`。
 - 2026-07-04：Rust TDD 覆盖 `save_graph_positions` 在外部新增 node/edge 后只更新目标节点 position，保留外部新增内容。
 - 2026-07-04：前端 Vitest 覆盖 NodeEditor 写冲突 draft 保留、graph 拖拽 position patch 构造、资产删除/manifest 保存 revision 传递。
-- 2026-07-04：`cargo test --lib`、`cargo check --lib`、`pnpm --filter @galstudio/studio test -- --runInBand`、`pnpm --filter @galstudio/studio exec tsc -b`、`pnpm --filter @galstudio/studio build` 通过。Build 仅保留 Vite dynamic import 分块警告，不阻断归档。
+- 2026-07-04：`cargo test --lib`、`cargo check --lib`、`pnpm --filter @vibegal/studio test -- --runInBand`、`pnpm --filter @vibegal/studio exec tsc -b`、`pnpm --filter @vibegal/studio build` 通过。Build 仅保留 Vite dynamic import 分块警告，不阻断归档。
 
 ## 8. 可归档标准
 

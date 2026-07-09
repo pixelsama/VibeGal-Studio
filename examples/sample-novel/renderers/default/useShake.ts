@@ -8,7 +8,7 @@
  * 用 CSS 变量 + keyframe 动画驱动容器抖动。组件层自由实现，这只是默认实现。
  */
 import { useEffect, useRef, useState } from "react";
-import type { NovelState } from "@galstudio/engine";
+import type { NovelState } from "@vibegal/engine";
 
 export interface ShakeResult {
   /** 应用到内容容器的 style：触发抖动动画 */

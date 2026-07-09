@@ -5,7 +5,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as ReactDOMClient from "react-dom/client";
 import * as jsxRuntime from "react/jsx-runtime";
-import * as engine from "@galstudio/engine";
+import * as engine from "@vibegal/engine";
 import "./index.css";
 import App from "./App";
 import { VENDOR_GLOBAL } from "./features/renderers/runtimeCompiler";
@@ -17,7 +17,7 @@ import { VENDOR_GLOBAL } from "./features/renderers/runtimeCompiler";
   "react/jsx-runtime": jsxRuntime,
   "react-dom": ReactDOM,
   "react-dom/client": ReactDOMClient,
-  "@galstudio/engine": engine,
+  "@vibegal/engine": engine,
 };
 
 createRoot(document.getElementById("root")!).render(

@@ -1,4 +1,4 @@
-import type { Instruction } from "@galstudio/engine";
+import type { Instruction } from "@vibegal/engine";
 
 export type InstructionDraftParseResult =
   | { ok: true; instructions: Instruction[] }

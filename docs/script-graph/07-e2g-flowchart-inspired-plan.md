@@ -4,7 +4,7 @@
 > 当前契约以 [AGENTS.md](../../AGENTS.md)、[overview.md](./overview.md) 和 [node-and-graph-schema.md](./node-and-graph-schema.md) 为准。
 
 > Source study: `/Users/pixelsama/Dev/Github/Everything2Galgame` main branch.
-> Scope: 研究 Everything2Galgame 的 Story Flow，从功能和前端两个方面提炼可迁移方案，并结合 GalStudio 当前 Script Graph 架构规划下一阶段。
+> Scope: 研究 Everything2Galgame 的 Story Flow，从功能和前端两个方面提炼可迁移方案，并结合 VibeGal-Studio 当前 Script Graph 架构规划下一阶段。
 
 ## 1. 结论
 
@@ -16,7 +16,7 @@ Story Flow 先搭剧情地图
   -> 节点内再写具体演出/台词
 ```
 
-这与 GalStudio 已经确定的 Script Graph 心智一致。GalStudio 应继续保留现有的 `@xyflow/react` 方案，不照搬 Everything2Galgame 的手写 SVG 画布；但要吸收它在「创建入口、右键菜单、节点状态、inspector、自动排布、安全删除、节点进入体验」上的成熟交互。
+这与 VibeGal-Studio 已经确定的 Script Graph 心智一致。VibeGal-Studio 应继续保留现有的 `@xyflow/react` 方案，不照搬 Everything2Galgame 的手写 SVG 画布；但要吸收它在「创建入口、右键菜单、节点状态、inspector、自动排布、安全删除、节点进入体验」上的成熟交互。
 
 ## 2. Everything2Galgame 的实现摘要
 
@@ -62,14 +62,14 @@ Everything2Galgame 没有用 React Flow，而是自己实现：
 
 不适合直接搬的部分：
 
-- 手写 SVG 画布成本高，GalStudio 已经有 React Flow，继续用 React Flow 更稳。
-- Everything2Galgame 的 scene/frame/capability runtime 与 GalStudio 的 `Instruction[]` 节点模型不同，不能照搬 choice/terminator 的语义。
-- Scene Canvas 的所见即所得编辑很强，但对当前 GalStudio 是后续大功能，不应阻塞流程图 V1。
-- 它的 Electron UI adapter、完整 i18n、复杂菜单系统偏重，GalStudio 当前阶段应先做轻量版本。
+- 手写 SVG 画布成本高，VibeGal-Studio 已经有 React Flow，继续用 React Flow 更稳。
+- Everything2Galgame 的 scene/frame/capability runtime 与 VibeGal-Studio 的 `Instruction[]` 节点模型不同，不能照搬 choice/terminator 的语义。
+- Scene Canvas 的所见即所得编辑很强，但对当前 VibeGal-Studio 是后续大功能，不应阻塞流程图 V1。
+- 它的 Electron UI adapter、完整 i18n、复杂菜单系统偏重，VibeGal-Studio 当前阶段应先做轻量版本。
 
-## 3. GalStudio 当前状态
+## 3. VibeGal-Studio 当前状态
 
-GalStudio 已具备流程图地基：
+VibeGal-Studio 已具备流程图地基：
 
 - `content/graph.json` + `content/nodes/*.json` 数据契约。
 - 缺失 `content/graph.json` 时会报 issue，而不是合成旧 chapters。
@@ -175,14 +175,14 @@ GalStudio 已具备流程图地基：
 
 ### Phase 11: 外部数据协作增强
 
-目标：让外部工具/Agent 更容易安全地改图，同时保持 GalStudio 不接入 AI 的产品边界。这里的重点是降低外部 AI coding
+目标：让外部工具/Agent 更容易安全地改图，同时保持 VibeGal-Studio 不接入 AI 的产品边界。这里的重点是降低外部 AI coding
 出错概率，而不是在编辑器里增加一个需要用户再切回 Codex/Claude Code 的中转操作。
 
 任务：
 
 - 为 `graph.json` 和节点文件生成 JSON Schema 或 Zod schema 导出，供外部工具校验。
 - 在文档中补充“外部工具/Agent 直接改文件”的安全操作范式。
-- 增加 CLI 校验命令，例如 `galstudio-cli validate <project-path> --format json`，让外部 Agent 能直接读取结构化错误并自主迭代。
+- 增加 CLI 校验命令，例如 `vibegal-cli validate <project-path> --format json`，让外部 Agent 能直接读取结构化错误并自主迭代。
 - CLI 校验失败时使用非零退出码，错误中包含 node id、edge id、文件路径、JSON path 和稳定错误码。
 - 保持图文件格式稳定，减少外部 Agent 修改后的 diff 噪音。
 - 继续禁止应用内 AI 按钮、prompt 生成、provider 设置、token 存储或 Agent 会话管理。
@@ -233,11 +233,11 @@ Script Graph 的目标布局：
 
 ## 7. 明确不做的移植
 
-| Everything2Galgame 做法 | GalStudio 处理 |
+| Everything2Galgame 做法 | VibeGal-Studio 处理 |
 | --- | --- |
 | 手写 SVG 边和 pan/zoom | 不移植，继续用 React Flow |
 | scene/frame/capability 状态机 | 不移植，继续用 `Instruction[]` |
-| choice 必须是 scene terminator | 暂不采纳，GalStudio 当前没有正式分支指令 |
+| choice 必须是 scene terminator | 暂不采纳，VibeGal-Studio 当前没有正式分支指令 |
 | 背景缩略图作为节点主视觉 | 后续资产系统成熟后再做 |
 | 章节切换器和 story states panel | 暂不做，节点粒度先稳定 |
 | 大型 WYSIWYG Scene Canvas | 作为远期候选，不进入近期流程图计划 |
@@ -253,4 +253,4 @@ Script Graph 的目标布局：
 - 纯函数测试比例高，符合当前项目 TDD 方式。
 - 对外部自动化很友好：外部工具改出坏图时，用户能马上看到并定位。
 
-完成 Phase 7 + Phase 8 后，GalStudio 的 Script Graph 就会从「数据可视化」进入「可日常使用的剧情流程工具」阶段。
+完成 Phase 7 + Phase 8 后，VibeGal-Studio 的 Script Graph 就会从「数据可视化」进入「可日常使用的剧情流程工具」阶段。

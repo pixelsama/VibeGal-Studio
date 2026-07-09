@@ -13,13 +13,13 @@ app_realpath() {
 
 APP_PATH="$(app_realpath "${BASH_SOURCE[0]}")"
 if [ -z "$APP_PATH" ]; then
-	echo "Unable to determine GalStudio app path from symlink: ${BASH_SOURCE[0]}" >&2
+	echo "Unable to determine VibeGal-Studio app path from symlink: ${BASH_SOURCE[0]}" >&2
 	exit 1
 fi
 
-CLI="$APP_PATH/Contents/MacOS/galstudio-cli"
+CLI="$APP_PATH/Contents/MacOS/vibegal-cli"
 if [ ! -x "$CLI" ]; then
-	echo "GalStudio CLI sidecar not found or not executable: $CLI" >&2
+	echo "VibeGal-Studio CLI sidecar not found or not executable: $CLI" >&2
 	exit 1
 fi
 

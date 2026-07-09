@@ -1,12 +1,13 @@
 {
-  "name": "galstudio",
+  "name": "vibegal-studio",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
-    "dev": "pnpm --filter @galstudio/studio dev",
+    "dev": "pnpm --filter @vibegal/studio dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "tauri": "pnpm --filter @galstudio/studio tauri",
+    "tauri": "pnpm --filter @vibegal/studio tauri",
     "check:versions": "node scripts/check-version-consistency.mjs",
     "check:schemas": "node scripts/check-schema-drift.mjs",
     "check:doc-contract": "node scripts/check-doc-contract.mjs",

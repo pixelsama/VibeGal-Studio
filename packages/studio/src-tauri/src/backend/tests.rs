@@ -8,7 +8,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("galstudio-{name}-{stamp}"))
+        std::env::temp_dir().join(format!("vibegal-{name}-{stamp}"))
     }
 
     fn write_text(path: &Path, text: &str) {
@@ -1781,9 +1781,9 @@ mod tests {
         assert!(agent_instructions.contains("content/nodes/*.json"));
         assert!(agent_instructions.contains("Instruction[]"));
         assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
-        assert!(agent_instructions.contains("galstudio-cli validate . --format json"));
+        assert!(agent_instructions.contains("vibegal-cli validate . --format json"));
         assert!(agent_instructions.contains(
-            "/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json"
+            "/Applications/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli validate . --format json"
         ));
         assert!(agent_instructions.contains("missing_graph"));
         assert!(agent_instructions.contains("content/chapters/"));
@@ -1794,13 +1794,13 @@ mod tests {
         assert!(project_readme.contains("content/chapters/"));
         assert!(project_readme.contains(".galstudio/renderer-contract.md"));
         assert!(project_readme.contains(
-            "/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json"
+            "/Applications/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli validate . --format json"
         ));
         let renderer_contract =
             fs::read_to_string(project.join(".galstudio/renderer-contract.md")).unwrap();
         assert!(renderer_contract.contains("RendererManifest"));
         assert!(renderer_contract.contains("renderers/<id>/index.tsx"));
-        assert!(renderer_contract.contains("@galstudio/engine"));
+        assert!(renderer_contract.contains("@vibegal/engine"));
         assert_eq!(
             fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
             "export default {};"
@@ -2769,13 +2769,13 @@ mod tests {
         let root = unique_temp_dir("cli-status");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
-        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        let launcher = root.join("VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli");
+        let sidecar = root.join("VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
         fs::create_dir_all(launcher.parent().unwrap()).unwrap();
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::write(&launcher, "#!/bin/sh\n").unwrap();
         fs::write(&sidecar, "#!/bin/sh\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
 
         create_cli_tool_symlink(&launcher, &link).unwrap();
         let status = cli_tool_status_inner(
@@ -2800,13 +2800,13 @@ mod tests {
         let root = unique_temp_dir("cli-status-no-app-path");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
-        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        let launcher = root.join("VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli");
+        let sidecar = root.join("VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
         fs::create_dir_all(launcher.parent().unwrap()).unwrap();
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::write(&launcher, "#!/bin/sh\n").unwrap();
         fs::write(&sidecar, "#!/bin/sh\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
 
         create_cli_tool_symlink(&launcher, &link).unwrap();
         let status =
@@ -2825,17 +2825,17 @@ mod tests {
     fn cli_tool_candidate_link_paths_use_global_shell_path_on_macos() {
         assert_eq!(
             cli_tool_candidate_link_paths(),
-            vec![PathBuf::from("/usr/local/bin/galstudio-cli")]
+            vec![PathBuf::from("/usr/local/bin/vibegal-cli")]
         );
     }
 
     #[test]
     fn cli_launcher_path_uses_resource_bin_wrapper() {
-        let resources = PathBuf::from("/Applications/galstudio.app/Contents/Resources");
+        let resources = PathBuf::from("/Applications/VibeGal-Studio.app/Contents/Resources");
 
         assert_eq!(
             cli_launcher_path_from_resource_dir(&resources),
-            resources.join("bin/galstudio-cli")
+            resources.join("bin/vibegal-cli")
         );
     }
 
@@ -2844,13 +2844,13 @@ mod tests {
         let root = unique_temp_dir("cli-install-wrapper");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
-        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        let launcher = root.join("VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli");
+        let sidecar = root.join("VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
         fs::create_dir_all(launcher.parent().unwrap()).unwrap();
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::write(&launcher, "#!/usr/bin/env bash\n").unwrap();
         fs::write(&sidecar, "#!/usr/bin/env bash\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
 
         let status = install_cli_tool_inner(
             &launcher,
@@ -2871,13 +2871,13 @@ mod tests {
         let root = unique_temp_dir("cli-status-legacy-sidecar");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
-        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        let launcher = root.join("VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli");
+        let sidecar = root.join("VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
         fs::create_dir_all(launcher.parent().unwrap()).unwrap();
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::write(&launcher, "#!/bin/sh\n").unwrap();
         fs::write(&sidecar, "#!/bin/sh\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
         create_cli_tool_symlink(&sidecar, &link).unwrap();
 
         let status = cli_tool_status_inner(
@@ -2900,13 +2900,13 @@ mod tests {
         let root = unique_temp_dir("cli-install-legacy-sidecar");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
-        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
+        let launcher = root.join("VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli");
+        let sidecar = root.join("VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
         fs::create_dir_all(launcher.parent().unwrap()).unwrap();
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::write(&launcher, "#!/usr/bin/env bash\n").unwrap();
         fs::write(&sidecar, "#!/usr/bin/env bash\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
         create_cli_tool_symlink(&sidecar, &link).unwrap();
 
         let status = install_cli_tool_inner(
@@ -2929,13 +2929,13 @@ mod tests {
         use std::os::unix::fs::{symlink, PermissionsExt};
 
         let root = unique_temp_dir("cli-wrapper-exec");
-        let wrapper = root.join("GalStudio.app/Contents/Resources/bin/galstudio-cli");
-        let sidecar = root.join("GalStudio.app/Contents/MacOS/galstudio-cli");
-        let link = root.join("bin/galstudio-cli");
+        let wrapper = root.join("VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli");
+        let sidecar = root.join("VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
+        let link = root.join("bin/vibegal-cli");
         fs::create_dir_all(wrapper.parent().unwrap()).unwrap();
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::create_dir_all(link.parent().unwrap()).unwrap();
-        fs::write(&wrapper, include_str!("../../resources/bin/galstudio-cli")).unwrap();
+        fs::write(&wrapper, include_str!("../../resources/bin/vibegal-cli")).unwrap();
         fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
         symlink("/bin/echo", &sidecar).unwrap();
         symlink(&wrapper, &link).unwrap();
@@ -2962,14 +2962,14 @@ mod tests {
     #[test]
     fn admin_symlink_script_quotes_paths_for_shell() {
         let cli =
-            PathBuf::from("/Applications/Gal Studio's.app/Contents/Resources/bin/galstudio-cli");
-        let link = PathBuf::from("/usr/local/bin/galstudio-cli");
+            PathBuf::from("/Applications/Gal Studio's.app/Contents/Resources/bin/vibegal-cli");
+        let link = PathBuf::from("/usr/local/bin/vibegal-cli");
 
         let script = admin_symlink_script(&cli, &link).unwrap();
 
         assert!(script
-            .contains("'/Applications/Gal Studio'\\''s.app/Contents/Resources/bin/galstudio-cli'"));
-        assert!(script.contains("'/usr/local/bin/galstudio-cli'"));
+            .contains("'/Applications/Gal Studio'\\''s.app/Contents/Resources/bin/vibegal-cli'"));
+        assert!(script.contains("'/usr/local/bin/vibegal-cli'"));
         assert!(script.contains("/bin/ln -s"));
     }
 
@@ -2986,11 +2986,11 @@ mod tests {
         let root = unique_temp_dir("cli-install-occupied");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("galstudio-cli-launcher");
-        let sidecar = root.join("galstudio-cli-sidecar");
+        let launcher = root.join("vibegal-cli-launcher");
+        let sidecar = root.join("vibegal-cli-sidecar");
         fs::write(&launcher, "#!/bin/sh\n").unwrap();
         fs::write(&sidecar, "#!/bin/sh\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
         fs::write(&link, "someone else's command").unwrap();
 
         let error = install_cli_tool_inner(
@@ -3012,11 +3012,11 @@ mod tests {
         let root = unique_temp_dir("cli-uninstall");
         let bin_dir = root.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
-        let launcher = root.join("galstudio-cli-launcher");
-        let sidecar = root.join("galstudio-cli-sidecar");
+        let launcher = root.join("vibegal-cli-launcher");
+        let sidecar = root.join("vibegal-cli-sidecar");
         fs::write(&launcher, "#!/bin/sh\n").unwrap();
         fs::write(&sidecar, "#!/bin/sh\n").unwrap();
-        let link = bin_dir.join("galstudio-cli");
+        let link = bin_dir.join("vibegal-cli");
         create_cli_tool_symlink(&launcher, &link).unwrap();
 
         let status = uninstall_cli_tool_inner(

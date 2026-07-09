@@ -7,7 +7,7 @@
  * 点击任意空白处 = 推进（方便录屏时鼠标操作）。
  */
 import { useEffect, useState } from "react";
-import type { RendererProps } from "@galstudio/engine";
+import type { RendererProps } from "@vibegal/engine";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { SpriteLayer } from "./SpriteLayer";
 import { DialogueBox } from "./DialogueBox";

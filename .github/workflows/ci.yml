@@ -33,7 +33,7 @@ jobs:
         run: pnpm test
 
       - name: Frontend build
-        run: pnpm --filter @galstudio/studio build
+        run: pnpm --filter @vibegal/studio build
 
       - name: Engine schema export + drift check
         run: pnpm run check:schemas

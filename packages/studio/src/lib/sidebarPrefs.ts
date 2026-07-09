@@ -11,7 +11,7 @@ export interface SidebarPrefsStorage {
   setItem: (key: string, value: string) => void;
 }
 
-export const SIDEBAR_PREFS_STORAGE_KEY = "galstudio.sidebarPrefs.v1";
+export const SIDEBAR_PREFS_STORAGE_KEY = "vibegal.sidebarPrefs.v1";
 
 export const DEFAULT_SIDEBAR_PREFS: SidebarPrefs = {
   renderSidebarCollapsed: false,

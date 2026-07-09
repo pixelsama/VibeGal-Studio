@@ -6,7 +6,7 @@
  *
  * 每个渲染层目录必须导出一个 RendererManifest。
  */
-import type { RendererManifest } from "@galstudio/engine";
+import type { RendererManifest } from "@vibegal/engine";
 import { Stage } from "./Stage";
 
 const defaultRenderer: RendererManifest = {

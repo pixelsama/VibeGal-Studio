@@ -317,7 +317,7 @@ export function createRuntimeStorageLikePersistenceAdapter(options: {
   warnings?: string[];
 }): RuntimePersistenceAdapter {
   const warnings = options.warnings;
-  const prefix = options.keyPrefix ?? "galstudio";
+  const prefix = options.keyPrefix ?? "vibegal";
 
   const key = (projectId: string, kind: "save" | "saveIndex" | "global" | "settings", id?: string) =>
     id ? `${prefix}:${projectId}:${kind}:${id}` : `${prefix}:${projectId}:${kind}`;

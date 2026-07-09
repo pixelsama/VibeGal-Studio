@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Instruction } from "@galstudio/engine";
+import type { Instruction } from "@vibegal/engine";
 import {
   deleteInstruction,
   duplicateInstruction,

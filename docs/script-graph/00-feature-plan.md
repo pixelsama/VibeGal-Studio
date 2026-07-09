@@ -6,7 +6,7 @@
 
 ## Goal
 
-GalStudio should evolve into a data-driven galgame editor with three primary workspaces:
+VibeGal-Studio should evolve into a data-driven galgame editor with three primary workspaces:
 
 - Render
 - Script
@@ -246,7 +246,7 @@ Verification:
 
 Requirement:
 
-The graph/node structure is easy for external tools and Agents to modify safely, while GalStudio remains a data editor rather than an AI client.
+The graph/node structure is easy for external tools and Agents to modify safely, while VibeGal-Studio remains a data editor rather than an AI client.
 
 Tasks:
 

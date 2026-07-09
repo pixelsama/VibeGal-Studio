@@ -2,7 +2,7 @@
  * Phase 11：把 zod schema 转成 JSON Schema（纯函数，可单测）。
  *
  * 这些 JSON Schema 供外部工具/Agent 校验 graph.json 和节点文件，
- * 不需要打开 GalStudio 源码也能知道合法结构。
+ * 不需要打开 VibeGal-Studio 源码也能知道合法结构。
  */
 import { z } from "zod";
 import {

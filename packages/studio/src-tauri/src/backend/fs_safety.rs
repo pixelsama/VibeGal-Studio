@@ -7,7 +7,7 @@ pub fn canonical_project_root(project_path: &Path) -> Result<PathBuf, String> {
     }
     if !root.join("gal.project.json").is_file() {
         return Err(format!(
-            "不是 GalStudio 项目目录（缺少 gal.project.json）: {}",
+            "不是 VibeGal-Studio 项目目录（缺少 gal.project.json）: {}",
             root.display()
         ));
     }

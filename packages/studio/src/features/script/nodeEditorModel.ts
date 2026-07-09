@@ -1,7 +1,7 @@
 import {
   formatScenarioText,
   type Instruction,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 
 export type NodeEditorMode = "scenario" | "json" | "blocks";
 

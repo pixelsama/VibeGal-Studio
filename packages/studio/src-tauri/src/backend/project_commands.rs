@@ -22,7 +22,7 @@ fn create_project(
     open_project_for_app(project_path.to_string_lossy().as_ref(), &app_handle)
 }
 
-/// 把用户选择的当前目录初始化为 GalStudio 项目。
+/// 把用户选择的当前目录初始化为 VibeGal-Studio 项目。
 #[tauri::command]
 fn initialize_project(path: String, app_handle: tauri::AppHandle) -> Result<ProjectData, String> {
     let project_path = Path::new(&path)
@@ -39,7 +39,7 @@ fn initialize_project(path: String, app_handle: tauri::AppHandle) -> Result<Proj
         .file_name()
         .and_then(|n| n.to_str())
         .filter(|n| !n.is_empty())
-        .unwrap_or("GalStudio Project")
+        .unwrap_or("VibeGal-Studio Project")
         .to_string();
     let default_renderer_dir = default_renderer_dir(&app_handle)?;
     initialize_project_root(&project_path, &name, &default_renderer_dir)?;

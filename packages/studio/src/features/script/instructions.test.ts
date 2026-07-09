@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultInstruction, insertInstructionAt, summarizeInstructions } from "./instructions";
-import type { Instruction, Manifest } from "@galstudio/engine";
+import type { Instruction, Manifest } from "@vibegal/engine";
 
 const sampleInstructions = [
   { t: "bg", id: "ocean_dawn" },

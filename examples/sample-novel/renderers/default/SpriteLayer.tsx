@@ -11,9 +11,9 @@
  * 换一套组件可以完全重新定义这些表现，剧本和引擎不受影响。
  */
 import { memo, useEffect, useState } from "react";
-import type { NovelState, ActiveSprite } from "@galstudio/engine";
-import type { Manifest } from "@galstudio/engine";
-import { resolveAsset } from "@galstudio/engine";
+import type { NovelState, ActiveSprite } from "@vibegal/engine";
+import type { Manifest } from "@vibegal/engine";
+import { resolveAsset } from "@vibegal/engine";
 
 interface Props {
   state: NovelState;

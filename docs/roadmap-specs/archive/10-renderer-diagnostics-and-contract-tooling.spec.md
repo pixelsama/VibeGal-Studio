@@ -15,7 +15,7 @@ V1 已经：
 
 但仍缺：
 
-- 独立 `galstudio-cli renderer-check`；
+- 独立 `vibegal-cli renderer-check`；
 - Studio renderer 加载错误的统一诊断模型；
 - line/column/source snippet 的稳定结构；
 - missing default export / wrong manifest id / contract mismatch 的一致错误码；
@@ -42,7 +42,7 @@ tooling 不负责：
 
 ## 3. V1.1 决策
 
-- 新增 `galstudio-cli renderer-check <project-path> [--renderer <id>] --format json|text`。
+- 新增 `vibegal-cli renderer-check <project-path> [--renderer <id>] --format json|text`。
 - Studio preview、renderer manager、Web export 共用同一套 `RendererDiagnostic` 类型。
 - V1.1 仍不支持 renderer 第三方 npm 依赖；unsupported bare import 是 error。
 - 诊断必须包含 `rendererId`、`code`、`message`、`file?`、`line?`、`column?`、`snippet?`、`step`。
@@ -71,7 +71,7 @@ interface RendererDiagnostic {
 支持：
 
 ```text
-galstudio-cli renderer-check <project-path> --renderer default --format json
+vibegal-cli renderer-check <project-path> --renderer default --format json
 ```
 
 输出：
@@ -123,6 +123,6 @@ Renderer sidebar/status panel 展示：
 
 - 2026-07-08：Studio 侧新增共享 `RendererDiagnostic` 模型与 `RendererDiagnosticError`。
 - 2026-07-08：runtime compiler、renderer loader、preview/sidebar 可返回 renderer id、code、file、line、column、snippet、step。
-- 2026-07-08：新增 `galstudio-cli renderer-check <project-path> [--renderer <id>] --format json|text`。
+- 2026-07-08：新增 `vibegal-cli renderer-check <project-path> [--renderer <id>] --format json|text`。
 - 2026-07-08：unsupported bare import、missing default export、manifest id mismatch、missing/unsupported contractVersion 均有稳定 code。
 - 2026-07-08：Web export worker 和 CLI build 复用同形 diagnostics；production Web runtime 不暴露 debug service。

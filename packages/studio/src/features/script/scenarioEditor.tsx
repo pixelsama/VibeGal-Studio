@@ -4,7 +4,7 @@ import {
   parseScenarioLine,
   type ScenarioDiagnostic,
   type Instruction,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 import { ResourcePicker } from "../assets/ResourcePicker";
 import type { Manifest } from "../../lib/types";
 

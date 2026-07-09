@@ -1,7 +1,7 @@
 # Spec 04 — Data Contract Expansion
 
 > 状态：已归档。
-> 目标：扩展 GalStudio 项目的数据表达能力，让正规 galgame 所需资源和解锁项有稳定 schema，同时不把展示方式写进 Studio。
+> 目标：扩展 VibeGal-Studio 项目的数据表达能力，让正规 galgame 所需资源和解锁项有稳定 schema，同时不把展示方式写进 Studio。
 
 ## 1. 背景
 

@@ -231,12 +231,12 @@ fn write_graph_project_with_files(dir, graph_json, node_files: &[(&str, &str)])
 |-----------|---------|
 | `save_graph_writes_graph_json` | 存图后 `content/graph.json` 存在、内容（pretty）含正确 nodes/edges |
 | `save_graph_overwrites_existing_graph_json` | 已有 graph.json 被新内容覆盖 |
-| `save_graph_rejects_untrusted_project_root` | project_path 非 GalStudio 项目 → `is_err()` |
+| `save_graph_rejects_untrusted_project_root` | project_path 非 VibeGal-Studio 项目 → `is_err()` |
 | `save_graph_rejects_node_file_outside_content_dir` | 某节点 file=`"../../x"` → `is_err()`，且**不**写盘（graph.json 不变） |
 | `delete_file_removes_target_under_content` | 删 `nodes/a.json` → 文件消失 |
 | `delete_file_is_idempotent_for_missing_file` | 删不存在的文件 → `Ok(())` |
 | `delete_file_rejects_path_traversal` | rel=`../../x` → `is_err()` |
-| `delete_file_rejects_untrusted_project_root` | 非 GalStudio 项目 → `is_err()` |
+| `delete_file_rejects_untrusted_project_root` | 非 VibeGal-Studio 项目 → `is_err()` |
 | `save_graph_then_open_project_roundtrip` | save_graph 后 open_project 读回的 graph 与存入一致 |
 
 ### 前端（Vitest，`graphEditing.test.ts`）

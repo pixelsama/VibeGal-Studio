@@ -1,17 +1,17 @@
 # Spec 08 — 节点内容校验接入全局报告与 CLI
 
 > 状态：已归档。
-> 前置：当前 `open_project` 已聚合 graph / asset / manifest 问题；`galstudio-cli validate` 已能输出结构化 `projectIssues`。
+> 前置：当前 `open_project` 已聚合 graph / asset / manifest 问题；`vibegal-cli validate` 已能输出结构化 `projectIssues`。
 > 目标：把每个 `content/nodes/*.json` 的 `Instruction[]` 结构错误与资源引用错误纳入同一套问题闭环。
 
 ## 1. 需求
 
-GalStudio 打开项目和 CLI 校验时，应能发现节点文件内部的问题，而不是只在预览播放时由 engine 抛出错误。
+VibeGal-Studio 打开项目和 CLI 校验时，应能发现节点文件内部的问题，而不是只在预览播放时由 engine 抛出错误。
 
 覆盖范围：
 
 - 节点文件必须是 `Instruction[]`。
-- 指令结构必须符合 `@galstudio/engine` 的 `InstructionSchema`。
+- 指令结构必须符合 `@vibegal/engine` 的 `InstructionSchema`。
 - `bg` / `bgm` / `sfx` / `voice` / `char` / `say` 的资源引用必须存在于 manifest。
 - 每个问题必须包含稳定 `code`、`message`、`severity`、`file`、`jsonPath`，能定位到指令 index。
 - 问题进入 `projectReport.projectIssues`，source 使用 `"node"`。
@@ -211,7 +211,7 @@ project_issues.extend(validate_node_contents(&graph, &nodes, &manifest));
 1. 手造 `content/nodes/start.json` 为 `{}`，UI 问题面板显示节点内容错误，CLI JSON 输出同一错误。
 2. 手造 `[{ "t": "say", "who": "ghost", "text": "hi" }]`，报缺失角色引用，包含 `file` 与 `jsonPath`。
 3. 手造 `bg.id` 指向不存在背景，预览不再是唯一发现路径。
-4. 合法项目 `galstudio-cli validate . --format json` 输出 `ok: true`。
+4. 合法项目 `vibegal-cli validate . --format json` 输出 `ok: true`。
 5. manifest 结构非法时，只报 manifest 结构错误，不额外制造大量引用错误。
 
 ## 9. 可归档标准

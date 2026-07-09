@@ -63,7 +63,7 @@ interface RendererProps {
 
 迁移策略：
 
-- GalStudio 尚未发布正式版本，V1 采用 breaking change。
+- VibeGal-Studio 尚未发布正式版本，V1 采用 breaking change。
 - 旧的 `onAdvance`、`onChoose`、`onToggleAuto`、`onToggleRecording`、`onSeekBy` 等顶层回调从 `RendererProps` 移除。
 - 新 renderer 必须使用 `controls` 和 `runtime`。
 - 默认 renderer、项目模板、Studio preview host、export runtime host 同步迁移到 `contractVersion: 1`。

@@ -1,20 +1,20 @@
-# GalStudio Project Wiki
+# VibeGal-Studio Project Wiki
 
 > Purpose: this document is the high-context briefing for humans and external expert AI systems.
-> It compresses GalStudio's product philosophy, architecture, data contracts, current implementation,
+> It compresses VibeGal-Studio's product philosophy, architecture, data contracts, current implementation,
 > boundaries, and likely roadmap into one file so a reviewer can reason about the project without
 > reading the source tree first.
 
 ## 1. Executive Summary
 
-GalStudio is a data-driven galgame project editor and live viewer. It is not primarily a game UI
+VibeGal-Studio is a data-driven galgame project editor and live viewer. It is not primarily a game UI
 framework, nor an in-app AI client. Its job is to make galgame project data easy to create, inspect,
 validate, hot-reload, preview, and eventually export.
 
 The core product idea is:
 
 ```text
-GalStudio = project IDE + data contract editor + renderer preview host + validation/export tool
+VibeGal-Studio = project IDE + data contract editor + renderer preview host + validation/export tool
 ```
 
 The project is intentionally split into three responsibilities:
@@ -23,7 +23,7 @@ The project is intentionally split into three responsibilities:
 - **Studio editor**: owns project/file operations, graph editing, asset management, validation reports, preview hosting, renderer discovery, hot reload, and safe persistence.
 - **Project renderer**: owns how the actual game looks and feels: dialogue box, menus, title screen, save/load UI, transitions, advanced animation, layout, and other presentation choices.
 
-The most important boundary: **GalStudio should not bake a formal galgame UI into the editor**.
+The most important boundary: **VibeGal-Studio should not bake a formal galgame UI into the editor**.
 Instead, it should expose enough project data and runtime contract for project-local renderers to
 implement formal galgame experiences.
 
@@ -31,7 +31,7 @@ implement formal galgame experiences.
 
 ### 2.1 Data First
 
-GalStudio treats a galgame project as a directory of structured files:
+VibeGal-Studio treats a galgame project as a directory of structured files:
 
 ```text
 gal.project.json
@@ -45,7 +45,7 @@ renderers/
 ```
 
 The files are the source of truth. The UI is an editor over those files, not a hidden database.
-External tools and AI coding agents should be able to modify files directly and use GalStudio's
+External tools and AI coding agents should be able to modify files directly and use VibeGal-Studio's
 watchers, validation reports, and CLI to confirm correctness.
 
 ### 2.2 Graph First
@@ -63,7 +63,7 @@ They should surface as project issues so the project can be explicitly migrated.
 
 ### 2.3 No In-App AI
 
-External AI ergonomics are welcome, but AI runs outside the editor. GalStudio should support AI
+External AI ergonomics are welcome, but AI runs outside the editor. VibeGal-Studio should support AI
 through:
 
 - stable file layout,
@@ -74,7 +74,7 @@ through:
 - hot reload,
 - clear project-local self-description files.
 
-GalStudio should not add:
+VibeGal-Studio should not add:
 
 - AI buttons,
 - AI prompt handoff files,
@@ -150,8 +150,8 @@ examples/
 
 ### Main Packages
 
-- `@galstudio/engine`: TypeScript package containing schemas, runtime state, interpreters, players, validation, renderer contract, and Scenario DSL parsing.
-- `@galstudio/studio`: React + Tauri editor application.
+- `@vibegal/engine`: TypeScript package containing schemas, runtime state, interpreters, players, validation, renderer contract, and Scenario DSL parsing.
+- `@vibegal/studio`: React + Tauri editor application.
 - `packages/studio/src-tauri`: Rust backend for filesystem access, project initialization, path safety, file watching, renderer file reads, asset operations, and CLI support.
 
 ## 4. Runtime Model
@@ -432,10 +432,10 @@ Renderer layers live at:
 renderers/<id>/index.tsx
 ```
 
-The default export must be a `RendererManifest` from `@galstudio/engine`:
+The default export must be a `RendererManifest` from `@vibegal/engine`:
 
 ```ts
-import type { RendererManifest } from "@galstudio/engine";
+import type { RendererManifest } from "@vibegal/engine";
 
 const renderer: RendererManifest = {
   id: "default",
@@ -559,7 +559,7 @@ Important components/utilities:
 - `graphMapping.ts`: graph-to-React-Flow mapping and node status helpers.
 - `graphLayout.ts`: layout helper.
 
-Editor should continue investing here. This is one of GalStudio's main values.
+Editor should continue investing here. This is one of VibeGal-Studio's main values.
 
 ### 8.4 Assets Workspace
 
@@ -671,7 +671,7 @@ Renderer changes set `rendererChanged: true`; the frontend clears renderer cache
 The CLI currently supports:
 
 ```text
-galstudio-cli validate <project-path> --format json|text
+vibegal-cli validate <project-path> --format json|text
 ```
 
 It opens the project through the same backend loading/validation path and returns machine-readable
@@ -750,7 +750,7 @@ It should not become the only formal game UI.
 
 ## 12. Current Strengths
 
-GalStudio already has strong foundations:
+VibeGal-Studio already has strong foundations:
 
 - Clear graph-first project model.
 - Project-local renderer contract.
@@ -822,7 +822,7 @@ These should be solved by project renderers:
 - final animation style,
 - Live2D/Spine/video/shader visual integration.
 
-## 14. What GalStudio Should Build Next
+## 14. What VibeGal-Studio Should Build Next
 
 ### Phase A: Make the Editor a Stronger Galgame IDE
 
@@ -867,7 +867,7 @@ The renderer should still draw the UI.
 
 ### Phase D: Export and Package
 
-Eventually GalStudio should package:
+Eventually VibeGal-Studio should package:
 
 - engine runtime,
 - project `content/`,
@@ -921,7 +921,7 @@ Typical verification:
 
 ```text
 pnpm test
-pnpm --filter @galstudio/studio build
+pnpm --filter @vibegal/studio build
 cd packages/studio/src-tauri && cargo test
 pnpm run check:schemas
 pnpm run check:doc-contract
@@ -945,7 +945,7 @@ Important existing test areas:
 
 ## 17. How External Expert AI Should Use This Wiki
 
-When advising on GalStudio, assume:
+When advising on VibeGal-Studio, assume:
 
 1. The editor is a project IDE, not the final game UI.
 2. The renderer is project-local and owns final presentation.
@@ -966,7 +966,7 @@ Good expert guidance should answer:
 
 ## 18. One-Paragraph Brief for Consultants
 
-GalStudio is a graph-first, data-driven galgame editor built as a React/Tauri monorepo. Projects are
+VibeGal-Studio is a graph-first, data-driven galgame editor built as a React/Tauri monorepo. Projects are
 plain directories with `gal.project.json`, `content/graph.json`, `content/nodes/*.json`,
 `content/manifest.json`, `content/meta.json`, and project-local React renderers under `renderers/`.
 The engine owns schemas, pure instruction interpretation, graph-aware playback, validation, and a

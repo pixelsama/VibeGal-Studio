@@ -1,7 +1,7 @@
 # Spec 03 — Studio IDE Features
 
 > 状态：已归档。
-> 目标：把 GalStudio 从“能编辑 graph 和节点”推进到“可日常创作、检查、调试大型 gal 项目”的工程 IDE。
+> 目标：把 VibeGal-Studio 从“能编辑 graph 和节点”推进到“可日常创作、检查、调试大型 gal 项目”的工程 IDE。
 
 ## 1. 背景
 

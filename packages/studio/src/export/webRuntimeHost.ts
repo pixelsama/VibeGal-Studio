@@ -24,7 +24,7 @@ import {
   type RuntimePersistenceAdapter,
   type RuntimeServices,
   type RuntimeSettingsRecord,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -67,7 +67,7 @@ export interface WebRuntimePlayerOptions {
   storage?: RuntimeStorageAdapter;
 }
 
-export const GALSTUDIO_BUILD_SCHEMA_VERSION = 1;
+export const VIBEGAL_BUILD_SCHEMA_VERSION = 1;
 
 function browserStorage(): StorageLike | null {
   try {
@@ -117,11 +117,11 @@ export function createWebStorageAdapter(
   };
   const adapter = createRuntimeStorageLikePersistenceAdapter({
     storage: safeStore,
-    keyPrefix: "galstudio",
+    keyPrefix: "vibegal",
     warnings,
   });
   const key = (kind: "save" | "saveIndex" | "global" | "settings", id?: string) =>
-    id ? `galstudio:${projectId}:${kind}:${id}` : `galstudio:${projectId}:${kind}`;
+    id ? `vibegal:${projectId}:${kind}:${id}` : `vibegal:${projectId}:${kind}`;
   const readRaw = (storageKey: string): unknown | null => {
     try {
       const raw = safeStore.getItem(storageKey);
@@ -143,7 +143,7 @@ export function createWebStorageAdapter(
     ...adapter,
     warnings,
     readGlobalSync(readProjectId) {
-      const raw = readRaw(`galstudio:${readProjectId}:global`);
+      const raw = readRaw(`vibegal:${readProjectId}:global`);
       return migrateGlobalPersistentRecord(raw, readProjectId);
     },
     async listSaveSlots() {
@@ -326,7 +326,7 @@ interface GameManifest {
   buildTarget: "web";
   basePath: string;
   builtAt: string;
-  galstudioBuildSchemaVersion: number;
+  vibegalBuildSchemaVersion: number;
 }
 
 async function loadExportedContent(basePath: string) {
@@ -349,7 +349,7 @@ function mountRuntime(root: Root, runtime: WebRuntimePlayer, rendererManifest: R
   });
 }
 
-export async function startGalStudioWebRuntime(rendererManifest: RendererManifest) {
+export async function startVibeGalWebRuntime(rendererManifest: RendererManifest) {
   const issues = validateRendererManifestContract(rendererManifest);
   const error = issues.find((issue) => issue.level === "error");
   if (error) throw new Error(error.message);

@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type {
   Instruction,
   Manifest as EngineManifest,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 import type { ProjectData } from "../../lib/types";
 import { ResourcePicker } from "../assets/ResourcePicker";
 

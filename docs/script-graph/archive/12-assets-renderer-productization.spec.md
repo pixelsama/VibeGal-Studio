@@ -20,7 +20,7 @@
 
 ## 1. 需求
 
-GalStudio 的创作体验依赖两条辅助工作流：
+VibeGal-Studio 的创作体验依赖两条辅助工作流：
 
 - 资产管理：图片、角色、表情、BGM、SFX、voice 能被导入、预览、登记、清理，并在脚本编辑时直接引用。
 - renderer 管理：用户能创建、复制、切换、调试 renderer 层，并理解 renderer API contract。

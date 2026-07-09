@@ -105,7 +105,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
       </div>
 
       <header style={headerStyle}>
-        <h1 style={titleStyle}>GalStudio</h1>
+        <h1 style={titleStyle}>VibeGal-Studio</h1>
         <p style={subtitleStyle}>galgame 开发工具</p>
       </header>
 
@@ -121,7 +121,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
         {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
 
         <div style={emptyStyle}>
-          {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 GalStudio 项目，会先询问是否添加工程文件。"}
+          {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 VibeGal-Studio 项目，会先询问是否添加工程文件。"}
         </div>
       </section>
 
@@ -162,9 +162,9 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
         <ConfirmDialog
           message={
             <>
-              <div>这个目录还不是 GalStudio 项目。</div>
+              <div>这个目录还不是 VibeGal-Studio 项目。</div>
               <div style={{ marginTop: 10 }}>
-                是否在此目录中添加 GalStudio 工程文件？将创建 gal.project.json、content/ 和 renderers/default/。现有文件不会被删除或覆盖。
+                是否在此目录中添加 VibeGal-Studio 工程文件？将创建 gal.project.json、content/ 和 renderers/default/。现有文件不会被删除或覆盖。
               </div>
             </>
           }

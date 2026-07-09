@@ -3,7 +3,7 @@
  * 打字机文本已经在 NovelState 里算好了（typedLen），这里只负责把切片显示出来。
  */
 import { memo } from "react";
-import type { NovelState } from "@galstudio/engine";
+import type { NovelState } from "@vibegal/engine";
 
 interface Props {
   state: NovelState;

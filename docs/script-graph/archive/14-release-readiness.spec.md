@@ -1,7 +1,7 @@
 # Spec 14 — 发布级保障与归档流程
 
 > 状态：已归档。
-> 目标：把 GalStudio 从开发态推进到可发布、可回归、可归档的桌面应用工程。
+> 目标：把 VibeGal-Studio 从开发态推进到可发布、可回归、可归档的桌面应用工程。
 > 说明：验收命令见“3.1 必跑”；若某些基础命令受现有并行改动影响失败，需在 release checklist 记录为既有阻塞并给出修复工单。
 
 ## 1. 需求与范围
@@ -45,10 +45,10 @@
 
 | 层级 | 命令 | 目的 |
 | --- | --- | --- |
-| Engine unit | `pnpm --filter @galstudio/engine test` | schema / interpreter / validate |
-| Studio unit | `pnpm --filter @galstudio/studio test` | 前端逻辑与 UI |
+| Engine unit | `pnpm --filter @vibegal/engine test` | schema / interpreter / validate |
+| Studio unit | `pnpm --filter @vibegal/studio test` | 前端逻辑与 UI |
 | Rust unit | `cargo test`（`packages/studio/src-tauri`） | 文件系统、校验、CLI |
-| Web build | `pnpm --filter @galstudio/studio build` | Vite + TS 构建 |
+| Web build | `pnpm --filter @vibegal/studio build` | Vite + TS 构建 |
 | Rust build | `cargo build`（`packages/studio/src-tauri`） | Tauri backend + CLI |
 | 发布前自检 | `pnpm run check:versions` | 版本一致性 |
 | Schema 漂移 | `pnpm run check:schemas` | schema 快照一致性 |
@@ -78,7 +78,7 @@ jobs：
 - `app-frontend`
   - setup pnpm + install
   - `pnpm test`
-  - `pnpm --filter @galstudio/studio build`
+  - `pnpm --filter @vibegal/studio build`
   - `pnpm run check:schemas`
   - `pnpm run check:versions`
   - `pnpm smoke:release`
@@ -92,7 +92,7 @@ jobs：
 打包命令（本地未签名）：
 
 ```bash
-pnpm --filter @galstudio/studio tauri build
+pnpm --filter @vibegal/studio tauri build
 ```
 
 产物：

@@ -1,7 +1,8 @@
 {
-  "name": "@galstudio/studio",
+  "name": "@vibegal/studio",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +13,7 @@
     "postinstall": "node -e \"require('fs').copyFileSync(require.resolve('esbuild-wasm/esbuild.wasm'),'public/esbuild.wasm')\" || node scripts/copy-wasm.mjs"
   },
   "dependencies": {
-    "@galstudio/engine": "workspace:*",
+    "@vibegal/engine": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@xyflow/react": "^12.9.3",

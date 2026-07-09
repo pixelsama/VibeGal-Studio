@@ -12,7 +12,7 @@
  * 根容器 position: relative 以锚定右下角的 StatusPanel（absolute）。
  */
 import { useMemo, useState } from "react";
-import { ManifestSchema } from "@galstudio/engine";
+import { ManifestSchema } from "@vibegal/engine";
 import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
 import {
   deleteAsset,

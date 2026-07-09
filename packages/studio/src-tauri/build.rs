@@ -14,7 +14,7 @@ fn prepare_cli_sidecar_placeholder() {
         ""
     };
     let sidecar =
-        std::path::PathBuf::from("binaries").join(format!("galstudio-cli-{target}{exe_suffix}"));
+        std::path::PathBuf::from("binaries").join(format!("vibegal-cli-{target}{exe_suffix}"));
 
     if sidecar.exists() {
         return;
@@ -25,7 +25,7 @@ fn prepare_cli_sidecar_placeholder() {
 
     let _ = std::fs::write(
         &sidecar,
-        b"#!/bin/sh\necho 'galstudio-cli sidecar placeholder; run tauri build to bundle the release CLI.' >&2\nexit 1\n",
+        b"#!/bin/sh\necho 'vibegal-cli sidecar placeholder; run tauri build to bundle the release CLI.' >&2\nexit 1\n",
     );
 
     #[cfg(unix)]

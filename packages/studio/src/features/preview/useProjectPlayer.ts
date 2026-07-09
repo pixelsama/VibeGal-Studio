@@ -20,7 +20,7 @@ import {
   type RuntimeServices,
   createInMemoryRuntimeServices,
   createRuntimeSnapshot,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 import type { NodeEntry, ProjectData, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 import { readStageResolution } from "../../lib/projectMeta";

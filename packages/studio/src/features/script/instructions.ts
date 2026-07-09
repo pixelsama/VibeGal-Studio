@@ -4,7 +4,7 @@
  * 节点文件 = Instruction[]（t 判别联合，见 engine/schema.ts）。
  * 这里不引入新 DSL，只做摘要展示和最小占位对象的构造。
  */
-import type { Instruction, Manifest } from "@galstudio/engine";
+import type { Instruction, Manifest } from "@vibegal/engine";
 
 /** 大纲条目：在 JSON 数组中的下标 + 种类 + 人类可读标签。 */
 export interface InstructionSummary {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectData } from "../../lib/types";
 import { createProjectRendererProps, buildProjectPreviewContent } from "./useProjectPlayer";
-import { createInitialState } from "@galstudio/engine";
+import { createInitialState } from "@vibegal/engine";
 
 const project: ProjectData = {
   path: "/tmp/sample-project",

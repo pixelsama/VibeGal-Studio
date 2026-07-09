@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Instruction } from "@galstudio/engine";
+import type { Instruction } from "@vibegal/engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   clampNodeInspectorPaneWidth,
@@ -157,7 +157,7 @@ describe("NodeEditor scenario surface", () => {
   it("uses line-local command insertion instead of a fixed insert toolbar", () => {
     const node = { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 } };
     const project: ProjectData = {
-      path: "/tmp/galstudio-test",
+      path: "/tmp/vibegal-test",
       meta: { name: "Test", activeRendererId: "default", createdAt: "2026-01-01T00:00:00.000Z" },
       content: {
         manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },

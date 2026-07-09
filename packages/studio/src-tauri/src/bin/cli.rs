@@ -1,4 +1,4 @@
-//! Phase 11 CLI：`galstudio-cli validate <project-path> [--format json|text]`
+//! Phase 11 CLI：`vibegal-cli validate <project-path> [--format json|text]`
 //!
 //! 不启动 Tauri GUI，纯命令行校验项目图结构，输出结构化错误。
 //! 供外部工具/Agent 在 CI 或脚本里直接读取校验结果并自主迭代。
@@ -7,7 +7,7 @@
 //! - 0  无问题
 //! - 1  有 error 级 issue
 //! - 2  仅有 warn 级 issue
-//! - 70 项目打不开（不是 GalStudio 项目 / 文件损坏）
+//! - 70 项目打不开（不是 VibeGal-Studio 项目 / 文件损坏）
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "console")]
 
@@ -21,7 +21,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
-#[command(name = "galstudio-cli", about = "GalStudio 项目校验命令行")]
+#[command(name = "vibegal-cli", about = "VibeGal-Studio 项目校验命令行")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -705,14 +705,14 @@ fn write_json_file_and_hash(path: &Path, value: &serde_json::Value) -> Result<St
 }
 
 fn build_worker_path() -> PathBuf {
-    if let Ok(path) = std::env::var("GALSTUDIO_EXPORT_WORKER") {
+    if let Ok(path) = std::env::var("VIBEGAL_EXPORT_WORKER") {
         return PathBuf::from(path);
     }
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/build-web-export.mjs")
 }
 
 fn node_executable() -> String {
-    std::env::var("GALSTUDIO_NODE").unwrap_or_else(|_| "node".to_string())
+    std::env::var("VIBEGAL_NODE").unwrap_or_else(|_| "node".to_string())
 }
 
 fn source_snippet(project_root: &Path, rel_file: &str, line: Option<u32>) -> Option<String> {
@@ -936,7 +936,7 @@ fn renderer_import_allowed(specifier: &str) -> bool {
             | "react/jsx-dev-runtime"
             | "react-dom"
             | "react-dom/client"
-            | "@galstudio/engine"
+            | "@vibegal/engine"
     ) || specifier.starts_with('.')
         || specifier.starts_with('/')
         || specifier.starts_with("file:")
@@ -1077,7 +1077,7 @@ fn renderer_check_project(
                 "renderer_unsupported_import",
                 &renderer_id,
                 "compile",
-                "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @galstudio/engine and relative imports.",
+                "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @vibegal/engine and relative imports.",
                 Some(rel_file),
                 Some(line),
                 Some(column),
@@ -1322,7 +1322,7 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
         "buildTarget": options.target.as_str(),
         "basePath": options.base_path.clone(),
         "builtAt": built_at,
-        "galstudioBuildSchemaVersion": 1,
+        "vibegalBuildSchemaVersion": 1,
         "build": {
             "target": options.target.as_str(),
             "mode": "production",
@@ -1349,7 +1349,7 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GalStudio Export</title>
+    <title>VibeGal-Studio Export</title>
     <style>
       html, body, #root { width: 100%; height: 100%; margin: 0; background: #000; }
       body { overflow: hidden; }
@@ -1874,7 +1874,7 @@ mod tests {
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "galstudio-{name}-{}",
+            "vibegal-{name}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -1977,7 +1977,7 @@ mod tests {
     #[test]
     fn validate_returns_zero_for_clean_graph() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-ok-{}",
+            "vibegal-cli-ok-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -1999,7 +1999,7 @@ mod tests {
     #[test]
     fn validate_returns_one_for_error_issue() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-err-{}",
+            "vibegal-cli-err-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2022,7 +2022,7 @@ mod tests {
     #[test]
     fn validate_returns_two_for_warn_only() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-warn-{}",
+            "vibegal-cli-warn-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2045,7 +2045,7 @@ mod tests {
     #[test]
     fn validate_returns_seventy_for_unopenable_project() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-bad-{}",
+            "vibegal-cli-bad-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2081,7 +2081,7 @@ mod tests {
     #[test]
     fn validate_json_output_is_parseable() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-json-{}",
+            "vibegal-cli-json-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2104,7 +2104,7 @@ mod tests {
     #[test]
     fn validate_cli_reports_node_instruction_error_as_json() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-node-json-{}",
+            "vibegal-cli-node-json-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2137,7 +2137,7 @@ mod tests {
     #[test]
     fn validate_cli_exits_one_for_node_error() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-node-exit-{}",
+            "vibegal-cli-node-exit-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2170,7 +2170,7 @@ mod tests {
     #[test]
     fn build_web_fails_when_project_validation_has_errors() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-build-invalid-{}",
+            "vibegal-cli-build-invalid-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2201,7 +2201,7 @@ mod tests {
     #[test]
     fn build_web_uses_selected_renderer_and_copies_content_files() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-build-selected-{}",
+            "vibegal-cli-build-selected-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2239,7 +2239,7 @@ mod tests {
     #[test]
     fn build_web_reports_renderer_compile_error() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-build-renderer-error-{}",
+            "vibegal-cli-build-renderer-error-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2275,7 +2275,7 @@ mod tests {
     #[test]
     fn renderer_check_reports_unsupported_bare_import() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-renderer-check-import-{}",
+            "vibegal-cli-renderer-check-import-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2318,7 +2318,7 @@ mod tests {
     #[test]
     fn renderer_check_reports_missing_default_export() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-renderer-check-default-{}",
+            "vibegal-cli-renderer-check-default-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2348,7 +2348,7 @@ mod tests {
     #[test]
     fn renderer_check_reports_wrong_manifest_id() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-renderer-check-id-{}",
+            "vibegal-cli-renderer-check-id-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2372,7 +2372,7 @@ mod tests {
     #[test]
     fn renderer_check_reports_missing_contract_version() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-renderer-check-contract-{}",
+            "vibegal-cli-renderer-check-contract-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2395,7 +2395,7 @@ mod tests {
     #[test]
     fn renderer_check_reports_unsupported_contract_version() {
         let dir = std::env::temp_dir().join(format!(
-            "galstudio-cli-renderer-check-future-contract-{}",
+            "vibegal-cli-renderer-check-future-contract-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -2456,7 +2456,7 @@ mod tests {
         .unwrap();
         assert_eq!(manifest["schemaVersion"], 1);
         assert_eq!(manifest["rendererContractVersion"], 1);
-        assert_eq!(manifest["galstudioBuildSchemaVersion"], 1);
+        assert_eq!(manifest["vibegalBuildSchemaVersion"], 1);
         assert_eq!(manifest["build"]["target"], "web");
         assert_eq!(manifest["build"]["mode"], "production");
         assert_eq!(manifest["build"]["basePath"], "./");

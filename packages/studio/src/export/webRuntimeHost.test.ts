@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Instruction, ProjectGraphData } from "@galstudio/engine";
+import type { Instruction, ProjectGraphData } from "@vibegal/engine";
 import {
   createWebRuntimePlayer,
   createWebStorageAdapter,

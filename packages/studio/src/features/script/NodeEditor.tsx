@@ -6,7 +6,7 @@ import {
   parseScenarioText,
   type Instruction,
   type ScenarioDiagnostic,
-} from "@galstudio/engine";
+} from "@vibegal/engine";
 import { saveFile } from "../../lib/tauri";
 import type { GraphIssueFocusRequest, GraphNode, ProjectData } from "../../lib/types";
 import type { InsertableKind } from "./instructions";
@@ -60,7 +60,7 @@ interface NodeEditorProps {
   onSaved: () => void;
 }
 
-const NODE_INSPECTOR_PANE_STORAGE_KEY = "galstudio.nodeEditor.inspectorPane";
+const NODE_INSPECTOR_PANE_STORAGE_KEY = "vibegal.nodeEditor.inspectorPane";
 const NODE_INSPECTOR_PANE_DEFAULT_WIDTH = 440;
 const NODE_INSPECTOR_PANE_MIN_WIDTH = 320;
 const NODE_INSPECTOR_PANE_MAX_WIDTH = 720;

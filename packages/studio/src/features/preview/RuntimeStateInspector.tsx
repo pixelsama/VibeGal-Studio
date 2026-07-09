@@ -1,4 +1,4 @@
-import type { NovelState } from "@galstudio/engine";
+import type { NovelState } from "@vibegal/engine";
 
 interface RuntimeStateInspectorProps {
   state: NovelState;

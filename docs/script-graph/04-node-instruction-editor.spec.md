@@ -13,7 +13,7 @@
 - 进入节点时：`Instruction[]` → Scenario DSL。
 - 保存节点时：Scenario DSL → `Instruction[]` JSON → 写回 `content/${node.file}`。
 - JSON 高级模式保留，用于外部 Agent 或高级用户处理特殊结构。
-- 外部 Agent 仍应直接读写 `content/nodes/*.json`，并使用 `.galstudio/schemas/nodeFile.json` 与 `galstudio-cli validate . --format json` 校验。
+- 外部 Agent 仍应直接读写 `content/nodes/*.json`，并使用 `.galstudio/schemas/nodeFile.json` 与 `vibegal-cli validate . --format json` 校验。
 
 ## 2. Scenario DSL
 

@@ -170,25 +170,25 @@ export function CommandLineToolSection({
       : status.linkOccupied
         ? `目标路径已被占用：${status.linkPath}`
         : "未安装命令链接"
-    : "正在检查 galstudio-cli";
+    : "正在检查 vibegal-cli";
   const detailText = status
     ? status.installed
       ? `命令已注册到全局命令目录，可在终端和外部 Agent 中直接运行 ${status.command}。`
       : status.linkOccupied
-        ? "GalStudio 不会覆盖非自己管理的同名命令。"
+        ? "VibeGal-Studio 不会覆盖非自己管理的同名命令。"
         : `将创建全局命令链接：${status.linkPath}`
-    : "GalStudio 会显式创建命令链接，不会静默修改 shell 配置。";
+    : "VibeGal-Studio 会显式创建命令链接，不会静默修改 shell 配置。";
   const installDisabled =
     busy || !status?.cliAvailable || Boolean(status.installed) || Boolean(status?.linkOccupied);
 
   return (
     <section style={sectionStyle}>
       <h2 style={sectionTitleStyle}>命令行工具</h2>
-      <p style={sectionDescStyle}>安装后可在终端使用 galstudio-cli validate 校验项目。</p>
+      <p style={sectionDescStyle}>安装后可在终端使用 vibegal-cli validate 校验项目。</p>
       <div style={cliPanelStyle}>
         <div style={cliStatusRowStyle}>
           <div>
-            <div style={cliCommandStyle}>galstudio-cli</div>
+            <div style={cliCommandStyle}>vibegal-cli</div>
             <div style={cliStatusTextStyle}>{busy ? "正在处理..." : statusText}</div>
           </div>
           <span style={{
@@ -206,7 +206,7 @@ export function CommandLineToolSection({
         {message && <p role="status" style={cliMessageStyle}>{message}</p>}
         <div style={cliActionRowStyle}>
           <Button variant="primary" onClick={onInstall} disabled={installDisabled}>
-            {status?.installed ? "已安装" : "安装 galstudio-cli"}
+            {status?.installed ? "已安装" : "安装 vibegal-cli"}
           </Button>
           <Button variant="secondary" onClick={onUninstall} disabled={busy || !status?.installed}>
             卸载

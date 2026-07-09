@@ -2,7 +2,7 @@
  * 运行时渲染层编译器 —— 在 webview 里把用户写的 .tsx 编译成可执行的 JS。
  *
  * 方案（源码预处理 + 全局变量，零 bare import）：
- *   1. studio 启动时把 react / @galstudio/engine 注入 globalThis.__GAL_VENDOR__
+ *   1. studio 启动时把 react / @vibegal/engine 注入 globalThis.__GAL_VENDOR__
  *      （见 main.tsx）。单例，studio 与渲染层共用同一份实例。
  *   2. 用户 .tsx 进入 esbuild 前，先做字符串预处理：把 bare import 改写成
  *      从 globalThis.__GAL_VENDOR__ 取具名导出。
@@ -91,12 +91,12 @@ const BARE_MAP: Record<string, string> = {
   "react/jsx-dev-runtime": "react/jsx-runtime",
   "react-dom": "react-dom",
   "react-dom/client": "react-dom/client",
-  "@galstudio/engine": "@galstudio/engine",
+  "@vibegal/engine": "@vibegal/engine",
 };
 
 function bareKey(spec: string): string | null {
   if (spec in BARE_MAP) return BARE_MAP[spec];
-  if (spec.startsWith("@galstudio/engine")) return "@galstudio/engine";
+  if (spec.startsWith("@vibegal/engine")) return "@vibegal/engine";
   if (spec.startsWith("react-dom/")) return "react-dom/client";
   if (spec.startsWith("react/")) return "react/jsx-runtime";
   return null;
@@ -226,7 +226,7 @@ export function formatRuntimeCompilerError({
     const location = diagnostic?.file
       ? `${diagnostic.file}${diagnostic.line != null && diagnostic.column != null ? `:${diagnostic.line}:${diagnostic.column}` : ""}`
       : error.file;
-    return `渲染层 ${rendererId} 的 ${location} 使用了未支持的 bare import：${error.specs.join(", ")}。仅支持 react、react/jsx-runtime、react-dom、@galstudio/engine 与相对路径 import。`;
+    return `渲染层 ${rendererId} 的 ${location} 使用了未支持的 bare import：${error.specs.join(", ")}。仅支持 react、react/jsx-runtime、react-dom、@vibegal/engine 与相对路径 import。`;
   }
   return `渲染层 ${rendererId} 编译失败：${error.message}`;
 }
@@ -240,7 +240,7 @@ export function formatRuntimeCompilerErrorForTest(args: {
 
 function memoryPlugin(files: Map<string, string>): Plugin {
   return {
-    name: "galstudio-memory",
+    name: "vibegal-memory",
     setup(build) {
       // 所有 memory namespace 内的解析（入口 + 相对 import）统一处理
       build.onResolve({ filter: /.*/, namespace: "memory" }, (args) => {

@@ -3,11 +3,11 @@
 > 状态：完成。
 > 当前契约以 [AGENTS.md](../../AGENTS.md) 和 [overview.md](./overview.md) 为准。
 
-本文档面向外部工具/Agent 与人工编辑，说明 GalStudio 图模式项目的可写文件、数据格式和路径安全约定。
+本文档面向外部工具/Agent 与人工编辑，说明 VibeGal-Studio 图模式项目的可写文件、数据格式和路径安全约定。
 
 ## 文件布局
 
-一个 GalStudio 项目根目录包含：
+一个 VibeGal-Studio 项目根目录包含：
 
 ```text
 gal.project.json
@@ -28,9 +28,9 @@ content/
 renderers/
 ```
 
-`content/graph.json` 和 `content/nodes/*.json` 是项目剧本的核心文件。保存后 GalStudio 会通过项目 watcher 自动刷新，无需重启应用。
+`content/graph.json` 和 `content/nodes/*.json` 是项目剧本的核心文件。保存后 VibeGal-Studio 会通过项目 watcher 自动刷新，无需重启应用。
 
-新建/初始化项目会把 Agent 指令和 schema 快照写进项目根目录。外部 Agent 的首选入口是项目内 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json`，不需要依赖 GalStudio 源码仓库路径。
+新建/初始化项目会把 Agent 指令和 schema 快照写进项目根目录。外部 Agent 的首选入口是项目内 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json`，不需要依赖 VibeGal-Studio 源码仓库路径。
 
 旧的 `content/meta.json` `chapters` 字段和 `content/chapters/` 目录不再作为剧本入口。它们存在时会进入项目错误面板，外部 Agent 不应读取、生成或修补这些旧结构。
 
@@ -102,7 +102,7 @@ renderers/
 ]
 ```
 
-指令 schema 会随新项目复制到 `.galstudio/schemas/nodeFile.json`。`galstudio-cli validate . --format json` 会校验节点文件是否为 `Instruction[]`、指令结构是否符合 schema，以及 `bg` / `bgm` / `sfx` / `voice` / `char` / `say` 引用的 manifest id 是否存在；问题会以 `source: "node"` 进入 `projectIssues`，并包含 `file`、`jsonPath` 和可定位的 `nodeId`。当前可用的 `t` 判别值：
+指令 schema 会随新项目复制到 `.galstudio/schemas/nodeFile.json`。`vibegal-cli validate . --format json` 会校验节点文件是否为 `Instruction[]`、指令结构是否符合 schema，以及 `bg` / `bgm` / `sfx` / `voice` / `char` / `say` 引用的 manifest id 是否存在；问题会以 `source: "node"` 进入 `projectIssues`，并包含 `file`、`jsonPath` 和可定位的 `nodeId`。当前可用的 `t` 判别值：
 
 | `t` | 用途 | 常用字段 |
 | --- | --- | --- |
@@ -170,7 +170,7 @@ DSL 规则：
 
 `stage.width` / `stage.height` 是 galgame 的固定内部分辨率。Studio 预览会把该舞台等比缩放进当前面板，renderer 应以这个固定尺寸作为坐标系，而不是以编辑器窗口大小作为坐标系。
 
-`galstudio-cli validate . --format json` 会校验 meta 字段类型和舞台尺寸范围；相关问题会以 `source: "meta"` 进入 `projectIssues`。
+`vibegal-cli validate . --format json` 会校验 meta 字段类型和舞台尺寸范围；相关问题会以 `source: "meta"` 进入 `projectIssues`。
 
 ## 外部 Agent 操作流程
 
@@ -179,7 +179,7 @@ DSL 规则：
 1. 写入 `content/nodes/<id>.json`，内容必须是 `Instruction[]`。
 2. 更新 `content/graph.json` 的 `nodes`，加入 `{ "id", "title", "file", "position" }`。
 3. 如需接入流程，更新 `edges`，加入 `{ "id", "from", "to", "mode": "linear", "label": null, "condition": null }`。
-4. 保存文件。GalStudio 会自动热重载并展示最新图。
+4. 保存文件。VibeGal-Studio 会自动热重载并展示最新图。
 
 修改节点剧情：
 
@@ -199,7 +199,7 @@ DSL 规则：
 
 ## Revision 与协作安全
 
-GalStudio 打开项目时会为关键文件返回轻量 revision：
+VibeGal-Studio 打开项目时会为关键文件返回轻量 revision：
 
 - `projectRevision`：`gal.project.json`
 - `graphRevision`：`content/graph.json`
@@ -207,7 +207,7 @@ GalStudio 打开项目时会为关键文件返回轻量 revision：
 - `metaRevision`：`content/meta.json`
 - `nodeRevisions`：各 `content/nodes/*.json`
 
-Studio 自身保存这些文件时会带上对应 revision；若外部 Agent 在此期间修改了文件，保存会返回 `write_conflict`，并保留当前草稿而不是静默覆盖。外部 Agent 仍可直接读写普通项目文件；写完后运行 `galstudio-cli validate . --format json` 即可得到结构化问题报告。
+Studio 自身保存这些文件时会带上对应 revision；若外部 Agent 在此期间修改了文件，保存会返回 `write_conflict`，并保留当前草稿而不是静默覆盖。外部 Agent 仍可直接读写普通项目文件；写完后运行 `vibegal-cli validate . --format json` 即可得到结构化问题报告。
 
 ## 路径安全
 

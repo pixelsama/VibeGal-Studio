@@ -1,6 +1,6 @@
-const PROJECT_AGENTS_MD: &str = r#"# GalStudio Project Agent Instructions
+const PROJECT_AGENTS_MD: &str = r#"# VibeGal-Studio Project Agent Instructions
 
-This directory is a GalStudio project. Treat the project root as the workspace root.
+This directory is a VibeGal-Studio project. Treat the project root as the workspace root.
 
 ## Writable Project Files
 
@@ -15,7 +15,7 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 - Linear stories are represented as graph nodes connected by edges.
 - Add a node by writing `content/nodes/<id>.json`, then adding a matching item to `content/graph.json` under `nodes`.
 - Node `file` values are relative to `content/`, for example `nodes/start.json`.
-- GalStudio's node editor may show Scenario DSL text, but project files still persist node content as `Instruction[]` JSON.
+- VibeGal-Studio's node editor may show Scenario DSL text, but project files still persist node content as `Instruction[]` JSON.
 - `pause` is a valid instruction for a pure visual story-frame stop. `wait` is a timed wait; `pause` waits for player input.
 - Do not write `choice` instructions inside node files. Branching lives on graph outgoing edges.
 - Graph edges use `mode`: `linear` for a single automatic next node, `choice` for player-visible options, and `auto` for variable-condition routing.
@@ -27,7 +27,7 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 
 - Do not create, repair, or read `content/chapters/`.
 - Do not add `chapters` to `content/meta.json`.
-- Legacy chapter data is unsupported and will appear in the GalStudio project error panel.
+- Legacy chapter data is unsupported and will appear in the VibeGal-Studio project error panel.
 
 ## Renderer Rules
 
@@ -41,16 +41,16 @@ This directory is a GalStudio project. Treat the project root as the workspace r
 Run this from the project root after edits:
 
 ```bash
-galstudio-cli validate . --format json
+vibegal-cli validate . --format json
 ```
 
-If `galstudio-cli` is not registered in the shell, macOS agents can use the app-bundled CLI directly:
+If `vibegal-cli` is not registered in the shell, macOS agents can use the app-bundled CLI directly:
 
 ```bash
-/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json
+/Applications/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli validate . --format json
 ```
 
-If GalStudio was installed somewhere other than `/Applications/galstudio.app`, replace that prefix with the actual `.app` path.
+If VibeGal-Studio was installed somewhere other than `/Applications/VibeGal-Studio.app`, replace that prefix with the actual `.app` path.
 
 The command validates graph structure, node `Instruction[]` shape, node resource references,
 meta structure, manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
@@ -61,12 +61,12 @@ exit code when the project has errors or warnings.
 - Read `.galstudio/README.md` for project format notes.
 - Read `.galstudio/renderer-contract.md` for the renderer runtime contract.
 - Read `.galstudio/schemas/*.json` for local JSON Schema snapshots.
-- Do not casually edit `.galstudio/schemas`; they are generated from the GalStudio product schema.
+- Do not casually edit `.galstudio/schemas`; they are generated from the VibeGal-Studio product schema.
 "#;
 
-const PROJECT_README_MD: &str = r#"# GalStudio Project Format
+const PROJECT_README_MD: &str = r#"# VibeGal-Studio Project Format
 
-This project is self-describing for external tools and Agents. You do not need the GalStudio source repository to edit project data.
+This project is self-describing for external tools and Agents. You do not need the VibeGal-Studio source repository to edit project data.
 
 ## Layout
 
@@ -96,7 +96,7 @@ renderers/
 
 `content/graph.json` is the required script entry point. Each graph node points to a node file through `nodes[].file`, relative to `content/`.
 
-If `content/graph.json` is missing, GalStudio still opens the project with an empty graph and a `missing_graph` issue. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized.
+If `content/graph.json` is missing, VibeGal-Studio still opens the project with an empty graph and a `missing_graph` issue. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized.
 
 Node files under `content/nodes/*.json` contain an `Instruction[]` JSON array. The Studio node editor may present this as Scenario DSL text, but the project file on disk remains JSON.
 
@@ -149,7 +149,7 @@ Local JSON Schema snapshots are in `.galstudio/schemas/`:
 - `manifest.json` validates `content/manifest.json`.
 - `meta.json` validates `content/meta.json`.
 
-These files are copied from the GalStudio product at project initialization time.
+These files are copied from the VibeGal-Studio product at project initialization time.
 
 ## Project Meta
 
@@ -178,16 +178,16 @@ Each renderer lives in `renderers/<id>/` and must default-export a `RendererMani
 Run from the project root:
 
 ```bash
-galstudio-cli validate . --format json
+vibegal-cli validate . --format json
 ```
 
 If the global command has not been installed, macOS agents can call the CLI bundled in the app:
 
 ```bash
-/Applications/galstudio.app/Contents/Resources/bin/galstudio-cli validate . --format json
+/Applications/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli validate . --format json
 ```
 
-If the app lives outside `/Applications/galstudio.app`, replace that prefix with the actual `.app` path.
+If the app lives outside `/Applications/VibeGal-Studio.app`, replace that prefix with the actual `.app` path.
 
 Validation reports graph issues, node `Instruction[]` structure errors, missing character /
 background / audio references from node instructions, meta structure problems, manifest structure problems, and asset
@@ -196,7 +196,7 @@ include `file`, `jsonPath`, and `nodeId` when available.
 
 ## Legacy Chapters
 
-Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead; if they appear, GalStudio reports them as issues instead of silently using them.
+Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead; if they appear, VibeGal-Studio reports them as issues instead of silently using them.
 "#;
 
 const PROJECT_RENDERER_CONTRACT_MD: &str = include_str!("../../../../../docs/renderer-contract.md");

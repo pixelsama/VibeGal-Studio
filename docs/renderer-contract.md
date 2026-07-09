@@ -1,6 +1,6 @@
 # Renderer Contract
 
-GalStudio loads project-local renderer layers from `renderers/<id>/`.
+VibeGal-Studio loads project-local renderer layers from `renderers/<id>/`.
 
 ## Directory Contract
 
@@ -19,10 +19,10 @@ Renderer ids must be plain filesystem-safe names. No slashes, `..`, drive letter
 
 ## Default Export
 
-`renderers/<id>/index.tsx` must default-export a `RendererManifest` from `@galstudio/engine`:
+`renderers/<id>/index.tsx` must default-export a `RendererManifest` from `@vibegal/engine`:
 
 ```ts
-import type { RendererManifest } from "@galstudio/engine";
+import type { RendererManifest } from "@vibegal/engine";
 
 const renderer: RendererManifest = {
   id: "default",
@@ -37,8 +37,8 @@ export default renderer;
 Required fields:
 
 - `id`: usually matches the directory name
-- `name`: UI label shown in GalStudio
-- `contractVersion`: must be `1` for the current GalStudio renderer contract
+- `name`: UI label shown in VibeGal-Studio
+- `contractVersion`: must be `1` for the current VibeGal-Studio renderer contract
 - `Component`: React component receiving `RendererProps`
 
 Optional fields:
@@ -46,7 +46,7 @@ Optional fields:
 - `description`
 - `capabilities`: string feature flags for future contract probing
 
-GalStudio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
+VibeGal-Studio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
 
 ## RendererProps
 
@@ -94,7 +94,7 @@ Hosts that have not implemented a V1 operation must keep the service field prese
 
 ## Stage Size
 
-GalStudio presents renderers inside a fixed-size stage defined by `content/meta.json`:
+VibeGal-Studio presents renderers inside a fixed-size stage defined by `content/meta.json`:
 
 ```json
 {
@@ -139,7 +139,7 @@ Manifest registry paths are relative to `content/`.
 - `cg` / `videos` use `AssetRef`-style objects after parsing, so renderers should read `manifest.cg[id].path` and `manifest.videos[id].path`. Optional metadata such as `name`, `tags`, `thumbnail`, `poster`, `group`, and `unlockId` is renderer-consumable but not Studio-presentational by itself.
 - `fonts`, `uiSkins`, and `animationAtlases` are pure project data contracts; renderers decide how to load or apply them.
 
-Renderers can resolve any relative asset path with `resolveAsset(contentBase, relPath)` from `@galstudio/engine`, or equivalent string joining.
+Renderers can resolve any relative asset path with `resolveAsset(contentBase, relPath)` from `@vibegal/engine`, or equivalent string joining.
 
 ## Supported Imports
 
@@ -149,7 +149,7 @@ Runtime compilation supports:
 - `react/jsx-runtime`
 - `react-dom`
 - `react-dom/client`
-- `@galstudio/engine`
+- `@vibegal/engine`
 - relative imports such as `./Stage` or `./layers/BackgroundLayer`
 
 Unsupported:

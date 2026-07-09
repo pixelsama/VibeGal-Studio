@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const cli = `cargo run --manifest-path ${join(
   "packages/studio/src-tauri/Cargo.toml",
-)} --bin galstudio-cli validate`;
+)} --bin vibegal-cli validate`;
 
 const projectRoot = process.cwd();
 const examplesRoot = `${projectRoot}/examples`;

@@ -16,7 +16,7 @@ const allowedRendererBareImports = new Set([
   "react/jsx-dev-runtime",
   "react-dom",
   "react-dom/client",
-  "@galstudio/engine",
+  "@vibegal/engine",
 ]);
 
 const allowedBareImportPaths = new Map([
@@ -25,7 +25,7 @@ const allowedBareImportPaths = new Map([
   ["react/jsx-dev-runtime", requireFromStudio.resolve("react/jsx-dev-runtime")],
   ["react-dom", requireFromStudio.resolve("react-dom")],
   ["react-dom/client", requireFromStudio.resolve("react-dom/client")],
-  ["@galstudio/engine", path.join(repoRoot, "packages/engine/src/index.ts")],
+  ["@vibegal/engine", path.join(repoRoot, "packages/engine/src/index.ts")],
 ]);
 
 function parseArgs(argv) {
@@ -255,7 +255,7 @@ function diagnosticFailure(diagnostics, fallbackRendererId) {
 
 function rendererImportGuardPlugin({ projectDir, rendererDir, rendererId }) {
   return {
-    name: "galstudio-renderer-import-guard",
+    name: "vibegal-renderer-import-guard",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
         if (!isBareImport(args.path) || !args.importer) {
@@ -272,7 +272,7 @@ function rendererImportGuardPlugin({ projectDir, rendererDir, rendererId }) {
         const file = path.relative(projectDir, importer).replaceAll(path.sep, "/");
         return {
           errors: [{
-            text: `GALSTUDIO_UNSUPPORTED_RENDERER_IMPORT:${args.path}`,
+            text: `VIBEGAL_UNSUPPORTED_RENDERER_IMPORT:${args.path}`,
             location: {
               file,
               line: location.line,
@@ -327,15 +327,15 @@ async function main() {
 
   const rendererEntry = path.join(rendererDir, "index.tsx");
   const runtimeEntry = path.join(studioRoot, "src/export/webRuntimeHost.ts");
-  const tempDir = path.join(outDir, ".galstudio-build");
+  const tempDir = path.join(outDir, ".vibegal-build");
   const generatedEntry = path.join(tempDir, "web-export-entry.tsx");
 
   await mkdir(tempDir, { recursive: true });
   await writeFile(generatedEntry, [
     `import rendererManifest from ${JSON.stringify(rendererEntry)};`,
-    `import { startGalStudioWebRuntime } from ${JSON.stringify(runtimeEntry)};`,
-    `globalThis.__GALSTUDIO_SELECTED_RENDERER_ID__ = ${JSON.stringify(rendererId)};`,
-    "startGalStudioWebRuntime(rendererManifest).catch((error) => {",
+    `import { startVibeGalWebRuntime } from ${JSON.stringify(runtimeEntry)};`,
+    `globalThis.__VIBEGAL_SELECTED_RENDERER_ID__ = ${JSON.stringify(rendererId)};`,
+    "startVibeGalWebRuntime(rendererManifest).catch((error) => {",
     "  console.error(error);",
     "  const root = document.getElementById('root');",
     "  if (root) root.textContent = error instanceof Error ? error.message : String(error);",
@@ -373,12 +373,12 @@ async function main() {
     jsonExit({ ok: true, rendererId }, 0);
   } catch (error) {
     const first = firstEsbuildError(error);
-    const unsupported = first?.text?.startsWith("GALSTUDIO_UNSUPPORTED_RENDERER_IMPORT:");
+    const unsupported = first?.text?.startsWith("VIBEGAL_UNSUPPORTED_RENDERER_IMPORT:");
     jsonExit({
       ok: false,
       code: unsupported ? "renderer_unsupported_import" : "renderer_compile_failed",
       message: unsupported
-        ? "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @galstudio/engine and relative imports."
+        ? "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @vibegal/engine and relative imports."
         : (first?.text ?? (error instanceof Error ? error.message : String(error))),
       step: "renderer",
       rendererId,
@@ -392,7 +392,7 @@ async function main() {
         rendererId,
         step: "compile",
         message: unsupported
-          ? "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @galstudio/engine and relative imports."
+          ? "Renderer imports an unsupported bare module. V1 allows only React, React DOM, @vibegal/engine and relative imports."
           : (first?.text ?? (error instanceof Error ? error.message : String(error))),
         file: first?.file,
         line: first?.line,

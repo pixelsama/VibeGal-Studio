@@ -1,4 +1,4 @@
-// GalStudio Tauri backend.
+// VibeGal-Studio Tauri backend.
 //
 // Filesystem access is intentionally centralized on the Rust side; the React
 // frontend talks to these commands through typed invoke wrappers.

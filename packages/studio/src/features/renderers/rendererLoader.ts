@@ -4,7 +4,7 @@
  * 用户项目目录可以在任意磁盘位置；dev server 的 /@fs allow-list 无法可靠覆盖。
  * 因此 dev/prod 都走 Tauri 文件读取 + esbuild-wasm 运行时编译。
  */
-import { RENDERER_CONTRACT_VERSION, type RendererManifest } from "@galstudio/engine";
+import { RENDERER_CONTRACT_VERSION, type RendererManifest } from "@vibegal/engine";
 import { readRendererFiles } from "../../lib/tauri";
 import { compileRenderer, formatRuntimeCompilerError, type RuntimeCompilerError } from "./runtimeCompiler";
 import {

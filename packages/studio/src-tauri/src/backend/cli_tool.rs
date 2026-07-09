@@ -1,8 +1,8 @@
-const CLI_COMMAND_NAME: &str = "galstudio-cli";
+const CLI_COMMAND_NAME: &str = "vibegal-cli";
 
 fn cli_executable_name() -> &'static str {
     if cfg!(windows) {
-        "galstudio-cli.exe"
+        "vibegal-cli.exe"
     } else {
         CLI_COMMAND_NAME
     }
@@ -43,7 +43,7 @@ fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
 
 fn cli_binary_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Ok(path) = env::var("GALSTUDIO_CLI_PATH") {
+    if let Ok(path) = env::var("VIBEGAL_CLI_PATH") {
         candidates.push(PathBuf::from(path));
     }
 
@@ -89,7 +89,7 @@ fn cli_launcher_path_from_resource_dir(resource_dir: &Path) -> PathBuf {
 
 fn cli_launcher_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Ok(path) = env::var("GALSTUDIO_CLI_LAUNCHER_PATH") {
+    if let Ok(path) = env::var("VIBEGAL_CLI_LAUNCHER_PATH") {
         candidates.push(PathBuf::from(path));
     }
 
@@ -193,7 +193,7 @@ fn cli_tool_status_inner(
         ))
     } else if link_occupied {
         Some(format!(
-            "目标路径已存在且不是 GalStudio 管理的链接: {}",
+            "目标路径已存在且不是 VibeGal-Studio 管理的链接: {}",
             link_path.display()
         ))
     } else {
@@ -338,7 +338,7 @@ fn install_cli_tool_inner(
                 .map_err(|e| format!("替换旧版命令链接失败 ({}): {}", link_path.display(), e))?;
         } else if fs::symlink_metadata(link_path).is_ok() {
             return Err(format!(
-                "目标路径已存在且不是 GalStudio 管理的命令: {}",
+                "目标路径已存在且不是 VibeGal-Studio 管理的命令: {}",
                 link_path.display()
             ));
         }

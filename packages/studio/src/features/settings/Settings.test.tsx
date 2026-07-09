@@ -83,9 +83,9 @@ describe("Settings", () => {
 
   it("显示命令行工具安装状态与操作", () => {
     const status: CliToolStatus = {
-      command: "galstudio-cli",
-      cliPath: "/Applications/GalStudio.app/Contents/MacOS/galstudio-cli",
-      linkPath: "/Users/me/.local/bin/galstudio-cli",
+      command: "vibegal-cli",
+      cliPath: "/Applications/VibeGal-Studio.app/Contents/MacOS/vibegal-cli",
+      linkPath: "/Users/me/.local/bin/vibegal-cli",
       installed: false,
       cliAvailable: true,
       linkOccupied: false,
@@ -106,9 +106,9 @@ describe("Settings", () => {
     );
 
     expect(html).toContain("命令行工具");
-    expect(html).toContain("galstudio-cli");
+    expect(html).toContain("vibegal-cli");
     expect(html).toContain("未安装命令链接");
-    expect(html).toContain("安装 galstudio-cli");
+    expect(html).toContain("安装 vibegal-cli");
     expect(html).toContain("重新检查");
   });
 
@@ -117,9 +117,9 @@ describe("Settings", () => {
     const onUninstall = vi.fn();
     const onRefresh = vi.fn();
     const status: CliToolStatus = {
-      command: "galstudio-cli",
-      cliPath: "/Applications/GalStudio.app/Contents/MacOS/galstudio-cli",
-      linkPath: "/Users/me/.local/bin/galstudio-cli",
+      command: "vibegal-cli",
+      cliPath: "/Applications/VibeGal-Studio.app/Contents/MacOS/vibegal-cli",
+      linkPath: "/Users/me/.local/bin/vibegal-cli",
       installed: true,
       cliAvailable: true,
       linkOccupied: false,
@@ -150,9 +150,9 @@ describe("Settings", () => {
 
   it("已安装但 App PATH 未包含命令目录时不显示错误，并让安装按钮视觉禁用", () => {
     const status: CliToolStatus = {
-      command: "galstudio-cli",
-      cliPath: "/Applications/GalStudio.app/Contents/MacOS/galstudio-cli",
-      linkPath: "/Users/me/.local/bin/galstudio-cli",
+      command: "vibegal-cli",
+      cliPath: "/Applications/VibeGal-Studio.app/Contents/MacOS/vibegal-cli",
+      linkPath: "/Users/me/.local/bin/vibegal-cli",
       installed: true,
       cliAvailable: true,
       linkOccupied: false,
@@ -171,7 +171,7 @@ describe("Settings", () => {
         onUninstall={noop}
       />,
     );
-    expect(html).toContain("已安装到 /Users/me/.local/bin/galstudio-cli");
+    expect(html).toContain("已安装到 /Users/me/.local/bin/vibegal-cli");
     expect(html).not.toContain("不在 PATH");
 
     const tree = resolveFunctionComponents(

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "galstudio",
+  "productName": "VibeGal-Studio",
   "version": "0.0.0",
-  "identifier": "com.galstudio.app",
+  "identifier": "com.vibegal.studio",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "GalStudio",
+        "title": "VibeGal-Studio",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "width": 1280,
@@ -44,10 +44,10 @@
     ],
     "resources": {
       "resources/default-renderer/*": "resources/default-renderer/",
-      "resources/bin/galstudio-cli": "bin/galstudio-cli"
+      "resources/bin/vibegal-cli": "bin/vibegal-cli"
     },
     "externalBin": [
-      "binaries/galstudio-cli"
+      "binaries/vibegal-cli"
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"

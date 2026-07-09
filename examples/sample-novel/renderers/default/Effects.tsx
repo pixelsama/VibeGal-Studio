@@ -6,7 +6,7 @@
  * 清理由上层 useNovel 在适当时机把 effects 数组重置（见 Stage 中的版本去重逻辑）。
  */
 import { useEffect, useRef, useState } from "react";
-import type { NovelState, PendingEffect, PendingTransition } from "@galstudio/engine";
+import type { NovelState, PendingEffect, PendingTransition } from "@vibegal/engine";
 
 interface Props {
   state: NovelState;

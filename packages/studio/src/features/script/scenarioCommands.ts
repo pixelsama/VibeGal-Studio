@@ -1,4 +1,4 @@
-import type { Instruction } from "@galstudio/engine";
+import type { Instruction } from "@vibegal/engine";
 import type { ProjectData } from "../../lib/types";
 import {
   defaultInstruction,

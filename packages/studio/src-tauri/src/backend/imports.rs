@@ -1,4 +1,4 @@
-// GalStudio Tauri 后端 —— 文件系统操作。
+// VibeGal-Studio Tauri 后端 —— 文件系统操作。
 // 所有磁盘读写集中在这里；前端通过 invoke 调用，不直接碰文件系统。
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};

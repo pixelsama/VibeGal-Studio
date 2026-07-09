@@ -15,7 +15,7 @@ for (const file of schemaFiles) {
   before.set(file, createHash("sha256").update(readFileSync(path)).digest("hex"));
 }
 
-execSync("pnpm --filter @galstudio/engine export-schemas", { stdio: "inherit" });
+execSync("pnpm --filter @vibegal/engine export-schemas", { stdio: "inherit" });
 
 try {
   const diffs = [];

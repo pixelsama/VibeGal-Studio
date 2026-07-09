@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { createInitialState } from "@galstudio/engine";
+import { createInitialState } from "@vibegal/engine";
 import { RuntimeStateInspector } from "./RuntimeStateInspector";
 
 describe("RuntimeStateInspector", () => {

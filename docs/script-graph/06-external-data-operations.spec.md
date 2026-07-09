@@ -6,8 +6,8 @@
 > 本阶段面向外部工具/Agent 直接编辑项目数据的工作流：可操作的校验错误 + 外部刷新指示 + schema 文档。
 > 后端扩展 `open_project` 输出校验问题（叠加式，不阻断加载），前端展示。
 
-GalStudio 的产品边界是项目数据的可视化、编辑、校验和热重载。外部 Agent 可以直接修改 `content/` 与
-`renderers/` 下的项目文件；GalStudio 不内置 AI 调用、不生成 AI 任务文件、不提供 AI 连接入口。
+VibeGal-Studio 的产品边界是项目数据的可视化、编辑、校验和热重载。外部 Agent 可以直接修改 `content/` 与
+`renderers/` 下的项目文件；VibeGal-Studio 不内置 AI 调用、不生成 AI 任务文件、不提供 AI 连接入口。
 
 这不是“不服务 AI coding”。相反，外部 AI coding 体验是一等目标；增强方式应落在清晰的数据契约、稳定的文件布局、
 schema 文档、校验报告、热重载、CLI 校验命令、机器可读错误和可预测的落盘行为上，而不是在编辑器内增加一个需要用户再回到
@@ -146,21 +146,21 @@ export interface GraphReport { graphIssues: GraphIssue[]; }
 
 ### 3.5 明确不做：应用内 AI 协作
 
-GalStudio 不实现以下能力：
+VibeGal-Studio 不实现以下能力：
 
 - 不在工具栏、右键菜单或命令面板提供“让 AI 扩展/生成/修复”的入口。
 - 不写入 `content/.gal/ai-task.md` 或类似的 AI 任务文件。
 - 不连接远程/本地 AI 服务，不保存 AI token，不管理 Agent 会话。
 
-需要 AI 或脚本自动化时，由外部 Agent 直接读写项目数据文件；GalStudio 通过 watcher、schema 文档、issues 面板和 CLI 校验反馈结果。
+需要 AI 或脚本自动化时，由外部 Agent 直接读写项目数据文件；VibeGal-Studio 通过 watcher、schema 文档、issues 面板和 CLI 校验反馈结果。
 
 推荐增强方向：
 
 - issues 面板的每条问题都能暴露稳定 code、nodeId、edgeId、相关文件路径和人类可读 message。
 - 新项目根目录的 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json` 能让外部 Agent 不需要打开应用源码，也能知道怎么新增/修改/删除节点。
-- 提供 Agent 可直接调用的 CLI，例如当前真实命令 `galstudio-cli validate <project-path> --format json`。
+- 提供 Agent 可直接调用的 CLI，例如当前真实命令 `vibegal-cli validate <project-path> --format json`。
 - CLI 校验失败时使用非零退出码，并向 stdout 输出结构化 JSON：`severity`、`code`、`message`、`nodeId`、`edgeId`、`file`、`jsonPath`。
-- CLI 不要求 GalStudio UI 正在运行；它应复用后端项目加载、路径安全和图校验逻辑，避免出现 UI 与 CLI 两套规则。
+- CLI 不要求 VibeGal-Studio UI 正在运行；它应复用后端项目加载、路径安全和图校验逻辑，避免出现 UI 与 CLI 两套规则。
 - 图编辑落盘保持格式稳定，减少外部 diff 噪音。
 - 外部改动后尽快刷新，同时尽量保留当前视角、选中节点和错误定位。
 
@@ -171,7 +171,7 @@ GalStudio 不实现以下能力：
 - graph.json 字段表（id/title/file/position/condition/version/entryNodeId）。
 - 节点文件 = `Instruction[]`，项目内 `.galstudio/schemas/nodeFile.json` 描述 `t` 判别联合。
 - 一份最小完整示例（graph.json + 一个 node json）。
-- 「外部工具/Agent 操作流程」：改 graph.json + 写 nodes/<id>.json → 保存 → GalStudio 自动热重载；
+- 「外部工具/Agent 操作流程」：改 graph.json + 写 nodes/<id>.json → 保存 → VibeGal-Studio 自动热重载；
   越界/非法路径会被拒；坏数据进 issues 不崩。
 
 ## 5. 测试清单（TDD）
@@ -217,7 +217,7 @@ GalStudio 不实现以下能力：
 3. 外部删一个节点文件 + 改 graph.json → 顶栏状态点跳「同步中…→已同步」，issues 更新。
 4. `entryNodeId` 指向不存在节点 → issues 列 `missing_entry_node`（error），但图仍加载、不崩。
 5. 合法图 → issues 面板显示「✓ 图结构正常」。
-6. `galstudio-cli validate <project-path> --format json` 能在 UI 未启动时校验项目；有问题时非零退出并返回结构化错误。
+6. `vibegal-cli validate <project-path> --format json` 能在 UI 未启动时校验项目；有问题时非零退出并返回结构化错误。
 7. 工具栏、右键菜单和命令面板不出现任何内置 AI 协作入口，也不会写入 AI 任务文件。
 8. `docs` 中存在面向外部工具/Agent 的 schema 说明。
 
@@ -247,4 +247,4 @@ GalStudio 不实现以下能力：
 | 修改某节点剧情 | 直接改 `content/nodes/<id>.json` |
 | 删除节点 | 删 `nodes/<id>.json` + 从 graph.json 的 nodes/edges 移除引用 |
 | 改流程顺序 | 改 graph.json 的 edges |
-| 注意 | `file` 必须在 `content/` 下；越界会被拒；坏数据进 issues 不崩；改完 GalStudio 自动热重载，无需重启 |
+| 注意 | `file` 必须在 `content/` 下；越界会被拒；坏数据进 issues 不崩；改完 VibeGal-Studio 自动热重载，无需重启 |

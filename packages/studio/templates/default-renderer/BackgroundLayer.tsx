@@ -3,9 +3,9 @@
  * 不懂引擎，只懂 state + manifest + contentBase。
  */
 import { memo } from "react";
-import type { NovelState } from "@galstudio/engine";
-import type { Manifest } from "@galstudio/engine";
-import { resolveAsset } from "@galstudio/engine";
+import type { NovelState } from "@vibegal/engine";
+import type { Manifest } from "@vibegal/engine";
+import { resolveAsset } from "@vibegal/engine";
 
 interface Props {
   state: NovelState;

@@ -8,7 +8,7 @@
 
 V1 已实现：
 
-- `galstudio-cli build --target web`；
+- `vibegal-cli build --target web`；
 - validate gate；
 - selected renderer bundling；
 -完整复制 `content/`；
@@ -63,7 +63,7 @@ export 不负责：
 - project id/title；
 - renderer id；
 - renderer contract version；
-- GalStudio build schema version；
+- VibeGal-Studio build schema version；
 - content hash；
 - asset manifest hash；
 - base path；
@@ -87,7 +87,7 @@ export 不负责：
 新增：
 
 ```text
-galstudio-cli smoke <dist-dir> --target web --format json
+vibegal-cli smoke <dist-dir> --target web --format json
 ```
 
 检查：
@@ -120,7 +120,7 @@ galstudio-cli smoke <dist-dir> --target web --format json
 
 - Web build 生成 `asset.manifest.json`。
 - `game.manifest.json` 包含 content/asset hash。
-- `galstudio-cli smoke` 能检查导出目录。
+- `vibegal-cli smoke` 能检查导出目录。
 - `--base-path /foo/` 的产物 smoke 通过。
 - renderer diagnostics 来自 Spec 10 的统一模型。
 - desktop wrapper prep 文档进入 docs。
@@ -142,6 +142,6 @@ galstudio-cli smoke <dist-dir> --target web --format json
 - 2026-07-08：Web build 生成 `asset.manifest.json`，包含资源 kind/id/path/size/sha256。
 - 2026-07-08：`game.manifest.json` 增加 schema/build metadata、renderer contract version、content hash、asset manifest hash、base path。
 - 2026-07-08：相同输入产物除 `builtAt` 外保持稳定，CLI 测试覆盖 manifest reproducibility。
-- 2026-07-08：新增 `galstudio-cli smoke <dist-dir> --target web --format json|text`，检查 host/runtime/content/assets/hash/basePath。
+- 2026-07-08：新增 `vibegal-cli smoke <dist-dir> --target web --format json|text`，检查 host/runtime/content/assets/hash/basePath。
 - 2026-07-08：Web build 先跑 renderer diagnostics，再打包 selected renderer。
 - 2026-07-08：新增 [desktop wrapper prep](../../desktop-tauri-wrapper-prep.md) 文档，明确 Tauri wrapper prototype 与非目标。

@@ -20,20 +20,20 @@ function targetTriple() {
 }
 
 const isWindows = (process.env.TAURI_ENV_PLATFORM || process.platform) === "windows";
-const executableName = isWindows ? "galstudio-cli.exe" : "galstudio-cli";
+const executableName = isWindows ? "vibegal-cli.exe" : "vibegal-cli";
 const source = path.join(srcTauriRoot, "target", "release", executableName);
 const destinationDir = path.join(srcTauriRoot, "binaries");
 const destination = path.join(
   destinationDir,
-  `${isWindows ? "galstudio-cli" : executableName}-${targetTriple()}${isWindows ? ".exe" : ""}`,
+  `${isWindows ? "vibegal-cli" : executableName}-${targetTriple()}${isWindows ? ".exe" : ""}`,
 );
 
 if (!existsSync(source)) {
-  throw new Error(`Cannot bundle galstudio-cli because the release binary is missing: ${source}`);
+  throw new Error(`Cannot bundle vibegal-cli because the release binary is missing: ${source}`);
 }
 
 mkdirSync(destinationDir, { recursive: true });
 copyFileSync(source, destination);
 chmodSync(destination, 0o755);
 
-console.log(`Prepared GalStudio CLI sidecar: ${destination}`);
+console.log(`Prepared VibeGal-Studio CLI sidecar: ${destination}`);

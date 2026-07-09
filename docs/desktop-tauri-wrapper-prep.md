@@ -21,8 +21,8 @@ The first wrapper prototype should be intentionally small:
 
 ## Build Flow
 
-1. Run `galstudio-cli build <project-path> --target web --out <dist-dir>`.
-2. Run `galstudio-cli smoke <dist-dir> --target web --format json`.
+1. Run `vibegal-cli build <project-path> --target web --out <dist-dir>`.
+2. Run `vibegal-cli smoke <dist-dir> --target web --format json`.
 3. Copy the smoke-passing directory into the wrapper resource folder.
 4. Build the wrapper with Tauri.
 

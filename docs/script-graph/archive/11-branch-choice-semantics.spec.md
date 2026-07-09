@@ -6,7 +6,7 @@
 
 ## 1. 需求
 
-真正的 galgame 需要选择和分支。GalStudio 需要明确：
+真正的 galgame 需要选择和分支。VibeGal-Studio 需要明确：
 
 - 选择项写在节点文件里，还是 graph edge 上，或二者如何关联。
 - 玩家选择后如何跳到下一个 node。
