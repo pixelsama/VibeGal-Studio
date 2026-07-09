@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __findUnsupportedBareImportsForTest,
   __rewriteBareImportsForTest,
@@ -95,5 +95,64 @@ describe("rewriteBareImports", () => {
         snippet: 'import debounce from "lodash-es";',
       }),
     ]);
+  });
+});
+
+describe("esbuild initialization", () => {
+  afterEach(() => {
+    vi.doUnmock("esbuild-wasm");
+    vi.resetModules();
+    delete (globalThis as Record<string, unknown>).__GAL_ESBUILD_READY__;
+    delete (globalThis as Record<string, unknown>).__GAL_ESBUILD_INIT_PROMISE__;
+  });
+
+  it("waits on the same in-flight initialize promise for concurrent compiler calls", async () => {
+    vi.resetModules();
+    delete (globalThis as Record<string, unknown>).__GAL_ESBUILD_READY__;
+    delete (globalThis as Record<string, unknown>).__GAL_ESBUILD_INIT_PROMISE__;
+    let resolveInitialize: (() => void) | null = null;
+    let initializing = false;
+    const initialize = vi.fn(() => {
+      if (initializing) {
+        return Promise.reject(new Error('Cannot call "initialize" more than once'));
+      }
+      initializing = true;
+      return new Promise<void>((resolve) => {
+        resolveInitialize = () => {
+          initializing = false;
+          resolve();
+        };
+      });
+    });
+
+    vi.doMock("esbuild-wasm", () => ({
+      initialize,
+    }));
+
+    const module = await import("./runtimeCompiler");
+    const ensureEsbuild = (module as { __ensureEsbuildForTest?: () => Promise<void> }).__ensureEsbuildForTest;
+    expect(ensureEsbuild).toBeTypeOf("function");
+
+    let firstResolved = false;
+    let secondResolved = false;
+    const first = ensureEsbuild!().then(() => {
+      firstResolved = true;
+    });
+    const second = ensureEsbuild!().then(() => {
+      secondResolved = true;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(firstResolved).toBe(false);
+    expect(secondResolved).toBe(false);
+
+    resolveInitialize?.();
+    await Promise.all([first, second]);
+
+    expect(firstResolved).toBe(true);
+    expect(secondResolved).toBe(true);
   });
 });

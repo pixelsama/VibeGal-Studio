@@ -29,28 +29,55 @@ import {
 } from "./diagnostics";
 
 let esbuildReady = false;
+let esbuildInitPromise: Promise<void> | null = null;
 const ESBUILD_READY_GLOBAL = "__GAL_ESBUILD_READY__";
+const ESBUILD_INIT_PROMISE_GLOBAL = "__GAL_ESBUILD_INIT_PROMISE__";
 
 async function ensureEsbuild(): Promise<void> {
-  if (esbuildReady || Boolean((globalThis as Record<string, unknown>)[ESBUILD_READY_GLOBAL])) {
+  const globalState = globalThis as Record<string, unknown>;
+  if (esbuildReady || Boolean(globalState[ESBUILD_READY_GLOBAL])) {
     esbuildReady = true;
     return;
   }
 
-  try {
-    if (typeof window === "undefined") {
-      await esbuild.initialize({});
+  if (!esbuildInitPromise) {
+    const globalPromise = globalState[ESBUILD_INIT_PROMISE_GLOBAL];
+    if (globalPromise instanceof Promise) {
+      esbuildInitPromise = globalPromise;
     } else {
-      await esbuild.initialize({ wasmURL: "/esbuild.wasm" });
+      esbuildInitPromise = (async () => {
+        try {
+          if (typeof window === "undefined") {
+            await esbuild.initialize({});
+          } else {
+            await esbuild.initialize({ wasmURL: "/esbuild.wasm" });
+          }
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          if (!message.includes('Cannot call "initialize" more than once')) throw e;
+        }
+
+        esbuildReady = true;
+        globalState[ESBUILD_READY_GLOBAL] = true;
+      })();
+      globalState[ESBUILD_INIT_PROMISE_GLOBAL] = esbuildInitPromise;
     }
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    if (!message.includes('Cannot call "initialize" more than once')) throw e;
   }
 
+  try {
+    await esbuildInitPromise;
+  } catch (error) {
+    if (globalState[ESBUILD_INIT_PROMISE_GLOBAL] === esbuildInitPromise) {
+      delete globalState[ESBUILD_INIT_PROMISE_GLOBAL];
+    }
+    esbuildInitPromise = null;
+    throw error;
+  }
   esbuildReady = true;
-  (globalThis as Record<string, unknown>)[ESBUILD_READY_GLOBAL] = true;
+  globalState[ESBUILD_READY_GLOBAL] = true;
 }
+
+export const __ensureEsbuildForTest = ensureEsbuild;
 
 export const VENDOR_GLOBAL = "__GAL_VENDOR__";
 

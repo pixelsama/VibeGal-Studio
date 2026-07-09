@@ -356,6 +356,7 @@ const rightRegionStyle: CSSProperties = {
 const previewRegionStyle: CSSProperties = {
   minWidth: 0,
   minHeight: 0,
+  overflow: "hidden",
   background: "var(--bg-app)",
   borderBottom: "1px solid var(--border)",
 };
