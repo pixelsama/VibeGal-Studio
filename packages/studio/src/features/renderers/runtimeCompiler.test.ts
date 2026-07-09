@@ -50,6 +50,16 @@ describe("rewriteBareImports", () => {
     expect(code).toContain('import("./lazy")');
   });
 
+  it("rewrites the legacy GalStudio engine package alias to the current vendor", () => {
+    const { code, unknownSpecs } = __rewriteBareImportsForTest(
+      'import { resolveAsset } from "@galstudio/engine";\nexport { resolveAsset };',
+    );
+
+    expect(unknownSpecs).toEqual([]);
+    expect(code).toContain('globalThis.__GAL_VENDOR__["@vibegal/engine"]');
+    expect(code).not.toContain("@galstudio/engine");
+  });
+
   it("reports unsupported bare imports with renderer and file context", () => {
     const message = formatRuntimeCompilerErrorForTest({
       rendererId: "mobile",

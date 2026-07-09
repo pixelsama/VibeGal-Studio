@@ -4,6 +4,7 @@ import { RuntimeStateInspector } from "../preview/RuntimeStateInspector";
 import { StageFrame } from "../preview/StageFrame";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { formatRendererDiagnostics } from "../renderers/diagnostics";
+import { CenteredMessage } from "../common/CenteredMessage";
 import { collectNodeStoryPoints, sliceNodeDataFromStoryPoint } from "./nodePreviewStart";
 import { useNodePreview } from "./useNodePreview";
 
@@ -59,24 +60,7 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
 }
 
 function PreviewMessage({ children, mono = false }: { children: ReactNode; mono?: boolean }) {
-  return (
-    <div style={{
-      width: "100%",
-      height: "100%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "var(--space-6)",
-      color: "var(--text-primary)",
-      textAlign: "center",
-      whiteSpace: "pre-wrap",
-      lineHeight: 1.8,
-      fontSize: "var(--text-md)",
-      fontFamily: mono ? "ui-monospace, monospace" : "inherit",
-    }}>
-      {children}
-    </div>
-  );
+  return <CenteredMessage mono={mono}>{children}</CenteredMessage>;
 }
 
 const layoutStyle: React.CSSProperties = {

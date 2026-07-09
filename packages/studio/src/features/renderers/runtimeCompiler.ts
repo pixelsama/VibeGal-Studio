@@ -92,11 +92,13 @@ const BARE_MAP: Record<string, string> = {
   "react-dom": "react-dom",
   "react-dom/client": "react-dom/client",
   "@vibegal/engine": "@vibegal/engine",
+  "@galstudio/engine": "@vibegal/engine",
 };
 
 function bareKey(spec: string): string | null {
   if (spec in BARE_MAP) return BARE_MAP[spec];
   if (spec.startsWith("@vibegal/engine")) return "@vibegal/engine";
+  if (spec.startsWith("@galstudio/engine")) return "@vibegal/engine";
   if (spec.startsWith("react-dom/")) return "react-dom/client";
   if (spec.startsWith("react/")) return "react/jsx-runtime";
   return null;

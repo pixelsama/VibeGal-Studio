@@ -62,7 +62,7 @@ export function RendererSidebar({
             <article key={`${diagnostic.code}-${diagnostic.file ?? ""}-${diagnostic.line ?? index}`} style={diagnosticItemStyle}>
               <div style={diagnosticHeaderStyle}>
                 <span>{diagnostic.severity}</span>
-                <code>{diagnostic.code}</code>
+                <code style={diagnosticCodeStyle}>{diagnostic.code}</code>
               </div>
               <div style={diagnosticMessageStyle}>{diagnostic.message}</div>
               {diagnostic.file && <code style={diagnosticLocationStyle}>{locationLabel(diagnostic)}</code>}
@@ -84,6 +84,7 @@ const sidebarStyle: React.CSSProperties = {
   boxSizing: "border-box",
   padding: "var(--space-3) var(--space-2)",
   overflowY: "auto",
+  overflowX: "hidden",
 };
 
 const toolbarStyle: React.CSSProperties = {
@@ -142,16 +143,18 @@ const diagnosticsStyle: React.CSSProperties = {
   flexDirection: "column",
   gap: "var(--space-2)",
   marginTop: "var(--space-3)",
+  minWidth: 0,
 };
 
 const diagnosticItemStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-1)",
+  minWidth: 0,
   padding: "var(--space-2)",
-  border: "1px solid var(--status-error-border)",
+  border: "1px solid var(--border-error)",
   borderRadius: "var(--radius-sm)",
-  background: "var(--status-error-bg)",
+  background: "var(--bg-error-soft)",
 };
 
 const diagnosticHeaderStyle: React.CSSProperties = {
@@ -159,8 +162,15 @@ const diagnosticHeaderStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: "var(--space-2)",
+  minWidth: 0,
   color: "var(--status-error-text)",
   fontSize: "var(--text-xs)",
+};
+
+const diagnosticCodeStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflowWrap: "anywhere",
+  textAlign: "right",
 };
 
 const diagnosticMessageStyle: React.CSSProperties = {
@@ -180,7 +190,7 @@ const snippetStyle: React.CSSProperties = {
   margin: 0,
   padding: "var(--space-2)",
   borderRadius: "var(--radius-xs)",
-  background: "var(--bg-sunken)",
+  background: "var(--bg-inset)",
   color: "var(--text-primary)",
   fontSize: "var(--text-xs)",
   whiteSpace: "pre-wrap",

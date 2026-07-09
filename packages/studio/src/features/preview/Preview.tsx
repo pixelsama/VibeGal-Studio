@@ -8,6 +8,7 @@ import { useProjectPlayer } from "./useProjectPlayer";
 import { useRendererComponent } from "./useRendererComponent";
 import { StageFrame } from "./StageFrame";
 import { formatRendererDiagnostics, type RendererDiagnostic } from "../renderers/diagnostics";
+import { CenteredMessage } from "../common/CenteredMessage";
 
 interface Props {
   project: ProjectData;
@@ -48,15 +49,7 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange }: Pr
 }
 
 function Centered({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
-  return (
-    <div style={{
-      width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-      color: "var(--text-primary)", fontFamily: mono ? "ui-monospace, monospace" : "inherit",
-      whiteSpace: "pre-wrap", textAlign: "center", padding: "var(--space-8)", lineHeight: 1.8, fontSize: "var(--text-md)",
-    }}>
-      {children}
-    </div>
-  );
+  return <CenteredMessage mono={mono}>{children}</CenteredMessage>;
 }
 
 const layoutStyle: React.CSSProperties = {

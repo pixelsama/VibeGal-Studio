@@ -77,4 +77,26 @@ describe("RendererSidebar", () => {
     expect(html).toContain("renderers/default/index.tsx:1:22");
     expect(html).toContain("import debounce from &quot;lodash&quot;");
   });
+
+  it("keeps long diagnostics inside the sidebar without horizontal scrolling", () => {
+    const html = renderToStaticMarkup(createElement(RendererSidebar, {
+      rendererIds: ["default"],
+      activeRendererId: "default",
+      onSelect: () => {},
+      diagnostics: [{
+        severity: "error",
+        code: "renderer_unsupported_import_with_a_very_long_code",
+        rendererId: "default",
+        step: "compile",
+        message: "Unsupported renderer bare import: @galstudio/engine.",
+        file: "renderers/default/SpriteLayer.tsx",
+        line: 15,
+        column: 31,
+        snippet: 'import { resolveAsset } from "@galstudio/engine";',
+      }],
+    }));
+
+    expect(html).toContain("overflow-x:hidden");
+    expect(html).toContain("overflow-wrap:anywhere");
+  });
 });

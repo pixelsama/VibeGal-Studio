@@ -81,6 +81,20 @@ describe("Settings", () => {
     expect(html).toContain("disabled");
   });
 
+  it("独立设置页标题定位在顶栏内部", () => {
+    const html = renderToStaticMarkup(
+      <Settings
+        settings={{ theme: "dark" } as AppSettings}
+        onUpdate={noop}
+        onBack={noop}
+        canGoBack
+      />,
+    );
+    const header = html.match(/<header[^>]*>/)?.[0] ?? "";
+
+    expect(header).toContain("position:relative");
+  });
+
   it("显示命令行工具安装状态与操作", () => {
     const status: CliToolStatus = {
       command: "vibegal-cli",

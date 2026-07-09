@@ -277,6 +277,7 @@ const embeddedPageStyle: React.CSSProperties = {
 };
 
 const headerStyle: React.CSSProperties = {
+  position: "relative",
   display: "flex",
   alignItems: "center",
   gap: 10,
