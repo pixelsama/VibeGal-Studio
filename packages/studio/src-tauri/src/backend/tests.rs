@@ -181,6 +181,8 @@ mod tests {
                 }
             },
             "backgrounds": { "school": "assets/backgrounds/school.png" },
+            "cg": { "cg_rooftop_asset": "assets/cg/rooftop.png" },
+            "videos": { "opening": "assets/videos/opening.mp4" },
             "audio": {
                 "bgm": { "theme": "assets/audio/bgm/theme.mp3" },
                 "sfx": { "click": "assets/audio/sfx/click.wav" },
@@ -686,6 +688,33 @@ mod tests {
     }
 
     #[test]
+    fn save_graph_returns_revision_that_can_guard_the_next_write() {
+        let root = unique_temp_dir("save-graph-revision-chain");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        write_text(&project.join("content/nodes/prologue.json"), "[]");
+
+        let first_revision = save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "First"),
+            None,
+        )
+        .unwrap()
+        .expect("save_graph should return the written file revision");
+
+        let second_revision = save_graph(
+            project.to_string_lossy().into_owned(),
+            graph_input("nodes/prologue.json", "Second title"),
+            Some(serde_json::to_value(first_revision).unwrap()),
+        )
+        .unwrap()
+        .expect("the returned revision should guard the next write");
+
+        assert_eq!(second_revision.rel_path, "content/graph.json");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn save_manifest_rejects_stale_revision() {
         let root = unique_temp_dir("save-manifest-stale");
         let project = root.join("project");
@@ -759,6 +788,41 @@ mod tests {
     }
 
     #[test]
+    fn save_project_meta_returns_revision_that_guards_the_next_write() {
+        let root = unique_temp_dir("save-project-meta-revision");
+        let project = root.join("project");
+        write_minimal_project(&project);
+        let expected = file_revision(&project, "gal.project.json")
+            .unwrap()
+            .unwrap();
+
+        let next_revision = save_project_meta(
+            project.to_string_lossy().into_owned(),
+            ProjectMeta {
+                name: "Test".to_string(),
+                active_renderer_id: "alternate".to_string(),
+                created_at: "0".to_string(),
+            },
+            Some(serde_json::to_value(&expected).unwrap()),
+        )
+        .unwrap()
+        .unwrap();
+
+        let result = save_project_meta(
+            project.to_string_lossy().into_owned(),
+            ProjectMeta {
+                name: "Test".to_string(),
+                active_renderer_id: "final".to_string(),
+                created_at: "0".to_string(),
+            },
+            Some(serde_json::to_value(&next_revision).unwrap()),
+        );
+
+        assert!(result.is_ok());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn validate_node_contents_flags_non_array_node() {
         let graph = one_node_graph();
         let nodes = vec![node_entry("nodes/start.json", serde_json::json!({}))];
@@ -820,8 +884,8 @@ mod tests {
             "nodes/start.json",
             serde_json::json!([
                 { "t": "bg", "id": "school" },
-                { "t": "pause" },
-                { "t": "narrate", "text": "继续。" }
+                { "t": "pause", "id": "pause_01" },
+                { "t": "narrate", "id": "narrate_01", "text": "继续。" }
             ]),
         )];
 
@@ -849,6 +913,80 @@ mod tests {
         let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
 
         assert!(issues.is_empty(), "set 应支持自动条件路由变量: {issues:?}");
+    }
+
+    #[test]
+    fn validate_node_contents_accepts_runtime_media_instructions() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                { "t": "showCg", "id": "cg_rooftop_asset" },
+                { "t": "playVideo", "id": "opening", "skippable": false }
+            ]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert!(issues.is_empty(), "媒体指令应与 engine schema 保持一致: {issues:?}");
+    }
+
+    #[test]
+    fn validate_node_contents_flags_missing_runtime_media_refs() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                { "t": "showCg", "id": "missing_cg" },
+                { "t": "playVideo", "id": "missing_video" }
+            ]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(
+            issues.iter().map(|issue| issue.code.as_str()).collect::<Vec<_>>(),
+            vec!["missing_cg_ref", "missing_video_ref"]
+        );
+    }
+
+    #[test]
+    fn validate_node_contents_matches_shared_contract_fixture() {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/src/__fixtures__/node-validation-contract.json");
+        let fixture: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(fixture_path).unwrap()).unwrap();
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            fixture["instructions"].clone(),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &fixture["manifest"]);
+        let actual = issues
+            .iter()
+            .map(|issue| {
+                let json_path = issue
+                    .json_path
+                    .as_deref()
+                    .expect("shared instruction issues must include json_path");
+                let index = json_path
+                    .strip_prefix("$[")
+                    .and_then(|path| path.split_once(']'))
+                    .and_then(|(index, _)| index.parse::<usize>().ok())
+                    .expect("shared instruction issue json_path must start with $[index]");
+                serde_json::json!({
+                    "code": issue.code,
+                    "severity": match issue.severity {
+                        GraphIssueSeverity::Error => "error",
+                        GraphIssueSeverity::Warn => "warn",
+                    },
+                    "index": index,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, fixture["expectedIssues"].as_array().unwrap().clone());
     }
 
     #[test]
@@ -916,7 +1054,7 @@ mod tests {
         let graph = one_node_graph();
         let nodes = vec![node_entry(
             "nodes/start.json",
-            serde_json::json!([{ "t": "say", "who": "hero", "expr": "angry", "text": "Hi" }]),
+            serde_json::json!([{ "t": "say", "id": "say_01", "who": "hero", "expr": "angry", "text": "Hi" }]),
         )];
 
         let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
@@ -939,6 +1077,41 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].code, "missing_unlock_ref");
         assert_eq!(issues[0].json_path.as_deref(), Some("$[0].id"));
+    }
+
+    #[test]
+    fn validate_node_contents_warns_when_story_point_id_is_missing() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "narrate", "text": "缺少稳定 id" }]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "instruction_id_missing");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[0].id"));
+    }
+
+    #[test]
+    fn validate_node_contents_rejects_duplicate_story_point_ids() {
+        let graph = one_node_graph();
+        let nodes = vec![node_entry(
+            "nodes/start.json",
+            serde_json::json!([
+                { "t": "say", "id": "line_01", "who": "hero", "text": "第一句" },
+                { "t": "pause", "id": "line_01" }
+            ]),
+        )];
+
+        let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "instruction_id_duplicate");
+        assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
+        assert_eq!(issues[0].json_path.as_deref(), Some("$[1].id"));
     }
 
     #[test]
@@ -1375,11 +1548,11 @@ mod tests {
             &[
                 (
                     "nodes/prologue.json",
-                    serde_json::json!([{ "t": "narrate", "text": "Start" }]),
+                    serde_json::json!([{ "t": "narrate", "id": "start_01", "text": "Start" }]),
                 ),
                 (
                     "nodes/first_meeting.json",
-                    serde_json::json!([{ "t": "say", "who": "hero", "text": "Hi" }]),
+                    serde_json::json!([{ "t": "say", "id": "ending_01", "who": "hero", "text": "Hi" }]),
                 ),
             ],
         );
@@ -1509,7 +1682,7 @@ mod tests {
             }),
             &[(
                 "nodes/present.json",
-                serde_json::json!([{ "t": "narrate", "text": "Here" }]),
+                serde_json::json!([{ "t": "narrate", "id": "here_01", "text": "Here" }]),
             )],
         );
 
@@ -2525,7 +2698,7 @@ mod tests {
             }),
             &[(
                 "nodes/start.json",
-                serde_json::json!([{ "t": "say", "who": "ghost", "text": "Hi" }]),
+                serde_json::json!([{ "t": "say", "id": "ghost_01", "who": "ghost", "text": "Hi" }]),
             )],
         );
 

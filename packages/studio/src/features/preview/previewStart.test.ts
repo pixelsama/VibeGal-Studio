@@ -78,4 +78,19 @@ describe("preview start helpers", () => {
       nodeId: "fallback",
     });
   });
+
+  it("uses engine expression semantics for preview routing", () => {
+    const graph = {
+      ...project.graph!,
+      edges: project.graph!.edges.map((edge, index) => index === 0
+        ? { ...edge, condition: "score >= -2 && !blocked" }
+        : edge),
+    };
+
+    expect(resolveAutoRoutePreview(graph, "start", { score: -1, blocked: false })).toEqual({
+      kind: "target",
+      edgeId: "start__locked",
+      nodeId: "locked",
+    });
+  });
 });

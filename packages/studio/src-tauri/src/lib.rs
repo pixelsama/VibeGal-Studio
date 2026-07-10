@@ -5,4 +5,6 @@
 
 mod backend;
 
-pub use backend::{open_project_for_cli, run, GraphIssue, GraphIssueSeverity, ProjectData, ProjectIssue};
+pub use backend::{
+    open_project_for_cli, run, GraphIssue, GraphIssueSeverity, ProjectData, ProjectIssue,
+};

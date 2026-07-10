@@ -3,7 +3,7 @@ import {
   type Instruction,
 } from "@vibegal/engine";
 
-export type NodeEditorMode = "scenario" | "json" | "blocks";
+export type NodeEditorMode = "scenario" | "json";
 
 export function isWriteConflictError(error: unknown): boolean {
   if (error instanceof Error) return isWriteConflictError(error.message);
@@ -30,50 +30,6 @@ export function nodeEditorKeepsDraftOnWriteConflict<T extends { text: string; in
 
 export function conflictDraftCopyPath(nodeFile: string, stamp: number): string {
   return nodeFile.replace(/\.json$/, `.conflict-${stamp}.json`);
-}
-
-export function transitionNodeEditorMode({
-  mode,
-  text,
-  instructions,
-}: {
-  mode: NodeEditorMode;
-  text: string;
-  instructions: Instruction[];
-}): {
-  mode: NodeEditorMode;
-  text: string;
-  instructions: Instruction[];
-  error: string | null;
-} {
-  if (mode === "json") {
-    try {
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) {
-        return { mode, text, instructions, error: "切换失败：节点内容必须是 JSON 数组。" };
-      }
-      return {
-        mode: "blocks",
-        text: JSON.stringify(parsed, null, 2),
-        instructions: parsed as Instruction[],
-        error: null,
-      };
-    } catch (error) {
-      return {
-        mode,
-        text,
-        instructions,
-        error: `切换失败：${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  }
-
-  return {
-    mode: "json",
-    text: JSON.stringify(instructions, null, 2),
-    instructions,
-    error: null,
-  };
 }
 
 export function serializeNodeData(nodeData: unknown | null): string {

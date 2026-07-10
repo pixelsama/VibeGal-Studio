@@ -44,6 +44,7 @@
     ],
     "resources": {
       "resources/default-renderer/*": "resources/default-renderer/",
+      "resources/exporter/": "exporter/",
       "resources/bin/vibegal-cli": "bin/vibegal-cli"
     },
     "externalBin": [

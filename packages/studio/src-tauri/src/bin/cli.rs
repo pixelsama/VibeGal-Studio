@@ -704,11 +704,58 @@ fn write_json_file_and_hash(path: &Path, value: &serde_json::Value) -> Result<St
     Ok(hex_sha256(text.as_bytes()))
 }
 
-fn build_worker_path() -> PathBuf {
-    if let Ok(path) = std::env::var("VIBEGAL_EXPORT_WORKER") {
-        return PathBuf::from(path);
+const EXPORT_WORKER_RELATIVE_PATH: &str = "exporter/packages/studio/scripts/build-web-export.mjs";
+
+fn build_worker_path_candidates(executable: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(parent) = executable.and_then(Path::parent) {
+        candidates.push(parent.join(EXPORT_WORKER_RELATIVE_PATH));
+        candidates.push(parent.join("resources").join(EXPORT_WORKER_RELATIVE_PATH));
+        if let Some(parent_parent) = parent.parent() {
+            candidates.push(
+                parent_parent
+                    .join("Resources")
+                    .join(EXPORT_WORKER_RELATIVE_PATH),
+            );
+            candidates.push(
+                parent_parent
+                    .join("resources")
+                    .join(EXPORT_WORKER_RELATIVE_PATH),
+            );
+        }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/build-web-export.mjs")
+    candidates
+}
+
+fn build_worker_path() -> Result<PathBuf, String> {
+    if let Ok(path) = std::env::var("VIBEGAL_EXPORT_WORKER") {
+        let path = PathBuf::from(path);
+        return path
+            .is_file()
+            .then_some(path)
+            .ok_or_else(|| "VIBEGAL_EXPORT_WORKER 指向的导出器不存在".to_string());
+    }
+
+    let mut candidates = build_worker_path_candidates(std::env::current_exe().ok().as_deref());
+    if cfg!(debug_assertions) {
+        candidates.push(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/build-web-export.mjs"),
+        );
+    }
+    candidates
+        .iter()
+        .find(|candidate| candidate.is_file())
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "找不到随 CLI 分发的 Web exporter。检查路径：{}",
+                candidates
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
 }
 
 fn node_executable() -> String {
@@ -779,7 +826,16 @@ fn parse_worker_error(stderr: &str, renderer_id: &str, project_root: &Path) -> O
 }
 
 fn run_build_worker(options: &BuildOptions, renderer_id: &str) -> Result<(), BuildError> {
-    let worker = build_worker_path();
+    let worker = build_worker_path().map_err(|message| {
+        build_error(
+            "build_worker_unavailable",
+            message,
+            "worker",
+            None,
+            Some(renderer_id.to_string()),
+            vec![],
+        )
+    })?;
     let output = Command::new(node_executable())
         .arg(worker)
         .arg("--project")
@@ -1037,7 +1093,9 @@ fn renderer_check_project(
         )
     })?;
 
-    let renderer_dir = Path::new(&project.path).join("renderers").join(&renderer_id);
+    let renderer_dir = Path::new(&project.path)
+        .join("renderers")
+        .join(&renderer_id);
     for source_file in sorted_files_under(&renderer_dir).map_err(|message| {
         build_error(
             "renderer_read_failed",
@@ -1213,7 +1271,9 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
         renderer_id: Some(renderer_id.clone()),
     })?;
     if !renderer_check.ok {
-        return Err(build_error_from_renderer_diagnostics(renderer_check.diagnostics));
+        return Err(build_error_from_renderer_diagnostics(
+            renderer_check.diagnostics,
+        ));
     }
 
     let project_root = PathBuf::from(&project.path);
@@ -1586,6 +1646,348 @@ fn smoke_base_path(game_manifest: &serde_json::Value) -> Result<String, SmokeErr
     Ok(base_path.to_string())
 }
 
+fn smoke_browser_executable() -> Option<String> {
+    if let Ok(browser) = std::env::var("VIBEGAL_SMOKE_BROWSER") {
+        if !browser.trim().is_empty() {
+            return Some(browser);
+        }
+    }
+    let mut candidates = vec![
+        "google-chrome".to_string(),
+        "chromium".to_string(),
+        "chromium-browser".to_string(),
+        "chrome".to_string(),
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".to_string(),
+        "/Applications/Chromium.app/Contents/MacOS/Chromium".to_string(),
+    ];
+    for env_name in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"] {
+        if let Ok(root) = std::env::var(env_name) {
+            candidates.push(
+                Path::new(&root)
+                    .join("Google/Chrome/Application/chrome.exe")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+    }
+    candidates.into_iter().find(|candidate| {
+        Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    })
+}
+
+fn percent_decode_url_path(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(index + 1..index + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn smoke_content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") | Some("mjs") => "text/javascript; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mp3") => "audio/mpeg",
+        _ => "application/octet-stream",
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BrowserSmokeReport {
+    status: String,
+    advanced: bool,
+    branch: String,
+    save_round_trip: bool,
+    media: String,
+    error: Option<String>,
+}
+
+fn parse_browser_smoke_callback(target: &str) -> Option<BrowserSmokeReport> {
+    let (path, query) = target.split_once('?')?;
+    if path != "/__vibegal_smoke_result__" {
+        return None;
+    }
+    let values = query
+        .split('&')
+        .filter_map(|field| {
+            let (key, value) = field.split_once('=')?;
+            let decoded = percent_decode_url_path(&value.replace('+', " "))?;
+            Some((key, decoded))
+        })
+        .collect::<BTreeMap<_, _>>();
+    Some(BrowserSmokeReport {
+        status: values.get("status")?.clone(),
+        advanced: values.get("advance").is_some_and(|value| value == "true"),
+        branch: values.get("branch").cloned().unwrap_or_default(),
+        save_round_trip: values.get("save").is_some_and(|value| value == "true"),
+        media: values.get("media").cloned().unwrap_or_default(),
+        error: values.get("error").cloned(),
+    })
+}
+
+fn serve_smoke_connection(
+    mut stream: std::net::TcpStream,
+    root: &Path,
+    report: &std::sync::Arc<std::sync::Mutex<Option<BrowserSmokeReport>>>,
+) {
+    use std::io::{Read, Write};
+
+    if stream.set_nonblocking(false).is_err() {
+        return;
+    }
+    let mut request = [0_u8; 8192];
+    let Ok(read) = stream.read(&mut request) else {
+        return;
+    };
+    let first_line = String::from_utf8_lossy(&request[..read]);
+    let Some(raw_target) = first_line
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+    else {
+        return;
+    };
+    if std::env::var_os("VIBEGAL_SMOKE_DEBUG").is_some() {
+        eprintln!("[vibegal-smoke] request {raw_target}");
+    }
+    if let Some(callback) = parse_browser_smoke_callback(raw_target) {
+        if let Ok(mut slot) = report.lock() {
+            *slot = Some(callback);
+        }
+        let _ = stream.write_all(
+            b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        );
+        return;
+    }
+    let raw_path = raw_target.split('?').next().unwrap_or("/");
+    let Some(decoded) = percent_decode_url_path(raw_path) else {
+        return;
+    };
+    let relative = decoded.trim_start_matches('/');
+    if relative.split('/').any(|part| part == "..") {
+        return;
+    }
+    let requested = root.join(if relative.is_empty() {
+        "index.html"
+    } else {
+        relative
+    });
+    let canonical_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+    let canonical_file = match requested.canonicalize() {
+        Ok(path) if path.starts_with(&canonical_root) && path.is_file() => path,
+        _ => {
+            let _ = stream.write_all(
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+            return;
+        }
+    };
+    let Ok(body) = fs::read(&canonical_file) else {
+        return;
+    };
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        smoke_content_type(&canonical_file),
+        body.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    let _ = stream.write_all(&body);
+    let _ = stream.flush();
+}
+
+fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    let browser = smoke_browser_executable().ok_or_else(|| {
+        smoke_error(
+            "smoke_browser_unavailable",
+            "行为 smoke 需要 Chrome/Chromium；可通过 VIBEGAL_SMOKE_BROWSER 指定可执行文件",
+            "behavior",
+            None,
+        )
+    })?;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|error| {
+        smoke_error(
+            "smoke_server_failed",
+            format!("启动本地 smoke 服务器失败: {error}"),
+            "behavior",
+            None,
+        )
+    })?;
+    listener.set_nonblocking(true).map_err(|error| {
+        smoke_error(
+            "smoke_server_failed",
+            format!("配置本地 smoke 服务器失败: {error}"),
+            "behavior",
+            None,
+        )
+    })?;
+    let address = listener
+        .local_addr()
+        .map_err(|error| smoke_error("smoke_server_failed", error.to_string(), "behavior", None))?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let report = Arc::new(Mutex::new(None::<BrowserSmokeReport>));
+    let server_stop = Arc::clone(&stop);
+    let server_report = Arc::clone(&report);
+    let root = dist_dir.to_path_buf();
+    let server = std::thread::spawn(move || {
+        while !server_stop.load(Ordering::Relaxed) {
+            match listener.accept() {
+                Ok((stream, _)) => serve_smoke_connection(stream, &root, &server_report),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    let profile = std::env::temp_dir().join(format!(
+        "vibegal-smoke-browser-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let url = format!("http://{address}/?vibegalSmoke=1");
+    let debug = std::env::var_os("VIBEGAL_SMOKE_DEBUG").is_some();
+    let mut browser_command = Command::new(&browser);
+    browser_command
+        .arg("--headless=new")
+        .arg("--disable-gpu")
+        .arg("--disable-dev-shm-usage")
+        .arg("--disable-background-networking")
+        .arg("--disable-extensions")
+        .arg("--disable-component-extensions-with-background-pages")
+        .arg("--no-first-run")
+        .arg("--no-sandbox")
+        .arg("--autoplay-policy=no-user-gesture-required")
+        .arg(format!("--user-data-dir={}", profile.display()))
+        .arg(&url)
+        .stdout(std::process::Stdio::null());
+    if debug {
+        browser_command
+            .arg("--remote-debugging-port=9225")
+            .arg("--enable-logging=stderr")
+            .stderr(std::process::Stdio::inherit());
+        eprintln!("[vibegal-smoke] opening {url}");
+    } else {
+        browser_command.stderr(std::process::Stdio::null());
+    }
+    let child = browser_command.spawn();
+    let browser_result = match child {
+        Ok(mut process) => {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            loop {
+                if let Some(callback) = report.lock().ok().and_then(|slot| slot.clone()) {
+                    let _ = process.kill();
+                    let _ = process.wait();
+                    break Ok(callback);
+                }
+                match process.try_wait() {
+                    Ok(Some(status)) => {
+                        break Err(std::io::Error::other(format!(
+                            "Chrome/Chromium behavior smoke exited before reporting ({status})"
+                        )))
+                    }
+                    Ok(None) if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Ok(None) => {
+                        let _ = process.kill();
+                        let _ = process.wait();
+                        break Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "Chrome/Chromium behavior smoke timed out after 30 seconds",
+                        ));
+                    }
+                    Err(error) => break Err(error),
+                }
+            }
+        }
+        Err(error) => Err(std::io::Error::new(error.kind(), error.to_string())),
+    };
+    stop.store(true, Ordering::Relaxed);
+    let _ = server.join();
+    let _ = fs::remove_dir_all(&profile);
+    let report = browser_result.map_err(|error| {
+        smoke_error(
+            "smoke_browser_failed",
+            format!("启动行为 smoke 浏览器失败: {error}"),
+            "behavior",
+            None,
+        )
+    })?;
+    if report.status != "passed" {
+        return Err(smoke_error(
+            "smoke_behavior_failed",
+            format!(
+                "浏览器行为 smoke 未通过。{}",
+                report.error.as_deref().unwrap_or("未生成通过结果")
+            ),
+            "behavior",
+            Some("index.html"),
+        ));
+    }
+    if !report.advanced
+        || !report.save_round_trip
+        || !matches!(report.branch.as_str(), "chosen" | "not-present")
+    {
+        return Err(smoke_error(
+            "smoke_behavior_incomplete",
+            "浏览器 smoke 未完成推进或存档往返",
+            "behavior",
+            Some("runtime/bundle.js"),
+        ));
+    }
+    let manifest = smoke_read_json(
+        dist_dir,
+        "content/manifest.json",
+        "smoke_missing_content_manifest",
+        "behavior",
+    )?;
+    let has_media = manifest
+        .get("cg")
+        .and_then(|value| value.as_object())
+        .is_some_and(|entries| !entries.is_empty())
+        || manifest
+            .get("videos")
+            .and_then(|value| value.as_object())
+            .is_some_and(|entries| !entries.is_empty());
+    if has_media && report.media != "loaded" {
+        return Err(smoke_error(
+            "smoke_media_load_failed",
+            "浏览器 smoke 未成功加载 manifest 中的媒体资源",
+            "behavior",
+            Some("content/manifest.json"),
+        ));
+    }
+    Ok(())
+}
+
 fn smoke_web_dist(dist_dir: &Path) -> Result<SmokeOutput, SmokeError> {
     smoke_required_file(dist_dir, "index.html", "smoke_missing_index", "host")?;
     let index = fs::read_to_string(dist_dir.join("index.html")).map_err(|e| {
@@ -1783,7 +2185,14 @@ fn smoke_web_dist(dist_dir: &Path) -> Result<SmokeOutput, SmokeError> {
 
 fn run_smoke(dist_dir: PathBuf, target: BuildTarget, format: OutputFormat) -> i32 {
     let result = match target {
-        BuildTarget::Web => smoke_web_dist(&dist_dir),
+        BuildTarget::Web => smoke_web_dist(&dist_dir).and_then(|mut output| {
+            smoke_web_behavior(&dist_dir)?;
+            output.checks.push("browserBehavior".to_string());
+            output.checks.push("advance".to_string());
+            output.checks.push("saveRoundTrip".to_string());
+            output.checks.push("mediaLoad".to_string());
+            Ok(output)
+        }),
     };
     match result {
         Ok(output) => {
@@ -2131,6 +2540,61 @@ mod tests {
         assert_eq!(node_issue.file.as_deref(), Some("content/nodes/a.json"));
         assert_eq!(node_issue.json_path.as_deref(), Some("$[0].who"));
         assert_eq!(node_issue.node_id.as_deref(), Some("a"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_cli_matches_shared_node_contract_fixture() {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/src/__fixtures__/node-validation-contract.json");
+        let fixture: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
+        let dir = unique_temp_dir("cli-node-contract");
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","title":"A","file":"nodes/a.json","position":{"x":0,"y":0}}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/manifest.json"),
+            &serde_json::to_string(&fixture["manifest"]).unwrap(),
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            &serde_json::to_string(&fixture["instructions"]).unwrap(),
+        );
+
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let mut actual = project
+            .project_report
+            .unwrap()
+            .project_issues
+            .iter()
+            .filter(|issue| issue.source == "node")
+            .map(|issue| {
+                let json_path = issue.json_path.as_deref().unwrap();
+                let index = json_path
+                    .strip_prefix("$[")
+                    .and_then(|path| path.split_once(']'))
+                    .and_then(|(index, _)| index.parse::<usize>().ok())
+                    .unwrap();
+                serde_json::json!({
+                    "code": issue.code,
+                    "severity": match issue.severity {
+                        app_lib::GraphIssueSeverity::Error => "error",
+                        app_lib::GraphIssueSeverity::Warn => "warn",
+                    },
+                    "index": index,
+                })
+            })
+            .collect::<Vec<_>>();
+        actual.sort_by_key(|issue| issue["index"].as_u64().unwrap());
+
+        assert_eq!(
+            actual,
+            fixture["expectedIssues"].as_array().unwrap().clone()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2511,6 +2975,84 @@ mod tests {
         assert_eq!(err.step, "runtime");
         assert_eq!(err.file.as_deref(), Some("runtime/bundle.js"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn browser_smoke_callback_parses_behavior_result() {
+        let report = parse_browser_smoke_callback(
+            "/__vibegal_smoke_result__?status=passed&advance=true&branch=chosen&save=true&media=loaded",
+        )
+        .expect("behavior callback should parse");
+
+        assert_eq!(report.status, "passed");
+        assert!(report.advanced);
+        assert!(report.save_round_trip);
+        assert_eq!(report.branch, "chosen");
+        assert_eq!(report.media, "loaded");
+        assert!(parse_browser_smoke_callback("/content/manifest.json").is_none());
+    }
+
+    #[test]
+    fn installed_cli_resolves_packaged_exporter_candidates() {
+        let executable = Path::new("/Applications/VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
+        let candidates = build_worker_path_candidates(Some(executable));
+
+        assert!(candidates.contains(&PathBuf::from(
+            "/Applications/VibeGal-Studio.app/Contents/Resources/exporter/packages/studio/scripts/build-web-export.mjs"
+        )));
+        assert!(candidates.contains(&PathBuf::from(
+            "/Applications/VibeGal-Studio.app/Contents/MacOS/resources/exporter/packages/studio/scripts/build-web-export.mjs"
+        )));
+    }
+
+    #[test]
+    fn browser_smoke_server_sends_large_runtime_bundle_without_truncation() {
+        use std::io::{Read, Write};
+        use std::sync::{Arc, Mutex};
+
+        let root = unique_temp_dir("smoke-large-runtime");
+        let payload = vec![b'x'; 1_500_000];
+        write_text(&root.join("index.html"), "ok");
+        fs::create_dir_all(root.join("runtime")).unwrap();
+        fs::write(root.join("runtime/bundle.js"), &payload).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut client = std::net::TcpStream::connect(address).unwrap();
+        let (stream, _) = loop {
+            match listener.accept() {
+                Ok(pair) => break pair,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::yield_now();
+                }
+                Err(error) => panic!("accept failed: {error}"),
+            }
+        };
+        let report = Arc::new(Mutex::new(None));
+        let server_root = root.clone();
+        let server_report = Arc::clone(&report);
+        let server = std::thread::spawn(move || {
+            serve_smoke_connection(stream, &server_root, &server_report);
+        });
+
+        client
+            .write_all(
+                b"GET /runtime/bundle.js HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).unwrap();
+        server.join().unwrap();
+        let body_start = response
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|index| index + 4)
+            .unwrap();
+
+        let body = &response[body_start..];
+        assert_eq!(body.len(), payload.len());
+        assert!(body.iter().all(|byte| *byte == b'x'));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

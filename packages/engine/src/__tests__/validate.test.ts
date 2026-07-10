@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { validateChapter, validateContent, validateManifest } from "../validate";
+import { ManifestSchema } from "../schema";
+import { validateChapter, validateContent, validateManifest, validateReferences } from "../validate";
 
 const manifest = {
   characters: {
@@ -270,5 +272,25 @@ describe("runtime instruction identity", () => {
         code: "instruction_id_duplicate",
       }),
     ]);
+  });
+});
+
+describe("shared node validation contract", () => {
+  it("reports the same issue codes, severities and instruction indexes as Rust and CLI", () => {
+    const fixture = JSON.parse(readFileSync(
+      new URL("../__fixtures__/node-validation-contract.json", import.meta.url),
+      "utf8",
+    ));
+    const parsedManifest = ManifestSchema.parse(fixture.manifest);
+    const issues = [
+      ...validateChapter(fixture.instructions, "nodes/contract.json"),
+      ...validateReferences(fixture.instructions, parsedManifest, "nodes/contract.json"),
+    ].sort((left, right) => (left.index ?? -1) - (right.index ?? -1));
+
+    expect(issues.map((issue) => ({
+      code: issue.code,
+      severity: issue.level,
+      index: issue.index,
+    }))).toEqual(fixture.expectedIssues);
   });
 });

@@ -5,7 +5,7 @@
  * 中：选中角色的 default sprite 预览舞台
  * 右：属性面板（name/color 可编辑 + sprite 表情列表：加/删/设默认/重命名）
  *
- * 所有改动通过 onChange(manifest) 上抛，由父组件统一 saveManifest 持久化。
+ * 所有改动通过 onChange(manifest) 上抛为父组件本地草稿，由用户显式保存。
  */
 import { useState } from "react";
 import { X } from "lucide-react";

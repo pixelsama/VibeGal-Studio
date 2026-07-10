@@ -89,8 +89,8 @@ export async function saveFile(
   relPath: string,
   content: string,
   expectedRevision?: FileRevision | null,
-): Promise<void> {
-  await invoke("save_file", withExpectedRevision({ projectPath, relPath, content }, expectedRevision));
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_file", withExpectedRevision({ projectPath, relPath, content }, expectedRevision));
 }
 
 /** 保存图结构到 content/graph.json */
@@ -98,8 +98,8 @@ export async function saveGraph(
   projectPath: string,
   graph: ProjectGraph,
   expectedRevision?: FileRevision | null,
-): Promise<void> {
-  await invoke("save_graph", withExpectedRevision({ projectPath, graph }, expectedRevision));
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_graph", withExpectedRevision({ projectPath, graph }, expectedRevision));
 }
 
 /** 只保存图节点 position patch，避免拖拽覆盖外部新增节点/边 */
@@ -107,8 +107,8 @@ export async function saveGraphPositions(
   projectPath: string,
   updates: GraphPositionPatch[],
   expectedRevision?: FileRevision | null,
-): Promise<void> {
-  await invoke("save_graph_positions", withExpectedRevision({ projectPath, updates }, expectedRevision));
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_graph_positions", withExpectedRevision({ projectPath, updates }, expectedRevision));
 }
 
 /** 删除 content/ 下的单个文件（relPath 相对 content 根） */
@@ -125,8 +125,8 @@ export async function saveProjectMeta(
   projectPath: string,
   meta: ProjectMeta,
   expectedRevision?: FileRevision | null,
-): Promise<void> {
-  await invoke("save_project_meta", withExpectedRevision({ projectPath, meta }, expectedRevision));
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_project_meta", withExpectedRevision({ projectPath, meta }, expectedRevision));
 }
 
 /** 读取一个渲染层目录的所有 .ts/.tsx 源码（供前端运行时编译） */
@@ -196,8 +196,8 @@ export async function saveManifest(
   projectPath: string,
   manifest: Manifest,
   expectedRevision?: FileRevision | null,
-): Promise<void> {
-  await invoke("save_manifest", withExpectedRevision({ projectPath, manifest }, expectedRevision));
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_manifest", withExpectedRevision({ projectPath, manifest }, expectedRevision));
 }
 
 // ──────────────────────────────────────────────

@@ -1,8 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { configDefaults } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    exclude: [...configDefaults.exclude, "scripts/**/*.test.mjs", "src-tauri/**"],
+  },
   server: {
     port: 1420,
     strictPort: true, // Tauri 依赖固定端口

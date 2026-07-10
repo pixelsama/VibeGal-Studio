@@ -14,9 +14,19 @@ import {
   sourceLocation,
   type RendererDiagnostic,
 } from "./diagnostics";
+import { isProjectRendererTrusted } from "./rendererTrust";
 
 const cache = new Map<string, RendererManifest>();
 let rendererCacheVersion = 0;
+
+export class RendererTrustRequiredError extends Error {
+  readonly code = "renderer_trust_required";
+
+  constructor(readonly projectPath: string) {
+    super("项目渲染层包含会执行的代码。请仅在信任此项目来源时授权运行。");
+    this.name = "RendererTrustRequiredError";
+  }
+}
 
 export { getRendererDiagnostics, type RendererDiagnostic } from "./diagnostics";
 
@@ -88,7 +98,14 @@ function manifestDiagnostics(raw: unknown, rendererId: string, files: { path: st
   return diagnostics;
 }
 
-export async function loadRenderer(projectPath: string, rendererId: string): Promise<RendererManifest> {
+export async function loadRenderer(
+  projectPath: string,
+  rendererId: string,
+): Promise<RendererManifest> {
+  const assertExecutionTrusted = () => {
+    if (!isProjectRendererTrusted(projectPath)) throw new RendererTrustRequiredError(projectPath);
+  };
+  assertExecutionTrusted();
   const cacheKey = `${projectPath}::${rendererId}::${rendererCacheVersion}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
@@ -96,7 +113,7 @@ export async function loadRenderer(projectPath: string, rendererId: string): Pro
   const files = await readRendererFiles(projectPath, rendererId);
   let defaultExport: unknown;
   try {
-    defaultExport = await compileRenderer(files, { rendererId });
+    defaultExport = await compileRenderer(files, { rendererId, beforeExecute: assertExecutionTrusted });
   } catch (error) {
     if (error instanceof RendererDiagnosticError) throw error;
     if (typeof error === "object" && error != null && "kind" in error) {
@@ -117,7 +134,10 @@ export async function loadRenderer(projectPath: string, rendererId: string): Pro
   return manifest;
 }
 
-export async function loadAllRenderers(projectPath: string, rendererIds: string[]): Promise<RendererManifest[]> {
+export async function loadAllRenderers(
+  projectPath: string,
+  rendererIds: string[],
+): Promise<RendererManifest[]> {
   const results = await Promise.allSettled(rendererIds.map((id) => loadRenderer(projectPath, id)));
   return results
     .map((r, i) => (r.status === "fulfilled" ? r.value : (console.warn(`渲染层 ${rendererIds[i]} 加载失败:`, r.reason), null)))

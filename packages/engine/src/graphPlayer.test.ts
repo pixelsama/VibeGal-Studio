@@ -35,6 +35,32 @@ function readKey(instructionId: string, text: string): ReadTextKey {
 }
 
 describe("GraphNovelPlayer playback history and skip", () => {
+  it("seekBy replays backward within the current node without repeating runtime effects", () => {
+    const onRuntimeEffect = vi.fn();
+    const player = new GraphNovelPlayer({ manifest, meta, onRuntimeEffect });
+    player.loadGraph(baseGraph, [
+      {
+        id: "start",
+        instructions: [
+          { t: "unlock", kind: "cg", id: "cg_rooftop" },
+          { t: "bg", id: "school", trans: "cut", ms: 0 },
+          { t: "narrate", id: "line_01", text: "抵达停点。" },
+        ],
+      },
+    ]);
+
+    player.advance();
+    expect(player.getState().flags.progress.current).toBe(3);
+
+    player.seekBy(-1);
+
+    expect(player.getState().flags.progress).toEqual({ current: 2, total: 3 });
+    expect(player.getState().background).toBe("school");
+    expect(player.getState().narration).toBeNull();
+    expect(onRuntimeEffect).toHaveBeenCalledTimes(1);
+    player.dispose();
+  });
+
   it("historyAddsBacklogForSayAndNarrate", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(baseGraph, [

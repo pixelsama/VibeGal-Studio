@@ -11,7 +11,7 @@
  *
  * 根容器 position: relative 以锚定右下角的 StatusPanel（absolute）。
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ManifestSchema } from "@vibegal/engine";
 import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
 import {
@@ -32,6 +32,16 @@ import { analyzeAssetUsage } from "./assetUsage";
 import { CharacterEditor } from "./CharacterEditor";
 import { useAssets } from "./useAssets";
 import { baseName } from "./assetPreview";
+import { RevisionedProjectMutationQueue } from "../../lib/projectMutation";
+import {
+  clearProjectDraft,
+  getSessionDraftStorage,
+  loadProjectDraft,
+  projectDraftStorageKey,
+  saveProjectDraft,
+  type DraftStorage,
+} from "../../lib/draftRecovery";
+import { isDraftSnapshotCurrent, isSaveKeyboardShortcut, preventUnloadWhenDirty } from "../script/unsavedChanges";
 
 interface AssetsWorkspaceProps {
   project: ProjectData;
@@ -39,6 +49,7 @@ interface AssetsWorkspaceProps {
   sidebarCollapsed: boolean;
   onSidebarCollapsedChange: (collapsed: boolean) => void;
   onSaved: () => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export function AssetsWorkspace({
@@ -47,12 +58,104 @@ export function AssetsWorkspace({
   sidebarCollapsed,
   onSidebarCollapsedChange,
   onSaved,
+  onDirtyChange,
 }: AssetsWorkspaceProps) {
   const [section, setSection] = useState<AssetSection>("overview");
   const [search, setSearch] = useState("");
-  const [draftManifest, setDraftManifest] = useState<Manifest | null>(null);
+  const draftStorage = useMemo(getSessionDraftStorage, []);
+  const draftStorageKey = useMemo(
+    () => projectDraftStorageKey(project.path, "content/manifest.json"),
+    [project.path],
+  );
+  const restoredManifestDraft = useMemo(
+    () => loadManifestDraft(draftStorage, draftStorageKey),
+    [draftStorage, draftStorageKey],
+  );
+  const [draftManifest, setDraftManifest] = useState<Manifest | null>(restoredManifestDraft?.manifest ?? null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftBaseVersion, setDraftBaseVersion] = useState(0);
+  const draftVersionRef = useRef(0);
+  const draftBaseRevisionRef = useRef<FileRevision | null | undefined>(
+    restoredManifestDraft?.baseRevision ?? project.manifestRevision,
+  );
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const manifestMutationQueue = useMemo(
+    () => new RevisionedProjectMutationQueue(draftBaseRevisionRef.current),
+    [project.path],
+  );
+
+  useEffect(() => {
+    if (draftManifest) return;
+    manifestMutationQueue.synchronizeRevision(project.manifestRevision);
+    draftBaseRevisionRef.current = manifestMutationQueue.revision;
+  }, [draftManifest, manifestMutationQueue, project.manifestRevision]);
+
+  useEffect(() => {
+    if (draftManifest) {
+      saveProjectDraft(draftStorage, draftStorageKey, {
+        version: 1,
+        manifest: draftManifest,
+        baseRevision: draftBaseRevisionRef.current,
+      } satisfies StoredManifestDraft);
+    } else {
+      clearProjectDraft(draftStorage, draftStorageKey);
+    }
+    onDirtyChange?.(draftManifest !== null);
+  }, [draftBaseVersion, draftManifest, draftStorage, draftStorageKey, onDirtyChange]);
+
+  useEffect(() => () => {
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
+  useEffect(() => {
+    if (!draftManifest) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      preventUnloadWhenDirty(event, true);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [draftManifest]);
+
+  const handleStageManifestDraft = (next: Manifest) => {
+    draftVersionRef.current += 1;
+    stageManifestDraft(next, setDraftManifest);
+  };
+
+  const handleDiscardManifestDraft = () => {
+    draftVersionRef.current += 1;
+    discardDraftManifest(setDraftManifest);
+  };
+
+  const handleSaveManifestDraft = async () => {
+    if (!draftManifest || savingDraft) return;
+    const savedDraftVersion = draftVersionRef.current;
+    setSavingDraft(true);
+    try {
+      await saveDraftManifest({
+        projectPath: project.path,
+        draftManifest,
+        expectedRevision: project.manifestRevision,
+        saveManifestFn: saveManifestQueued,
+        onSaved,
+        setDraftManifest,
+        notify,
+        isDraftSnapshotCurrent: () => isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current),
+      });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleSaveShortcut = (event: globalThis.KeyboardEvent) => {
+      if (!isSaveKeyboardShortcut(event) || !draftManifest) return;
+      event.preventDefault();
+      void handleSaveManifestDraft();
+    };
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [draftManifest, savingDraft]);
 
   // 防崩：project.content.manifest 类型声明为 Manifest，但运行时可能是坏数据
   // （如旧 flat audio）。用 ManifestSchema.safeParse 兜底——解析失败则用
@@ -69,6 +172,15 @@ export function AssetsWorkspace({
 
   function notify(input: ToastInput) {
     setToast({ id: Date.now(), ...input });
+  }
+
+  async function saveManifestQueued(projectPath: string, next: Manifest): Promise<FileRevision | null> {
+    const nextRevision = await manifestMutationQueue.enqueue((expectedRevision) => (
+      saveManifest(projectPath, next, expectedRevision)
+    ));
+    draftBaseRevisionRef.current = nextRevision;
+    setDraftBaseVersion((version) => version + 1);
+    return nextRevision;
   }
 
   // 磁盘路径 → 被多少 manifest 条目引用
@@ -104,6 +216,7 @@ export function AssetsWorkspace({
 
   async function handleImport() {
     if (readOnly) return;
+    const savedDraftVersion = draftVersionRef.current;
     const kind = section === "overview" ? "background" : section;
     if (kind === "character" || kind === "unknown") return;
     const files = await pickAssetFiles(kind as "background" | "bgm" | "sfx" | "voice");
@@ -130,11 +243,11 @@ export function AssetsWorkspace({
     if (newPaths.length > 0) {
       const next = applyAssetRegistrations(manifest, newPaths);
       try {
-        await saveManifest(project.path, next, project.manifestRevision);
-        setDraftManifest(null);
+        await saveManifestQueued(project.path, next);
+        if (isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)) setDraftManifest(null);
       } catch (e) {
         manifestSaveError = e;
-        setDraftManifest(next);
+        if (isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)) setDraftManifest(next);
       }
     }
 
@@ -156,6 +269,7 @@ export function AssetsWorkspace({
 
   async function handleDelete(relPath: string, assetRevision?: FileRevision) {
     if (readOnly) return;
+    const savedDraftVersion = draftVersionRef.current;
     // 删除资产时同步移除所有指向它的 manifest 引用，
     // 否则会立刻制造 missing_asset（悬空引用）。
     const result = await deleteAssetAndPruneManifestRefs({
@@ -166,13 +280,13 @@ export function AssetsWorkspace({
       assetRevision,
       manifestRevision: project.manifestRevision,
       deleteAssetFn: deleteAsset,
-      saveManifestFn: saveManifest,
+      saveManifestFn: saveManifestQueued,
     });
     const failureToast = createAssetDeleteFailureToast(result, relPath);
     if (failureToast) {
       notify(failureToast);
     }
-    if (result.manifestSaved) {
+    if (result.manifestSaved && isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)) {
       setDraftManifest(null);
     }
     await onSaved();
@@ -230,14 +344,16 @@ export function AssetsWorkspace({
 
   async function persistManifest(next: Manifest) {
     if (readOnly) return;
+    const savedDraftVersion = draftVersionRef.current;
     await persistManifestWithFeedback({
       projectPath: project.path,
       next,
       expectedRevision: project.manifestRevision,
-      saveManifestFn: saveManifest,
+      saveManifestFn: saveManifestQueued,
       onSaved,
       setDraftManifest,
       notify,
+      isDraftSnapshotCurrent: () => isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current),
     });
   }
 
@@ -265,7 +381,7 @@ export function AssetsWorkspace({
             projectPath={project.path}
             manifest={manifest}
             disabled={readOnly}
-            onChange={(m) => void persistManifest(m)}
+            onChange={handleStageManifestDraft}
             onFeedback={notify}
           />
         ) : (
@@ -326,17 +442,10 @@ export function AssetsWorkspace({
       {/* 草稿提示（角色编辑等本地未保存时） */}
       <DraftManifestBanner
         isDirty={isDirty}
-        canSave={!readOnly && !manifestInvalid}
-        onSave={() => void saveDraftManifest({
-          projectPath: project.path,
-          draftManifest,
-          expectedRevision: project.manifestRevision,
-          saveManifestFn: saveManifest,
-          onSaved,
-          setDraftManifest,
-          notify,
-        })}
-        onDiscard={() => discardDraftManifest(setDraftManifest)}
+        canSave={!readOnly && !manifestInvalid && !savingDraft}
+        saving={savingDraft}
+        onSave={() => void handleSaveManifestDraft()}
+        onDiscard={handleDiscardManifestDraft}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
@@ -360,14 +469,38 @@ export function canMutateAssets(manifestInvalid: boolean): boolean {
   return !manifestInvalid;
 }
 
+export interface StoredManifestDraft {
+  version: 1;
+  manifest: Manifest;
+  baseRevision?: FileRevision | null;
+}
+
+export function loadManifestDraft(storage: DraftStorage | null, key: string): StoredManifestDraft | null {
+  const value = loadProjectDraft(storage, key);
+  if (!value || typeof value !== "object") return null;
+  const draft = value as Partial<StoredManifestDraft>;
+  if (draft.version !== 1) return null;
+  const parsed = ManifestSchema.safeParse(draft.manifest);
+  return parsed.success ? { ...draft, manifest: parsed.data } as StoredManifestDraft : null;
+}
+
+/** Character fields are edited locally and only persisted from the draft banner. */
+export function stageManifestDraft(
+  next: Manifest,
+  setDraftManifest: (manifest: Manifest | null) => void,
+): void {
+  setDraftManifest(next);
+}
+
 export interface SaveDraftManifestParams {
   projectPath: string;
   draftManifest: Manifest | null;
   expectedRevision?: FileRevision | null;
-  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<void>;
+  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<FileRevision | null | void>;
   onSaved: () => void | Promise<void>;
   setDraftManifest: (manifest: Manifest | null) => void;
   notify: (toast: ToastInput) => void;
+  isDraftSnapshotCurrent?: () => boolean;
 }
 
 export async function saveDraftManifest({
@@ -378,6 +511,7 @@ export async function saveDraftManifest({
   onSaved,
   setDraftManifest,
   notify,
+  isDraftSnapshotCurrent,
 }: SaveDraftManifestParams): Promise<void> {
   if (!draftManifest) return;
   await persistManifestWithFeedback({
@@ -388,6 +522,7 @@ export async function saveDraftManifest({
     onSaved,
     setDraftManifest,
     notify,
+    isDraftSnapshotCurrent,
   });
 }
 
@@ -398,11 +533,12 @@ export function discardDraftManifest(setDraftManifest: (manifest: Manifest | nul
 export interface PersistManifestWithFeedbackParams {
   projectPath: string;
   next: Manifest;
-  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<void>;
+  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<FileRevision | null | void>;
   onSaved: () => void | Promise<void>;
   setDraftManifest: (manifest: Manifest | null) => void;
   notify: (toast: ToastInput) => void;
   expectedRevision?: FileRevision | null;
+  isDraftSnapshotCurrent?: () => boolean;
 }
 
 export async function persistManifestWithFeedback({
@@ -413,13 +549,14 @@ export async function persistManifestWithFeedback({
   onSaved,
   setDraftManifest,
   notify,
+  isDraftSnapshotCurrent = () => true,
 }: PersistManifestWithFeedbackParams): Promise<void> {
   try {
     await saveManifestFn(projectPath, next, expectedRevision);
-    setDraftManifest(null);
+    if (isDraftSnapshotCurrent()) setDraftManifest(null);
     await onSaved();
   } catch (error) {
-    setDraftManifest(next);
+    if (isDraftSnapshotCurrent()) setDraftManifest(next);
     notify(createManifestSaveFailureToast(error));
   }
 }
@@ -448,6 +585,22 @@ export function createAssetDeleteFailureToast(
   result: DeleteAssetAndPruneManifestRefsResult,
   relPath: string,
 ): ToastInput | null {
+  if (!result.deleted && result.manifestSaved) {
+    return {
+      kind: "error",
+      message: "引用已移除，但资产文件未删除",
+      detail: `${relPath}\n${formatUnknownError(result.error)}。文件仍在磁盘，可重新登记为资产。`,
+    };
+  }
+
+  if (!result.deleted && result.manifestSaveFailed) {
+    return {
+      kind: "error",
+      message: "manifest 更新失败，未删除资产",
+      detail: `${relPath}\n${formatUnknownError(result.error)}。资产及原引用均已保留。`,
+    };
+  }
+
   if (!result.deleted) {
     return {
       kind: "error",
@@ -476,9 +629,10 @@ export interface DraftManifestBannerProps {
   canSave: boolean;
   onSave: () => void;
   onDiscard: () => void;
+  saving?: boolean;
 }
 
-export function DraftManifestBanner({ isDirty, canSave, onSave, onDiscard }: DraftManifestBannerProps) {
+export function DraftManifestBanner({ isDirty, canSave, onSave, onDiscard, saving = false }: DraftManifestBannerProps) {
   if (!isDirty) return null;
   return (
     <div style={draftBannerStyle}>
@@ -488,8 +642,8 @@ export function DraftManifestBanner({ isDirty, canSave, onSave, onDiscard }: Dra
           放弃改动
         </button>
         {canSave && (
-          <button type="button" style={draftSaveBtnStyle} onClick={onSave}>
-            保存改动
+          <button type="button" style={draftSaveBtnStyle} onClick={onSave} disabled={saving}>
+            {saving ? "保存中…" : "保存改动"}
           </button>
         )}
       </div>
@@ -503,7 +657,7 @@ export interface DeleteAssetAndPruneManifestRefsParams {
   manifest: Manifest;
   refCountByPath: Map<string, number>;
   deleteAssetFn: (projectPath: string, relPath: string, expectedRevision?: FileRevision | null) => Promise<void>;
-  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<void>;
+  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<FileRevision | null | void>;
   assetRevision?: FileRevision;
   manifestRevision?: FileRevision | null;
 }
@@ -529,22 +683,26 @@ export async function deleteAssetAndPruneManifestRefs({
   const refs = refCountByPath.get(normalized) ?? 0;
   const nextManifest = refs > 0 ? removeAllRefsToPath(manifest, normalized) : manifest;
 
+  // 有引用时先安全地写入已剪枝的 manifest。这样后续文件删除失败时，
+  // 最坏结果只是一个可重新登记的孤儿文件，而不是引用仍在但文件已进入 trash。
+  if (refs > 0) {
+    try {
+      await saveManifestFn(projectPath, nextManifest, manifestRevision);
+    } catch (error) {
+      return { deleted: false, manifestSaved: false, manifestSaveFailed: true, error };
+    }
+  }
+
   try {
     await deleteAssetFn(projectPath, relPath, assetRevision);
   } catch (error) {
-    return { deleted: false, manifestSaved: false, manifestSaveFailed: false, error };
+    return { deleted: false, manifestSaved: refs > 0, manifestSaveFailed: false, error };
   }
 
   if (refs === 0) {
     return { deleted: true, manifestSaved: false, manifestSaveFailed: false };
   }
-
-  try {
-    await saveManifestFn(projectPath, nextManifest, manifestRevision);
-    return { deleted: true, manifestSaved: true, manifestSaveFailed: false };
-  } catch (error) {
-    return { deleted: true, manifestSaved: false, manifestSaveFailed: true, error };
-  }
+  return { deleted: true, manifestSaved: true, manifestSaveFailed: false };
 }
 
 /** 按 kind 决定导入目标子目录（与 Rust AssetKind::from_rel_path 对齐）。 */

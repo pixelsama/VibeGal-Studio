@@ -109,6 +109,25 @@ describe("ScenarioInspector", () => {
     expect(narrate).not.toContain("textarea");
   });
 
+  it("renders a remove-only character instruction without materializing missing fields", () => {
+    const selection = getScenarioSelection(
+      '@instruction {"t":"char","id":"akari","remove":true}',
+      0,
+    );
+
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection,
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(selection.instruction).toEqual({ t: "char", id: "akari", remove: true });
+    expect(html).toContain("角色");
+    expect(html).toContain("default");
+    expect(html).toContain("center");
+  });
+
   it("renders node summary when no editable line is selected", () => {
     const html = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("", 0),

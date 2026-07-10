@@ -5,9 +5,10 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
+import ts from "typescript";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const studioRoot = path.resolve(__dirname, "..");
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const studioRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(studioRoot, "../..");
 const requireFromStudio = createRequire(path.join(studioRoot, "package.json"));
 const allowedRendererBareImports = new Set([
@@ -26,6 +27,10 @@ const allowedBareImportPaths = new Map([
   ["react-dom", requireFromStudio.resolve("react-dom")],
   ["react-dom/client", requireFromStudio.resolve("react-dom/client")],
   ["@vibegal/engine", path.join(repoRoot, "packages/engine/src/index.ts")],
+  ["@vibegal/contracts", path.join(repoRoot, "packages/contracts/src/index.ts")],
+  ["@vibegal/contracts/schema", path.join(repoRoot, "packages/contracts/src/schema.ts")],
+  ["@vibegal/contracts/types", path.join(repoRoot, "packages/contracts/src/types.ts")],
+  ["zod", requireFromStudio.resolve("zod")],
 ]);
 
 function parseArgs(argv) {
@@ -234,7 +239,53 @@ function rendererDiagnostics({ projectDir, rendererDir, rendererId }) {
   return [
     ...unsupportedImportDiagnostics({ projectDir, rendererDir, rendererId }),
     ...rendererManifestDiagnostics({ projectDir, rendererDir, rendererId }),
+    ...rendererTypecheckDiagnostics({ projectDir, rendererDir, rendererId }),
   ];
+}
+
+function rendererTypecheckDiagnostics({ projectDir, rendererDir, rendererId }) {
+  const compilerOptions = {
+    noEmit: true,
+    strict: true,
+    skipLibCheck: true,
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    jsx: ts.JsxEmit.ReactJSX,
+    allowSyntheticDefaultImports: true,
+    esModuleInterop: true,
+    baseUrl: repoRoot,
+    paths: {
+      "@vibegal/engine": ["packages/engine/src/index.ts"],
+      "@vibegal/contracts": ["packages/contracts/src/index.ts"],
+      "@vibegal/contracts/*": ["packages/contracts/src/*"],
+      react: ["packages/studio/node_modules/@types/react/index.d.ts"],
+      "react/*": ["packages/studio/node_modules/@types/react/*"],
+      "react-dom": ["packages/studio/node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/*": ["packages/studio/node_modules/@types/react-dom/*"],
+    },
+  };
+  const sourceFiles = rendererSourceFiles(rendererDir).filter((file) => /\.tsx?$/.test(file));
+  const program = ts.createProgram(sourceFiles, compilerOptions);
+  return ts.getPreEmitDiagnostics(program)
+    .filter((diagnostic) => {
+      if (diagnostic.category !== ts.DiagnosticCategory.Error || !diagnostic.file) return false;
+      return isRendererFile(diagnostic.file.fileName, rendererDir);
+    })
+    .map((diagnostic) => {
+      const sourceFile = diagnostic.file;
+      const start = diagnostic.start ?? 0;
+      const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+      return rendererDiagnostic({
+        code: "renderer_typecheck_failed",
+        rendererId,
+        step: "typecheck",
+        message: `TS${diagnostic.code}: ${message}`,
+        file: relativeProjectFile(projectDir, sourceFile.fileName),
+        source: sourceFile.text,
+        index: start,
+      });
+    });
 }
 
 function diagnosticFailure(diagnostics, fallbackRendererId) {
@@ -261,11 +312,16 @@ function rendererImportGuardPlugin({ projectDir, rendererDir, rendererId }) {
         if (!isBareImport(args.path) || !args.importer) {
           return null;
         }
-        if (allowedBareImportPaths.has(args.path)) {
+        const rendererImport = isRendererFile(args.importer, rendererDir);
+        if (!rendererImport && allowedBareImportPaths.has(args.path)) {
           return { path: allowedBareImportPaths.get(args.path) };
         }
-        if (!isRendererFile(args.importer, rendererDir)) return null;
-        if (allowedRendererBareImports.has(args.path)) return null;
+        if (!rendererImport) return null;
+        if (allowedRendererBareImports.has(args.path)) {
+          return allowedBareImportPaths.has(args.path)
+            ? { path: allowedBareImportPaths.get(args.path) }
+            : null;
+        }
 
         const importer = realpathSync(args.importer);
         const location = rendererImportLocation(importer, args.path);
@@ -330,7 +386,11 @@ async function main() {
   const tempDir = path.join(outDir, ".vibegal-build");
   const generatedEntry = path.join(tempDir, "web-export-entry.tsx");
 
-  await mkdir(tempDir, { recursive: true });
+  await Promise.all([
+    mkdir(tempDir, { recursive: true }),
+    mkdir(path.join(outDir, "runtime"), { recursive: true }),
+    mkdir(path.join(outDir, "renderer"), { recursive: true }),
+  ]);
   await writeFile(generatedEntry, [
     `import rendererManifest from ${JSON.stringify(rendererEntry)};`,
     `import { startVibeGalWebRuntime } from ${JSON.stringify(runtimeEntry)};`,

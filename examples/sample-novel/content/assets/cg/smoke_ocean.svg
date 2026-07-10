@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151d35"/>
+      <stop offset="0.58" stop-color="#596783"/>
+      <stop offset="1" stop-color="#d29a85"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#344d68"/>
+      <stop offset="1" stop-color="#10192b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="450" fill="url(#sky)"/>
+  <rect y="450" width="1280" height="270" fill="url(#sea)"/>
+  <circle cx="920" cy="410" r="48" fill="#ffd59b" opacity="0.9"/>
+  <path d="M0 500 Q180 460 360 505 T720 500 T1080 505 T1440 495 V720 H0Z" fill="#1b2a40" opacity="0.72"/>
+  <text x="64" y="650" fill="#f7eee5" font-family="sans-serif" font-size="28" letter-spacing="4">VIBEGAL MEDIA SMOKE</text>
+</svg>

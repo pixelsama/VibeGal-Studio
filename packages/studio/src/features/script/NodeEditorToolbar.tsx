@@ -38,18 +38,18 @@ export function NodeEditorToolbar({
         <div style={metaStyle}>{file}</div>
       </div>
       <div style={toolbarSpacerStyle} />
-      <button type="button" onClick={() => onModeToggle("scenario")} style={toggleButtonStyle}>剧本</button>
-      <button type="button" onClick={() => onModeToggle("json")} style={toggleButtonStyle}>JSON</button>
+      <button type="button" onClick={() => onModeToggle("scenario")} disabled={saving} style={toggleButtonStyle}>剧本</button>
+      <button type="button" onClick={() => onModeToggle("json")} disabled={saving} style={toggleButtonStyle}>JSON</button>
       {dirty && <StatusText tone="warn">未保存</StatusText>}
       {diagnosticsCount > 0 && <StatusText tone="error">剧本有 {diagnosticsCount} 个问题</StatusText>}
       {hasExternalUpdate && !writeConflict && (
-        <button type="button" onClick={onLoadExternal} style={loadButtonStyle}>
+        <button type="button" onClick={onLoadExternal} disabled={saving} style={loadButtonStyle}>
           外部已更新，点击载入
         </button>
       )}
       {writeConflict && (
         <>
-          <button type="button" onClick={onLoadExternal} style={loadButtonStyle}>
+          <button type="button" onClick={onLoadExternal} disabled={saving} style={loadButtonStyle}>
             载入外部版本
           </button>
           <button type="button" onClick={onSaveDraftCopy} disabled={saving} style={loadButtonStyle}>

@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { saveFile } from "../../lib/tauri";
 import type { FileRevision, ProjectData } from "../../lib/types";
+import {
+  clearProjectDraft,
+  getSessionDraftStorage,
+  loadProjectDraft,
+  projectDraftStorageKey,
+  saveProjectDraft,
+  type DraftStorage,
+} from "../../lib/draftRecovery";
+import { isDraftSnapshotCurrent, isSaveKeyboardShortcut, preventUnloadWhenDirty } from "../script/unsavedChanges";
 import {
   DEFAULT_STAGE_RESOLUTION,
   STAGE_HEIGHT_RANGE,
@@ -15,7 +24,7 @@ type SaveFileFn = (
   relPath: string,
   content: string,
   expectedRevision?: FileRevision | null,
-) => Promise<void>;
+) => Promise<void | FileRevision | null>;
 
 const STAGE_PRESETS: StageResolution[] = [
   DEFAULT_STAGE_RESOLUTION,
@@ -27,39 +36,114 @@ const STAGE_PRESETS: StageResolution[] = [
 export async function saveProjectStageResolution({
   project,
   stage,
+  expectedRevision = project.metaRevision,
   saveFileFn = saveFile,
 }: {
   project: ProjectData;
   stage: StageResolution;
+  expectedRevision?: FileRevision | null;
   saveFileFn?: SaveFileFn;
-}): Promise<void> {
+}): Promise<void | FileRevision | null> {
   const nextMeta = withStageResolution(project.content.meta, stage);
-  await saveFileFn(
+  return saveFileFn(
     project.path,
     "content/meta.json",
     JSON.stringify(nextMeta, null, 2),
-    project.metaRevision,
+    expectedRevision,
   );
+}
+
+export interface StoredStageSettingsDraft {
+  version: 1;
+  widthText: string;
+  heightText: string;
+  baseStage?: StageResolution;
+  baseRevision?: FileRevision | null;
+}
+
+export function loadStageSettingsDraft(storage: DraftStorage | null, key: string): StoredStageSettingsDraft | null {
+  const value = loadProjectDraft(storage, key);
+  if (!value || typeof value !== "object") return null;
+  const draft = value as Partial<StoredStageSettingsDraft>;
+  if (draft.version !== 1 || typeof draft.widthText !== "string" || typeof draft.heightText !== "string") return null;
+  return draft as StoredStageSettingsDraft;
+}
+
+export function isStageDraftDirty(base: StageResolution, widthText: string, heightText: string): boolean {
+  return widthText !== String(base.width) || heightText !== String(base.height);
+}
+
+export function projectSettingsDraftStorageKey(projectPath: string): string {
+  return projectDraftStorageKey(projectPath, "content/meta.json:stage");
 }
 
 export function ProjectSettings({
   project,
   onSaved,
+  onDirtyChange,
 }: {
   project: ProjectData;
   onSaved: () => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initialStage = useMemo(() => readStageResolution(project.content.meta), [project.content.meta]);
-  const [widthText, setWidthText] = useState(String(initialStage.width));
-  const [heightText, setHeightText] = useState(String(initialStage.height));
+  const draftStorage = useMemo(getSessionDraftStorage, []);
+  const draftStorageKey = useMemo(
+    () => projectSettingsDraftStorageKey(project.path),
+    [project.path],
+  );
+  const restoredDraft = useMemo(
+    () => loadStageSettingsDraft(draftStorage, draftStorageKey),
+    [draftStorage, draftStorageKey],
+  );
+  const [widthText, setWidthText] = useState(restoredDraft?.widthText ?? String(initialStage.width));
+  const [heightText, setHeightText] = useState(restoredDraft?.heightText ?? String(initialStage.height));
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [draftBaseVersion, setDraftBaseVersion] = useState(0);
+  const baseStageRef = useRef(restoredDraft?.baseStage ?? initialStage);
+  const loadedRevisionRef = useRef<FileRevision | null | undefined>(
+    restoredDraft?.baseRevision ?? project.metaRevision,
+  );
+  const draftVersionRef = useRef(0);
+  const dirty = isStageDraftDirty(baseStageRef.current, widthText, heightText);
 
   useEffect(() => {
+    if (dirty) return;
+    baseStageRef.current = initialStage;
+    loadedRevisionRef.current = project.metaRevision;
     setWidthText(String(initialStage.width));
     setHeightText(String(initialStage.height));
     setStatus(null);
-  }, [initialStage]);
+  }, [dirty, initialStage, project.metaRevision]);
+
+  useEffect(() => {
+    if (dirty) {
+      saveProjectDraft(draftStorage, draftStorageKey, {
+        version: 1,
+        widthText,
+        heightText,
+        baseStage: baseStageRef.current,
+        baseRevision: loadedRevisionRef.current,
+      } satisfies StoredStageSettingsDraft);
+    } else {
+      clearProjectDraft(draftStorage, draftStorageKey);
+    }
+    onDirtyChange?.(dirty);
+  }, [dirty, draftBaseVersion, draftStorage, draftStorageKey, heightText, onDirtyChange, widthText]);
+
+  useEffect(() => () => {
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      preventUnloadWhenDirty(event, true);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirty]);
 
   const draft = parseStageDraft(widthText, heightText);
   const activePreset = draft
@@ -67,6 +151,7 @@ export function ProjectSettings({
     : null;
 
   const handlePreset = (stage: StageResolution) => {
+    draftVersionRef.current += 1;
     setWidthText(String(stage.width));
     setHeightText(String(stage.height));
     setStatus(null);
@@ -74,17 +159,49 @@ export function ProjectSettings({
 
   const handleSave = async () => {
     if (!draft || saving) return;
+    const savedDraftVersion = draftVersionRef.current;
     setSaving(true);
     setStatus(null);
     try {
-      await saveProjectStageResolution({ project, stage: draft });
+      const nextRevision = await saveProjectStageResolution({
+        project,
+        stage: draft,
+        expectedRevision: loadedRevisionRef.current,
+      });
+      loadedRevisionRef.current = nextRevision ?? undefined;
+      baseStageRef.current = draft;
+      setDraftBaseVersion((version) => version + 1);
       await onSaved();
-      setStatus("已保存");
+      setStatus(isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)
+        ? "已保存"
+        : "已保存；保存期间的新改动仍未保存。");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }
+  };
+
+  useEffect(() => {
+    const handleSaveShortcut = (event: globalThis.KeyboardEvent) => {
+      if (!isSaveKeyboardShortcut(event) || !dirty) return;
+      event.preventDefault();
+      if (!saving) void handleSave();
+    };
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [dirty, handleSave, saving]);
+
+  const handleWidthChange = (value: string) => {
+    draftVersionRef.current += 1;
+    setWidthText(value);
+    setStatus(null);
+  };
+
+  const handleHeightChange = (value: string) => {
+    draftVersionRef.current += 1;
+    setHeightText(value);
+    setStatus(null);
   };
 
   return (
@@ -118,8 +235,8 @@ export function ProjectSettings({
             })}
           </div>
           <div style={numberRowStyle}>
-            <NumberField label="宽" value={widthText} onChange={setWidthText} />
-            <NumberField label="高" value={heightText} onChange={setHeightText} />
+            <NumberField label="宽" value={widthText} onChange={handleWidthChange} />
+            <NumberField label="高" value={heightText} onChange={handleHeightChange} />
             <button
               type="button"
               onClick={() => void handleSave()}

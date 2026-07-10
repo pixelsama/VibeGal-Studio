@@ -1,6 +1,7 @@
 /**
  * 项目相关类型 —— studio 与 Rust 后端之间的数据契约。
  */
+import type { Manifest as EngineManifest } from "@vibegal/engine";
 
 /** gal.project.json 的结构 */
 export interface ProjectMeta {
@@ -122,75 +123,16 @@ export interface GraphIssueFocusRequest {
 // manifest 数据模型（与 engine 的 ManifestSchema 对齐）
 // ──────────────────────────────────────────────
 
-export interface ManifestCharacter {
-  name: string;
-  color: string;
-  /** expr → 路径（相对 content 根） */
-  sprites: Record<string, string>;
-}
-
-/** audio 拆成 bgm/sfx/voice 三张子表，与 Bgm/Sfx/Voice 指令一一对应 */
-export interface ManifestAudio {
-  bgm: Record<string, string>;
-  sfx: Record<string, string>;
-  voice: Record<string, string>;
-}
-
-export interface ManifestAssetRef {
-  path: string;
-  name?: string;
-  tags?: string[];
-  thumbnail?: string;
-}
-
-export interface ManifestCgAssetRef extends ManifestAssetRef {
-  group?: string;
-  unlockId?: string;
-}
-
-export interface ManifestVideoAssetRef extends ManifestAssetRef {
-  poster?: string;
-  skippable?: boolean;
-}
-
-export interface ManifestFontAsset {
-  path: string;
-  family: string;
-  weight?: string;
-  style?: string;
-}
-
-export interface ManifestUiSkin {
-  name?: string;
-  assets: Record<string, string>;
-  tokens?: Record<string, string | number>;
-}
-
-export interface ManifestAnimationAtlas {
-  image: string;
-  json?: string;
-  frameWidth?: number;
-  frameHeight?: number;
-}
-
-export interface ManifestUnlocks {
-  cg: Record<string, { assetId: string; title?: string }>;
-  music: Record<string, { audioId: string; title?: string }>;
-  replay: Record<string, { nodeId: string; title?: string }>;
-  endings: Record<string, { title: string; nodeId?: string }>;
-}
-
-export interface Manifest {
-  characters: Record<string, ManifestCharacter>;
-  backgrounds: Record<string, string>;
-  audio: ManifestAudio;
-  cg: Record<string, ManifestCgAssetRef>;
-  videos: Record<string, ManifestVideoAssetRef>;
-  fonts: Record<string, ManifestFontAsset>;
-  uiSkins: Record<string, ManifestUiSkin>;
-  animationAtlases: Record<string, ManifestAnimationAtlas>;
-  unlocks: ManifestUnlocks;
-}
+export type Manifest = EngineManifest;
+export type ManifestCharacter = Manifest["characters"][string];
+export type ManifestAudio = Manifest["audio"];
+export type ManifestAssetRef = Pick<Manifest["cg"][string], "path" | "name" | "tags" | "thumbnail">;
+export type ManifestCgAssetRef = Manifest["cg"][string];
+export type ManifestVideoAssetRef = Manifest["videos"][string];
+export type ManifestFontAsset = Manifest["fonts"][string];
+export type ManifestUiSkin = Manifest["uiSkins"][string];
+export type ManifestAnimationAtlas = Manifest["animationAtlases"][string];
+export type ManifestUnlocks = Manifest["unlocks"];
 
 /** 空的 manifest 常量，用于渲染层 props 的回退值（保持 audio 三子表结构合法）。 */
 export const EMPTY_MANIFEST: Manifest = {

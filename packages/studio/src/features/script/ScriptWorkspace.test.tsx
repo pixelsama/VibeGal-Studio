@@ -2,8 +2,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { Breadcrumb } from "./Breadcrumb";
-import { buildGraphPositionUpdates, ScriptWorkspace } from "./ScriptWorkspace";
-import type { ProjectData, ProjectGraph } from "../../lib/types";
+import {
+  buildGraphPositionUpdates,
+  persistCreatedNodeWithCompensation,
+  ScriptWorkspace,
+  takePendingGraphPositionUpdates,
+} from "./ScriptWorkspace";
+import type { FileRevision, ProjectData, ProjectGraph } from "../../lib/types";
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
@@ -99,5 +104,63 @@ describe("graph position patch", () => {
     expect(buildGraphPositionUpdates(graph, next)).toEqual([
       { id: "prologue", position: { x: 24, y: 48 } },
     ]);
+  });
+
+  it("drains the latest debounced position for each node before navigation", () => {
+    const pending = new Map([
+      ["prologue", { x: 10, y: 20 }],
+      ["ending", { x: 30, y: 40 }],
+    ]);
+
+    expect(takePendingGraphPositionUpdates(pending)).toEqual([
+      { id: "prologue", position: { x: 10, y: 20 } },
+      { id: "ending", position: { x: 30, y: 40 } },
+    ]);
+    expect(pending.size).toBe(0);
+  });
+});
+
+describe("multi-file node creation", () => {
+  it("removes the newly created file with its revision when graph persistence fails", async () => {
+    const createdRevision: FileRevision = {
+      relPath: "content/nodes/new.json",
+      mtimeMs: 10,
+      size: 2,
+    };
+    const deleted: Array<{ relPath: string; revision?: FileRevision | null }> = [];
+
+    const result = await persistCreatedNodeWithCompensation({
+      projectPath: "/project",
+      nodeFile: "nodes/new.json",
+      content: "[]",
+      graph,
+      saveFileFn: async () => createdRevision,
+      persistGraphFn: async () => false,
+      deleteFileFn: async (_projectPath, relPath, revision) => {
+        deleted.push({ relPath, revision });
+      },
+    });
+
+    expect(result).toEqual({ saved: false, rolledBack: true });
+    expect(deleted).toEqual([{ relPath: "nodes/new.json", revision: createdRevision }]);
+  });
+
+  it("keeps the created node file after graph persistence succeeds", async () => {
+    let deleted = false;
+
+    const result = await persistCreatedNodeWithCompensation({
+      projectPath: "/project",
+      nodeFile: "nodes/new.json",
+      content: "[]",
+      graph,
+      saveFileFn: async () => null,
+      persistGraphFn: async () => true,
+      deleteFileFn: async () => {
+        deleted = true;
+      },
+    });
+
+    expect(result).toEqual({ saved: true, rolledBack: false });
+    expect(deleted).toBe(false);
   });
 });

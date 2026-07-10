@@ -241,7 +241,7 @@ function classifyAutoCondition(condition: string | null | undefined): AutoBranch
   if (!source) return "default";
   const parsed = parseGraphCondition(source);
   if (!parsed.ok) return "invalid";
-  if (parsed.ast.kind === "literal") return parsed.ast.value ? "always" : "never";
+  if (parsed.ast.type === "literal") return parsed.ast.value ? "always" : "never";
   return "unknown";
 }
 

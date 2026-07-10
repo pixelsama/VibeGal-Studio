@@ -1,3 +1,4 @@
+import { InstructionSchema } from "./schema";
 import type { Instruction } from "./types";
 
 export interface ScenarioDiagnostic {
@@ -10,7 +11,7 @@ export type ScenarioParseResult =
   | { ok: false; instructions: Instruction[]; diagnostics: ScenarioDiagnostic[] };
 
 type ParsedLine =
-  | { ok: true; instruction: Instruction | null; consumesChoiceBlock?: boolean }
+  | { ok: true; instruction: Instruction | null; suppressesImplicitPause?: boolean }
   | { ok: false; message: string };
 
 const BG_TRANSITIONS = new Set(["fade", "cut", "dissolve"]);
@@ -24,14 +25,16 @@ export function parseScenarioText(text: string): ScenarioParseResult {
   const diagnostics: ScenarioDiagnostic[] = [];
   let frameHasBlockingInstruction = false;
   let frameHasAnyInstruction = false;
+  let frameSuppressesImplicitPause = false;
   let index = 0;
 
   const finishFrame = () => {
-    if (frameHasAnyInstruction && !frameHasBlockingInstruction) {
+    if (frameHasAnyInstruction && !frameHasBlockingInstruction && !frameSuppressesImplicitPause) {
       instructions.push({ t: "pause" } as Instruction);
     }
     frameHasBlockingInstruction = false;
     frameHasAnyInstruction = false;
+    frameSuppressesImplicitPause = false;
   };
 
   while (index < lines.length) {
@@ -47,6 +50,9 @@ export function parseScenarioText(text: string): ScenarioParseResult {
 
     const parsed = parseScenarioLine(line);
     if (parsed.ok) {
+      if (parsed.suppressesImplicitPause) {
+        frameSuppressesImplicitPause = true;
+      }
       if (parsed.instruction) {
         instructions.push(parsed.instruction);
         frameHasAnyInstruction = true;
@@ -75,6 +81,27 @@ export function parseScenarioLine(line: string): ParsedLine {
   }
 
   if (trimmed.startsWith("@")) {
+    if (trimmed === "@continue") {
+      return { ok: true, instruction: null, suppressesImplicitPause: true };
+    }
+
+    if (trimmed === "@instruction" || trimmed.startsWith("@instruction ")) {
+      const payload = trimmed.slice("@instruction".length).trim();
+      if (!payload) return { ok: false, message: "@instruction 需要 Instruction JSON。" };
+      try {
+        const rawInstruction: unknown = JSON.parse(payload);
+        const validated = InstructionSchema.safeParse(rawInstruction);
+        if (!validated.success) {
+          return { ok: false, message: "@instruction 需要有效的 Instruction JSON。" };
+        }
+        // Validate the payload, but retain the raw object. Applying Zod defaults here
+        // would turn an omitted project field into an explicit field on save.
+        return { ok: true, instruction: rawInstruction as Instruction };
+      } catch {
+        return { ok: false, message: "@instruction 需要有效的 Instruction JSON。" };
+      }
+    }
+
     const parts = trimmed.split(/\s+/);
     const command = parts[0];
     switch (command) {
@@ -186,13 +213,25 @@ export function formatScenarioText(instructions: Instruction[]): string {
       lines.push("");
     }
   });
+  if (instructions.length > 0 && !isBlockingInstruction(instructions[instructions.length - 1])) {
+    lines.push("@continue");
+  }
   return lines.join("\n").trimEnd();
 }
 
 export function formatScenarioInstruction(instruction: Instruction): string {
+  const readable = formatReadableScenarioInstruction(instruction);
+  const reparsed = parseScenarioLine(readable);
+  if (reparsed.ok && reparsed.instruction && instructionsAreEquivalent(reparsed.instruction, instruction)) {
+    return readable;
+  }
+  return `@instruction ${stringifyScenarioJson(instruction)}`;
+}
+
+function formatReadableScenarioInstruction(instruction: Instruction): string {
   switch (instruction.t) {
     case "bg":
-      return `@bg ${instruction.id} ${instruction.trans}`;
+      return `@bg ${instruction.id} ${instruction.trans ?? "fade"}`;
     case "bgm":
       return `@bgm ${instruction.id}`;
     case "sfx":
@@ -200,7 +239,7 @@ export function formatScenarioInstruction(instruction: Instruction): string {
     case "voice":
       return `@voice ${instruction.id}`;
     case "char":
-      return `@char ${instruction.id} ${instruction.expr} ${instruction.pos}`;
+      return `@char ${instruction.id} ${instruction.expr ?? "default"} ${instruction.pos ?? "center"}`;
     case "say":
       return `${instruction.who}: ${instruction.text}`;
     case "narrate":
@@ -222,6 +261,47 @@ export function formatScenarioInstruction(instruction: Instruction): string {
     case "pause":
       return "@pause";
   }
+}
+
+function instructionsAreEquivalent(left: Instruction, right: Instruction): boolean {
+  return jsonValuesAreEquivalent(left, right);
+}
+
+function jsonValuesAreEquivalent(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((value, index) => jsonValuesAreEquivalent(value, right[index]));
+  }
+  if (isJsonObject(left) || isJsonObject(right)) {
+    if (!isJsonObject(left) || !isJsonObject(right)) return false;
+    const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined);
+    const rightKeys = Object.keys(right).filter((key) => right[key] !== undefined);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key)
+      && jsonValuesAreEquivalent(left[key], right[key]));
+  }
+  return false;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringifyScenarioJson(value: unknown): string {
+  if (typeof value === "number" && Object.is(value, -0)) return "-0";
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stringifyScenarioJson(item)).join(",")}]`;
+  }
+  if (isJsonObject(value)) {
+    const entries = Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => `${JSON.stringify(key)}:${stringifyScenarioJson(item)}`);
+    return `{${entries.join(",")}}`;
+  }
+  const serialized = JSON.stringify(value);
+  if (serialized == null) throw new TypeError("Scenario instructions must contain JSON values only.");
+  return serialized;
 }
 
 export function isBlockingInstruction(instruction: Instruction): boolean {

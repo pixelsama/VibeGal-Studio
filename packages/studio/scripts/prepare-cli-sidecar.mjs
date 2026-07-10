@@ -1,6 +1,7 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareWebExporter } from "./prepare-web-exporter.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const studioRoot = path.resolve(__dirname, "..");
@@ -37,3 +38,4 @@ copyFileSync(source, destination);
 chmodSync(destination, 0o755);
 
 console.log(`Prepared VibeGal-Studio CLI sidecar: ${destination}`);
+prepareWebExporter();

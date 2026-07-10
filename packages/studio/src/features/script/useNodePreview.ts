@@ -17,6 +17,7 @@ import type { GraphNode, ProjectData } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 import { readStageResolution } from "../../lib/projectMeta";
 import { createProjectRendererProps, type ProjectPlayerResult } from "../preview/useProjectPlayer";
+import { runtimeMediaFromEffect, type RuntimeMediaState } from "../preview/RuntimeMediaOverlay";
 
 export function buildNodePreviewContent(project: ProjectData, node: GraphNode | null, nodeData: unknown | null) {
   return {
@@ -33,6 +34,7 @@ export function useNodePreview(
 ): ProjectPlayerResult {
   const [state, setState] = useState<NovelState>(createInitialState);
   const [error, setError] = useState<string | null>(null);
+  const [media, setMedia] = useState<RuntimeMediaState>(null);
   const playerRef = useRef<NovelPlayer | null>(null);
   const audioRef = useRef<AudioEngine | null>(null);
   const stateRef = useRef(state);
@@ -51,6 +53,7 @@ export function useNodePreview(
     try {
       const content = buildNodePreviewContent(project, node, nodeData);
       const validated = validateContent(content);
+      const contentDirAbs = `${project.path}/content`;
 
       const chapters = validated.chapters as Instruction[][];
       player = new NovelPlayer({
@@ -59,13 +62,14 @@ export function useNodePreview(
         onRuntimeEffect: (effect) => {
           if (effect.type === "unlock") {
             void runtimeRef.current?.persistent.unlock(effect.kind, effect.id);
+          } else {
+            setMedia(runtimeMediaFromEffect(effect, validated.manifest as Manifest, contentDirAbs));
           }
         },
       });
       player.load(chapters);
       playerRef.current = player;
 
-      const contentDirAbs = `${project.path}/content`;
       audio = new AudioEngine(validated.manifest as Manifest, contentDirAbs);
       audioRef.current = audio;
 
@@ -80,6 +84,7 @@ export function useNodePreview(
     }
 
     return () => {
+      setMedia(null);
       playerRef.current = null;
       audioRef.current = null;
       player?.dispose();
@@ -101,6 +106,10 @@ export function useNodePreview(
   const stepOnce = useCallback(() => playerRef.current?.stepOnce(), []);
   const prevChapter = useCallback(() => playerRef.current?.prevChapter(), []);
   const nextChapter = useCallback(() => playerRef.current?.nextChapter(), []);
+  const closeMedia = useCallback(() => setMedia(null), []);
+  const skipVideo = useCallback(() => {
+    setMedia((current) => current?.type === "video" && current.skippable ? null : current);
+  }, []);
 
   const manifest = (playerRef.current?.deps_.manifest ?? null) as Manifest | null;
   const contentBase = `${project.path}/content`;
@@ -132,6 +141,7 @@ export function useNodePreview(
       stopAllSfx: () => audioRef.current?.stopAllSfx(),
       setVolumes: (volumes) => audioRef.current?.setVolumes(volumes),
     },
+    media: { closeCg: closeMedia, skipVideo },
     inspectState: () => playerRef.current?.getState() ?? stateRef.current,
   });
 
@@ -144,5 +154,5 @@ export function useNodePreview(
     runtime: runtimeRef.current,
   });
 
-  return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps };
+  return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps, media, closeMedia, skipVideo };
 }

@@ -19,6 +19,49 @@ const meta: Meta = {
 };
 
 describe("NovelPlayer frame advance", () => {
+  it("preserves global seek and chapter navigation for the linear compatibility API", () => {
+    const player = new NovelPlayer({ manifest, meta });
+    player.load([
+      [{ t: "narrate", text: "第一章" }],
+      [{ t: "narrate", text: "第二章" }],
+    ]);
+
+    expect(player.totalInstructions).toBe(2);
+    expect(player.currentIndex).toBe(0);
+
+    player.nextChapter();
+    expect(player.currentIndex).toBe(1);
+    expect(player.getState().flags.chapterIndex).toBe(1);
+    expect(player.getState().narration?.text).toBe("第一章");
+
+    player.stepOnce();
+    expect(player.currentIndex).toBe(2);
+    expect(player.getState().narration?.text).toBe("第二章");
+
+    player.prevChapter();
+    expect(player.currentIndex).toBe(0);
+    expect(player.getState().flags.chapterIndex).toBe(0);
+    player.dispose();
+  });
+
+  it("preserves the recording-mode pacing buffer", () => {
+    vi.useFakeTimers();
+    try {
+      const player = new NovelPlayer({ manifest, meta });
+      player.load([[{ t: "narrate", text: "录制开始" }]]);
+
+      player.setRecording(true);
+      vi.advanceTimersByTime(meta.autoAdvanceMs + 399);
+      expect(player.getState().narration).toBeNull();
+
+      vi.advanceTimersByTime(1);
+      expect(player.getState().narration?.text).toBe("录制开始");
+      player.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("advance_consumes_nonblocking_frame_until_text_stop", () => {
     const player = new NovelPlayer({ manifest, meta });
     player.load([
@@ -282,7 +325,7 @@ describe("GraphNovelPlayer routing", () => {
       [{ id: "start", instructions: [
         { t: "unlock", kind: "cg", id: "cg_rooftop" },
         { t: "showCg", id: "cg_001" },
-        { t: "playVideo", id: "op" },
+        { t: "playVideo", id: "op", skippable: true },
       ] }],
     );
 
@@ -290,7 +333,7 @@ describe("GraphNovelPlayer routing", () => {
 
     expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "unlock", kind: "cg", id: "cg_rooftop" });
     expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "showCg", id: "cg_001" });
-    expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "playVideo", id: "op" });
+    expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "playVideo", id: "op", skippable: true });
     player.dispose();
   });
 });

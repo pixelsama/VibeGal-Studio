@@ -21,5 +21,11 @@
       "sfx_boom": "assets/audio/sfx/sfx_boom.mp3"
     },
     "voice": {}
+  },
+  "cg": {
+    "smoke_ocean": {
+      "path": "assets/cg/smoke_ocean.svg",
+      "name": "海上黎明"
+    }
   }
 }

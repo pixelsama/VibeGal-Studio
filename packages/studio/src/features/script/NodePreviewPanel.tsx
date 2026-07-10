@@ -5,6 +5,8 @@ import { StageFrame } from "../preview/StageFrame";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { formatRendererDiagnostics } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
+import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
+import { RuntimeMediaOverlay } from "../preview/RuntimeMediaOverlay";
 import { collectNodeStoryPoints, sliceNodeDataFromStoryPoint } from "./nodePreviewStart";
 import { useNodePreview } from "./useNodePreview";
 
@@ -21,9 +23,10 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
     [nodeData, startInstructionId],
   );
   const player = useNodePreview(project, node, previewData);
-  const { renderer, loadError, loadDiagnostics } = useRendererComponent(project.path, rendererId);
+  const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
   if (player.error) return <PreviewMessage mono>{`引擎错误：\n\n${player.error}`}</PreviewMessage>;
+  if (trustRequired) return <RendererTrustPrompt projectPath={project.path} onTrust={trustRenderer} />;
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
     return <PreviewMessage mono>{`渲染层加载失败（${rendererId}）：\n\n${detail}`}</PreviewMessage>;
@@ -52,6 +55,7 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
         )}
         <StageFrame stage={player.rendererProps.stage}>
           <Renderer {...player.rendererProps} />
+          <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
         </StageFrame>
       </div>
       <RuntimeStateInspector state={player.state} currentNodeLabel={`${node.title} (${node.id})`} />

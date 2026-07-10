@@ -9,6 +9,8 @@ import { useRendererComponent } from "./useRendererComponent";
 import { StageFrame } from "./StageFrame";
 import { formatRendererDiagnostics, type RendererDiagnostic } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
+import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
+import { RuntimeMediaOverlay } from "./RuntimeMediaOverlay";
 
 interface Props {
   project: ProjectData;
@@ -18,7 +20,7 @@ interface Props {
 
 export function Preview({ project, rendererId, onRendererDiagnosticsChange }: Props) {
   const player = useProjectPlayer(project);
-  const { renderer, loadError, loadDiagnostics } = useRendererComponent(project.path, rendererId);
+  const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
   useEffect(() => {
     onRendererDiagnosticsChange?.(loadDiagnostics);
@@ -26,6 +28,9 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange }: Pr
 
   if (player.error) {
     return <Centered mono>{`引擎错误：\n\n${player.error}`}</Centered>;
+  }
+  if (trustRequired) {
+    return <RendererTrustPrompt projectPath={project.path} onTrust={trustRenderer} />;
   }
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
@@ -41,6 +46,7 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange }: Pr
       <div style={stagePaneStyle}>
         <StageFrame stage={player.rendererProps.stage}>
           <Renderer {...player.rendererProps} />
+          <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
         </StageFrame>
       </div>
       <RuntimeStateInspector state={player.state} />

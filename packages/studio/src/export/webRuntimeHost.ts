@@ -9,6 +9,7 @@ import {
   createInMemoryRuntimeServices,
   createRuntimeStorageLikePersistenceAdapter,
   migrateGlobalPersistentRecord,
+  resolveAsset,
   validateContent,
   validateRendererManifestContract,
   type GraphPlayerNode,
@@ -25,6 +26,7 @@ import {
   type RuntimeServices,
   type RuntimeSettingsRecord,
 } from "@vibegal/engine";
+import { RuntimeMediaOverlay, runtimeMediaFromEffect, type RuntimeMediaState } from "../features/preview/RuntimeMediaOverlay";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -54,6 +56,9 @@ export interface WebRuntimePlayer {
   toggleAuto(): void;
   toggleRecording(): void;
   rendererProps(state?: NovelState): RendererProps;
+  getMedia(): RuntimeMediaState;
+  closeMedia(): void;
+  skipVideo(): void;
   dispose(): void;
 }
 
@@ -68,6 +73,13 @@ export interface WebRuntimePlayerOptions {
 }
 
 export const VIBEGAL_BUILD_SCHEMA_VERSION = 1;
+
+export interface WebRuntimeBehaviorSmokeResult {
+  advanced: boolean;
+  branch: "chosen" | "not-present";
+  saveRoundTrip: boolean;
+  media: "loaded" | "not-configured";
+}
 
 function browserStorage(): StorageLike | null {
   try {
@@ -196,12 +208,25 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     onRuntimeEffect: (effect) => {
       if (effect.type === "unlock") {
         void runtimeServices?.persistent.unlock(effect.kind, effect.id);
+      } else {
+        publishMedia(runtimeMediaFromEffect(effect, content.manifest as Manifest, options.contentBase));
       }
     },
   });
   audio = typeof Audio === "undefined" ? null : new AudioEngine(content.manifest as Manifest, options.contentBase);
   const listeners = new Set<(state: NovelState) => void>();
   let state = player.getState();
+  let media: RuntimeMediaState = null;
+
+  function publishMedia(next: RuntimeMediaState) {
+    media = next;
+    listeners.forEach((listener) => listener(state));
+  }
+
+  const closeMedia = () => publishMedia(null);
+  const skipVideo = () => {
+    if (media?.type === "video" && media.skippable) publishMedia(null);
+  };
 
   player.loadGraph(
     graph as ProjectGraphData,
@@ -235,6 +260,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     restoreFromSave: (record) => player.restoreFromSave(record),
     decisionLog: () => player.getDecisionLog(),
     audio,
+    media: { closeCg: closeMedia, skipVideo },
   });
 
   function makeRendererProps(nextState = state): RendererProps {
@@ -261,6 +287,9 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     toggleAuto: () => player.setAutoPlay(!player.getState().flags.isAutoPlay),
     toggleRecording: () => player.setRecording(!player.getState().flags.isRecording),
     rendererProps: makeRendererProps,
+    getMedia: () => media,
+    closeMedia,
+    skipVideo,
     dispose() {
       unsubscribe();
       player.dispose();
@@ -268,6 +297,50 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
       listeners.clear();
     },
   };
+}
+
+export async function runWebRuntimeBehaviorSmoke(
+  runtime: WebRuntimePlayer,
+  fetcher: (input: RequestInfo | URL) => Promise<{ ok: boolean }> = fetch,
+): Promise<WebRuntimeBehaviorSmokeResult> {
+  const before = JSON.stringify(runtime.getState());
+  let advanced = false;
+  let branch: WebRuntimeBehaviorSmokeResult["branch"] = "not-present";
+  for (let attempt = 0; attempt < 128; attempt += 1) {
+    runtime.advance();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const choice = runtime.getState().choice?.choices[0];
+    if (choice) {
+      const beforeChoice = JSON.stringify(runtime.getState());
+      runtime.choose(choice.to);
+      branch = JSON.stringify(runtime.getState()) === beforeChoice ? "not-present" : "chosen";
+      advanced = JSON.stringify(runtime.getState()) !== before;
+      break;
+    }
+    if (JSON.stringify(runtime.getState()) !== before) {
+      advanced = true;
+    }
+  }
+
+  let saveRoundTrip = false;
+  const save = runtime.rendererProps().runtime?.save;
+  if (save) {
+    await save.quickSave();
+    await save.quickLoad();
+    saveRoundTrip = (await save.listSlots()).some((slot) => slot.slotId === "quick");
+  }
+
+  const props = runtime.rendererProps();
+  const mediaPath = Object.values(props.manifest.cg)[0]?.path
+    ?? Object.values(props.manifest.videos)[0]?.path;
+  let media: WebRuntimeBehaviorSmokeResult["media"] = "not-configured";
+  if (mediaPath) {
+    const response = await fetcher(resolveAsset(props.contentBase, mediaPath));
+    if (!response.ok) throw new Error(`Smoke media request failed: ${mediaPath}`);
+    media = "loaded";
+  }
+
+  return { advanced, branch, saveRoundTrip, media };
 }
 
 function createWebRuntimeServices(options: {
@@ -280,6 +353,7 @@ function createWebRuntimeServices(options: {
   restoreFromSave: GraphNovelPlayer["restoreFromSave"];
   decisionLog: GraphNovelPlayer["getDecisionLog"];
   audio: AudioEngine | null;
+  media: { closeCg: () => void; skipVideo: () => void };
 }): RuntimeServices {
   const services = createInMemoryRuntimeServices({
     projectId: options.projectId,
@@ -301,6 +375,7 @@ function createWebRuntimeServices(options: {
           setVolumes: (volumes) => options.audio?.setVolumes(volumes),
         }
       : undefined,
+    media: options.media,
   });
   const { debug: _debug, ...runtimeServices } = services;
   return runtimeServices;
@@ -345,7 +420,16 @@ async function loadExportedContent(basePath: string) {
 function mountRuntime(root: Root, runtime: WebRuntimePlayer, rendererManifest: RendererManifest) {
   const Renderer = rendererManifest.Component;
   return runtime.subscribe((state) => {
-    root.render(React.createElement(Renderer, runtime.rendererProps(state)));
+    root.render(React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(Renderer, runtime.rendererProps(state)),
+      React.createElement(RuntimeMediaOverlay, {
+        media: runtime.getMedia(),
+        onClose: runtime.closeMedia,
+        onSkip: runtime.skipVideo,
+      }),
+    ));
   });
 }
 
@@ -371,6 +455,42 @@ export async function startVibeGalWebRuntime(rendererManifest: RendererManifest)
   const root = createRoot(rootElement);
   const unsubscribe = mountRuntime(root, runtime, rendererManifest);
 
+  if (new URLSearchParams(window.location.search).get("vibegalSmoke") === "1") {
+    const marker = document.createElement("div");
+    marker.hidden = true;
+    marker.dataset.vibegalSmoke = "running";
+    document.body.append(marker);
+    void runWebRuntimeBehaviorSmoke(runtime)
+      .then((result) => {
+        const status = result.advanced && result.saveRoundTrip ? "passed" : "failed";
+        marker.dataset.vibegalSmoke = status;
+        marker.dataset.vibegalSmokeAdvance = String(result.advanced);
+        marker.dataset.vibegalSmokeBranch = result.branch;
+        marker.dataset.vibegalSmokeSave = String(result.saveRoundTrip);
+        marker.dataset.vibegalSmokeMedia = result.media;
+        publishWebRuntimeSmokeResult({
+          status,
+          advance: String(result.advanced),
+          branch: result.branch,
+          save: String(result.saveRoundTrip),
+          media: result.media,
+        });
+      })
+      .catch((smokeError) => {
+        const message = smokeError instanceof Error ? smokeError.message : String(smokeError);
+        marker.dataset.vibegalSmoke = "failed";
+        marker.dataset.vibegalSmokeError = message;
+        publishWebRuntimeSmokeResult({
+          status: "failed",
+          advance: "false",
+          branch: "not-present",
+          save: "false",
+          media: "not-configured",
+          error: message,
+        });
+      });
+  }
+
   window.addEventListener("keydown", (event) => {
     if (event.key === " " || event.key === "Enter") runtime.advance();
     if (event.key.toLowerCase() === "a") runtime.toggleAuto();
@@ -378,4 +498,13 @@ export async function startVibeGalWebRuntime(rendererManifest: RendererManifest)
   });
 
   return { runtime, storage, gameManifest, unsubscribe };
+}
+
+function publishWebRuntimeSmokeResult(result: Record<string, string>) {
+  const query = new URLSearchParams(result);
+  void fetch(`/__vibegal_smoke_result__?${query.toString()}`, {
+    cache: "no-store",
+  }).catch(() => {
+    // The CLI times out with a clear error if the callback server is unavailable.
+  });
 }

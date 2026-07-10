@@ -115,46 +115,46 @@ export function validateReferences(
     switch (instr.t) {
       case "bg":
         if (!(instr.id in manifest.backgrounds))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 background id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_background_ref", file, index, message: `引用了不存在的 background id: "${instr.id}"` });
         break;
       case "bgm":
         if (!(instr.id in manifest.audio.bgm))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 bgm id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_bgm_ref", file, index, message: `引用了不存在的 bgm id: "${instr.id}"` });
         break;
       case "sfx":
         if (!(instr.id in manifest.audio.sfx))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 sfx id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_sfx_ref", file, index, message: `引用了不存在的 sfx id: "${instr.id}"` });
         break;
       case "voice":
         if (!(instr.id in manifest.audio.voice))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 voice id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_voice_ref", file, index, message: `引用了不存在的 voice id: "${instr.id}"` });
         break;
       case "char":
       case "say": {
         const charId = instr.t === "char" ? instr.id : instr.who;
         const char = manifest.characters[charId];
         if (!char) {
-          issues.push({ level: "error", file, index, message: `引用了不存在的 character id: "${charId}"` });
+          issues.push({ level: "error", code: "missing_character_ref", file, index, message: `引用了不存在的 character id: "${charId}"` });
           break;
         }
         if (!(instr.expr in char.sprites))
-          issues.push({ level: "error", file, index, message: `角色 "${charId}" 没有表情 "${instr.expr}"（可用: ${Object.keys(char.sprites).join(", ")}）` });
+          issues.push({ level: "error", code: "missing_character_expr", file, index, message: `角色 "${charId}" 没有表情 "${instr.expr}"（可用: ${Object.keys(char.sprites).join(", ")}）` });
         break;
       }
       case "unlock": {
         const table = manifest.unlocks[instr.kind];
         if (!(instr.id in table)) {
-          issues.push({ level: "error", file, index, message: `引用了不存在的 unlock id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_unlock_ref", file, index, message: `引用了不存在的 unlock id: "${instr.id}"` });
         }
         break;
       }
       case "showCg":
         if (!(instr.id in manifest.cg))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 cg id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_cg_ref", file, index, message: `引用了不存在的 cg id: "${instr.id}"` });
         break;
       case "playVideo":
         if (!(instr.id in manifest.videos))
-          issues.push({ level: "error", file, index, message: `引用了不存在的 video id: "${instr.id}"` });
+          issues.push({ level: "error", code: "missing_video_ref", file, index, message: `引用了不存在的 video id: "${instr.id}"` });
         break;
     }
   });

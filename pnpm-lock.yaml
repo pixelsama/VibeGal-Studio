@@ -8,8 +8,21 @@ importers:
 
   .: {}
 
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+
   packages/engine:
     dependencies:
+      '@vibegal/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: ^4.4.3
         version: 4.4.3

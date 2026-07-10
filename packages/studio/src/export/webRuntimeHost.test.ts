@@ -4,6 +4,7 @@ import {
   createWebRuntimePlayer,
   createWebStorageAdapter,
   defaultRuntimeSettings,
+  runWebRuntimeBehaviorSmoke,
   type StorageLike,
 } from "./webRuntimeHost";
 
@@ -290,6 +291,29 @@ describe("web export runtime host", () => {
       { id: "cg_rooftop", assetId: "cg_001", title: "Rooftop", asset: { path: "cg_001.png" } },
     ]);
     secondRuntime.dispose();
+  });
+
+  it("behavior smoke advances, saves and loads a configured media asset", async () => {
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([]),
+      nodes: [node("start", "start")],
+      contentBase: "./content",
+      projectId: "smoke-project",
+      storage: createWebStorageAdapter("smoke-project", new MemoryStorage()),
+    });
+    const fetcher = vi.fn(async () => new Response("image", { status: 200 }));
+
+    const result = await runWebRuntimeBehaviorSmoke(runtime, fetcher);
+
+    expect(result).toEqual(expect.objectContaining({
+      advanced: true,
+      saveRoundTrip: true,
+      media: "loaded",
+    }));
+    expect(fetcher).toHaveBeenCalledWith("./content/cg_001.png");
+    runtime.dispose();
   });
 
   it("loadSaveDoesNotRollbackUnlocks", async () => {

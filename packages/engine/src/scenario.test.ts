@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import type { Instruction } from "./types";
 import {
   formatScenarioText,
@@ -103,6 +104,84 @@ akari: 早上好。
 
 @showCg cg_001
 @playVideo op true
-@set route "stay"`);
+@set route "stay"
+@continue`);
+  });
+
+  it("round-trips every instruction field without changing the source data", () => {
+    const instructions: Instruction[] = [
+      { t: "bg", id: "ocean_night", trans: "dissolve", ms: 2375 },
+      { t: "bgm", id: "theme", fade: 0, loop: false },
+      { t: "sfx", id: "door" },
+      { t: "voice", id: "line_001" },
+      { t: "char", id: "hero", expr: "hurt", pos: "far-left", trans: "slide", ms: 825, clear: true, remove: true },
+      { t: "say", id: "say_001", who: "hero", expr: "hurt", text: "别把 : 和 @ 当成语法。", ms: 0 },
+      { t: "narrate", id: "narrate_001", text: "风停了。", ms: 2600 },
+      { t: "set", key: "route", value: "line one\n\"quoted\" : value" },
+      { t: "wait", id: "wait_001", ms: 715 },
+      { t: "effect", type: "blur", intensity: 2.5, ms: 975 },
+      { t: "transition", type: "white_out", ms: 1450 },
+      { t: "pause", id: "pause_001" },
+      { t: "unlock", kind: "endings", id: "true_end" },
+      { t: "showCg", id: "cg_finale" },
+      { t: "playVideo", id: "ending", skippable: false },
+    ];
+
+    const formatted = formatScenarioText(instructions);
+    const result = parseScenarioText(formatted);
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual(instructions);
+  });
+
+  it("preserves omitted default fields and never formats them as undefined", () => {
+    const instructions = [
+      { t: "bgm", id: "bgm_main", fade: 2500 },
+      { t: "char", id: "protagonist", remove: true },
+      { t: "say", who: "protagonist", text: "缺省表情仍应保持缺省。" },
+      { t: "playVideo", id: "op" },
+    ] as Instruction[];
+
+    const formatted = formatScenarioText(instructions);
+    const result = parseScenarioText(formatted);
+
+    expect(formatted).not.toContain("undefined");
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual(instructions);
+  });
+
+  it("preserves negative zero in numeric variable values", () => {
+    const instructions = [{ t: "set", key: "offset", value: -0 }] as Instruction[];
+
+    const result = parseScenarioText(formatScenarioText(instructions));
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toHaveLength(1);
+    expect(Object.is((result.instructions[0] as { value: number }).value, -0)).toBe(true);
+  });
+
+  it("round-trips the sample prologue without changing any instruction", () => {
+    const source = JSON.parse(readFileSync(
+      new URL("../../../examples/sample-novel/content/nodes/prologue.json", import.meta.url),
+      "utf8",
+    )) as Instruction[];
+
+    const result = parseScenarioText(formatScenarioText(source));
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual(source);
+  });
+
+  it("does not invent an implicit pause after a formatted non-blocking tail", () => {
+    const instructions: Instruction[] = [
+      { t: "showCg", id: "cg_001" },
+      { t: "playVideo", id: "op", skippable: true },
+      { t: "set", key: "route", value: "stay" },
+    ];
+
+    const result = parseScenarioText(formatScenarioText(instructions));
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual(instructions);
   });
 });

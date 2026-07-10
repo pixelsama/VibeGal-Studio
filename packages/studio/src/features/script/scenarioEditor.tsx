@@ -202,7 +202,7 @@ export function ScenarioInspector({
           />
           <EnumField
             label="转场"
-            value={instruction.trans}
+            value={instruction.trans ?? "fade"}
             options={["fade", "cut", "dissolve"]}
             onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "dissolve" })}
           />
@@ -223,17 +223,17 @@ export function ScenarioInspector({
             manifest={manifest}
             kind="expression"
             characterId={instruction.id}
-            value={instruction.expr}
+            value={instruction.expr ?? "default"}
             onChange={(expr) => onReplaceInstruction({ ...instruction, expr })}
           />
           <TextField
             label="位置槽"
-            value={instruction.pos}
+            value={instruction.pos ?? "center"}
             onChange={(pos) => onReplaceInstruction({ ...instruction, pos })}
           />
           <EnumField
             label="转场"
-            value={instruction.trans}
+            value={instruction.trans ?? "fade"}
             options={["fade", "cut", "slide"]}
             onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
           />

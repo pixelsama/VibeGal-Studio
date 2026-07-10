@@ -207,7 +207,7 @@ fn save_file(
     rel_path: String,
     content: String,
     expected_revision: Option<serde_json::Value>,
-) -> Result<(), String> {
+) -> Result<Option<FileRevision>, String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let safe_target = resolve_relative_under(&project_root, &rel_path)?;
     ensure_expected_revision(&project_root, &rel_path, expected_revision)?;
@@ -219,7 +219,8 @@ fn save_file(
         ensure_existing_path_within(&project_root, &safe_target)?;
     }
     atomic_write_text(&safe_target, &content)
-        .map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))
+        .map_err(|e| format!("写文件失败 ({}): {}", safe_target.display(), e))?;
+    file_revision(&project_root, &rel_path)
 }
 
 /// 保存 content/graph.json。节点文件生命周期由 save_file/delete_file 单独管理。
@@ -228,7 +229,7 @@ fn save_graph(
     project_path: String,
     graph: ProjectGraphInput,
     expected_revision: Option<serde_json::Value>,
-) -> Result<(), String> {
+) -> Result<Option<FileRevision>, String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let content_dir = project_root.join("content");
     let content_root = content_dir
@@ -292,7 +293,8 @@ fn save_graph(
     if graph_path.exists() {
         ensure_existing_path_within(&content_root, &graph_path)?;
     }
-    write_json(&graph_path, &value)
+    write_json(&graph_path, &value)?;
+    file_revision(&project_root, "content/graph.json")
 }
 
 /// 只更新 graph.json 中指定节点的 position，保留外部新增/修改的其他节点和边。
@@ -301,7 +303,7 @@ fn save_graph_positions(
     project_path: String,
     updates: Vec<GraphPositionPatchInput>,
     expected_revision: Option<serde_json::Value>,
-) -> Result<(), String> {
+) -> Result<Option<FileRevision>, String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let content_dir = project_root.join("content");
     let content_root = content_dir
@@ -343,7 +345,8 @@ fn save_graph_positions(
         );
     }
 
-    write_json(&graph_path, &graph)
+    write_json(&graph_path, &graph)?;
+    file_revision(&project_root, "content/graph.json")
 }
 
 /// 删除 content/ 下的单个文件。路径相对 content 根，缺失视为已删除。
@@ -651,7 +654,7 @@ fn save_manifest(
     project_path: String,
     manifest: ManifestInput,
     expected_revision: Option<serde_json::Value>,
-) -> Result<(), String> {
+) -> Result<Option<FileRevision>, String> {
     let project_root = canonical_project_root(Path::new(&project_path))?;
     let content_dir = project_root.join("content");
     let content_root = content_dir
@@ -705,5 +708,6 @@ fn save_manifest(
     if manifest_path.exists() {
         ensure_existing_path_within(&content_root, &manifest_path)?;
     }
-    write_json(&manifest_path, &value)
+    write_json(&manifest_path, &value)?;
+    file_revision(&project_root, "content/manifest.json")
 }

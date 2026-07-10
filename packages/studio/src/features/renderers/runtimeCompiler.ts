@@ -328,7 +328,10 @@ export function __findUnsupportedBareImportsForTest(files: RendererFile[], rende
   return findUnsupportedBareImports(files, rendererId);
 }
 
-export async function compileRenderer(files: RendererFile[], options: { rendererId?: string } = {}): Promise<unknown> {
+export async function compileRenderer(
+  files: RendererFile[],
+  options: { rendererId?: string; beforeExecute?: () => void } = {},
+): Promise<unknown> {
   await ensureEsbuild();
   const rendererId = options.rendererId ?? "unknown";
   const unsupportedDiagnostics = findUnsupportedBareImports(files, rendererId);
@@ -389,6 +392,7 @@ export async function compileRenderer(files: RendererFile[], options: { renderer
   const blob = new Blob([code], { type: "application/javascript" });
   const url = URL.createObjectURL(blob);
   try {
+    options.beforeExecute?.();
     const mod = await import(/* @vite-ignore */ url);
     return mod.default;
   } finally {

@@ -32,6 +32,7 @@ import {
   removeDanglingRefs,
   removeAllRefsToPath,
   removeManifestEntry,
+  stageManifestDraft,
 } from "./AssetsWorkspace";
 import type { ToastInput } from "../common/Toast";
 import type { FileRevision, Manifest, ProjectData } from "../../lib/types";
@@ -208,30 +209,32 @@ describe("asset mutation guards", () => {
     expect(canMutateAssets(true)).toBe(false);
   });
 
-  it("does not save manifest refs when deleting the asset failed", async () => {
-    let saved = false;
+  it("does not delete the asset when pruning manifest refs failed", async () => {
+    let deleted = false;
     const result = await deleteAssetAndPruneManifestRefs({
       projectPath: "/project",
       relPath: "assets/backgrounds/sky.png",
       manifest: base,
       refCountByPath: countRefs(base),
       deleteAssetFn: async () => {
-        throw new Error("permission denied");
+        deleted = true;
       },
       saveManifestFn: async () => {
-        saved = true;
+        throw new Error("revision conflict");
       },
     });
 
     expect(result.deleted).toBe(false);
     expect(result.manifestSaved).toBe(false);
-    expect(saved).toBe(false);
+    expect(result.manifestSaveFailed).toBe(true);
+    expect(deleted).toBe(false);
   });
 
-  it("saves a pruned manifest only after deleting the asset succeeds", async () => {
+  it("saves a pruned manifest before deleting the asset", async () => {
     let savedManifest: Manifest | null = null;
     let deletedRevision: FileRevision | null | undefined;
     let savedRevision: FileRevision | null | undefined;
+    const callOrder: string[] = [];
     const assetRevision: FileRevision = { relPath: "content/assets/backgrounds/sky.png", mtimeMs: 1, size: 3 };
     const manifestRevision: FileRevision = { relPath: "content/manifest.json", mtimeMs: 2, size: 5 };
     const result = await deleteAssetAndPruneManifestRefs({
@@ -242,9 +245,11 @@ describe("asset mutation guards", () => {
       assetRevision,
       manifestRevision,
       deleteAssetFn: async (_projectPath, _relPath, expectedRevision) => {
+        callOrder.push("delete");
         deletedRevision = expectedRevision;
       },
       saveManifestFn: async (_projectPath, manifest, expectedRevision) => {
+        callOrder.push("save");
         savedManifest = manifest;
         savedRevision = expectedRevision;
       },
@@ -255,10 +260,49 @@ describe("asset mutation guards", () => {
     expect(savedManifest?.backgrounds.sky).toBeUndefined();
     expect(deletedRevision).toBe(assetRevision);
     expect(savedRevision).toBe(manifestRevision);
+    expect(callOrder).toEqual(["save", "delete"]);
+  });
+
+  it("keeps the file as a recoverable orphan when deletion fails after manifest pruning", async () => {
+    const result = await deleteAssetAndPruneManifestRefs({
+      projectPath: "/project",
+      relPath: "assets/backgrounds/sky.png",
+      manifest: base,
+      refCountByPath: countRefs(base),
+      deleteAssetFn: async () => {
+        throw new Error("asset changed externally");
+      },
+      saveManifestFn: async () => {},
+    });
+
+    expect(result).toMatchObject({
+      deleted: false,
+      manifestSaved: true,
+      manifestSaveFailed: false,
+    });
+    expect(createAssetDeleteFailureToast(result, "assets/backgrounds/sky.png")?.message)
+      .toBe("引用已移除，但资产文件未删除");
   });
 });
 
 describe("asset workspace feedback", () => {
+  it("stages character edits as a local draft without invoking a manifest write", () => {
+    let draft: Manifest | null = null;
+    const next = {
+      ...base,
+      characters: {
+        ...base.characters,
+        hero: { ...base.characters.hero, name: "新名字" },
+      },
+    };
+
+    stageManifestDraft(next, (manifest) => {
+      draft = manifest;
+    });
+
+    expect(draft?.characters.hero.name).toBe("新名字");
+  });
+
   it("保存 manifest 失败时保留草稿并显示可见错误反馈", async () => {
     const next: Manifest = {
       ...base,
@@ -346,6 +390,60 @@ describe("asset workspace feedback", () => {
     expect(savedManifest).toBe(next);
     expect(draft).toBeNull();
     expect(refreshed).toBe(true);
+  });
+
+  it("异步保存期间出现新编辑时不会清空较新的 manifest 草稿", async () => {
+    const saved: Manifest = {
+      ...base,
+      backgrounds: { ...base.backgrounds, dusk: "assets/backgrounds/dusk.png" },
+    };
+    const newer: Manifest = {
+      ...saved,
+      backgrounds: { ...saved.backgrounds, night: "assets/backgrounds/night.png" },
+    };
+    let draft: Manifest | null = newer;
+
+    await persistManifestWithFeedback({
+      projectPath: "/project",
+      next: saved,
+      saveManifestFn: async () => {},
+      onSaved: () => {},
+      isDraftSnapshotCurrent: () => false,
+      setDraftManifest: (manifest) => {
+        draft = manifest;
+      },
+      notify: () => {},
+    });
+
+    expect(draft).toBe(newer);
+  });
+
+  it("异步保存失败时也不会用旧快照覆盖较新的 manifest 草稿", async () => {
+    const saved: Manifest = {
+      ...base,
+      backgrounds: { ...base.backgrounds, dusk: "assets/backgrounds/dusk.png" },
+    };
+    const newer: Manifest = {
+      ...saved,
+      backgrounds: { ...saved.backgrounds, night: "assets/backgrounds/night.png" },
+    };
+    let draft: Manifest | null = newer;
+
+    await persistManifestWithFeedback({
+      projectPath: "/project",
+      next: saved,
+      saveManifestFn: async () => {
+        throw new Error("revision conflict");
+      },
+      onSaved: () => {},
+      isDraftSnapshotCurrent: () => false,
+      setDraftManifest: (manifest) => {
+        draft = manifest;
+      },
+      notify: () => {},
+    });
+
+    expect(draft).toBe(newer);
   });
 
   it("保存草稿失败时会保留 draft 并给出保存失败 toast", async () => {

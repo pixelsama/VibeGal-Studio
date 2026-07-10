@@ -1,7 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { graphFocusTargetFromIssue, projectIssueSourceLabel, shouldStartWindowDrag } from "./Workspace";
+import {
+  graphFocusTargetFromIssue,
+  projectIssueSourceLabel,
+  shouldConfirmUnsavedNavigation,
+  shouldStartWindowDrag,
+} from "./Workspace";
 import { Workspace } from "./Workspace";
 import { SIDEBAR_PREFS_STORAGE_KEY } from "./lib/sidebarPrefs";
 import type { ProjectData } from "./lib/types";
@@ -65,6 +70,13 @@ describe("shouldStartWindowDrag", () => {
 
   it("allows dragging when the event target has no closest helper", () => {
     expect(shouldStartWindowDrag({ button: 0, target: {} as EventTarget })).toBe(true);
+  });
+});
+
+describe("workspace unsaved navigation", () => {
+  it("guards workspace, history, settings, and project navigation while a draft is dirty", () => {
+    expect(shouldConfirmUnsavedNavigation(true)).toBe(true);
+    expect(shouldConfirmUnsavedNavigation(false)).toBe(false);
   });
 });
 

@@ -15,6 +15,7 @@
     "export-schemas": "tsx scripts/export-schemas.ts"
   },
   "dependencies": {
+    "@vibegal/contracts": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

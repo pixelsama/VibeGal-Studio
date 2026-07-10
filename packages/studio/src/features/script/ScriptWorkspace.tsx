@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { deleteFile, saveFile, saveGraph, saveGraphPositions } from "../../lib/tauri";
-import type { GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
+import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
@@ -26,6 +26,8 @@ import {
   undoGraphHistory,
 } from "./graphHistory";
 import { findNode, findNodeData } from "./graphMapping";
+import { RevisionedProjectMutationQueue } from "../../lib/projectMutation";
+import { preventUnloadWhenDirty } from "./unsavedChanges";
 import "@xyflow/react/dist/style.css";
 
 interface Props {
@@ -40,6 +42,7 @@ interface Props {
   onOpenNode: (nodeId: string) => void;
   onReplaceWithGraph: () => void;
   onSaved: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export type ScriptWorkspaceLocation =
@@ -63,6 +66,59 @@ export function buildGraphPositionUpdates(before: ProjectGraph, after: ProjectGr
     .map((node) => ({ id: node.id, position: node.position }));
 }
 
+export function takePendingGraphPositionUpdates(
+  pending: Map<string, { x: number; y: number }>,
+): GraphPositionPatch[] {
+  const updates = Array.from(pending, ([id, position]) => ({ id, position }));
+  pending.clear();
+  return updates;
+}
+
+interface PersistCreatedNodeWithCompensationParams {
+  projectPath: string;
+  nodeFile: string;
+  content: string;
+  graph: ProjectGraph;
+  saveFileFn: (
+    projectPath: string,
+    relPath: string,
+    content: string,
+    expectedRevision?: FileRevision | null,
+  ) => Promise<FileRevision | null>;
+  persistGraphFn: (graph: ProjectGraph) => Promise<boolean>;
+  deleteFileFn: (
+    projectPath: string,
+    relPath: string,
+    expectedRevision?: FileRevision | null,
+  ) => Promise<void>;
+}
+
+export type PersistCreatedNodeWithCompensationResult =
+  | { saved: true; rolledBack: false }
+  | { saved: false; rolledBack: true }
+  | { saved: false; rolledBack: false; rollbackError: unknown };
+
+export async function persistCreatedNodeWithCompensation({
+  projectPath,
+  nodeFile,
+  content,
+  graph,
+  saveFileFn,
+  persistGraphFn,
+  deleteFileFn,
+}: PersistCreatedNodeWithCompensationParams): Promise<PersistCreatedNodeWithCompensationResult> {
+  const createdRevision = await saveFileFn(projectPath, `content/${nodeFile}`, content);
+  if (await persistGraphFn(graph)) {
+    return { saved: true, rolledBack: false };
+  }
+  try {
+    await deleteFileFn(projectPath, nodeFile, createdRevision);
+    return { saved: false, rolledBack: true };
+  } catch (rollbackError) {
+    return { saved: false, rolledBack: false, rollbackError };
+  }
+}
+
 export function ScriptWorkspace({
   project,
   rendererId,
@@ -75,6 +131,7 @@ export function ScriptWorkspace({
   onOpenNode,
   onReplaceWithGraph,
   onSaved,
+  onDirtyChange,
 }: Props) {
   const view = location.view;
   const [inspectorTab, setInspectorTab] = useState<"node" | "analysis">("node");
@@ -86,11 +143,21 @@ export function ScriptWorkspace({
   const [graphHistory, setGraphHistory] = useState(() => createGraphHistoryState(incomingGraph, incomingRevisionToken));
   const graph = graphHistory.graph;
   const [savingGraph, setSavingGraph] = useState(false);
+  const [positionSavePending, setPositionSavePending] = useState(false);
   const [graphStatus, setGraphStatus] = useState("");
-  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    message: string;
+    onConfirm: () => void;
+    confirmLabel?: string;
+    danger?: boolean;
+  } | null>(null);
   const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; onConfirm: (v: string) => void } | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
   const pendingPositionUpdatesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const graphMutationQueue = useMemo(
+    () => new RevisionedProjectMutationQueue(project.graphRevision),
+    [project.path],
+  );
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
 
@@ -100,12 +167,8 @@ export function ScriptWorkspace({
   }, [incomingGraph, incomingRevisionToken]);
 
   useEffect(() => {
-    return () => {
-      if (positionSaveTimerRef.current != null) {
-        window.clearTimeout(positionSaveTimerRef.current);
-      }
-    };
-  }, []);
+    graphMutationQueue.synchronizeRevision(project.graphRevision);
+  }, [graphMutationQueue, project.graphRevision]);
 
   useEffect(() => {
     if (location.view === "node") {
@@ -141,7 +204,9 @@ export function ScriptWorkspace({
       setSavingGraph(true);
       setGraphStatus("");
       try {
-        await saveGraph(project.path, next, project.graphRevision);
+        await graphMutationQueue.enqueue((expectedRevision) => (
+          saveGraph(project.path, next, expectedRevision)
+        ));
         setGraphStatus("图结构已保存");
         onSaved();
         return true;
@@ -152,40 +217,85 @@ export function ScriptWorkspace({
         setSavingGraph(false);
       }
     },
-    [onSaved, project.graphRevision, project.path],
+    [graphMutationQueue, onSaved, project.path],
   );
 
   const persistGraphPositions = useCallback(
     async (updates: GraphPositionPatch[]) => {
-      if (updates.length === 0) return;
+      if (updates.length === 0) return true;
       setSavingGraph(true);
       setGraphStatus("");
       try {
-        await saveGraphPositions(project.path, updates, project.graphRevision);
+        await graphMutationQueue.enqueue((expectedRevision) => (
+          saveGraphPositions(project.path, updates, expectedRevision)
+        ));
         setGraphStatus("节点位置已保存");
         onSaved();
+        return true;
       } catch (error) {
         setGraphStatus(`保存节点位置失败: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
       } finally {
         setSavingGraph(false);
       }
     },
-    [onSaved, project.graphRevision, project.path],
+    [graphMutationQueue, onSaved, project.path],
   );
+
+  useEffect(() => {
+    return () => {
+      if (positionSaveTimerRef.current != null) {
+        window.clearTimeout(positionSaveTimerRef.current);
+      }
+      const pending = takePendingGraphPositionUpdates(pendingPositionUpdatesRef.current);
+      if (pending.length === 0) return;
+      void graphMutationQueue.enqueue((expectedRevision) => (
+        saveGraphPositions(project.path, pending, expectedRevision)
+      )).then(() => onSaved()).catch((error) => {
+        console.warn("离开页面时保存节点位置失败:", error);
+      });
+    };
+  }, [graphMutationQueue, onSaved, project.path]);
+
+  useEffect(() => {
+    if (view !== "graph") return;
+    onDirtyChange?.(positionSavePending);
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange, positionSavePending, view]);
+
+  useEffect(() => {
+    if (!positionSavePending) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      preventUnloadWhenDirty(event, true);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [positionSavePending]);
 
   const schedulePositionSave = useCallback(
     (updates: GraphPositionPatch[]) => {
       for (const update of updates) {
         pendingPositionUpdatesRef.current.set(update.id, update.position);
       }
+      setPositionSavePending(true);
       if (positionSaveTimerRef.current != null) {
         window.clearTimeout(positionSaveTimerRef.current);
       }
       positionSaveTimerRef.current = window.setTimeout(() => {
         positionSaveTimerRef.current = null;
-        const pending = Array.from(pendingPositionUpdatesRef.current, ([id, position]) => ({ id, position }));
-        pendingPositionUpdatesRef.current.clear();
-        void persistGraphPositions(pending);
+        const pending = takePendingGraphPositionUpdates(pendingPositionUpdatesRef.current);
+        void persistGraphPositions(pending).then((saved) => {
+          if (!saved) {
+            for (const update of pending) {
+              if (!pendingPositionUpdatesRef.current.has(update.id)) {
+                pendingPositionUpdatesRef.current.set(update.id, update.position);
+              }
+            }
+          }
+          if (pendingPositionUpdatesRef.current.size === 0 && positionSaveTimerRef.current == null) {
+            setPositionSavePending(false);
+          }
+        });
       }, 400);
     },
     [persistGraphPositions],
@@ -213,7 +323,6 @@ export function ScriptWorkspace({
     setSavingGraph(true);
     setGraphStatus("");
     try {
-      await saveFile(project.path, `content/${file}`, "[]");
       const nextState = applyGraphCommand(graphHistory, {
         kind: "addNode",
         id,
@@ -226,7 +335,22 @@ export function ScriptWorkspace({
       setSelectedNodeId(id);
       setSelectedEdgeId(null);
       onOpenGraph();
-      await persistGraph(next);
+      const result = await persistCreatedNodeWithCompensation({
+        projectPath: project.path,
+        nodeFile: file,
+        content: "[]",
+        graph: next,
+        saveFileFn: saveFile,
+        persistGraphFn: persistGraph,
+        deleteFileFn: deleteFile,
+      });
+      if (!result.saved) {
+        setGraphHistory(graphHistory);
+        setSelectedNodeId(null);
+        if (!result.rolledBack) {
+          setGraphStatus(`图保存失败；新节点文件已保留: ${result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError)}`);
+        }
+      }
     } catch (error) {
       setGraphStatus(`新建节点失败: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -321,11 +445,25 @@ export function ScriptWorkspace({
     try {
       const sourceData = findNodeData(project.nodes, source.file);
       const content = sourceData == null ? "[]" : JSON.stringify(sourceData, null, 2);
-      await saveFile(project.path, `content/${newNode.file}`, content);
       setGraphHistory(createGraphHistoryState(next, graphHistory.revisionToken));
       setSelectedNodeId(newNode.id);
       setSelectedEdgeId(null);
-      await persistGraph(next);
+      const result = await persistCreatedNodeWithCompensation({
+        projectPath: project.path,
+        nodeFile: newNode.file,
+        content,
+        graph: next,
+        saveFileFn: saveFile,
+        persistGraphFn: persistGraph,
+        deleteFileFn: deleteFile,
+      });
+      if (!result.saved) {
+        setGraphHistory(graphHistory);
+        setSelectedNodeId(nodeId);
+        if (!result.rolledBack) {
+          setGraphStatus(`图保存失败；复制的节点文件已保留: ${result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError)}`);
+        }
+      }
     } catch (error) {
       setGraphStatus(`复制节点失败: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -341,11 +479,25 @@ export function ScriptWorkspace({
     setSavingGraph(true);
     setGraphStatus("");
     try {
-      await saveFile(project.path, `content/${newNode.file}`, "[]");
       setGraphHistory(createGraphHistoryState(next, graphHistory.revisionToken));
       setSelectedNodeId(newNode.id);
       setSelectedEdgeId(null);
-      await persistGraph(next);
+      const result = await persistCreatedNodeWithCompensation({
+        projectPath: project.path,
+        nodeFile: newNode.file,
+        content: "[]",
+        graph: next,
+        saveFileFn: saveFile,
+        persistGraphFn: persistGraph,
+        deleteFileFn: deleteFile,
+      });
+      if (!result.saved) {
+        setGraphHistory(graphHistory);
+        setSelectedNodeId(nodeId);
+        if (!result.rolledBack) {
+          setGraphStatus(`图保存失败；新建的后续节点文件已保留: ${result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError)}`);
+        }
+      }
     } catch (error) {
       setGraphStatus(`创建后续节点失败: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -531,6 +683,7 @@ export function ScriptWorkspace({
               nodeData={findNodeData(project.nodes, selectedNode.file)}
               focusRequest={focusRequest}
               onSaved={onSaved}
+              onDirtyChange={onDirtyChange}
             />
           )
         )}
@@ -540,8 +693,8 @@ export function ScriptWorkspace({
       {confirm && (
         <ConfirmDialog
           message={confirm.message}
-          danger
-          confirmLabel="删除"
+          danger={confirm.danger ?? true}
+          confirmLabel={confirm.confirmLabel ?? "删除"}
           onConfirm={confirm.onConfirm}
           onClose={() => setConfirm(null)}
         />

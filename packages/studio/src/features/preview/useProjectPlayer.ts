@@ -20,11 +20,12 @@ import {
   type RuntimeServices,
   createInMemoryRuntimeServices,
   createRuntimeSnapshot,
+  evaluateGraphCondition,
 } from "@vibegal/engine";
 import type { NodeEntry, ProjectData, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
 import { readStageResolution } from "../../lib/projectMeta";
-import { parseGraphCondition, type GraphConditionAst } from "../script/graphCondition";
+import { runtimeMediaFromEffect, type RuntimeMediaState } from "./RuntimeMediaOverlay";
 
 export interface ProjectPlayerResult {
   state: NovelState;
@@ -39,6 +40,9 @@ export interface ProjectPlayerResult {
   nextChapter: () => void;
   /** 给渲染层的 props（展开后直接传给 renderer.Component） */
   rendererProps: RendererProps;
+  media: RuntimeMediaState;
+  closeMedia: () => void;
+  skipVideo: () => void;
 }
 
 export interface ProjectRendererPropsInput {
@@ -127,56 +131,7 @@ export function resolveAutoRoutePreview(
 }
 
 function evaluatePreviewCondition(condition: string | null | undefined, vars: PreviewInitialVars): boolean {
-  const source = condition?.trim();
-  if (!source) return true;
-  const parsed = parseGraphCondition(source);
-  if (!parsed.ok) return false;
-  return truthy(evaluatePreviewAst(parsed.ast, vars));
-}
-
-function evaluatePreviewAst(ast: GraphConditionAst, vars: PreviewInitialVars): string | number | boolean | null {
-  switch (ast.kind) {
-    case "identifier":
-      return vars[ast.name] ?? null;
-    case "literal":
-      return ast.value;
-    case "unary":
-      return !truthy(evaluatePreviewAst(ast.expr, vars));
-    case "logical":
-      return ast.op === "&&"
-        ? truthy(evaluatePreviewAst(ast.left, vars)) && truthy(evaluatePreviewAst(ast.right, vars))
-        : truthy(evaluatePreviewAst(ast.left, vars)) || truthy(evaluatePreviewAst(ast.right, vars));
-    case "comparison": {
-      const left = evaluatePreviewAst(ast.left, vars);
-      const right = evaluatePreviewAst(ast.right, vars);
-      return evaluatePreviewComparison(ast.op, left, right);
-    }
-  }
-}
-
-function evaluatePreviewComparison(
-  op: "==" | "!=" | ">" | "<" | ">=" | "<=",
-  left: string | number | boolean | null,
-  right: string | number | boolean | null,
-): boolean {
-  switch (op) {
-    case "==":
-      return left === right;
-    case "!=":
-      return left !== right;
-    case ">":
-      return typeof left === "number" && typeof right === "number" && left > right;
-    case "<":
-      return typeof left === "number" && typeof right === "number" && left < right;
-    case ">=":
-      return typeof left === "number" && typeof right === "number" && left >= right;
-    case "<=":
-      return typeof left === "number" && typeof right === "number" && left <= right;
-  }
-}
-
-function truthy(value: string | number | boolean | null): boolean {
-  return value === true || (typeof value === "number" && value !== 0) || (typeof value === "string" && value.length > 0);
+  return evaluateGraphCondition(condition, vars);
 }
 
 function createInitialRuntimeSnapshot(state: NovelState) {
@@ -189,6 +144,7 @@ function createInitialRuntimeSnapshot(state: NovelState) {
 export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const [state, setState] = useState<NovelState>(createInitialState);
   const [error, setError] = useState<string | null>(null);
+  const [media, setMedia] = useState<RuntimeMediaState>(null);
   const playerRef = useRef<GraphNovelPlayer | null>(null);
   const audioRef = useRef<AudioEngine | null>(null);
   const stateRef = useRef(state);
@@ -206,6 +162,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       const content = buildProjectPreviewContent(project);
       const validated = validateContent(content);
       const graph = ProjectGraphSchema.parse(project.graph ?? { version: 1, entryNodeId: "", nodes: [], edges: [] });
+      const contentDirAbs = `${project.path}/content`;
 
       const chapters = validated.chapters as Instruction[][];
       player = new GraphNovelPlayer({
@@ -214,6 +171,8 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
         onRuntimeEffect: (effect) => {
           if (effect.type === "unlock") {
             void runtimeRef.current?.persistent.unlock(effect.kind, effect.id);
+          } else {
+            setMedia(runtimeMediaFromEffect(effect, validated.manifest as Manifest, contentDirAbs));
           }
         },
         persistent: {
@@ -231,7 +190,6 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
 
       // contentBase 传原始 content 目录。engine.resolveAsset 会在最终文件路径级别
       // 调用 Tauri convertFileSrc，避免把 asset 协议的目录 URL 当普通 URL 继续拼接。
-      const contentDirAbs = `${project.path}/content`;
       audio = new AudioEngine(validated.manifest as Manifest, contentDirAbs);
       audioRef.current = audio;
 
@@ -245,6 +203,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     }
 
     return () => {
+      setMedia(null);
       player?.dispose();
       audio?.dispose();
     };
@@ -265,6 +224,10 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const stepOnce = useCallback(() => playerRef.current?.stepOnce(), []);
   const prevChapter = useCallback(() => playerRef.current?.prevChapter(), []);
   const nextChapter = useCallback(() => playerRef.current?.nextChapter(), []);
+  const closeMedia = useCallback(() => setMedia(null), []);
+  const skipVideo = useCallback(() => {
+    setMedia((current) => current?.type === "video" && current.skippable ? null : current);
+  }, []);
 
   const contentBase = `${project.path}/content`;
   const stage = readStageResolution(project.content.meta);
@@ -297,6 +260,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       stopAllSfx: () => audioRef.current?.stopAllSfx(),
       setVolumes: (volumes) => audioRef.current?.setVolumes(volumes),
     },
+    media: { closeCg: closeMedia, skipVideo },
     inspectState: () => playerRef.current?.getState() ?? stateRef.current,
   });
 
@@ -309,5 +273,5 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     runtime: runtimeRef.current,
   });
 
-  return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps };
+  return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps, media, closeMedia, skipVideo };
 }

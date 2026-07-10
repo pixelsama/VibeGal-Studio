@@ -1,5 +1,4 @@
 import { createElement } from "react";
-import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Instruction } from "@vibegal/engine";
 import { describe, expect, it, vi } from "vitest";
@@ -7,104 +6,25 @@ import {
   clampNodeInspectorPaneWidth,
   conflictDraftCopyPath,
   insertScenarioCommandAtCursor,
-  InstructionBlock,
   isWriteConflictError,
   NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
   resolveNodeInspectorPaneLayout,
   scenarioCommandTriggerAtCursor,
-  transitionNodeEditorMode,
 } from "./NodeEditor";
+import { isSaveKeyboardShortcut } from "./unsavedChanges";
 import type { ProjectData } from "../../lib/types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://${path}`,
 }));
 
-describe("InstructionBlock", () => {
-  const manifest = {
-    characters: {
-      hero: {
-        name: "Hero",
-        color: "#ffffff",
-        sprites: { default: "assets/characters/hero/default.png" },
-      },
-    },
-    backgrounds: {},
-    audio: { bgm: {}, sfx: {}, voice: {} },
-  };
-
-  function renderBlock(instruction: Instruction, extraProps: Partial<ComponentProps<typeof InstructionBlock>> = {}) {
-    return renderToStaticMarkup(createElement(InstructionBlock, {
-      index: 0,
-      instruction,
-      manifest,
-      issues: [],
-      onUpdate: () => {},
-      onDuplicate: () => {},
-      onDelete: () => {},
-      onMoveUp: () => {},
-      onMoveDown: () => {},
-      ...extraProps,
-    }));
-  }
-
-  it("renders say fields", () => {
-    const html = renderBlock({ t: "say", who: "hero", expr: "default", text: "你好。" } as Instruction);
-
-    expect(html).toContain("角色");
-    expect(html).toContain("表情");
-    expect(html).toContain("文本");
-    expect(html).toContain("hero");
-    expect(html).toContain("你好。");
-  });
-
-  it("renders timing and effect controls", () => {
-    expect(renderBlock({ t: "wait", ms: 1000 } as Instruction)).toContain("等待 ms");
-    expect(renderBlock({ t: "effect", type: "shake", intensity: 6, ms: 400 } as Instruction)).toContain("强度");
-    expect(renderBlock({ t: "transition", type: "fade_in", ms: 1000 } as Instruction)).toContain("fade_in");
-  });
-
-  it("renders set controls and inline issues", () => {
-    const html = renderBlock(
-      { t: "set", key: "has_key", value: true } as Instruction,
-      { issues: [{ code: "instruction_invalid_field", message: "变量错误" }] },
-    );
-
-    expect(html).toContain("变量名");
-    expect(html).toContain("变量值");
-    expect(html).toContain("has_key");
-    expect(html).toContain("instruction_invalid_field");
-  });
-});
-
-describe("transitionNodeEditorMode", () => {
-  it("switches json to blocks when valid", () => {
-    const result = transitionNodeEditorMode({
-      mode: "json",
-      text: '[{"t":"wait","ms":1000}]',
-      instructions: [],
-    });
-
-    expect(result.mode).toBe("blocks");
-    expect(result.instructions).toEqual([{ t: "wait", ms: 1000 }]);
-    expect(result.error).toBeNull();
-  });
-
-  it("refuses blocks when json invalid", () => {
-    const result = transitionNodeEditorMode({
-      mode: "json",
-      text: '{"t":"wait"}',
-      instructions: [],
-    });
-
-    expect(result.mode).toBe("json");
-    expect(result.text).toBe('{"t":"wait"}');
-    expect(result.error).toContain("JSON 数组");
-  });
-});
-
 describe("NodeEditor safe persistence", () => {
+  it("supports the platform save shortcut", () => {
+    expect(isSaveKeyboardShortcut({ key: "s", metaKey: true, ctrlKey: false })).toBe(true);
+    expect(isSaveKeyboardShortcut({ key: "s", metaKey: false, ctrlKey: true })).toBe(true);
+  });
+
   it("nodeEditorKeepsDraftOnWriteConflict", () => {
     const draft = {
       text: '[{"t":"narrate","text":"local draft"}]',

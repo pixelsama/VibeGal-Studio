@@ -1,3 +1,3 @@
 [
-  { "t": "narrate", "text": "这个 project 有一条指向不存在节点的边。" }
+  { "t": "narrate", "id": "dangling_001", "text": "这个 project 有一条指向不存在节点的边。" }
 ]

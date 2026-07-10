@@ -30,8 +30,10 @@ import {
   watchProject,
 } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
-import { workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
+import { clearRendererTrust } from "./features/renderers/rendererTrust";
+import { sameLocation, workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
 import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPrefs } from "./lib/sidebarPrefs";
+import { RevisionedProjectMutationQueue } from "./lib/projectMutation";
 
 interface Props {
   project: ProjectData;
@@ -125,9 +127,47 @@ export function Workspace({
   const [rendererConfirm, setRendererConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [rendererAlert, setRendererAlert] = useState<string | null>(null);
   const [rendererDiagnostics, setRendererDiagnostics] = useState<RendererDiagnostic[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [unsavedNavigation, setUnsavedNavigation] = useState<{ action: () => void } | null>(null);
   const graphIssueFocusRequestIdRef = useRef(0);
+  const projectMetaMutationQueue = useMemo(
+    () => new RevisionedProjectMutationQueue(project.projectRevision),
+    [project.path],
+  );
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\0"), [project.rendererIds]);
   const workspace = workspaceFromLocation(location) ?? "render";
+
+  useEffect(() => {
+    setHasUnsavedChanges(false);
+    setUnsavedNavigation(null);
+  }, [project.path]);
+
+  useEffect(() => {
+    projectMetaMutationQueue.synchronizeRevision(project.projectRevision);
+  }, [project.projectRevision, projectMetaMutationQueue]);
+
+  const saveProjectMetaQueued = useCallback((meta: ProjectData["meta"]) => (
+    projectMetaMutationQueue.enqueue((expectedRevision) => (
+      saveProjectMeta(project.path, meta, expectedRevision)
+    ))
+  ), [project.path, projectMetaMutationQueue]);
+
+  const runWithUnsavedChangesGuard = useCallback((action: () => void) => {
+    if (!shouldConfirmUnsavedNavigation(hasUnsavedChanges)) {
+      action();
+      return;
+    }
+    setUnsavedNavigation({ action });
+  }, [hasUnsavedChanges]);
+
+  const navigateWithGuard = useCallback((next: NavigationLocation) => {
+    if (sameLocation(location, next)) return;
+    runWithUnsavedChangesGuard(() => onNavigate(next));
+  }, [location, onNavigate, runWithUnsavedChangesGuard]);
+
+  const replaceLocationWithGuard = useCallback((next: NavigationLocation) => {
+    runWithUnsavedChangesGuard(() => onReplaceLocation(next));
+  }, [onReplaceLocation, runWithUnsavedChangesGuard]);
 
   const handleSidebarCollapsedChange = useCallback((key: SidebarPrefKey, collapsed: boolean) => {
     setSidebarPrefs((current) => {
@@ -149,16 +189,19 @@ export function Workspace({
   const handleRendererChange = useCallback(async (id: string) => {
     setRendererId(id);
     try {
-      await saveProjectMeta(project.path, { ...project.meta, activeRendererId: id }, project.projectRevision);
+      await saveProjectMetaQueued({ ...project.meta, activeRendererId: id });
     } catch (e) {
       console.warn("持久化渲染层失败:", e);
     }
-  }, [project]);
+  }, [project.meta, saveProjectMetaQueued]);
 
   const refreshProject = useCallback(async (rendererChanged = false) => {
     setSyncState("syncing");
     try {
-      if (rendererChanged) clearRendererCache();
+      if (rendererChanged) {
+        clearRendererCache();
+        clearRendererTrust(project.path);
+      }
       const fresh = await openProject(project.path);
       onProjectChanged(fresh);
       setRefreshKey((k) => k + 1);
@@ -221,7 +264,7 @@ export function Workspace({
       onConfirm: async (id) => {
         try {
           await createRenderer(project.path, id, "default");
-          await saveProjectMeta(project.path, { ...project.meta, activeRendererId: id }, project.projectRevision);
+          await saveProjectMetaQueued({ ...project.meta, activeRendererId: id });
           setRendererId(id);
           await refreshProject(true);
         } catch (error) {
@@ -229,7 +272,7 @@ export function Workspace({
         }
       },
     });
-  }, [project.meta, project.path, project.projectRevision, refreshProject]);
+  }, [project.meta, project.path, refreshProject, saveProjectMetaQueued]);
 
   const handleDuplicateRenderer = useCallback((sourceId: string) => {
     if (!sourceId) return;
@@ -242,7 +285,7 @@ export function Workspace({
       onConfirm: async (newId) => {
         try {
           await duplicateRenderer(project.path, sourceId, newId);
-          await saveProjectMeta(project.path, { ...project.meta, activeRendererId: newId }, project.projectRevision);
+          await saveProjectMetaQueued({ ...project.meta, activeRendererId: newId });
           setRendererId(newId);
           await refreshProject(true);
         } catch (error) {
@@ -250,7 +293,7 @@ export function Workspace({
         }
       },
     });
-  }, [project.meta, project.path, project.projectRevision, refreshProject]);
+  }, [project.meta, project.path, refreshProject, saveProjectMetaQueued]);
 
   const handleRenameRenderer = useCallback((sourceId: string) => {
     if (!sourceId) return;
@@ -304,11 +347,11 @@ export function Workspace({
     graphIssueFocusRequestIdRef.current = next.requestId;
     setGraphIssueFocus(next);
     if (issue.source === "node" && next.nodeId) {
-      onNavigate({ type: "script-node", nodeId: next.nodeId });
+      navigateWithGuard({ type: "script-node", nodeId: next.nodeId });
     } else {
-      onNavigate({ type: "script-graph" });
+      navigateWithGuard({ type: "script-graph" });
     }
-  }, [onNavigate, project.graph]);
+  }, [navigateWithGuard, project.graph]);
 
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
@@ -316,20 +359,20 @@ export function Workspace({
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
-          <IconButton onClick={onBack} disabled={!canGoBack} title="后退" aria-label="后退">
+          <IconButton onClick={() => runWithUnsavedChangesGuard(onBack)} disabled={!canGoBack} title="后退" aria-label="后退">
             <ChevronLeft size={18} />
           </IconButton>
-          <IconButton onClick={onForward} disabled={!canGoForward} title="前进" aria-label="前进">
+          <IconButton onClick={() => runWithUnsavedChangesGuard(onForward)} disabled={!canGoForward} title="前进" aria-label="前进">
             <ChevronRight size={18} />
           </IconButton>
         </div>
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
         <div data-tauri-drag-region style={centerGroupStyle}>
-          <TabBtn active={workspace === "render"} onClick={() => onNavigate({ type: "workspace", workspace: "render" })}>渲染</TabBtn>
-          <TabBtn active={workspace === "script"} onClick={() => onNavigate({ type: "script-graph" })}>脚本</TabBtn>
-          <TabBtn active={workspace === "assets"} onClick={() => onNavigate({ type: "workspace", workspace: "assets" })}>资产</TabBtn>
-          <TabBtn active={workspace === "project"} onClick={() => onNavigate({ type: "workspace", workspace: "project" })}>项目</TabBtn>
+          <TabBtn active={workspace === "render"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "render" })}>渲染</TabBtn>
+          <TabBtn active={workspace === "script"} onClick={() => navigateWithGuard({ type: "script-graph" })}>脚本</TabBtn>
+          <TabBtn active={workspace === "assets"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}>资产</TabBtn>
+          <TabBtn active={workspace === "project"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "project" })}>项目</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
@@ -338,7 +381,7 @@ export function Workspace({
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle}>当前渲染层</span>
           <span style={rendererStatusStyle} title={rendererStatusText}>{rendererStatusText}</span>
-          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置">
+          <IconButton onClick={() => runWithUnsavedChangesGuard(onOpenSettings)} title="设置" aria-label="设置">
             <SettingsIcon size={15} />
           </IconButton>
         </div>
@@ -378,6 +421,7 @@ export function Workspace({
         )}
         {workspace === "script" && (
           <ScriptWorkspace
+            key={project.path}
             project={project}
             rendererId={rendererId}
             refreshKey={refreshKey}
@@ -385,25 +429,30 @@ export function Workspace({
             onOutlineCollapsedChange={handleScriptOutlineCollapsedChange}
             location={location.type === "script-node" ? { view: "node", nodeId: location.nodeId } : { view: "graph" }}
             focusRequest={graphIssueFocus}
-            onOpenGraph={() => onNavigate({ type: "script-graph" })}
-            onOpenNode={(nodeId) => onNavigate({ type: "script-node", nodeId })}
-            onReplaceWithGraph={() => onReplaceLocation({ type: "script-graph" })}
+            onOpenGraph={() => navigateWithGuard({ type: "script-graph" })}
+            onOpenNode={(nodeId) => navigateWithGuard({ type: "script-node", nodeId })}
+            onReplaceWithGraph={() => replaceLocationWithGuard({ type: "script-graph" })}
             onSaved={handleSaved}
+            onDirtyChange={setHasUnsavedChanges}
           />
         )}
         {workspace === "assets" && (
           <AssetsWorkspace
+            key={project.path}
             project={project}
             refreshKey={refreshKey}
             sidebarCollapsed={sidebarPrefs.assetsSidebarCollapsed}
             onSidebarCollapsedChange={handleAssetsSidebarCollapsedChange}
             onSaved={handleSaved}
+            onDirtyChange={setHasUnsavedChanges}
           />
         )}
         {workspace === "project" && (
           <ProjectSettings
+            key={project.path}
             project={project}
             onSaved={handleSaved}
+            onDirtyChange={setHasUnsavedChanges}
           />
         )}
       </div>
@@ -453,6 +502,19 @@ export function Workspace({
         />
       )}
       {rendererAlert && <AlertDialog danger message={rendererAlert} onClose={() => setRendererAlert(null)} />}
+      {unsavedNavigation && (
+        <ConfirmDialog
+          message="当前工作区有未保存的草稿。离开后草稿会保留，并在本次会话中返回时自动恢复。"
+          confirmLabel="离开并保留草稿"
+          onConfirm={() => {
+            const action = unsavedNavigation.action;
+            setHasUnsavedChanges(false);
+            setUnsavedNavigation(null);
+            action();
+          }}
+          onClose={() => setUnsavedNavigation(null)}
+        />
+      )}
     </div>
   );
 }
@@ -463,6 +525,10 @@ export function shouldStartWindowDrag(event: WindowDragMouseEvent): boolean {
   const target = event.target;
   if (!target || !hasClosest(target)) return true;
   return target.closest(windowDragIgnoreSelector) === null;
+}
+
+export function shouldConfirmUnsavedNavigation(hasUnsavedChanges: boolean): boolean {
+  return hasUnsavedChanges;
 }
 
 function hasClosest(target: EventTarget): target is EventTarget & { closest: (selector: string) => Element | null } {

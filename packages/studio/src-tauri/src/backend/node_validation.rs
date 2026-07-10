@@ -3,6 +3,8 @@ struct ManifestRefs {
     bgm: HashSet<String>,
     sfx: HashSet<String>,
     voice: HashSet<String>,
+    cg: HashSet<String>,
+    videos: HashSet<String>,
     characters: HashMap<String, HashSet<String>>,
     unlock_cg: HashSet<String>,
     unlock_music: HashSet<String>,
@@ -21,6 +23,12 @@ fn collect_manifest_refs(manifest: &serde_json::Value) -> Option<ManifestRefs> {
     let audio = obj.get("audio")?.as_object()?;
     let audio_set = |name: &str| -> Option<HashSet<String>> {
         Some(audio.get(name)?.as_object()?.keys().cloned().collect())
+    };
+    let registry_set = |name: &str| -> HashSet<String> {
+        obj.get(name)
+            .and_then(|value| value.as_object())
+            .map(|table| table.keys().cloned().collect())
+            .unwrap_or_default()
     };
     let characters_obj = obj.get("characters")?.as_object()?;
     let mut characters = HashMap::new();
@@ -46,6 +54,8 @@ fn collect_manifest_refs(manifest: &serde_json::Value) -> Option<ManifestRefs> {
         bgm: audio_set("bgm")?,
         sfx: audio_set("sfx")?,
         voice: audio_set("voice")?,
+        cg: registry_set("cg"),
+        videos: registry_set("videos"),
         characters,
         unlock_cg: unlock_set("cg"),
         unlock_music: unlock_set("music"),
@@ -80,6 +90,7 @@ pub fn validate_node_contents(
             ));
             continue;
         };
+        let mut first_index_by_story_point_id = HashMap::<String, usize>::new();
 
         for (instruction_index, instruction) in instructions.iter().enumerate() {
             let Some(obj) = instruction.as_object() else {
@@ -395,7 +406,7 @@ pub fn validate_node_contents(
                     }
                 }
                 "narrate" => {
-                    require_nonempty_string_field(
+                    valid &= require_nonempty_string_field(
                         obj,
                         "text",
                         instruction_index,
@@ -404,7 +415,7 @@ pub fn validate_node_contents(
                         &graph_node.id,
                         &mut issues,
                     );
-                    optional_nonnegative_int_field(
+                    valid &= optional_nonnegative_int_field(
                         obj,
                         "ms",
                         instruction_index,
@@ -415,7 +426,7 @@ pub fn validate_node_contents(
                     );
                 }
                 "wait" => {
-                    require_nonnegative_int_field(
+                    valid &= require_nonnegative_int_field(
                         obj,
                         "ms",
                         instruction_index,
@@ -553,6 +564,71 @@ pub fn validate_node_contents(
                         }
                     }
                 }
+                "showCg" => {
+                    valid &= require_nonempty_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            check_registry_ref(
+                                refs.cg.contains(obj["id"].as_str().unwrap()),
+                                "missing_cg_ref",
+                                format!(
+                                    "showCg 引用了不存在的 cg id：{}",
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
+                "playVideo" => {
+                    valid &= require_nonempty_string_field(
+                        obj,
+                        "id",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    valid &= optional_bool_field(
+                        obj,
+                        "skippable",
+                        instruction_index,
+                        t,
+                        &file,
+                        &graph_node.id,
+                        &mut issues,
+                    );
+                    if valid {
+                        if let Some(refs) = &manifest_refs {
+                            check_registry_ref(
+                                refs.videos.contains(obj["id"].as_str().unwrap()),
+                                "missing_video_ref",
+                                format!(
+                                    "playVideo 引用了不存在的 video id：{}",
+                                    obj["id"].as_str().unwrap()
+                                ),
+                                "id",
+                                instruction_index,
+                                &file,
+                                &graph_node.id,
+                                &mut issues,
+                            );
+                        }
+                    }
+                }
                 "pause" => {}
                 _ => {
                     issues.push(node_issue(
@@ -562,12 +638,75 @@ pub fn validate_node_contents(
                         format!("$[{instruction_index}].t"),
                         &graph_node.id,
                     ));
+                    valid = false;
                 }
+            }
+
+            if valid && matches!(t, "say" | "narrate" | "wait" | "pause") {
+                validate_story_point_identity(
+                    obj,
+                    instruction_index,
+                    t,
+                    &file,
+                    &graph_node.id,
+                    &mut first_index_by_story_point_id,
+                    &mut issues,
+                );
             }
         }
     }
 
     issues
+}
+
+fn validate_story_point_identity(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    index: usize,
+    instruction_type: &str,
+    file: &str,
+    node_id: &str,
+    first_index_by_id: &mut HashMap<String, usize>,
+    issues: &mut Vec<ProjectIssue>,
+) {
+    match obj.get("id") {
+        None => issues.push(ProjectIssue {
+            severity: GraphIssueSeverity::Warn,
+            source: "node".to_string(),
+            code: "instruction_id_missing".to_string(),
+            message: format!(
+                "{instruction_type} 指令缺少稳定 id；存档、已读和回滚将无法稳定定位该停点。"
+            ),
+            file: Some(file.to_string()),
+            json_path: Some(format!("$[{index}].id")),
+            node_id: Some(node_id.to_string()),
+            edge_id: None,
+        }),
+        Some(serde_json::Value::String(id)) if !id.is_empty() => {
+            if let Some(first_index) = first_index_by_id.get(id) {
+                issues.push(node_issue(
+                    "instruction_id_duplicate",
+                    format!(
+                        "同一节点内重复的停点 instruction id: \"{id}\"（首次出现于 #{first_index}）。"
+                    ),
+                    file,
+                    format!("$[{index}].id"),
+                    node_id,
+                ));
+            } else {
+                first_index_by_id.insert(id.clone(), index);
+            }
+        }
+        Some(_) => {
+            push_invalid_field(
+                issue_message(instruction_type, "id", "必须是非空字符串"),
+                "id",
+                index,
+                file,
+                node_id,
+                issues,
+            );
+        }
+    }
 }
 
 fn node_issue(

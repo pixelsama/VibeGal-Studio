@@ -1,0 +1,28 @@
+{
+  "manifest": {
+    "characters": {},
+    "backgrounds": {},
+    "audio": { "bgm": {}, "sfx": {}, "voice": {} },
+    "cg": { "known_cg": "assets/cg/known.png" },
+    "videos": { "known_video": "assets/videos/known.mp4" },
+    "fonts": {},
+    "uiSkins": {},
+    "animationAtlases": {},
+    "unlocks": { "cg": {}, "music": {}, "replay": {}, "endings": {} }
+  },
+  "instructions": [
+    { "t": "showCg", "id": "known_cg" },
+    { "t": "showCg", "id": "missing_cg" },
+    { "t": "playVideo", "id": "known_video" },
+    { "t": "playVideo", "id": "missing_video" },
+    { "t": "narrate", "text": "missing stable id" },
+    { "t": "narrate", "id": "story_point_01", "text": "first stable id" },
+    { "t": "pause", "id": "story_point_01" }
+  ],
+  "expectedIssues": [
+    { "code": "missing_cg_ref", "severity": "error", "index": 1 },
+    { "code": "missing_video_ref", "severity": "error", "index": 3 },
+    { "code": "instruction_id_missing", "severity": "warn", "index": 4 },
+    { "code": "instruction_id_duplicate", "severity": "error", "index": 6 }
+  ]
+}

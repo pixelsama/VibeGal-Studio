@@ -270,7 +270,62 @@ export class GraphNovelPlayer {
   }
 
   seekBy(delta: number) {
-    if (delta > 0) this.stepOnce();
+    if (delta < 0) {
+      this.seekToInstruction(this.ip + delta);
+    } else if (delta > 0) {
+      this.stepOnce();
+    }
+  }
+
+  /**
+   * Rebuild the current node state through the first `target` instructions.
+   * This is intentionally side-effect free: runtime effects, persistence writes,
+   * and timers must not fire while a preview/debugger moves its playhead.
+   */
+  seekToInstruction(target: number) {
+    this.clearTimers();
+    const instructions = this.currentInstructions();
+    const clamped = Math.max(0, Math.min(target, instructions.length));
+    let nextState = buildInitialState(0, instructions.length);
+    let lastStable: { instruction: StableInstruction; index: number } | null = null;
+
+    for (let index = 0; index < clamped; index += 1) {
+      const instruction = instructions[index];
+      nextState = applyInstruction(nextState, instruction, this.deps);
+      if (isStableInstruction(instruction)) lastStable = { instruction, index };
+    }
+
+    if (clamped > 0) {
+      const last = instructions[clamped - 1];
+      if (last.t === "say" || last.t === "narrate") nextState = revealFully(nextState);
+    }
+    nextState.flags.isWaiting = false;
+    nextState.flags.progress.current = clamped;
+
+    this.ip = clamped;
+    this.state = nextState;
+    this.currentStoryPoint = null;
+    this.lastStableStoryPoint = null;
+    this.currentReadKey = null;
+    this.currentStableKind = null;
+    this.pendingVoiceId = undefined;
+    this.routeError = null;
+
+    if (lastStable && this.currentNodeId) {
+      const instructionId = getInstructionStoryPointId(lastStable.instruction, lastStable.index);
+      if (instructionId) {
+        this.currentStoryPoint = { nodeId: this.currentNodeId, instructionId };
+        this.lastStableStoryPoint = { ...this.currentStoryPoint };
+        this.currentStableKind = lastStable.instruction.t;
+        if (lastStable.instruction.t === "say" || lastStable.instruction.t === "narrate") {
+          this.currentReadKey = createReadTextKey({
+            ...this.currentStoryPoint,
+            text: lastStable.instruction.text,
+          });
+        }
+      }
+    }
+    this.emit();
   }
 
   stepOnce() {
@@ -298,6 +353,9 @@ export class GraphNovelPlayer {
 
   prevChapter() {}
   nextChapter() {}
+
+  get totalInstructions(): number { return this.currentInstructions().length; }
+  get currentIndex(): number { return this.ip; }
 
   dispose() {
     this.clearTimers();
@@ -507,7 +565,8 @@ export class GraphNovelPlayer {
     this.clearAuto();
     if (!this.state.flags.isAutoPlay && !this.state.flags.isRecording) return;
     if (this.state.flags.isWaiting || this.state.choice) return;
-    const delay = this.state.currentCueMs ?? this.deps.meta.autoAdvanceMs;
+    const cueMs = this.state.currentCueMs ?? this.deps.meta.autoAdvanceMs;
+    const delay = this.state.flags.isRecording ? cueMs + 400 : cueMs;
     this.autoTimer = setTimeout(() => this.advance(), delay);
   }
 
