@@ -315,6 +315,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     getBacklog: () => player.getBacklog(),
     rollbackHistoryEntry: (entryId) => player.rollbackToHistoryEntry(entryId),
     replayVoice: (entryId) => player.replayVoice(entryId),
+    startReplay: (nodeId) => player.startReplay(nodeId),
     audio,
     initialSettings: settings,
     settingsFallback: {
@@ -744,6 +745,7 @@ function createWebRuntimeServices(options: {
   getBacklog: GraphNovelPlayer["getBacklog"];
   rollbackHistoryEntry: GraphNovelPlayer["rollbackToHistoryEntry"];
   replayVoice: GraphNovelPlayer["replayVoice"];
+  startReplay: GraphNovelPlayer["startReplay"];
   audio: AudioEngine | null;
   initialSettings: RuntimeSettingsRecord;
   settingsFallback: { textSpeedCps: number; autoAdvanceMs: number };
@@ -762,9 +764,12 @@ function createWebRuntimeServices(options: {
     getBacklog: options.getBacklog,
     rollbackHistoryEntry: options.rollbackHistoryEntry,
     replayVoice: options.replayVoice,
+    startReplay: options.startReplay,
     audio: options.audio
       ? {
-          replayVoice: () => options.audio?.replayVoice(),
+          replayVoice: (voiceId) => options.audio?.replayVoice(voiceId),
+          playMusic: (audioId, playbackOptions) => options.audio?.playMusic(audioId, playbackOptions),
+          stopMusic: (fadeMs) => options.audio?.stopMusic(fadeMs),
           stopBgm: (fadeMs) => options.audio?.stopBgm(fadeMs),
           pauseBgm: () => options.audio?.pauseBgm(),
           resumeBgm: () => options.audio?.resumeBgm(),

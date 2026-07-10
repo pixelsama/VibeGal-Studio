@@ -112,11 +112,18 @@ export interface RuntimeSettingsService {
 
 export interface AudioService {
   replayVoice(voiceId?: string): void;
+  playMusic(audioId: string, options?: AudioPlaybackOptions): void;
+  stopMusic(fadeMs?: number): void;
   stopBgm(fadeMs?: number): void;
   pauseBgm(): void;
   resumeBgm(): void;
   stopVoice(): void;
   stopAllSfx(): void;
+}
+
+export interface AudioPlaybackOptions {
+  loop?: boolean;
+  fadeMs?: number;
 }
 
 export interface GalleryService {
@@ -125,6 +132,10 @@ export interface GalleryService {
   listMusic(): Array<{ id: string; audioId: string; title?: string; asset: unknown }>;
   listReplays(): Array<{ id: string; nodeId: string; title?: string }>;
   listEndings(): Array<{ id: string; title: string; nodeId?: string }>;
+}
+
+export interface ReplayService {
+  start(replayId: string): RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
 }
 
 export interface MediaService {
@@ -158,6 +169,7 @@ export interface RuntimeServices {
   settings: RuntimeSettingsService;
   audio: AudioService;
   gallery: GalleryService;
+  replay: ReplayService;
   media: MediaService;
   status?: RuntimeStatusService;
   debug?: DebugService;
@@ -262,6 +274,7 @@ export interface InMemoryRuntimeServicesOptions {
   manifest?: Manifest;
   media?: Partial<MediaService>;
   onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
+  startReplay?: (nodeId: string) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
   rollbackTo?: (point: StoryPointId) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
   rollbackHistoryEntry?: (entryId: string) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
   replayVoice?: (entryId: string) => void;
@@ -468,6 +481,14 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         const replayVoice = options.audio?.replayVoice ?? (() => unavailable("audio", "replayVoice"));
         replayVoice(voiceId);
       },
+      playMusic: (audioId, playbackOptions) => {
+        const playMusic = options.audio?.playMusic ?? (() => unavailable("audio", "playMusic"));
+        playMusic(audioId, playbackOptions);
+      },
+      stopMusic: (fadeMs) => {
+        const stopMusic = options.audio?.stopMusic ?? options.audio?.stopBgm ?? (() => unavailable("audio", "stopMusic"));
+        stopMusic(fadeMs);
+      },
       stopBgm: (fadeMs) => {
         const stopBgm = options.audio?.stopBgm ?? (() => unavailable("audio", "stopBgm"));
         stopBgm(fadeMs);
@@ -528,6 +549,20 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         return Object.entries(registry)
           .filter(([id]) => endingUnlocks.has(id))
           .map(([id, entry]) => ({ id, title: entry.title, nodeId: entry.nodeId }));
+      },
+    },
+    replay: {
+      start(replayId) {
+        const entry = options.manifest?.unlocks?.replay?.[replayId];
+        if (!entry || !unlocks.replay.has(replayId)) {
+          return unavailable("replay", "start");
+        }
+        const startReplay = options.startReplay ?? (() => unavailable("replay", "start"));
+        const result = startReplay(entry.nodeId);
+        if (result && typeof (result as Promise<void | RuntimeRestoreResult>).then === "function") {
+          return (result as Promise<void | RuntimeRestoreResult>).then((value) => value ?? { warnings: [] });
+        }
+        return (result as RuntimeRestoreResult | undefined) ?? { warnings: [] };
       },
     },
     media: {

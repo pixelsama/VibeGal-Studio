@@ -321,8 +321,11 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point) ?? { warnings: [] },
     rollbackHistoryEntry: (entryId) => playerRef.current?.rollbackToHistoryEntry(entryId) ?? { warnings: [] },
     replayVoice: (entryId) => playerRef.current?.replayVoice(entryId),
+    startReplay: (nodeId) => playerRef.current?.startReplay(nodeId) ?? { warnings: [] },
     audio: {
       replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
+      playMusic: (audioId, options) => audioRef.current?.playMusic(audioId, options),
+      stopMusic: (fadeMs) => audioRef.current?.stopMusic(fadeMs),
       stopBgm: (fadeMs) => audioRef.current?.stopBgm(fadeMs),
       pauseBgm: () => audioRef.current?.pauseBgm(),
       resumeBgm: () => audioRef.current?.resumeBgm(),

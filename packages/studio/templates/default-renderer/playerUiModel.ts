@@ -15,6 +15,10 @@ export const MANUAL_SLOT_IDS = Array.from(
 export const PLAYER_MENU_PAGES = [
   { id: "save", label: "存档 / 读档" },
   { id: "history", label: "历史" },
+  { id: "gallery", label: "CG Gallery" },
+  { id: "replay", label: "回想" },
+  { id: "music", label: "音乐鉴赏" },
+  { id: "endings", label: "结局列表" },
   { id: "settings", label: "设置" },
   { id: "system", label: "系统" },
 ] as const;
@@ -161,6 +165,21 @@ export class PlayerUiController {
       const result = await this.runtime.history.rollbackTo(entryId);
       return result ?? { warnings: [] };
     });
+  }
+
+  startReplay(replayId: string): Promise<RuntimeRestoreResult> {
+    return this.run(async () => {
+      const result = await this.runtime.replay.start(replayId);
+      return result ?? { warnings: [] };
+    });
+  }
+
+  playMusic(audioId: string): Promise<void> {
+    return this.run(() => this.runtime.audio.playMusic(audioId, { loop: true }));
+  }
+
+  stopMusic(): Promise<void> {
+    return this.run(() => this.runtime.audio.stopMusic(300));
   }
 
   private async run<T>(operation: () => Promise<T> | T): Promise<T> {

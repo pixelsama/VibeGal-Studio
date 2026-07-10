@@ -100,7 +100,7 @@ Examples:
 | Backlog | History data and replayable entries | Backlog screen layout |
 | Choices | Choice data and `onChoose` callback | Choice button style and animation |
 | Volume | Volume state and audio control APIs | Settings menu controls |
-| CG gallery | Unlock state and resource manifest | Gallery screen design |
+| CG gallery | Unlock state, resource manifest, default template UI | Final gallery screen design |
 | Character position | Semantic state and possible layout data | Exact visual placement and animation |
 
 ## 3. Repository Shape
@@ -490,7 +490,7 @@ The renderer should own:
 - save/load menu UI,
 - backlog UI,
 - settings UI,
-- CG/music/replay gallery UI,
+- final CG/music/replay gallery UI,
 - layout and animation style,
 - ADV/NVL presentation,
 - character placement,
@@ -859,7 +859,7 @@ These should be solved by project renderers:
 - final save/load screen,
 - final backlog screen,
 - final settings screen,
-- final CG/music/gallery screens,
+- custom CG/music/gallery screens beyond the bundled default pages,
 - final ADV/NVL layout,
 - final choice presentation,
 - final animation style,

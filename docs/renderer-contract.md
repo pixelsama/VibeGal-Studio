@@ -44,7 +44,7 @@ Required fields:
 Optional fields:
 
 - `description`
-- `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings.
+- `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings. It declares `gallery-ui-v1` when it also provides default CG Gallery, replay, music room, and ending list pages.
 
 VibeGal-Studio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
 
@@ -87,7 +87,10 @@ interface RendererProps {
 - `history`: backlog entries with `storyPoint`, voice replay, rollback by entry
 - `persistent`: read text state and CG / music / ending unlocks
 - `settings`: user/device settings including master, bgm, sfx, and voice volume
-- `audio`: voice replay, BGM stop/pause/resume, voice stop, SFX stop
+- `audio`: voice replay, music room playback, BGM stop/pause/resume, voice stop, SFX stop
+- `gallery`: unlocked CG / music / replay / ending queries
+- `replay`: start an unlocked replay scene by replay registry id
+- `media`: close CG and skip skippable video overlays
 - `status?`: optional transient runtime notices, such as auto-save or storage fallback warnings, that renderer UI may display without scraping the console
 - `debug?`: Studio/dev-only inspection and jump helpers
 
@@ -155,6 +158,16 @@ of reconstructing history from dialogue DOM. `history.replayVoice(entryId)` repl
 that entry's voice and must not advance the story. `history.rollbackTo(entryId)` may return
 `void`, a `RuntimeRestoreResult`, or a Promise of either, so older contract-v1 renderer
 test doubles and hosts that perform rollback synchronously remain compatible.
+
+`gallery` exposes unlocked CG, music, replay, and ending registry views. The bundled
+default renderer uses `gallery.isUnlocked()` with `manifest.unlocks` to render locked
+placeholders as well as unlocked entries. `replay.start(replayId)` starts the unlocked
+replay scene associated with `manifest.unlocks.replay[replayId].nodeId`. Hosts should
+reject missing or locked replay ids with a structured runtime error.
+
+`audio.playMusic(audioId, options)` starts a specific BGM asset for music room playback.
+`audio.stopMusic(fadeMs)` stops that music-room playback. These methods share the same
+audio channel and volume settings as normal BGM playback.
 
 `settings.getSettings()` returns the effective runtime settings record. Hosts resolve
 settings in this order:

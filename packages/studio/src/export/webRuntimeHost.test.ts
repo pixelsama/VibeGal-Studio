@@ -551,6 +551,77 @@ describe("web export runtime host", () => {
     secondRuntime.dispose();
   });
 
+  it("webRuntimeStartsUnlockedReplayFromTheRuntimeService", async () => {
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest: {
+        ...manifest,
+        unlocks: {
+          cg: {},
+          music: {},
+          replay: { replay_opening: { nodeId: "replay_start", title: "Opening Replay" } },
+          endings: {},
+        },
+      },
+      graph: runtimeGraph([]),
+      nodes: [
+        node("start", "start"),
+        { id: "replay_start", instructions: [{ t: "narrate", id: "replay_01", text: "replay line" }] },
+      ],
+      contentBase: "./content",
+    });
+    const services = runtime.rendererProps().runtime!;
+    await services.persistent.unlock("replay", "replay_opening");
+
+    await expect(Promise.resolve(services.replay.start("replay_opening"))).resolves.toEqual({ warnings: [] });
+
+    expect(runtime.getState().narration?.text).toBe("replay line");
+    runtime.dispose();
+  });
+
+  it("webRuntimeMusicRoomServicePlaysTheRequestedBgmAsset", () => {
+    class FakeAudio {
+      static instances: FakeAudio[] = [];
+      loop = false;
+      muted = false;
+      volume = 1;
+      readonly play = vi.fn(async () => {});
+      readonly pause = vi.fn();
+      readonly remove = vi.fn();
+
+      constructor(readonly src: string) {
+        FakeAudio.instances.push(this);
+      }
+
+      addEventListener() {}
+    }
+    vi.stubGlobal("Audio", FakeAudio);
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest: {
+        ...manifest,
+        audio: { bgm: { theme: "audio/theme.ogg" }, sfx: {}, voice: {} },
+        unlocks: {
+          cg: {},
+          music: { music_theme: { audioId: "theme", title: "Theme" } },
+          replay: {},
+          endings: {},
+        },
+      },
+      graph: runtimeGraph([]),
+      nodes: [node("start", "start")],
+      contentBase: "./content",
+    });
+    const services = runtime.rendererProps().runtime!;
+
+    services.audio.playMusic("theme", { loop: false, fadeMs: 0 });
+
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(FakeAudio.instances[0].src).toContain("audio/theme.ogg");
+    expect(FakeAudio.instances[0].loop).toBe(false);
+    runtime.dispose();
+  });
+
   it("behavior smoke advances, saves and loads a configured media asset", async () => {
     const runtime = createWebRuntimePlayer({
       meta,

@@ -4,6 +4,7 @@ import { BackgroundLayer } from "./BackgroundLayer";
 import { SpriteLayer } from "./SpriteLayer";
 import { DialogueBox } from "./DialogueBox";
 import { Effects } from "./Effects";
+import { EndingsPanel, GalleryPanel, MusicRoomPanel, ReplayPanel } from "./GalleryPanels";
 import { HistoryPanel } from "./HistoryPanel";
 import { PlayerHud } from "./PlayerHud";
 import { ConfirmDialog, PlayerMenu, SystemPanel, type PlayerNotice } from "./PlayerMenu";
@@ -250,6 +251,39 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
     }
   };
 
+  const performStartReplay = async (replayId: string) => {
+    if (!controller) return;
+    stopAutomatedPlayback();
+    try {
+      const result = await controller.startReplay(replayId);
+      if (showWarnings(result.warnings)) return;
+      setMenuPage(null);
+      showNotice({ tone: "success", message: "已启动回想。" }, true);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const performPlayMusic = async (audioId: string) => {
+    if (!controller) return;
+    try {
+      await controller.playMusic(audioId);
+      showNotice({ tone: "success", message: "音乐播放中。" }, true);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const performStopMusic = async () => {
+    if (!controller) return;
+    try {
+      await controller.stopMusic();
+      showNotice({ tone: "success", message: "音乐已停止。" }, true);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
   const confirm = () => {
     if (!confirmAction) return;
     switch (confirmAction.kind) {
@@ -416,6 +450,34 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
               onReplayVoice={replayVoice}
               onRollback={(entry) => setConfirmAction({ kind: "rollback", entry })}
             />
+          )}
+          {menuPage === "gallery" && (
+            <GalleryPanel
+              manifest={manifest}
+              contentBase={contentBase}
+              gallery={runtime.gallery}
+              busy={busy}
+            />
+          )}
+          {menuPage === "replay" && (
+            <ReplayPanel
+              manifest={manifest}
+              gallery={runtime.gallery}
+              busy={busy}
+              onStartReplay={(replayId) => void performStartReplay(replayId)}
+            />
+          )}
+          {menuPage === "music" && (
+            <MusicRoomPanel
+              manifest={manifest}
+              gallery={runtime.gallery}
+              busy={busy}
+              onPlayMusic={(audioId) => void performPlayMusic(audioId)}
+              onStopMusic={() => void performStopMusic()}
+            />
+          )}
+          {menuPage === "endings" && (
+            <EndingsPanel manifest={manifest} gallery={runtime.gallery} />
           )}
           {menuPage === "settings" && (
             <RuntimeSettingsPanel settings={settings} busy={busy} onSave={saveSettings} />

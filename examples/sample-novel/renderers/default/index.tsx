@@ -13,7 +13,7 @@ const defaultRenderer: RendererManifest = {
   id: "default",
   name: "默认渲染层",
   contractVersion: 1,
-  capabilities: ["player-ui-v1"],
+  capabilities: ["player-ui-v1", "gallery-ui-v1"],
   description: "衬线对话框 + 中央立绘 + 渐变背景的默认实现",
   Component: Stage,
 };

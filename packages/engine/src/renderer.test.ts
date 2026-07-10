@@ -166,6 +166,64 @@ describe("renderer contract", () => {
     expect(runtime.gallery.listEndings()).toEqual([{ id: "true_end", title: "True End", nodeId: "ending" }]);
   });
 
+  it("replayServiceStartsAnUnlockedReplayByRegistryId", async () => {
+    const startReplay = vi.fn(() => ({ warnings: [] }));
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      manifest: {
+        characters: {},
+        backgrounds: {},
+        audio: { bgm: {}, sfx: {}, voice: {} },
+        cg: {},
+        videos: {},
+        fonts: {},
+        uiSkins: {},
+        animationAtlases: {},
+        unlocks: {
+          cg: {},
+          music: {},
+          replay: { replay_start: { nodeId: "start", title: "Start" } },
+          endings: {},
+        },
+      },
+      startReplay,
+    });
+    await runtime.persistent.unlock("replay", "replay_start");
+
+    await expect(Promise.resolve(runtime.replay.start("replay_start"))).resolves.toEqual({ warnings: [] });
+
+    expect(startReplay).toHaveBeenCalledWith("start");
+  });
+
+  it("replayServiceRejectsLockedReplayEntries", () => {
+    const startReplay = vi.fn();
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      manifest: {
+        characters: {},
+        backgrounds: {},
+        audio: { bgm: {}, sfx: {}, voice: {} },
+        cg: {},
+        videos: {},
+        fonts: {},
+        uiSkins: {},
+        animationAtlases: {},
+        unlocks: {
+          cg: {},
+          music: {},
+          replay: { replay_start: { nodeId: "start", title: "Start" } },
+          endings: {},
+        },
+      },
+      startReplay,
+    });
+
+    expect(() => runtime.replay.start("replay_start")).toThrow(expect.objectContaining({
+      code: "runtime_service_unavailable",
+    }));
+    expect(startReplay).not.toHaveBeenCalled();
+  });
+
   it("mediaServiceExposesCommandShape", () => {
     const closeCg = vi.fn();
     const skipVideo = vi.fn();
@@ -191,6 +249,21 @@ describe("renderer contract", () => {
     runtime.audio.replayVoice("voice_01");
 
     expect(replayVoice).toHaveBeenCalledWith("voice_01");
+  });
+
+  it("audioServiceCanPlayAndStopMusicRoomTracks", () => {
+    const playMusic = vi.fn();
+    const stopMusic = vi.fn();
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      audio: { playMusic, stopMusic },
+    });
+
+    runtime.audio.playMusic("theme", { loop: true, fadeMs: 250 });
+    runtime.audio.stopMusic(100);
+
+    expect(playMusic).toHaveBeenCalledWith("theme", { loop: true, fadeMs: 250 });
+    expect(stopMusic).toHaveBeenCalledWith(100);
   });
 
   it("saveServiceWritesSlotToAdapter", async () => {

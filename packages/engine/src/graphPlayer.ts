@@ -75,6 +75,7 @@ export class GraphNovelPlayer {
   private playbackTiming: PlaybackTiming;
   private lastNodeCheckpointId: string | null = null;
   private pendingChoiceCheckpoint = false;
+  private suppressStableCheckpoints = false;
 
   private typingTimer: ReturnType<typeof setTimeout> | null = null;
   private waitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,6 +109,7 @@ export class GraphNovelPlayer {
     this.routeError = null;
     this.lastNodeCheckpointId = null;
     this.pendingChoiceCheckpoint = false;
+    this.suppressStableCheckpoints = false;
     this.ip = 0;
     const total = this.currentInstructions().length;
     this.state = buildInitialState(0, total);
@@ -183,6 +185,7 @@ export class GraphNovelPlayer {
 
   restoreSnapshot(snapshot: RuntimeSnapshot): RuntimeRestoreResult {
     this.clearTimers();
+    this.suppressStableCheckpoints = false;
     const parsed = RuntimeSnapshotSchema.parse(snapshot);
     const result = this.applySnapshot(parsed);
     this.emit();
@@ -227,9 +230,27 @@ export class GraphNovelPlayer {
 
   jumpToStoryPoint(point: StoryPointId): RuntimeRestoreResult {
     this.clearTimers();
+    this.suppressStableCheckpoints = false;
     const result = this.applyStoryPoint(point, createInitialState());
     this.emit();
     return result;
+  }
+
+  startReplay(nodeId: string): RuntimeRestoreResult {
+    this.clearTimers();
+    if (!this.instructionsByNodeId.has(nodeId)) {
+      return {
+        warnings: [{
+          code: "node_not_found",
+          message: `Replay node "${nodeId}" no longer exists.`,
+          nodeId,
+        }],
+      };
+    }
+    this.suppressStableCheckpoints = true;
+    this.restoreToNodeStart(nodeId);
+    this.stepNext(0);
+    return { warnings: [] };
   }
 
   rollbackToHistoryEntry(entryId: string): RuntimeRestoreResult {
@@ -763,6 +784,7 @@ export class GraphNovelPlayer {
   }
 
   private emitStableCheckpoint() {
+    if (this.suppressStableCheckpoints) return;
     if (!this.currentStoryPoint || !this.currentNodeId) return;
     if (this.lastNodeCheckpointId !== this.currentNodeId) {
       this.lastNodeCheckpointId = this.currentNodeId;

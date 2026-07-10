@@ -8,6 +8,7 @@ import {
   type SaveSlotSummary,
 } from "@vibegal/engine";
 import { PlayerHud } from "../../src-tauri/resources/default-renderer/PlayerHud";
+import { EndingsPanel, GalleryPanel, MusicRoomPanel, ReplayPanel } from "../../src-tauri/resources/default-renderer/GalleryPanels";
 import { HistoryPanel } from "../../src-tauri/resources/default-renderer/HistoryPanel";
 import { PlayerMenu } from "../../src-tauri/resources/default-renderer/PlayerMenu";
 import { RuntimeSettingsPanel } from "../../src-tauri/resources/default-renderer/RuntimeSettingsPanel";
@@ -61,7 +62,7 @@ describe("default renderer player UI", () => {
       "manual-01", "manual-02", "manual-03", "manual-04", "manual-05", "manual-06",
       "manual-07", "manual-08", "manual-09", "manual-10", "manual-11", "manual-12",
     ]);
-    expect(PLAYER_MENU_PAGES.map((page) => page.id)).toEqual(["save", "history", "settings", "system"]);
+    expect(PLAYER_MENU_PAGES.map((page) => page.id)).toEqual(["save", "history", "gallery", "replay", "music", "endings", "settings", "system"]);
 
     const saved: SaveSlotSummary[] = [{
       slotId: "manual-02",
@@ -164,6 +165,10 @@ describe("default renderer player UI", () => {
 
     expect(html).toContain("存档 / 读档");
     expect(html).toContain("历史");
+    expect(html).toContain("CG Gallery");
+    expect(html).toContain("回想");
+    expect(html).toContain("音乐鉴赏");
+    expect(html).toContain("结局列表");
     expect(html).toContain("设置");
     expect(html).toContain("系统");
     expect(html).toContain("暂无历史记录");
@@ -205,6 +210,81 @@ describe("default renderer player UI", () => {
     expect(settingsHtml).toContain("语音音量");
     expect(settingsHtml).toContain("文字速度");
     expect(settingsHtml).toContain("自动播放间隔");
+  });
+
+  it("rendersGalleryReplayMusicAndEndingPagesFromUnlockRegistries", async () => {
+    const services = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      manifest: {
+        characters: {},
+        backgrounds: {},
+        audio: { bgm: { theme: "audio/theme.ogg" }, sfx: {}, voice: {} },
+        cg: { cg_001: { path: "cg/001.png", name: "Rooftop CG", thumbnail: "cg/thumb.png" } },
+        videos: {},
+        fonts: {},
+        uiSkins: {},
+        animationAtlases: {},
+        unlocks: {
+          cg: { cg_rooftop: { assetId: "cg_001", title: "Rooftop" } },
+          music: { music_theme: { audioId: "theme", title: "Theme" } },
+          replay: { replay_start: { nodeId: "start", title: "Opening" } },
+          endings: { true_end: { title: "True End", nodeId: "ending" } },
+        },
+      },
+      startReplay: vi.fn(() => ({ warnings: [] })),
+    });
+    await services.persistent.unlock("cg", "cg_rooftop");
+    await services.persistent.unlock("music", "music_theme");
+    await services.persistent.unlock("replay", "replay_start");
+    await services.persistent.unlock("endings", "true_end");
+    const manifest = {
+      characters: {},
+      backgrounds: {},
+      audio: { bgm: { theme: "audio/theme.ogg" }, sfx: {}, voice: {} },
+      cg: { cg_001: { path: "cg/001.png", name: "Rooftop CG", thumbnail: "cg/thumb.png" } },
+      videos: {},
+      fonts: {},
+      uiSkins: {},
+      animationAtlases: {},
+      unlocks: {
+        cg: { cg_rooftop: { assetId: "cg_001", title: "Rooftop" } },
+        music: { music_theme: { audioId: "theme", title: "Theme" } },
+        replay: { replay_start: { nodeId: "start", title: "Opening" } },
+        endings: { true_end: { title: "True End", nodeId: "ending" } },
+      },
+    };
+
+    const galleryHtml = renderToStaticMarkup(<GalleryPanel manifest={manifest} contentBase="./content" gallery={services.gallery} busy={false} />);
+    const replayHtml = renderToStaticMarkup(<ReplayPanel manifest={manifest} gallery={services.gallery} busy={false} onStartReplay={vi.fn()} />);
+    const musicHtml = renderToStaticMarkup(<MusicRoomPanel manifest={manifest} gallery={services.gallery} busy={false} onPlayMusic={vi.fn()} onStopMusic={vi.fn()} />);
+    const endingsHtml = renderToStaticMarkup(<EndingsPanel manifest={manifest} gallery={services.gallery} />);
+
+    expect(galleryHtml).toContain("Rooftop");
+    expect(galleryHtml).toContain("cg/thumb.png");
+    expect(replayHtml).toContain("Opening");
+    expect(replayHtml).toContain("开始回想");
+    expect(musicHtml).toContain("Theme");
+    expect(musicHtml).toContain("播放");
+    expect(endingsHtml).toContain("True End");
+  });
+
+  it("controllerStartsReplayAndPlaysMusicThroughRuntimeServices", async () => {
+    const services = runtime();
+    const startReplay = vi.fn(() => ({ warnings: [] }));
+    const playMusic = vi.fn();
+    const stopMusic = vi.fn();
+    services.replay.start = startReplay;
+    services.audio.playMusic = playMusic;
+    services.audio.stopMusic = stopMusic;
+    const controller = new PlayerUiController(services, createInitialState);
+
+    await expect(controller.startReplay("replay_start")).resolves.toEqual({ warnings: [] });
+    await controller.playMusic("theme");
+    await controller.stopMusic();
+
+    expect(startReplay).toHaveBeenCalledWith("replay_start");
+    expect(playMusic).toHaveBeenCalledWith("theme", { loop: true });
+    expect(stopMusic).toHaveBeenCalledWith(300);
   });
 
   it("rendersTheCompleteStageThroughContractV1Props", () => {

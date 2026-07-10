@@ -117,6 +117,14 @@ export class AudioEngine {
     this.currentBgmId = null;
   }
 
+  playMusic(id: string, options: { loop?: boolean; fadeMs?: number } = {}) {
+    this.switchBgm(id, options.fadeMs ?? 500, options.loop ?? true);
+  }
+
+  stopMusic(fadeMs = 300) {
+    this.stopBgm(fadeMs);
+  }
+
   pauseBgm() {
     this.bgmEl?.pause();
   }

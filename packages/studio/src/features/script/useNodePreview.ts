@@ -134,6 +134,8 @@ export function useNodePreview(
     manifest: manifest ?? EMPTY_MANIFEST,
     audio: {
       replayVoice: () => audioRef.current?.replayVoice(),
+      playMusic: (audioId, options) => audioRef.current?.playMusic(audioId, options),
+      stopMusic: (fadeMs) => audioRef.current?.stopMusic(fadeMs),
       stopBgm: (fadeMs) => audioRef.current?.stopBgm(fadeMs),
       pauseBgm: () => audioRef.current?.pauseBgm(),
       resumeBgm: () => audioRef.current?.resumeBgm(),
