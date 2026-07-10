@@ -2,6 +2,10 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
+当前规划：
+
+- [Spec 12 - Contract-Driven Rust Validation And Backend Modularization](./12-contract-driven-rust-validation-and-backend-modularization.spec.md)
+
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
 - [Spec 01 — Runtime Contract Foundation](./archive/01-runtime-contract-foundation.spec.md)
