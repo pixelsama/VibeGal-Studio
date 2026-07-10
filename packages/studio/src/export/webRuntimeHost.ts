@@ -6,9 +6,12 @@ import {
   ProjectGraphSchema,
   RENDERER_CONTRACT_VERSION,
   RuntimeSettingsRecordSchema,
+  createDefaultRuntimeSettingsRecord,
   createInMemoryRuntimeServices,
   createRuntimeStorageLikePersistenceAdapter,
   migrateGlobalPersistentRecord,
+  migrateRuntimeSettingsRecord,
+  resolveRuntimeSettings,
   resolveAsset,
   validateContent,
   validateRendererManifestContract,
@@ -37,9 +40,11 @@ export interface StorageLike {
 export interface RuntimeStorageAdapter extends RuntimePersistenceAdapter {
   warnings: string[];
   readGlobalSync?(projectId: string): GlobalPersistentRecord;
+  readSettingsSync?(projectId: string): RuntimeSettingsRecord;
   listSaveSlots(): Promise<string[]>;
   getSaveSlot(slotId: string): Promise<unknown | null>;
   setSaveSlot(slotId: string, record: unknown): Promise<void>;
+  deleteSaveSlot(projectId: string, slotId: string): Promise<void>;
   deleteSaveSlot(slotId: string): Promise<void>;
   getGlobalPersistent(): Promise<unknown | null>;
   setGlobalPersistent(record: unknown): Promise<void>;
@@ -70,6 +75,7 @@ export interface WebRuntimePlayerOptions {
   contentBase: string;
   projectId?: string;
   storage?: RuntimeStorageAdapter;
+  initialSettings?: RuntimeSettingsRecord;
 }
 
 export const VIBEGAL_BUILD_SCHEMA_VERSION = 1;
@@ -90,15 +96,7 @@ function browserStorage(): StorageLike | null {
 }
 
 export function defaultRuntimeSettings(): RuntimeSettingsRecord {
-  return RuntimeSettingsRecordSchema.parse({
-    schemaVersion: 1,
-    volumes: {
-      master: 1,
-      bgm: 1,
-      sfx: 1,
-      voice: 1,
-    },
-  });
+  return createDefaultRuntimeSettingsRecord();
 }
 
 export function createWebStorageAdapter(
@@ -107,6 +105,7 @@ export function createWebStorageAdapter(
 ): RuntimeStorageAdapter {
   const warnings: string[] = [];
   const memory = new Map<string, string>();
+  let useMemory = storage == null;
   const store = storage ?? {
     getItem: (key: string) => memory.get(key) ?? null,
     setItem: (key: string, value: string) => { memory.set(key, value); },
@@ -116,16 +115,42 @@ export function createWebStorageAdapter(
   if (!storage) warnings.push("localStorage unavailable; using in-memory runtime storage.");
 
   const safeStore: StorageLike = {
-    getItem: (key) => store.getItem(key),
+    getItem: (key) => {
+      if (useMemory) return memory.get(key) ?? null;
+      try {
+        return store.getItem(key);
+      } catch {
+        useMemory = true;
+        warnings.push(`Failed to read runtime storage key: ${key}; using in-memory runtime storage.`);
+        return memory.get(key) ?? null;
+      }
+    },
     setItem: (key, value) => {
+      if (useMemory) {
+        memory.set(key, value);
+        return;
+      }
       try {
         store.setItem(key, value);
       } catch {
-        warnings.push(`Failed to write runtime storage key: ${key}`);
+        useMemory = true;
+        warnings.push(`Failed to write runtime storage key: ${key}; using in-memory runtime storage.`);
         memory.set(key, value);
       }
     },
-    removeItem: (key) => store.removeItem(key),
+    removeItem: (key) => {
+      if (useMemory) {
+        memory.delete(key);
+        return;
+      }
+      try {
+        store.removeItem(key);
+      } catch {
+        useMemory = true;
+        warnings.push(`Failed to remove runtime storage key: ${key}; using in-memory runtime storage.`);
+        memory.delete(key);
+      }
+    },
   };
   const adapter = createRuntimeStorageLikePersistenceAdapter({
     storage: safeStore,
@@ -158,6 +183,10 @@ export function createWebStorageAdapter(
       const raw = readRaw(`vibegal:${readProjectId}:global`);
       return migrateGlobalPersistentRecord(raw, readProjectId);
     },
+    readSettingsSync(readProjectId) {
+      const raw = readRaw(`vibegal:${readProjectId}:settings`);
+      return migrateRuntimeSettingsRecord(raw);
+    },
     async listSaveSlots() {
       return adapter.listSaveSlots(projectId);
     },
@@ -168,8 +197,11 @@ export function createWebStorageAdapter(
       writeRaw(key("save", slotId), record);
       writeRaw(key("saveIndex"), Array.from(new Set([...readSaveIndex(), slotId])).sort());
     },
-    async deleteSaveSlot(slotId) {
-      await adapter.deleteSaveSlot(projectId, slotId);
+    async deleteSaveSlot(projectOrSlotId: string, maybeSlotId?: string) {
+      await adapter.deleteSaveSlot(
+        maybeSlotId == null ? projectId : projectOrSlotId,
+        maybeSlotId ?? projectOrSlotId,
+      );
     },
     async getGlobalPersistent() {
       return readRaw(key("global"));
@@ -195,6 +227,13 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
   const graph = ProjectGraphSchema.parse(options.graph);
   const projectId = options.projectId ?? "web-export";
   const storage = options.storage ?? createWebStorageAdapter(projectId);
+  const settings = resolveRuntimeSettings(
+    options.initialSettings ?? storage.readSettingsSync?.(projectId) ?? defaultRuntimeSettings(),
+    {
+    textSpeedCps: content.meta.typingSpeedCps,
+    autoAdvanceMs: content.meta.autoAdvanceMs,
+    },
+  );
   let runtimeServices!: RuntimeServices;
   let audio: AudioEngine | null = null;
   const player = new GraphNovelPlayer({
@@ -212,8 +251,22 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
         publishMedia(runtimeMediaFromEffect(effect, content.manifest as Manifest, options.contentBase));
       }
     },
+    onStableCheckpoint: (event) => {
+      void runtimeServices?.save.autoSave(event.reason).catch((autoSaveError) => {
+        runtimeServices.status?.report({
+          level: "error",
+          code: "runtime_auto_save_failed",
+          message: autoSaveError instanceof Error ? autoSaveError.message : String(autoSaveError),
+        });
+      });
+    },
+  });
+  player.setPlaybackTiming({
+    textSpeedCps: settings.textSpeedCps,
+    autoAdvanceMs: settings.autoAdvanceMs,
   });
   audio = typeof Audio === "undefined" ? null : new AudioEngine(content.manifest as Manifest, options.contentBase);
+  audio?.setVolumes(settings.volumes);
   const listeners = new Set<(state: NovelState) => void>();
   let state = player.getState();
   let media: RuntimeMediaState = null;
@@ -259,9 +312,31 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     createSnapshot: () => player.createSnapshot(),
     restoreFromSave: (record) => player.restoreFromSave(record),
     decisionLog: () => player.getDecisionLog(),
+    getBacklog: () => player.getBacklog(),
+    rollbackHistoryEntry: (entryId) => player.rollbackToHistoryEntry(entryId),
+    replayVoice: (entryId) => player.replayVoice(entryId),
     audio,
+    initialSettings: settings,
+    settingsFallback: {
+      textSpeedCps: content.meta.typingSpeedCps,
+      autoAdvanceMs: content.meta.autoAdvanceMs,
+    },
+    onSettingsChanged: (nextSettings) => {
+      player.setPlaybackTiming({
+        textSpeedCps: nextSettings.textSpeedCps ?? content.meta.typingSpeedCps,
+        autoAdvanceMs: nextSettings.autoAdvanceMs ?? content.meta.autoAdvanceMs,
+      });
+      listeners.forEach((listener) => listener(state));
+    },
     media: { closeCg: closeMedia, skipVideo },
   });
+  for (const warning of storage.warnings) {
+    runtimeServices.status?.report({
+      level: "warning",
+      code: warning.includes("localStorage unavailable") ? "runtime_storage_fallback" : "runtime_storage_warning",
+      message: warning,
+    });
+  }
 
   function makeRendererProps(nextState = state): RendererProps {
     return {
@@ -343,6 +418,320 @@ export async function runWebRuntimeBehaviorSmoke(
   return { advanced, branch, saveRoundTrip, media };
 }
 
+interface UiSmokePhase {
+  advanced: boolean;
+  branch: WebRuntimeBehaviorSmokeResult["branch"];
+  savedText: string;
+}
+
+const UI_SMOKE_PHASE_KEY = "vibegal:smoke:player-ui-v1";
+
+export async function runWebRuntimeUiBehaviorSmoke(
+  runtime: WebRuntimePlayer,
+  fetcher: (input: RequestInfo | URL) => Promise<{ ok: boolean }> = fetch,
+): Promise<WebRuntimeBehaviorSmokeResult> {
+  const previous = readUiSmokePhase();
+  if (!previous) {
+    const firstPhase = await runUiSmokeFirstPhase(runtime);
+    sessionStorage.setItem(UI_SMOKE_PHASE_KEY, JSON.stringify(firstPhase));
+    window.location.reload();
+    return new Promise<WebRuntimeBehaviorSmokeResult>(() => {});
+  }
+
+  sessionStorage.removeItem(UI_SMOKE_PHASE_KEY);
+  const services = runtime.rendererProps().runtime;
+  if (!services) throw new Error("Default renderer UI smoke requires runtime services.");
+  await waitForCondition(
+    async () => (await services.save.listSlots()).some((slot) => slot.slotId === "quick"),
+    "quick save did not persist across reload",
+  );
+  if (Math.abs(services.settings.getSettings().volumes.master - 0.55) > 0.001) {
+    throw new Error("runtime settings did not persist across reload");
+  }
+
+  await clickUiButton('[data-player-action="quick-load"]');
+  await waitForCondition(() => visibleRuntimeText(runtime) === previous.savedText, "quick load did not restore the saved text");
+
+  const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
+  stage.click();
+  await waitForCondition(() => services.history.getBacklog().length > 0, "history did not update after restored playback");
+  await clickUiButton('[data-player-action="history"]');
+  await waitForUiElement('[data-player-menu="history"] [data-history-entry]');
+  const rollbackEntry = services.history.getBacklog().at(-1);
+  if (!rollbackEntry) throw new Error("history rollback smoke requires a backlog entry");
+  await clickUiButton('[data-player-menu="history"] [data-history-action="rollback"]');
+  await waitForUiElement('[data-vibegal-confirm="true"]');
+  await clickUiButton('[data-confirm-action="confirm"]');
+  await waitForCondition(
+    () => document.querySelector('[data-player-menu]') == null
+      && document.querySelector('[data-vibegal-confirm]') == null
+      && visibleRuntimeText(runtime) === rollbackEntry.text,
+    "history rollback did not restore the selected entry and close the menu",
+  );
+
+  const props = runtime.rendererProps();
+  const mediaPath = Object.values(props.manifest.cg)[0]?.path
+    ?? Object.values(props.manifest.videos)[0]?.path;
+  let media: WebRuntimeBehaviorSmokeResult["media"] = "not-configured";
+  if (mediaPath) {
+    const response = await fetcher(resolveAsset(props.contentBase, mediaPath));
+    if (!response.ok) throw new Error(`Smoke media request failed: ${mediaPath}`);
+    media = "loaded";
+  }
+
+  return {
+    advanced: previous.advanced,
+    branch: previous.branch,
+    saveRoundTrip: true,
+    media,
+  };
+}
+
+async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokePhase> {
+  const services = runtime.rendererProps().runtime;
+  if (!services) throw new Error("Default renderer UI smoke requires runtime services.");
+  const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
+  await verifyDefaultPlayerLayouts(stage, false);
+  const initialState = JSON.stringify(runtime.getState());
+
+  await clickUiButton('[data-player-action="auto"]');
+  await waitForCondition(() => runtime.getState().flags.isAutoPlay, "auto HUD control did not enable auto playback");
+  await clickUiButton('[data-player-action="quick-load"]');
+  const missingQuickAlert = await waitForUiElement<HTMLElement>('[data-player-menu="save"] [role="alert"]');
+  if (!missingQuickAlert.textContent?.includes("runtime_save_slot_not_found")) {
+    throw new Error("missing quick-load error was not visible in the save menu");
+  }
+  if (JSON.stringify(runtime.getState()) !== initialState) {
+    throw new Error("missing quick-load changed the story state");
+  }
+  await clickUiButton('[aria-label="关闭玩家菜单"]');
+
+  stage.click();
+  await waitForCondition(() => JSON.stringify(runtime.getState()) !== initialState, "stage click did not advance playback");
+  const savedText = visibleRuntimeText(runtime);
+  if (!savedText) throw new Error("stage click did not reach a visible story point");
+
+  await clickUiButton('[data-player-action="quick-save"]');
+  await waitForCondition(
+    async () => (await services.save.listSlots()).some((slot) => slot.slotId === "quick"),
+    "quick save button did not create the quick slot",
+  );
+
+  await clickUiButton('[data-player-action="menu"]');
+  const beforeMenuInteraction = JSON.stringify(runtime.getState());
+  await clickUiButton('[data-menu-page="history"]');
+  if (JSON.stringify(runtime.getState()) !== beforeMenuInteraction) {
+    throw new Error("menu interaction advanced playback");
+  }
+  await clickUiButton('[data-menu-page="save"]');
+  await clickUiButton('[data-player-slot="manual-01"] [data-slot-action="save"]');
+  await waitForCondition(
+    async () => (await services.save.listSlots()).some((slot) => slot.slotId === "manual-01"),
+    "manual save button did not create manual-01",
+  );
+  await clickUiButton('[aria-label="关闭玩家菜单"]');
+
+  await advanceUiToDifferentText(stage, runtime, savedText);
+  const overwrittenText = visibleRuntimeText(runtime);
+  if (!overwrittenText || overwrittenText === savedText) throw new Error("manual overwrite setup did not advance playback");
+  await clickUiButton('[data-player-action="menu"]');
+  await clickUiButton('[data-player-slot="manual-01"] [data-slot-action="save"]');
+  await waitForUiElement('[data-vibegal-confirm="true"]');
+  await clickUiButton('[data-confirm-action="confirm"]');
+  await waitForCondition(
+    async () => (await services.save.listSlots()).find((slot) => slot.slotId === "manual-01")?.preview?.text === overwrittenText,
+    "manual overwrite did not update manual-01",
+  );
+  await clickUiButton('[aria-label="关闭玩家菜单"]');
+
+  await advanceUiToDifferentText(stage, runtime, overwrittenText);
+  await clickUiButton('[data-player-action="menu"]');
+  await clickUiButton('[data-player-slot="manual-01"] [data-slot-action="load"]');
+  await waitForCondition(() => visibleRuntimeText(runtime) === overwrittenText, "manual load did not restore manual-01");
+  await clickUiButton('[data-player-action="menu"]');
+  await clickUiButton('[data-player-slot="manual-01"] [data-slot-action="delete"]');
+  await waitForUiElement('[data-vibegal-confirm="true"]');
+  await clickUiButton('[data-confirm-action="confirm"]');
+  await waitForCondition(
+    async () => !(await services.save.listSlots()).some((slot) => slot.slotId === "manual-01"),
+    "manual delete did not remove manual-01",
+  );
+  await clickUiButton('[aria-label="关闭玩家菜单"]');
+
+  let branch: WebRuntimeBehaviorSmokeResult["branch"] = "not-present";
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const choice = document.querySelector<HTMLElement>("[data-choice-to]");
+    if (choice) {
+      choice.click();
+      branch = "chosen";
+      await nextUiTurn();
+      break;
+    }
+    if (visibleRuntimeText(runtime) !== savedText) break;
+    stage.click();
+    await nextUiTurn();
+  }
+
+  await clickUiButton('[data-player-action="quick-load"]');
+  await waitForCondition(() => visibleRuntimeText(runtime) === savedText, "quick load button did not restore playback");
+  await clickUiButton('[data-player-action="history"]');
+  await waitForUiElement('[data-player-menu="history"] [data-history-entry]');
+  await clickUiButton('[data-menu-page="save"]');
+  await waitForUiElement("[data-save-panel]");
+  await verifyDefaultPlayerLayouts(stage, true);
+  await clickUiButton('[data-menu-page="settings"]');
+
+  const master = await waitForUiElement<HTMLInputElement>("#setting-master");
+  setRangeInputValue(master, "0.55");
+  await clickUiButton('[data-settings-action="save"]');
+  await waitForCondition(
+    () => Math.abs(services.settings.getSettings().volumes.master - 0.55) < 0.001,
+    "settings UI did not persist the master volume",
+  );
+  await clickUiButton('[aria-label="关闭玩家菜单"]');
+
+  return {
+    advanced: JSON.stringify(runtime.getState()) !== initialState,
+    branch,
+    savedText,
+  };
+}
+
+async function advanceUiToDifferentText(
+  _stage: HTMLElement,
+  runtime: WebRuntimePlayer,
+  currentText: string,
+): Promise<void> {
+  await waitForCondition(() => {
+    const liveStage = document.querySelector<HTMLElement>('[data-player-stage="true"]');
+    return liveStage?.dataset.playerBlocking === "false"
+      && document.querySelector('[data-player-menu]') == null
+      && document.querySelector('[data-vibegal-confirm]') == null;
+  }, "player UI remained blocked after closing the menu");
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    if (runtime.getState().flags.isWaiting) {
+      await waitForCondition(() => !runtime.getState().flags.isWaiting, "story wait did not complete", 3_000);
+      if (visibleRuntimeText(runtime) !== currentText && visibleRuntimeText(runtime) != null) return;
+    }
+    const liveStage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
+    liveStage.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (visibleRuntimeText(runtime) !== currentText && visibleRuntimeText(runtime) != null) return;
+  }
+  const liveStage = document.querySelector<HTMLElement>('[data-player-stage="true"]');
+  throw new Error([
+    "stage UI did not advance to a different text line",
+    `text=${String(visibleRuntimeText(runtime))}`,
+    `progress=${runtime.getState().flags.progress.current}/${runtime.getState().flags.progress.total}`,
+    `blocking=${liveStage?.dataset.playerBlocking ?? "missing"}`,
+  ].join("; "));
+}
+
+function readUiSmokePhase(): UiSmokePhase | null {
+  const raw = sessionStorage.getItem(UI_SMOKE_PHASE_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<UiSmokePhase>;
+    if (typeof value.advanced !== "boolean" || typeof value.savedText !== "string") return null;
+    return {
+      advanced: value.advanced,
+      branch: value.branch === "chosen" ? "chosen" : "not-present",
+      savedText: value.savedText,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function visibleRuntimeText(runtime: WebRuntimePlayer): string | null {
+  const state = runtime.getState();
+  return state.dialogue?.text ?? state.narration?.text ?? null;
+}
+
+function setRangeInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("Unable to set runtime settings range value.");
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function clickUiButton(selector: string): Promise<void> {
+  const button = await waitForUiElement<HTMLButtonElement>(selector);
+  await waitForCondition(() => !button.disabled, `UI control remained disabled: ${selector}`);
+  button.click();
+  await nextUiTurn();
+}
+
+async function waitForUiElement<T extends Element = Element>(selector: string): Promise<T> {
+  let found: T | null = null;
+  await waitForCondition(() => {
+    found = document.querySelector<T>(selector);
+    return found != null;
+  }, `UI element was not rendered: ${selector}`);
+  return found!;
+}
+
+async function waitForCondition(
+  predicate: () => boolean | Promise<boolean>,
+  message: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await nextUiTurn();
+  }
+  throw new Error(message);
+}
+
+function nextUiTurn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 20));
+}
+
+async function verifyDefaultPlayerLayouts(stage: HTMLElement, menuOpen: boolean): Promise<void> {
+  const sizes = [
+    { width: 1280, height: 720 },
+    { width: 1920, height: 1080 },
+    { width: 960, height: 540 },
+    { width: 1024, height: 768 },
+  ];
+  const originalWidth = stage.style.width;
+  const originalHeight = stage.style.height;
+  try {
+    for (const size of sizes) {
+      stage.style.width = `${size.width}px`;
+      stage.style.height = `${size.height}px`;
+      await nextUiTurn();
+      const stageRect = stage.getBoundingClientRect();
+      const contained = menuOpen
+        ? Array.from(stage.querySelectorAll<HTMLElement>('[data-player-menu], [data-player-menu] > section'))
+        : Array.from(stage.querySelectorAll<HTMLElement>('[aria-label="玩家控制"] button'));
+      for (const element of contained) {
+        const rect = element.getBoundingClientRect();
+        if (
+          rect.left < stageRect.left - 1
+          || rect.top < stageRect.top - 1
+          || rect.right > stageRect.right + 1
+          || rect.bottom > stageRect.bottom + 1
+        ) {
+          throw new Error(`player UI overflow at ${size.width}x${size.height}`);
+        }
+      }
+      for (const button of stage.querySelectorAll<HTMLButtonElement>("button")) {
+        if (button.offsetParent == null) continue;
+        if (button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1) {
+          throw new Error(`player button text overflow at ${size.width}x${size.height}: ${button.textContent ?? "button"}`);
+        }
+      }
+    }
+  } finally {
+    stage.style.width = originalWidth;
+    stage.style.height = originalHeight;
+    await nextUiTurn();
+  }
+}
+
 function createWebRuntimeServices(options: {
   projectId: string;
   state: () => NovelState;
@@ -352,7 +741,13 @@ function createWebRuntimeServices(options: {
   createSnapshot: () => ReturnType<GraphNovelPlayer["createSnapshot"]>;
   restoreFromSave: GraphNovelPlayer["restoreFromSave"];
   decisionLog: GraphNovelPlayer["getDecisionLog"];
+  getBacklog: GraphNovelPlayer["getBacklog"];
+  rollbackHistoryEntry: GraphNovelPlayer["rollbackToHistoryEntry"];
+  replayVoice: GraphNovelPlayer["replayVoice"];
   audio: AudioEngine | null;
+  initialSettings: RuntimeSettingsRecord;
+  settingsFallback: { textSpeedCps: number; autoAdvanceMs: number };
+  onSettingsChanged: (settings: RuntimeSettingsRecord) => void;
   media: { closeCg: () => void; skipVideo: () => void };
 }): RuntimeServices {
   const services = createInMemoryRuntimeServices({
@@ -364,6 +759,9 @@ function createWebRuntimeServices(options: {
     createSnapshot: options.createSnapshot,
     restoreFromSave: options.restoreFromSave,
     decisionLog: options.decisionLog,
+    getBacklog: options.getBacklog,
+    rollbackHistoryEntry: options.rollbackHistoryEntry,
+    replayVoice: options.replayVoice,
     audio: options.audio
       ? {
           replayVoice: () => options.audio?.replayVoice(),
@@ -375,6 +773,9 @@ function createWebRuntimeServices(options: {
           setVolumes: (volumes) => options.audio?.setVolumes(volumes),
         }
       : undefined,
+    initialSettings: options.initialSettings,
+    settingsFallback: options.settingsFallback,
+    onSettingsChanged: options.onSettingsChanged,
     media: options.media,
   });
   const { debug: _debug, ...runtimeServices } = services;
@@ -460,7 +861,10 @@ export async function startVibeGalWebRuntime(rendererManifest: RendererManifest)
     marker.hidden = true;
     marker.dataset.vibegalSmoke = "running";
     document.body.append(marker);
-    void runWebRuntimeBehaviorSmoke(runtime)
+    const smoke = rendererManifest.capabilities?.includes("player-ui-v1")
+      ? runWebRuntimeUiBehaviorSmoke(runtime)
+      : runWebRuntimeBehaviorSmoke(runtime);
+    void smoke
       .then((result) => {
         const status = result.advanced && result.saveRoundTrip ? "passed" : "failed";
         marker.dataset.vibegalSmoke = status;

@@ -1,40 +1,326 @@
-/**
- * Stage —— 默认视图层的组装入口。
- *
- * 它把 NovelState 分发给各子层。换主题 = 重写 components/，
- * 引擎与剧本不动。本文件是「默认主题」的实现，可作为参考模板。
- *
- * 点击任意空白处 = 推进（方便录屏时鼠标操作）。
- */
-import { useEffect, useState } from "react";
-import type { RendererProps } from "@vibegal/engine";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { BacklogEntry, RendererProps, RuntimeSettingsRecord } from "@vibegal/engine";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { SpriteLayer } from "./SpriteLayer";
 import { DialogueBox } from "./DialogueBox";
 import { Effects } from "./Effects";
+import { HistoryPanel } from "./HistoryPanel";
+import { PlayerHud } from "./PlayerHud";
+import { ConfirmDialog, PlayerMenu, SystemPanel, type PlayerNotice } from "./PlayerMenu";
+import { RuntimeSettingsPanel } from "./RuntimeSettingsPanel";
+import { SaveLoadPanel } from "./SaveLoadPanel";
+import {
+  PlayerUiController,
+  buildPlayerSlots,
+  isPlayerShortcutTarget,
+  runtimeErrorDetails,
+  type PlayerMenuPage,
+  type PlayerSlotView,
+} from "./playerUiModel";
 import { useShake } from "./useShake";
 
-export function Stage({ state, manifest, contentBase, controls }: RendererProps) {
-  // 控制层是否可见：录制模式隐藏
-  const [showHelp, setShowHelp] = useState(true);
+type ConfirmAction =
+  | { kind: "overwrite"; slot: PlayerSlotView }
+  | { kind: "delete"; slot: PlayerSlotView }
+  | { kind: "rollback"; entry: BacklogEntry }
+  | { kind: "restart" };
+
+const fallbackSettings: RuntimeSettingsRecord = {
+  schemaVersion: 1,
+  textSpeedCps: 30,
+  autoAdvanceMs: 1_200,
+  volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
+};
+
+export function Stage({ state, manifest, contentBase, controls, runtime }: RendererProps) {
+  const [menuPage, setMenuPage] = useState<PlayerMenuPage | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<PlayerNotice | null>(null);
+  const [slots, setSlots] = useState(() => buildPlayerSlots([]));
+  const [settings, setSettings] = useState<RuntimeSettingsRecord>(() => runtime?.settings.getSettings() ?? fallbackSettings);
   const [choiceHint, setChoiceHint] = useState<string | null>(null);
+  const stateRef = useRef(state);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideControls = state.flags.isRecording;
   const { containerStyle: shakeStyle, keyframes: shakeKeyframes } = useShake(state);
 
-  // 录制模式 3 秒后自动隐藏帮助提示
-  useEffect(() => {
-    if (!hideControls) { setShowHelp(true); return; }
-    const t = setTimeout(() => setShowHelp(false), 3000);
-    return () => clearTimeout(t);
-  }, [hideControls]);
+  stateRef.current = state;
+  const controller = useMemo(
+    () => runtime ? new PlayerUiController(runtime, () => stateRef.current, setBusy) : null,
+    [runtime],
+  );
 
   useEffect(() => {
     setChoiceHint(null);
   }, [state.choice]);
 
+  useEffect(() => {
+    if (!hideControls) return;
+    setMenuPage(null);
+    setConfirmAction(null);
+  }, [hideControls]);
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+  }, []);
+
+  const showNotice = (next: PlayerNotice, transient = false) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice(next);
+    if (transient) {
+      noticeTimerRef.current = setTimeout(() => {
+        setNotice(null);
+        noticeTimerRef.current = null;
+      }, 2_200);
+    }
+  };
+
+  const showError = (error: unknown) => {
+    const details = runtimeErrorDetails(error);
+    showNotice({ tone: "error", code: details.code, message: details.message });
+  };
+
+  useEffect(() => {
+    const status = runtime?.status;
+    if (!status) return;
+    const showLatest = () => {
+      const latest = status.getNotices().at(-1);
+      if (!latest) return;
+      showNotice({
+        tone: latest.level,
+        code: latest.code,
+        message: latest.message,
+      });
+    };
+    showLatest();
+    return status.subscribe(showLatest);
+  }, [runtime]);
+
+  const showWarnings = (warnings: Array<{ code: string; message: string }>) => {
+    if (warnings.length === 0) return false;
+    showNotice({
+      tone: "warning",
+      code: warnings[0].code,
+      message: warnings.map((warning) => warning.message).join(" "),
+    });
+    return true;
+  };
+
+  const refreshSlots = async () => {
+    if (!controller) return;
+    try {
+      setSlots(await controller.listSlots());
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const stopAutomatedPlayback = () => {
+    if (stateRef.current.flags.isAutoPlay) controls.setAutoPlay(false);
+    if (stateRef.current.flags.skipMode !== "off") controls.setSkipMode("off");
+  };
+
+  const openMenu = (page: PlayerMenuPage) => {
+    if (!runtime || hideControls) return;
+    stopAutomatedPlayback();
+    setNotice(null);
+    setMenuPage(page);
+    setConfirmAction(null);
+    if (page === "save") void refreshSlots();
+    if (page === "settings") setSettings(runtime.settings.getSettings());
+  };
+
+  const closeMenu = () => {
+    if (busy || confirmAction) return;
+    setMenuPage(null);
+    setNotice(null);
+  };
+
+  const performSave = async (slot: PlayerSlotView) => {
+    if (!controller) return;
+    try {
+      await controller.save(slot.slotId, slot.label);
+      showNotice({ tone: "success", message: `${slot.label}已保存。` }, true);
+      await refreshSlots();
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const requestSave = (slot: PlayerSlotView) => {
+    if (!slot.empty && slot.kind === "manual") {
+      setConfirmAction({ kind: "overwrite", slot });
+      return;
+    }
+    void performSave(slot);
+  };
+
+  const performQuickSave = async () => {
+    if (!controller) return;
+    try {
+      await controller.quickSave();
+      showNotice({ tone: "success", message: "快速存档完成。" }, true);
+      if (menuPage === "save") await refreshSlots();
+    } catch (error) {
+      setMenuPage("save");
+      void refreshSlots();
+      showError(error);
+    }
+  };
+
+  const handleRestoreResult = (warnings: Array<{ code: string; message: string }>) => {
+    if (showWarnings(warnings)) return;
+    setConfirmAction(null);
+    setMenuPage(null);
+    showNotice({ tone: "success", message: "剧情位置已恢复。" }, true);
+  };
+
+  const performQuickLoad = async () => {
+    if (!controller) return;
+    stopAutomatedPlayback();
+    try {
+      const result = await controller.quickLoad();
+      if (result.warnings.length > 0 && menuPage == null) {
+        setMenuPage("save");
+        void refreshSlots();
+      }
+      handleRestoreResult(result.warnings);
+    } catch (error) {
+      setMenuPage("save");
+      void refreshSlots();
+      showError(error);
+    }
+  };
+
+  const performLoad = async (slot: PlayerSlotView) => {
+    if (!controller) return;
+    try {
+      const result = await controller.load(slot.slotId);
+      handleRestoreResult(result.warnings);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const performDelete = async (slot: PlayerSlotView) => {
+    if (!controller) return;
+    try {
+      await controller.delete(slot.slotId);
+      setConfirmAction(null);
+      showNotice({ tone: "success", message: `${slot.label}已删除。` }, true);
+      await refreshSlots();
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const performRollback = async (entry: BacklogEntry) => {
+    if (!controller) return;
+    try {
+      const result = await controller.rollback(entry.id);
+      if (showWarnings(result.warnings)) return;
+      setConfirmAction(null);
+      setMenuPage(null);
+      showNotice({ tone: "success", message: "已回滚到所选历史位置。" }, true);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const replayVoice = (entry: BacklogEntry) => {
+    try {
+      runtime?.history.replayVoice(entry.id);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const saveSettings = async (patch: Partial<RuntimeSettingsRecord>): Promise<boolean> => {
+    if (!controller || !runtime) return false;
+    try {
+      const saved = await controller.updateSettings(patch);
+      setSettings(saved);
+      showNotice({ tone: "success", message: "运行时设置已保存。" }, true);
+      return true;
+    } catch (error) {
+      setSettings(runtime.settings.getSettings());
+      showError(error);
+      return false;
+    }
+  };
+
+  const confirm = () => {
+    if (!confirmAction) return;
+    switch (confirmAction.kind) {
+      case "overwrite":
+        void performSave(confirmAction.slot).finally(() => setConfirmAction(null));
+        break;
+      case "delete":
+        void performDelete(confirmAction.slot);
+        break;
+      case "rollback":
+        void performRollback(confirmAction.entry);
+        break;
+      case "restart":
+        controls.restart();
+        setConfirmAction(null);
+        setMenuPage(null);
+        setNotice(null);
+        break;
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const interactiveTarget = isPlayerShortcutTarget(event.target);
+      const block = () => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+
+      if (key === "f5" || key === "f9") {
+        block();
+        if (hideControls || confirmAction || interactiveTarget || busy) return;
+        if (key === "f5") void performQuickSave();
+        else void performQuickLoad();
+        return;
+      }
+      if (key === "escape") {
+        if (!confirmAction && !menuPage) return;
+        block();
+        if (confirmAction && !busy) setConfirmAction(null);
+        else if (!busy) closeMenu();
+        return;
+      }
+      if (menuPage || confirmAction || busy) {
+        if (key === " " || key === "enter" || key === "a" || key === "r") block();
+        return;
+      }
+      if (hideControls || interactiveTarget) return;
+      if (key === " " || key === "enter") {
+        block();
+        controls.advance();
+      } else if (key === "a") {
+        block();
+        controls.setAutoPlay(!stateRef.current.flags.isAutoPlay);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  });
+
+  const confirmCopy = confirmAction ? confirmationCopy(confirmAction) : null;
+
   return (
     <div
-      onClick={controls.advance}
+      data-player-stage="true"
+      data-player-blocking={menuPage != null || confirmAction != null || busy ? "true" : "false"}
+      tabIndex={0}
+      onClick={() => {
+        if (!menuPage && !confirmAction && !busy) controls.advance();
+      }}
       style={{
         position: "relative",
         width: "100%",
@@ -44,9 +330,9 @@ export function Stage({ state, manifest, contentBase, controls }: RendererProps)
         cursor: hideControls ? "none" : "pointer",
         userSelect: "none",
         fontFamily: "'Noto Serif SC', serif",
+        containerType: "size",
       }}
     >
-      {/* 内容容器：背景+立绘+对话框 都在里面，震屏的 transform 作用于它，整个画面才会跟着抖 */}
       <div style={{ position: "absolute", inset: 0, ...shakeStyle }}>
         <BackgroundLayer state={state} manifest={manifest} contentBase={contentBase} />
         <SpriteLayer state={state} manifest={manifest} contentBase={contentBase} />
@@ -56,25 +342,13 @@ export function Stage({ state, manifest, contentBase, controls }: RendererProps)
       <style>{shakeKeyframes}</style>
 
       {state.choice && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 150,
-            transform: "translateX(-50%)",
-            zIndex: 70,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            minWidth: 280,
-            maxWidth: "min(560px, calc(100% - 48px))",
-          }}
-        >
+        <div onClick={(event) => event.stopPropagation()} style={choiceContainerStyle}>
           {state.choice.choices.map((choice) => (
             <button
               key={`${choice.text}:${choice.to}`}
               type="button"
+              data-choice-to={choice.to}
+              disabled={busy || menuPage != null || confirmAction != null}
               onClick={() => {
                 setChoiceHint(`将跳转到 ${choice.to}`);
                 controls.choose(choice.to);
@@ -88,75 +362,165 @@ export function Stage({ state, manifest, contentBase, controls }: RendererProps)
         </div>
       )}
 
-      {!hideControls && showHelp && (
+      {!hideControls && (
+        <PlayerHud
+          state={state}
+          busy={busy}
+          onOpenMenu={() => openMenu("save")}
+          onQuickSave={() => void performQuickSave()}
+          onQuickLoad={() => void performQuickLoad()}
+          onToggleAuto={() => controls.setAutoPlay(!state.flags.isAutoPlay)}
+          onToggleReadSkip={() => controls.setSkipMode(state.flags.skipMode === "read" ? "off" : "read")}
+          onToggleAllSkip={() => controls.setSkipMode(state.flags.skipMode === "all" ? "off" : "all")}
+          onOpenHistory={() => openMenu("history")}
+        />
+      )}
+
+      {!hideControls && (notice || busy) && (
         <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            top: 16,
-            right: 16,
-            zIndex: 60,
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-          }}
+          data-player-status={notice?.tone ?? "busy"}
+          role={notice?.tone === "error" ? "alert" : "status"}
+          onClick={(event) => event.stopPropagation()}
+          style={stageStatusStyle(notice?.tone)}
         >
-          <button onClick={() => controls.restart()} style={btnStyle(false)}>
-            重开
-          </button>
-          <button onClick={() => controls.setAutoPlay(!state.flags.isAutoPlay)} style={btnStyle(state.flags.isAutoPlay)}>
-            自动 {state.flags.isAutoPlay ? "ON" : "OFF"}
-          </button>
+          {notice?.code && <code style={stageCodeStyle}>{notice.code}</code>}
+          <span>{busy ? "处理中…" : notice?.message}</span>
         </div>
       )}
 
-      {!hideControls && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 8,
-            left: 16,
-            zIndex: 60,
-            color: "rgba(255,255,255,0.35)",
-            fontSize: 13,
-            pointerEvents: "none",
-          }}
+      {!hideControls && menuPage && runtime && (
+        <PlayerMenu
+          page={menuPage}
+          busy={busy}
+          notice={notice}
+          onPageChange={(page) => openMenu(page)}
+          onClose={closeMenu}
         >
-          空格/点击 推进 · A 自动 · R 录制 · {state.flags.progress.current}/{state.flags.progress.total}
+          {menuPage === "save" && (
+            <SaveLoadPanel
+              slots={slots}
+              busy={busy}
+              manifest={manifest}
+              contentBase={contentBase}
+              onSave={requestSave}
+              onLoad={(slot) => void performLoad(slot)}
+              onDelete={(slot) => setConfirmAction({ kind: "delete", slot })}
+              onQuickSave={() => void performQuickSave()}
+              onQuickLoad={() => void performQuickLoad()}
+            />
+          )}
+          {menuPage === "history" && (
+            <HistoryPanel
+              entries={runtime.history.getBacklog()}
+              busy={busy}
+              onReplayVoice={replayVoice}
+              onRollback={(entry) => setConfirmAction({ kind: "rollback", entry })}
+            />
+          )}
+          {menuPage === "settings" && (
+            <RuntimeSettingsPanel settings={settings} busy={busy} onSave={saveSettings} />
+          )}
+          {menuPage === "system" && (
+            <SystemPanel
+              busy={busy}
+              onReturn={closeMenu}
+              onRestart={() => setConfirmAction({ kind: "restart" })}
+            />
+          )}
+        </PlayerMenu>
+      )}
+
+      {confirmCopy && confirmAction && (
+        <ConfirmDialog
+          {...confirmCopy}
+          busy={busy}
+          onConfirm={confirm}
+          onCancel={() => !busy && setConfirmAction(null)}
+        />
+      )}
+
+      {!hideControls && (
+        <div style={progressStyle}>
+          {state.flags.progress.current}/{state.flags.progress.total}
         </div>
       )}
     </div>
   );
 }
 
-const choiceButtonStyle: React.CSSProperties = {
-  background: "rgba(0,0,0,0.72)",
+function confirmationCopy(action: ConfirmAction): {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  destructive?: boolean;
+} {
+  switch (action.kind) {
+    case "overwrite":
+      return { title: "覆盖存档", message: `确定要覆盖“${action.slot.label}”吗？`, confirmLabel: "覆盖" };
+    case "delete":
+      return { title: "删除存档", message: `删除“${action.slot.label}”后无法恢复。`, confirmLabel: "删除", destructive: true };
+    case "rollback":
+      return { title: "回滚剧情", message: `确定回到“${action.entry.text}”吗？`, confirmLabel: "回滚" };
+    case "restart":
+      return { title: "重新开始", message: "当前未保存的剧情进度将丢失。", confirmLabel: "重新开始", destructive: true };
+  }
+}
+
+const choiceContainerStyle: CSSProperties = {
+  position: "absolute",
+  left: "50%",
+  top: "16%",
+  transform: "translateX(-50%)",
+  zIndex: 70,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  width: "min(540px, calc(100% - 48px))",
+  maxHeight: "38%",
+  overflowY: "auto",
+};
+
+const choiceButtonStyle: CSSProperties = {
+  minHeight: 42,
+  background: "rgba(18, 19, 21, 0.88)",
   color: "#fff",
-  border: "1px solid rgba(255,255,255,0.35)",
-  borderRadius: 6,
-  padding: "12px 18px",
-  fontSize: 17,
+  border: "1px solid rgba(255, 255, 255, 0.34)",
+  borderRadius: 5,
+  padding: "10px 16px",
+  fontSize: 15,
   cursor: "pointer",
   fontFamily: "inherit",
   textAlign: "center",
+  letterSpacing: 0,
 };
 
-const choiceHintStyle: React.CSSProperties = {
+const choiceHintStyle: CSSProperties = {
   color: "rgba(255,255,255,0.75)",
-  fontSize: 13,
+  fontSize: 11,
   textAlign: "center",
   textShadow: "0 1px 2px rgba(0,0,0,0.8)",
 };
 
-function btnStyle(active: boolean): React.CSSProperties {
+function stageStatusStyle(tone: PlayerNotice["tone"] | undefined): CSSProperties {
+  const border = tone === "error" ? "#e58a8a" : tone === "warning" ? "#e3bc70" : "#70d2bf";
   return {
-    background: active ? "rgba(120,180,220,0.85)" : "rgba(0,0,0,0.6)",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,0.25)",
+    position: "absolute",
+    top: 58,
+    left: 16,
+    zIndex: 90,
+    maxWidth: "min(560px, calc(100% - 32px))",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 11px",
+    border: `1px solid ${border}`,
     borderRadius: 4,
-    padding: "6px 12px",
-    fontSize: 13,
-    cursor: "pointer",
-    fontFamily: "inherit",
+    background: "rgba(17, 18, 20, 0.9)",
+    color: "#fff",
+    font: "12px/1.4 system-ui, sans-serif",
+    cursor: "default",
   };
 }
+
+const stageCodeStyle: CSSProperties = { padding: "2px 4px", borderRadius: 2, background: "rgba(255,255,255,0.1)", fontSize: 10 };
+const progressStyle: CSSProperties = { position: "absolute", left: 14, bottom: 10, zIndex: 65, color: "rgba(255,255,255,0.42)", font: "11px/1 monospace", pointerEvents: "none" };

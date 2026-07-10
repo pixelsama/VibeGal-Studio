@@ -109,6 +109,7 @@ export interface NovelState {
   flags: {
     isWaiting: boolean; // 正在执行 wait 指令
     isAutoPlay: boolean;
+    skipMode: "off" | "read" | "all";
     isRecording: boolean; // 录制模式：隐藏控制 UI + 固定节奏
     chapterIndex: number;
     progress: { current: number; total: number }; // 指令进度
@@ -135,6 +136,7 @@ export function createInitialState(): NovelState {
     flags: {
       isWaiting: false,
       isAutoPlay: false,
+      skipMode: "off",
       isRecording: false,
       chapterIndex: 0,
       progress: { current: 0, total: 0 },

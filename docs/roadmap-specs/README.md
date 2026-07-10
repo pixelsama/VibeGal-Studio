@@ -4,7 +4,7 @@
 
 当前仍在规划或开发中的 roadmap spec：
 
-- [Spec 13 — Default Renderer Player UX And Runtime Settings](./13-default-renderer-player-ux-and-runtime-settings.spec.md)
+暂无。
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
@@ -20,3 +20,4 @@
 - [Spec 10 — Renderer Diagnostics And Contract Tooling](./archive/10-renderer-diagnostics-and-contract-tooling.spec.md)
 - [Spec 11 — Export Hardening And Desktop Prep](./archive/11-export-hardening-and-desktop-prep.spec.md)
 - [Spec 12 — Contract-Driven Rust Validation And Backend Modularization](./archive/12-contract-driven-rust-validation-and-backend-modularization.spec.md)
+- [Spec 13 — Default Renderer Player UX And Runtime Settings](./archive/13-default-renderer-player-ux-and-runtime-settings.spec.md)

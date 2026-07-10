@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProjectData } from "../../lib/types";
-import { createProjectRendererProps, buildProjectPreviewContent } from "./useProjectPlayer";
+import { createProjectRendererProps, buildProjectPreviewContent, createProjectPreviewRuntimeServices } from "./useProjectPlayer";
 import { createInitialState } from "@vibegal/engine";
 
 const project: ProjectData = {
@@ -69,5 +69,39 @@ describe("useProjectPlayer helpers", () => {
     expect(props.runtime).toBeTruthy();
     expect("onAdvance" in props).toBe(false);
     expect("onChoose" in props).toBe(false);
+  });
+
+  it("previewRuntimeAppliesEffectiveSettingsWithoutPersistingAcrossInstances", async () => {
+    const setVolumes = vi.fn();
+    const setPlaybackTiming = vi.fn();
+    const first = createProjectPreviewRuntimeServices({
+      meta: { typingSpeedCps: 44, autoAdvanceMs: 900 },
+      getState: createInitialState,
+      audio: { setVolumes },
+      applyPlaybackTiming: setPlaybackTiming,
+    });
+
+    expect(first.settings.getSettings()).toEqual(expect.objectContaining({
+      textSpeedCps: 44,
+      autoAdvanceMs: 900,
+    }));
+    await first.settings.updateSettings({
+      textSpeedCps: 88,
+      autoAdvanceMs: 350,
+      volumes: { master: 0.5, bgm: 0.6, sfx: 0.7, voice: 0.8 },
+    });
+
+    expect(setVolumes).toHaveBeenCalledWith({ master: 0.5, bgm: 0.6, sfx: 0.7, voice: 0.8 });
+    expect(setPlaybackTiming).toHaveBeenCalledWith({ textSpeedCps: 88, autoAdvanceMs: 350 });
+
+    const second = createProjectPreviewRuntimeServices({
+      meta: { typingSpeedCps: 44, autoAdvanceMs: 900 },
+      getState: createInitialState,
+      applyPlaybackTiming: vi.fn(),
+    });
+    expect(second.settings.getSettings()).toEqual(expect.objectContaining({
+      textSpeedCps: 44,
+      autoAdvanceMs: 900,
+    }));
   });
 });

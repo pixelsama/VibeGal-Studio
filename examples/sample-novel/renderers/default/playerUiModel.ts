@@ -1,0 +1,180 @@
+import type {
+  NovelState,
+  RuntimeRestoreResult,
+  RuntimeServices,
+  RuntimeSettingsRecord,
+  SavePreview,
+  SaveSlotSummary,
+} from "@vibegal/engine";
+
+export const MANUAL_SLOT_IDS = Array.from(
+  { length: 12 },
+  (_, index) => `manual-${String(index + 1).padStart(2, "0")}`,
+);
+
+export const PLAYER_MENU_PAGES = [
+  { id: "save", label: "存档 / 读档" },
+  { id: "history", label: "历史" },
+  { id: "settings", label: "设置" },
+  { id: "system", label: "系统" },
+] as const;
+
+export type PlayerMenuPage = (typeof PLAYER_MENU_PAGES)[number]["id"];
+export type PlayerSlotKind = "quick" | "auto" | "manual";
+
+export interface PlayerSlotView {
+  slotId: string;
+  kind: PlayerSlotKind;
+  empty: boolean;
+  label: string;
+  canSave: boolean;
+  canLoad: boolean;
+  canDelete: boolean;
+  summary?: SaveSlotSummary;
+}
+
+export interface RuntimeErrorDetails {
+  code: string;
+  message: string;
+}
+
+export class PlayerUiError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = "PlayerUiError";
+  }
+}
+
+export function buildPlayerSlots(summaries: SaveSlotSummary[]): PlayerSlotView[] {
+  const byId = new Map(summaries.map((summary) => [summary.slotId, summary]));
+  const definitions: Array<{ slotId: string; kind: PlayerSlotKind; label: string }> = [
+    { slotId: "quick", kind: "quick", label: "快速存档" },
+    { slotId: "auto:node", kind: "auto", label: "节点自动存档" },
+    { slotId: "auto:choice", kind: "auto", label: "选择自动存档" },
+    ...MANUAL_SLOT_IDS.map((slotId, index) => ({
+      slotId,
+      kind: "manual" as const,
+      label: `手动存档 ${String(index + 1).padStart(2, "0")}`,
+    })),
+  ];
+
+  return definitions.map((definition) => {
+    const summary = byId.get(definition.slotId);
+    const empty = summary == null;
+    return {
+      ...definition,
+      empty,
+      label: summary?.label ?? definition.label,
+      canSave: definition.kind !== "auto",
+      canLoad: !empty,
+      canDelete: !empty && definition.kind !== "auto",
+      summary,
+    };
+  });
+}
+
+export function createCurrentSavePreview(state: NovelState): SavePreview {
+  const text = state.dialogue?.text ?? state.narration?.text;
+  return {
+    ...(text ? { text } : {}),
+    background: state.background,
+  };
+}
+
+export function runtimeErrorDetails(error: unknown): RuntimeErrorDetails {
+  if (error && typeof error === "object") {
+    const record = error as { code?: unknown; message?: unknown };
+    return {
+      code: typeof record.code === "string" ? record.code : "runtime_operation_failed",
+      message: typeof record.message === "string" ? record.message : "运行时操作失败。",
+    };
+  }
+  return {
+    code: "runtime_operation_failed",
+    message: typeof error === "string" ? error : "运行时操作失败。",
+  };
+}
+
+export function isPlayerShortcutTarget(target: EventTarget | null): boolean {
+  if (!target || typeof target !== "object") return false;
+  const element = target as {
+    tagName?: string;
+    isContentEditable?: boolean;
+    getAttribute?: (name: string) => string | null;
+  };
+  const tagName = element.tagName?.toLowerCase();
+  if (tagName === "input" || tagName === "textarea" || tagName === "select" || tagName === "button") {
+    return true;
+  }
+  return element.isContentEditable === true || element.getAttribute?.("role") === "textbox";
+}
+
+export class PlayerUiController {
+  private active = false;
+
+  constructor(
+    private readonly runtime: RuntimeServices,
+    private readonly getState: () => NovelState,
+    private readonly onBusyChange: (busy: boolean) => void = () => {},
+  ) {}
+
+  get busy(): boolean {
+    return this.active;
+  }
+
+  listSlots(): Promise<PlayerSlotView[]> {
+    return this.run(async () => buildPlayerSlots(await this.runtime.save.listSlots()));
+  }
+
+  save(slotId: string, label: string): Promise<SaveSlotSummary> {
+    return this.run(() => this.runtime.save.save(slotId, {
+      label,
+      preview: createCurrentSavePreview(this.getState()),
+    }));
+  }
+
+  quickSave(): Promise<SaveSlotSummary> {
+    return this.save("quick", "Quick Save");
+  }
+
+  quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }> {
+    return this.run(() => this.runtime.save.quickLoad());
+  }
+
+  load(slotId: string): Promise<RuntimeRestoreResult & { slotId: string }> {
+    return this.run(() => this.runtime.save.load(slotId));
+  }
+
+  delete(slotId: string): Promise<void> {
+    return this.run(() => this.runtime.save.delete(slotId));
+  }
+
+  updateSettings(patch: Partial<RuntimeSettingsRecord>): Promise<RuntimeSettingsRecord> {
+    return this.run(async () => {
+      await this.runtime.settings.updateSettings(patch);
+      return this.runtime.settings.getSettings();
+    });
+  }
+
+  rollback(entryId: string): Promise<RuntimeRestoreResult> {
+    return this.run(async () => {
+      const result = await this.runtime.history.rollbackTo(entryId);
+      return result ?? { warnings: [] };
+    });
+  }
+
+  private async run<T>(operation: () => Promise<T> | T): Promise<T> {
+    if (this.active) throw new PlayerUiError("player_ui_busy", "另一项操作仍在进行中。");
+    this.active = true;
+    this.onBusyChange(true);
+    try {
+      return await operation();
+    } catch (error) {
+      const details = runtimeErrorDetails(error);
+      throw new PlayerUiError(details.code, details.message);
+    } finally {
+      this.active = false;
+      this.onBusyChange(false);
+    }
+  }
+}

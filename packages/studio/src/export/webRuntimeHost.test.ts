@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Instruction, ProjectGraphData } from "@vibegal/engine";
 import {
   createWebRuntimePlayer,
@@ -21,6 +21,20 @@ class MemoryStorage implements StorageLike {
 
   removeItem(key: string): void {
     this.data.delete(key);
+  }
+}
+
+class ThrowingStorage implements StorageLike {
+  getItem(): string | null {
+    throw new Error("storage blocked");
+  }
+
+  setItem(): void {
+    throw new Error("storage blocked");
+  }
+
+  removeItem(): void {
+    throw new Error("storage blocked");
   }
 }
 
@@ -64,6 +78,35 @@ function node(id: string, text: string): { id: string; instructions: Instruction
 }
 
 describe("web export runtime host", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("webRuntimeDefaultsMatchTheContractsSettingsDefaults", () => {
+    expect(defaultRuntimeSettings()).toEqual({
+      schemaVersion: 1,
+      volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
+    });
+  });
+
+  it("webRuntimeRejectsFutureSettingsWithoutOverwritingStorage", () => {
+    const storage = new MemoryStorage();
+    const raw = JSON.stringify({ schemaVersion: 999, volumes: { master: 1, bgm: 1, sfx: 1, voice: 1 } });
+    storage.setItem("vibegal:project-a:settings", raw);
+    const adapter = createWebStorageAdapter("project-a", storage);
+
+    expect(() => createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([]),
+      nodes: [node("start", "start")],
+      contentBase: "./content",
+      projectId: "project-a",
+      storage: adapter,
+    })).toThrow(expect.objectContaining({ code: "runtime_record_future_version" }));
+    expect(storage.getItem("vibegal:project-a:settings")).toBe(raw);
+  });
+
   it("webRuntimeFollowsLinearRoute", () => {
     const runtime = createWebRuntimePlayer({
       meta,
@@ -132,6 +175,19 @@ describe("web export runtime host", () => {
     expect(await adapter.getSettings()).toEqual(settings);
   });
 
+  it("webStorageFallsBackToMemoryWhenStorageMethodsThrow", async () => {
+    const adapter = createWebStorageAdapter("project-a", new ThrowingStorage());
+    const slot = { schemaVersion: 1, projectId: "project-a", label: "fallback slot" };
+
+    await adapter.setSaveSlot("slot-1", slot);
+
+    expect(await adapter.listSaveSlots()).toEqual(["slot-1"]);
+    expect(await adapter.getSaveSlot("slot-1")).toEqual(slot);
+    expect(adapter.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining("runtime storage"),
+    ]));
+  });
+
   it("webRuntimeServicesUseStorageAdapter", async () => {
     const storage = new MemoryStorage();
     const adapter = createWebStorageAdapter("project-a", storage);
@@ -156,6 +212,174 @@ describe("web export runtime host", () => {
     expect(await adapter.getSaveSlot("slot-1")).toEqual(expect.objectContaining({ projectId: "project-a", label: "Slot 1" }));
     expect(await adapter.getGlobalPersistent()).toEqual(expect.objectContaining({ unlockedCg: ["cg_001"] }));
 
+    await services!.save.delete("slot-1");
+
+    expect(await adapter.listSaveSlots()).toEqual([]);
+    expect(await adapter.getSaveSlot("slot-1")).toBeNull();
+    expect(await adapter.getGlobalPersistent()).toEqual(expect.objectContaining({ unlockedCg: ["cg_001"] }));
+
+    runtime.dispose();
+  });
+
+  it("webRuntimeAppliesPersistedTimingBeforeTheFirstLine", async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = new MemoryStorage();
+      const adapter = createWebStorageAdapter("project-a", storage);
+      await adapter.setSettings({
+        ...defaultRuntimeSettings(),
+        textSpeedCps: 10,
+        autoAdvanceMs: 250,
+      });
+      const runtime = createWebRuntimePlayer({
+        meta: { ...meta, typingSpeedCps: 1, autoAdvanceMs: 5_000 },
+        manifest,
+        graph: runtimeGraph([]),
+        nodes: [node("start", "abcd")],
+        contentBase: "./content",
+        projectId: "project-a",
+        storage: adapter,
+      });
+
+      runtime.advance();
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(runtime.getState().narration?.typedLen).toBe(1);
+      expect(runtime.rendererProps().runtime?.settings.getSettings()).toEqual(expect.objectContaining({
+        textSpeedCps: 10,
+        autoAdvanceMs: 250,
+      }));
+      runtime.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("webRuntimeAppliesPersistedVoiceVolumeBeforeTheFirstVoice", async () => {
+    class FakeAudio {
+      static instances: FakeAudio[] = [];
+      loop = false;
+      muted = false;
+      volume = 1;
+      readonly play = vi.fn(async () => {});
+      readonly pause = vi.fn();
+      readonly remove = vi.fn();
+
+      constructor(readonly src: string) {
+        FakeAudio.instances.push(this);
+      }
+
+      addEventListener() {}
+    }
+    vi.stubGlobal("Audio", FakeAudio);
+    const storage = new MemoryStorage();
+    const adapter = createWebStorageAdapter("project-a", storage);
+    await adapter.setSettings({
+      ...defaultRuntimeSettings(),
+      volumes: { master: 0.5, bgm: 0.7, sfx: 0.6, voice: 0.4 },
+    });
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest: {
+        ...manifest,
+        audio: { bgm: {}, sfx: {}, voice: { greeting: "voice/greeting.ogg" } },
+      },
+      graph: runtimeGraph([]),
+      nodes: [{
+        id: "start",
+        instructions: [
+          { t: "voice", id: "greeting" },
+          { t: "narrate", id: "line_01", text: "hello" },
+        ],
+      }],
+      contentBase: "./content",
+      projectId: "project-a",
+      storage: adapter,
+    });
+
+    runtime.advance();
+
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(FakeAudio.instances[0].src).toContain("voice/greeting.ogg");
+    expect(FakeAudio.instances[0].volume).toBeCloseTo(0.2);
+    runtime.dispose();
+  });
+
+  it("webRuntimeWritesNodeAndChoiceAutoSaveSlotsOncePerStablePoint", async () => {
+    const storage = new MemoryStorage();
+    const adapter = createWebStorageAdapter("project-a", storage);
+    const writeSaveSlot = vi.spyOn(adapter, "writeSaveSlot");
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([
+        { id: "start__left", from: "start", to: "left", mode: "choice", label: "Left", condition: null },
+        { id: "start__right", from: "start", to: "right", mode: "choice", label: "Right", condition: null },
+      ]),
+      nodes: [node("start", "start"), node("left", "left"), node("right", "right")],
+      contentBase: "./content",
+      projectId: "project-a",
+      storage: adapter,
+    });
+
+    runtime.advance();
+    await vi.waitFor(() => expect(writeSaveSlot).toHaveBeenCalledTimes(1));
+    runtime.advance();
+    runtime.advance();
+    runtime.choose("right");
+    await vi.waitFor(() => expect(writeSaveSlot).toHaveBeenCalledTimes(3));
+
+    expect(writeSaveSlot.mock.calls.map(([, slotId]) => slotId)).toEqual([
+      "auto:node",
+      "auto:node",
+      "auto:choice",
+    ]);
+
+    const snapshot = await adapter.readSaveSlot("project-a", "auto:choice");
+    expect(snapshot?.preview).toEqual({ text: "right", background: null });
+    await runtime.rendererProps().runtime?.save.load("auto:choice");
+    runtime.rendererProps().controls.rollbackTo(snapshot!.position!);
+    expect(writeSaveSlot).toHaveBeenCalledTimes(3);
+    runtime.dispose();
+  });
+
+  it("autoSaveFailureDoesNotBlockPlaybackAndPublishesAStatusNotice", async () => {
+    const adapter = createWebStorageAdapter("project-a", new MemoryStorage());
+    vi.spyOn(adapter, "writeSaveSlot").mockRejectedValueOnce(new Error("quota exceeded"));
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([]),
+      nodes: [{ id: "start", instructions: [{ t: "narrate", id: "line_01", text: "still playable" }] }],
+      contentBase: "./content",
+      projectId: "project-a",
+      storage: adapter,
+    });
+
+    runtime.advance();
+    await vi.waitFor(() => expect(runtime.rendererProps().runtime?.status?.getNotices()).toEqual([
+      expect.objectContaining({ code: "runtime_auto_save_failed", level: "error" }),
+    ]));
+
+    expect(runtime.getState().narration?.text).toBe("still playable");
+    runtime.dispose();
+  });
+
+  it("memoryStorageFallbackIsVisibleThroughRuntimeStatus", () => {
+    const adapter = createWebStorageAdapter("project-a", null);
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([]),
+      nodes: [node("start", "start")],
+      contentBase: "./content",
+      projectId: "project-a",
+      storage: adapter,
+    });
+
+    expect(runtime.rendererProps().runtime?.status?.getNotices()).toEqual([
+      expect.objectContaining({ code: "runtime_storage_fallback", level: "warning" }),
+    ]);
     runtime.dispose();
   });
 
@@ -209,9 +433,9 @@ describe("web export runtime host", () => {
       storage: createWebStorageAdapter("project-a", storage),
     });
 
-    await expect(secondRuntime.rendererProps().runtime!.save.listSlots()).resolves.toEqual([
+    await expect(secondRuntime.rendererProps().runtime!.save.listSlots()).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ slotId: "slot-1", label: "Slot 1" }),
-    ]);
+    ]));
     await expect(secondRuntime.rendererProps().runtime!.save.load("slot-1")).resolves.toEqual({ slotId: "slot-1", warnings: [] });
     expect(secondRuntime.getState().background).toBe("school");
     expect(secondRuntime.getState().narration?.text).toBe("saved line");
@@ -258,6 +482,40 @@ describe("web export runtime host", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("webRuntimeHistoryUsesThePlayerBacklogAndRollsBackWithoutAdvancing", async () => {
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest: {
+        ...manifest,
+        audio: { bgm: {}, sfx: {}, voice: { lineVoice: "voice/line.ogg" } },
+      },
+      graph: runtimeGraph([]),
+      nodes: [{
+        id: "start",
+        instructions: [
+          { t: "voice", id: "lineVoice" },
+          { t: "narrate", id: "line_01", text: "first" },
+          { t: "narrate", id: "line_02", text: "second" },
+        ],
+      }],
+      contentBase: "./content",
+    });
+    runtime.advance();
+    runtime.advance();
+    runtime.advance();
+    const history = runtime.rendererProps().runtime!.history;
+    const entries = history.getBacklog();
+
+    expect(entries).toHaveLength(2);
+    const beforeReplay = runtime.getState();
+    history.replayVoice(entries[0].id);
+    expect(runtime.getState()).toEqual(beforeReplay);
+
+    await expect(Promise.resolve().then(() => history.rollbackTo(entries[0].id))).resolves.toEqual({ warnings: [] });
+    expect(runtime.getState().narration?.text).toBe("first");
+    runtime.dispose();
   });
 
   it("webRuntimePersistsUnlocksAcrossReload", async () => {

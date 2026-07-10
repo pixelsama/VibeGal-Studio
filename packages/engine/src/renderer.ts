@@ -87,7 +87,7 @@ export interface BacklogEntry {
 export interface HistoryService {
   getBacklog(): BacklogEntry[];
   replayVoice(entryId: string): void;
-  rollbackTo(entryId: string): void;
+  rollbackTo(entryId: string): void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
 }
 
 export interface UnlockState {
@@ -132,6 +132,19 @@ export interface MediaService {
   skipVideo(): void;
 }
 
+export interface RuntimeStatusNotice {
+  id: number;
+  level: "warning" | "error";
+  code: string;
+  message: string;
+}
+
+export interface RuntimeStatusService {
+  getNotices(): RuntimeStatusNotice[];
+  subscribe(listener: () => void): () => void;
+  report(notice: Omit<RuntimeStatusNotice, "id">): void;
+}
+
 export interface DebugService {
   inspectState(): NovelState;
   inspectRuntimeSnapshot(): RuntimeSnapshot;
@@ -146,6 +159,7 @@ export interface RuntimeServices {
   audio: AudioService;
   gallery: GalleryService;
   media: MediaService;
+  status?: RuntimeStatusService;
   debug?: DebugService;
 }
 
@@ -243,11 +257,13 @@ export interface InMemoryRuntimeServicesOptions {
   initialGlobalPersistent?: GlobalPersistentRecord;
   getBacklog?: () => BacklogEntry[];
   initialSettings?: RuntimeSettingsRecord;
+  settingsFallback?: Pick<RuntimeSettingsRecord, "textSpeedCps" | "autoAdvanceMs">;
   audio?: Partial<RuntimeAudioBridge>;
   manifest?: Manifest;
   media?: Partial<MediaService>;
   onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
-  rollbackTo?: (point: StoryPointId) => void;
+  rollbackTo?: (point: StoryPointId) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
+  rollbackHistoryEntry?: (entryId: string) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
   replayVoice?: (entryId: string) => void;
   inspectState?: () => NovelState;
   jumpTo?: (point: StoryPointId) => void;
@@ -255,6 +271,22 @@ export interface InMemoryRuntimeServicesOptions {
 
 export function defaultRuntimeSettings(): RuntimeSettingsRecord {
   return createDefaultRuntimeSettingsRecord();
+}
+
+export function resolveRuntimeSettings(
+  settings: RuntimeSettingsRecord,
+  fallback: Pick<Required<RuntimeSettingsRecord>, "textSpeedCps" | "autoAdvanceMs"> = {
+    textSpeedCps: 30,
+    autoAdvanceMs: 1_200,
+  },
+): RuntimeSettingsRecord & Required<Pick<RuntimeSettingsRecord, "textSpeedCps" | "autoAdvanceMs">> {
+  const migrated = migrateRuntimeSettingsRecord(settings);
+  return {
+    ...migrated,
+    textSpeedCps: migrated.textSpeedCps ?? fallback.textSpeedCps,
+    autoAdvanceMs: migrated.autoAdvanceMs ?? fallback.autoAdvanceMs,
+    volumes: { ...migrated.volumes },
+  };
 }
 
 export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOptions): RuntimeServices {
@@ -276,7 +308,20 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
     endings: new Set(initialGlobal.unlockedEndings),
   };
   const backlog = [...(options.initialBacklog ?? [])];
-  let settings = cloneSettings(options.initialSettings ?? defaultRuntimeSettings());
+  const settingsFallback = {
+    textSpeedCps: options.settingsFallback?.textSpeedCps ?? 30,
+    autoAdvanceMs: options.settingsFallback?.autoAdvanceMs ?? 1_200,
+  };
+  let settings = resolveRuntimeSettings(options.initialSettings ?? defaultRuntimeSettings(), settingsFallback);
+  let statusNoticeId = 0;
+  const statusNotices: RuntimeStatusNotice[] = [];
+  const statusListeners = new Set<() => void>();
+  let mutationQueue = Promise.resolve();
+  const mutate = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = mutationQueue.then(operation, operation);
+    mutationQueue = result.then(() => undefined, () => undefined);
+    return result;
+  };
   const unavailable = (service: string, method: string): never => {
     throw new RuntimeServiceUnavailableError(service, method);
   };
@@ -307,38 +352,44 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       },
       async save(slotId, saveOptions) {
-        const existing = await persistenceAdapter.readSaveSlot(projectId, slotId);
-        const slot = createSaveSlotRecord({
-          projectId,
-          now: now(),
-          checkpoint: createSnapshot(),
-          decisions: options.decisionLog?.() ?? existing?.decisions,
-          createdAt: existing?.createdAt,
-          label: saveOptions?.label ?? existing?.label,
-          preview: saveOptions?.preview ?? existing?.preview,
+        const checkpoint = createSnapshot();
+        const decisions = options.decisionLog?.();
+        return mutate(async () => {
+          const existing = await persistenceAdapter.readSaveSlot(projectId, slotId);
+          const slot = createSaveSlotRecord({
+            projectId,
+            now: now(),
+            checkpoint,
+            decisions: decisions ?? existing?.decisions,
+            createdAt: existing?.createdAt,
+            label: saveOptions?.label ?? existing?.label,
+            preview: saveOptions?.preview ?? existing?.preview,
+          });
+          await persistenceAdapter.writeSaveSlot(projectId, slotId, slot);
+          return toSummary(slotId, slot);
         });
-        await persistenceAdapter.writeSaveSlot(projectId, slotId, slot);
-        return toSummary(slotId, slot);
       },
       async load(slotId) {
-        const slot = await persistenceAdapter.readSaveSlot(projectId, slotId);
-        if (!slot) {
-          throw new RuntimePersistenceError("runtime_save_slot_not_found", `Save slot "${slotId}" was not found.`);
-        }
-        const result = await (options.restoreFromSave?.(slot) ?? { warnings: [] });
-        return { ...result, slotId };
+        return mutate(async () => {
+          const slot = await persistenceAdapter.readSaveSlot(projectId, slotId);
+          if (!slot) {
+            throw new RuntimePersistenceError("runtime_save_slot_not_found", `Save slot "${slotId}" was not found.`);
+          }
+          const result = await (options.restoreFromSave?.(slot) ?? { warnings: [] });
+          return { ...result, slotId };
+        });
       },
       async delete(slotId) {
-        await persistenceAdapter.deleteSaveSlot(projectId, slotId);
+        await mutate(() => persistenceAdapter.deleteSaveSlot(projectId, slotId));
       },
       async quickSave() {
-        await this.save("quick");
+        await this.save("quick", { preview: savePreviewFromState(options.getState()) });
       },
       async quickLoad() {
         return this.load("quick");
       },
       async autoSave(reason) {
-        await this.save(`auto:${reason}`);
+        await this.save(`auto:${reason}`, { preview: savePreviewFromState(options.getState()) });
       },
     },
     history: {
@@ -361,11 +412,11 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
       rollbackTo(entryId) {
         const entry = (options.getBacklog?.() ?? backlog).find((item) => item.id === entryId);
         if (!entry) {
-          unavailable("history", "rollbackTo");
-          return;
+          return unavailable("history", "rollbackTo");
         }
+        if (options.rollbackHistoryEntry) return options.rollbackHistoryEntry(entryId);
         const rollbackTo = options.rollbackTo ?? (() => unavailable("history", "rollbackTo"));
-        rollbackTo(entry.storyPoint);
+        return rollbackTo(entry.storyPoint);
       },
     },
     persistent: {
@@ -403,10 +454,13 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         return cloneSettings(settings);
       },
       async updateSettings(patch) {
-        settings = mergeSettings(settings, patch);
-        await persistenceAdapter.writeSettings(projectId, settings);
-        options.audio?.setVolumes?.(settings.volumes);
-        options.onSettingsChanged?.(cloneSettings(settings));
+        await mutate(async () => {
+          const nextSettings = resolveRuntimeSettings(mergeSettings(settings, patch), settingsFallback);
+          await persistenceAdapter.writeSettings(projectId, nextSettings);
+          settings = nextSettings;
+          options.audio?.setVolumes?.(nextSettings.volumes);
+          options.onSettingsChanged?.(cloneSettings(nextSettings));
+        });
       },
     },
     audio: {
@@ -480,6 +534,19 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
       closeCg: () => options.media?.closeCg?.(),
       skipVideo: () => options.media?.skipVideo?.(),
     },
+    status: {
+      getNotices() {
+        return statusNotices.map((notice) => ({ ...notice }));
+      },
+      subscribe(listener) {
+        statusListeners.add(listener);
+        return () => statusListeners.delete(listener);
+      },
+      report(notice) {
+        statusNotices.push({ ...notice, id: ++statusNoticeId });
+        for (const listener of statusListeners) listener();
+      },
+    },
     debug: {
       inspectState: () => options.inspectState?.() ?? options.getState(),
       inspectRuntimeSnapshot: snapshot,
@@ -493,6 +560,14 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
 
 function readKeyId(key: ReadTextKey): string {
   return `${key.nodeId}\u0000${key.instructionId}\u0000${key.textHash}`;
+}
+
+function savePreviewFromState(state: NovelState): SavePreview {
+  const text = state.dialogue?.text ?? state.narration?.text;
+  return {
+    ...(text ? { text } : {}),
+    background: state.background,
+  };
 }
 
 function cloneSettings(settings: RuntimeSettingsRecord): RuntimeSettingsRecord {

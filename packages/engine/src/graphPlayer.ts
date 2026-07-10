@@ -30,6 +30,17 @@ export interface GraphPlayerDeps extends InterpreterDeps {
   persistent?: GraphPlayerPersistentBridge;
   replayVoice?: (voiceId: string) => void;
   onRuntimeEffect?: RuntimeEffectHandler;
+  onStableCheckpoint?: (event: GraphPlayerStableCheckpointEvent) => void;
+}
+
+export interface PlaybackTiming {
+  textSpeedCps: number;
+  autoAdvanceMs: number;
+}
+
+export interface GraphPlayerStableCheckpointEvent {
+  reason: "node" | "choice";
+  storyPoint: StoryPointId;
 }
 
 export interface GraphPlayerNode {
@@ -61,6 +72,9 @@ export class GraphNovelPlayer {
   private skipTimer: ReturnType<typeof setTimeout> | null = null;
   private skipBudget = 0;
   private routeError: string | null = null;
+  private playbackTiming: PlaybackTiming;
+  private lastNodeCheckpointId: string | null = null;
+  private pendingChoiceCheckpoint = false;
 
   private typingTimer: ReturnType<typeof setTimeout> | null = null;
   private waitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,6 +83,10 @@ export class GraphNovelPlayer {
   constructor(deps: GraphPlayerDeps) {
     this.deps = deps;
     this.state = createInitialState();
+    this.playbackTiming = {
+      textSpeedCps: deps.meta.typingSpeedCps,
+      autoAdvanceMs: deps.meta.autoAdvanceMs,
+    };
   }
 
   loadGraph(graph: ProjectGraphData, nodes: GraphPlayerNode[]) {
@@ -88,6 +106,8 @@ export class GraphNovelPlayer {
     this.skipMode = "off";
     this.skipBudget = 0;
     this.routeError = null;
+    this.lastNodeCheckpointId = null;
+    this.pendingChoiceCheckpoint = false;
     this.ip = 0;
     const total = this.currentInstructions().length;
     this.state = buildInitialState(0, total);
@@ -130,6 +150,24 @@ export class GraphNovelPlayer {
 
   getSkipMode(): SkipMode {
     return this.skipMode;
+  }
+
+  getPlaybackTiming(): PlaybackTiming {
+    return { ...this.playbackTiming };
+  }
+
+  setPlaybackTiming(timing: PlaybackTiming) {
+    if (!Number.isFinite(timing.textSpeedCps) || timing.textSpeedCps <= 0) {
+      throw new RangeError("textSpeedCps must be a positive number.");
+    }
+    if (!Number.isInteger(timing.autoAdvanceMs) || timing.autoAdvanceMs < 0) {
+      throw new RangeError("autoAdvanceMs must be a non-negative integer.");
+    }
+    const wasTyping = this.typingTimer != null && !this.isCurrentTextDone();
+    const wasWaitingForAuto = this.autoTimer != null;
+    this.playbackTiming = { ...timing };
+    if (wasTyping) this.startTyping();
+    if (wasWaitingForAuto) this.kickAuto();
   }
 
   getDecisionLog(): DecisionLogEvent[] {
@@ -220,13 +258,24 @@ export class GraphNovelPlayer {
       this.stopSkip();
       return;
     }
+    this.clearAuto();
     this.skipMode = mode;
     this.skipBudget = 10_000;
+    this.state = {
+      ...this.state,
+      flags: { ...this.state.flags, isAutoPlay: false, skipMode: mode },
+    };
+    this.emit();
     this.queueSkipTick();
   }
 
   setAutoPlay(on: boolean) {
-    this.state = { ...this.state, flags: { ...this.state.flags, isAutoPlay: on } };
+    if (on) this.stopSkip(false);
+    else this.clearAuto();
+    this.state = {
+      ...this.state,
+      flags: { ...this.state.flags, isAutoPlay: on, skipMode: on ? "off" : this.skipMode },
+    };
     this.emit();
     if (on) this.kickAuto();
   }
@@ -260,6 +309,7 @@ export class GraphNovelPlayer {
     if (fromNodeId && edge) {
       this.decisions.push({ type: "choice", fromNodeId, toNodeId, edgeId: edge.id });
     }
+    this.pendingChoiceCheckpoint = true;
     this.jumpToNode(toNodeId);
     this.stepNext(0);
   }
@@ -340,7 +390,7 @@ export class GraphNovelPlayer {
     this.state = applyInstruction(this.state, instr, this.deps);
     this.trackInstructionSideEffects(instr);
     this.emitRuntimeEffect(instr);
-    this.updateCurrentStoryPoint(instr, index);
+    this.updateCurrentStoryPoint(instr, index, false);
     if (instr.t === "say" || instr.t === "narrate") {
       this.addBacklogEntry(instr, index);
       this.state = revealFully(this.state);
@@ -517,7 +567,7 @@ export class GraphNovelPlayer {
 
   private startTyping() {
     this.clearTyping();
-    const baseInterval = Math.max(8, Math.round(1000 / this.deps.meta.typingSpeedCps));
+    const baseInterval = Math.max(8, Math.round(1000 / this.playbackTiming.textSpeedCps));
 
     const tick = () => {
       const next = this.peekNextChar();
@@ -565,7 +615,7 @@ export class GraphNovelPlayer {
     this.clearAuto();
     if (!this.state.flags.isAutoPlay && !this.state.flags.isRecording) return;
     if (this.state.flags.isWaiting || this.state.choice) return;
-    const cueMs = this.state.currentCueMs ?? this.deps.meta.autoAdvanceMs;
+    const cueMs = this.state.currentCueMs ?? this.playbackTiming.autoAdvanceMs;
     const delay = this.state.flags.isRecording ? cueMs + 400 : cueMs;
     this.autoTimer = setTimeout(() => this.advance(), delay);
   }
@@ -700,7 +750,7 @@ export class GraphNovelPlayer {
     };
   }
 
-  private updateCurrentStoryPoint(instr: Instruction, index: number) {
+  private updateCurrentStoryPoint(instr: Instruction, index: number, emitCheckpoint = true) {
     const instructionId = getInstructionStoryPointId(instr, index);
     if (!instructionId || !this.currentNodeId) return;
     this.currentStoryPoint = { nodeId: this.currentNodeId, instructionId };
@@ -709,6 +759,19 @@ export class GraphNovelPlayer {
     this.currentReadKey = instr.t === "say" || instr.t === "narrate"
       ? createReadTextKey({ ...this.currentStoryPoint, text: instr.text })
       : null;
+    if (emitCheckpoint) this.emitStableCheckpoint();
+  }
+
+  private emitStableCheckpoint() {
+    if (!this.currentStoryPoint || !this.currentNodeId) return;
+    if (this.lastNodeCheckpointId !== this.currentNodeId) {
+      this.lastNodeCheckpointId = this.currentNodeId;
+      this.deps.onStableCheckpoint?.({ reason: "node", storyPoint: { ...this.currentStoryPoint } });
+    }
+    if (this.pendingChoiceCheckpoint) {
+      this.pendingChoiceCheckpoint = false;
+      this.deps.onStableCheckpoint?.({ reason: "choice", storyPoint: { ...this.currentStoryPoint } });
+    }
   }
 
   private addBacklogEntry(instr: Extract<Instruction, { t: "say" | "narrate" }>, index: number) {
@@ -797,11 +860,16 @@ export class GraphNovelPlayer {
     return this.skipMode === "read" && Boolean(this.currentReadKey && !this.isRead(this.currentReadKey));
   }
 
-  private stopSkip() {
+  private stopSkip(emit = true) {
+    const changed = this.skipMode !== "off" || this.state.flags.skipMode !== "off";
     if (this.skipTimer) clearTimeout(this.skipTimer);
     this.skipTimer = null;
     this.skipMode = "off";
     this.skipBudget = 0;
+    if (changed) {
+      this.state = { ...this.state, flags: { ...this.state.flags, skipMode: "off" } };
+      if (emit) this.emit();
+    }
   }
 
   private progressToken(): string {
@@ -834,7 +902,7 @@ export class GraphNovelPlayer {
     this.clearTyping();
     this.clearWait();
     this.clearAuto();
-    this.stopSkip();
+    this.stopSkip(false);
   }
 }
 

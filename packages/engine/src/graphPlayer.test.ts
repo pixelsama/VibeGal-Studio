@@ -35,6 +35,155 @@ function readKey(instructionId: string, text: string): ReadTextKey {
 }
 
 describe("GraphNovelPlayer playback history and skip", () => {
+  it("playbackTimingUpdatesTheCurrentTypingTimerWithoutResettingStoryState", async () => {
+    vi.useFakeTimers();
+    try {
+      const player = new GraphNovelPlayer({ manifest, meta: { ...meta, typingSpeedCps: 1 } });
+      player.loadGraph(baseGraph, [
+        { id: "start", instructions: [{ t: "narrate", id: "line_01", text: "abcd" }] },
+      ]);
+      player.advance();
+      const before = {
+        nodeId: player.getCurrentNodeId(),
+        storyPoint: player.getCurrentStoryPoint(),
+        backlog: player.getBacklog(),
+      };
+
+      player.setPlaybackTiming({ textSpeedCps: 10, autoAdvanceMs: 25 });
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(player.getState().narration?.typedLen).toBe(1);
+      expect({
+        nodeId: player.getCurrentNodeId(),
+        storyPoint: player.getCurrentStoryPoint(),
+        backlog: player.getBacklog(),
+      }).toEqual(before);
+      player.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("playbackTimingReschedulesAnOutstandingAutoTimer", async () => {
+    vi.useFakeTimers();
+    try {
+      const player = new GraphNovelPlayer({ manifest, meta: { ...meta, autoAdvanceMs: 1_000 } });
+      player.loadGraph(baseGraph, [
+        {
+          id: "start",
+          instructions: [
+            { t: "narrate", id: "line_01", text: "first" },
+            { t: "narrate", id: "line_02", text: "second" },
+          ],
+        },
+      ]);
+      player.advance();
+      player.advance();
+      player.setAutoPlay(true);
+
+      await vi.advanceTimersByTimeAsync(100);
+      player.setPlaybackTiming({ textSpeedCps: 60, autoAdvanceMs: 200 });
+      await vi.advanceTimersByTimeAsync(199);
+      expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "line_01" });
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "line_02" });
+      player.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skipAndAutoExposeTheRealMutuallyExclusivePlaybackState", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(baseGraph, [
+      { id: "start", instructions: [{ t: "narrate", id: "line_01", text: "line" }] },
+    ]);
+
+    player.setAutoPlay(true);
+    expect(player.getState().flags).toEqual(expect.objectContaining({ isAutoPlay: true, skipMode: "off" }));
+
+    player.setSkipMode("read");
+    expect(player.getState().flags).toEqual(expect.objectContaining({ isAutoPlay: false, skipMode: "read" }));
+
+    player.setAutoPlay(true);
+    expect(player.getState().flags).toEqual(expect.objectContaining({ isAutoPlay: true, skipMode: "off" }));
+    player.dispose();
+  });
+
+  it("turningAutoOffCancelsTheOutstandingAdvanceTimer", async () => {
+    vi.useFakeTimers();
+    try {
+      const player = new GraphNovelPlayer({ manifest, meta: { ...meta, autoAdvanceMs: 100 } });
+      player.loadGraph(baseGraph, [
+        {
+          id: "start",
+          instructions: [
+            { t: "narrate", id: "line_01", text: "first" },
+            { t: "narrate", id: "line_02", text: "second" },
+          ],
+        },
+      ]);
+      player.advance();
+      player.advance();
+      player.setAutoPlay(true);
+      player.setAutoPlay(false);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "line_01" });
+      expect(player.getState().flags.isAutoPlay).toBe(false);
+      player.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emitsAutoSaveCheckpointsOnlyForStableForwardPlayback", () => {
+    const checkpoints: Array<{ reason: "node" | "choice"; nodeId: string; instructionId: string }> = [];
+    const player = new GraphNovelPlayer({
+      manifest,
+      meta,
+      onStableCheckpoint: (event) => checkpoints.push({
+        reason: event.reason,
+        nodeId: event.storyPoint.nodeId,
+        instructionId: event.storyPoint.instructionId,
+      }),
+    });
+    player.loadGraph(
+      {
+        ...baseGraph,
+        edges: [
+          { id: "start__left", from: "start", to: "left", mode: "choice", label: "Left", condition: null },
+          { id: "start__right", from: "start", to: "right", mode: "choice", label: "Right", condition: null },
+        ],
+      },
+      [
+        { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "start" }] },
+        { id: "left", instructions: [{ t: "narrate", id: "left_01", text: "left" }] },
+        { id: "right", instructions: [{ t: "narrate", id: "right_01", text: "right" }] },
+      ],
+    );
+
+    player.advance();
+    expect(checkpoints).toEqual([{ reason: "node", nodeId: "start", instructionId: "start_01" }]);
+    player.advance();
+    player.advance();
+    player.choose("right");
+    expect(checkpoints).toEqual([
+      { reason: "node", nodeId: "start", instructionId: "start_01" },
+      { reason: "node", nodeId: "right", instructionId: "right_01" },
+      { reason: "choice", nodeId: "right", instructionId: "right_01" },
+    ]);
+
+    const snapshot = player.createSnapshot();
+    player.restoreSnapshot(snapshot);
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "start_01" });
+    player.seekToInstruction(1);
+    expect(checkpoints).toHaveLength(3);
+    player.dispose();
+  });
+
   it("seekBy replays backward within the current node without repeating runtime effects", () => {
     const onRuntimeEffect = vi.fn();
     const player = new GraphNovelPlayer({ manifest, meta, onRuntimeEffect });

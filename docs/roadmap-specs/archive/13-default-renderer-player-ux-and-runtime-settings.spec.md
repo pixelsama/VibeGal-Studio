@@ -1,6 +1,6 @@
 # Spec 13 — Default Renderer Player UX And Runtime Settings
 
-> 状态：规划中。
+> 状态：已归档。
 > 基线：`fd53fa4 refactor: drive rust validation from contracts`。
 > 前置：[Spec 02](./archive/02-renderer-runtime-api.spec.md)、[Spec 06](./archive/06-persistent-runtime-save-and-restore.spec.md)、[Spec 07](./archive/07-playback-history-rollback-and-skip.spec.md)、[Spec 09](./archive/09-unlock-media-replay-runtime.spec.md)。
 > 当前代码优先：实施前必须重新读取实际代码；本文约束产品结果和验收，不得用规划覆盖更新后的代码事实。
@@ -443,3 +443,14 @@ Spec 14 — Gallery Replay Music Room And Extended Asset Authoring
 - CG/video/font/uiSkin/animationAtlas/unlock registry 的完整资产和项目设置 UI。
 
 Spec 14 依赖本 spec 提供的统一玩家菜单容器、错误处理和默认 renderer UI 基础。
+
+## 15. 完成记录
+
+- 2026-07-10：默认 renderer 增加 `player-ui-v1` 玩家 HUD 与统一菜单，覆盖快存/快读、手动存读删、历史、语音重播、rollback、auto、read/all skip、设置和系统重开。
+- 2026-07-10：`GraphNovelPlayer` 支持运行时文字速度与 auto delay 覆盖；auto 与 skip 互斥，真实 `skipMode` 暴露到 `NovelState.flags`。
+- 2026-07-10：Web runtime 在首屏挂载前读取持久化 settings，并将有效值同步到 player/audio；Studio preview 使用同一有效设置逻辑但保持会话内存级 persistence。
+- 2026-07-10：接入稳定 checkpoint 自动存档槽 `auto:node` / `auto:choice`，并避免 restore、rollback、debug jump、重复订阅误写自动存档。
+- 2026-07-10：默认 renderer canonical、template、sample 三份镜像同步；真实 Web 导出 smoke 通过默认 UI 验证快存、推进、快读、历史 rollback 和设置持久化。
+- 2026-07-10：归档前已通过 `pnpm --filter @vibegal/engine test`、`pnpm --filter @vibegal/studio test`、`pnpm build`、`pnpm run check:renderer-template`、`pnpm run check:schemas`、`pnpm run check:doc-contract`、`pnpm smoke:release`、真实 Web build/smoke、`cargo fmt --check`、`cargo check --locked --all-targets`、`cargo test --locked`、`pnpm tauri build` 和 `git diff --check`。
+
+这是一个交付单元；后续如继续扩展 Gallery、回想、音乐鉴赏或标题画面，应另开 spec，避免把本期默认玩家控制闭环继续扩张。

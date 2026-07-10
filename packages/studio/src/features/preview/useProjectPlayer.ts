@@ -18,6 +18,8 @@ import {
   type RendererProps,
   type RuntimeControls,
   type RuntimeServices,
+  type RuntimeSettingsRecord,
+  type InMemoryRuntimeServicesOptions,
   createInMemoryRuntimeServices,
   createRuntimeSnapshot,
   evaluateGraphCondition,
@@ -141,6 +143,45 @@ function createInitialRuntimeSnapshot(state: NovelState) {
   });
 }
 
+export interface ProjectPreviewRuntimeServicesInput extends Omit<
+  InMemoryRuntimeServicesOptions,
+  "settingsFallback" | "onSettingsChanged"
+> {
+  meta: Pick<Meta, "typingSpeedCps" | "autoAdvanceMs">;
+  applyPlaybackTiming: (timing: { textSpeedCps: number; autoAdvanceMs: number }) => void;
+  onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
+}
+
+export function createProjectPreviewRuntimeServices(input: ProjectPreviewRuntimeServicesInput): RuntimeServices {
+  const { meta, applyPlaybackTiming, onSettingsChanged, ...options } = input;
+  return createInMemoryRuntimeServices({
+    ...options,
+    settingsFallback: {
+      textSpeedCps: meta.typingSpeedCps,
+      autoAdvanceMs: meta.autoAdvanceMs,
+    },
+    onSettingsChanged: (settings) => {
+      applyPlaybackTiming({
+        textSpeedCps: settings.textSpeedCps ?? meta.typingSpeedCps,
+        autoAdvanceMs: settings.autoAdvanceMs ?? meta.autoAdvanceMs,
+      });
+      onSettingsChanged?.(settings);
+    },
+  });
+}
+
+function readPreviewPlaybackTiming(raw: unknown): Pick<Meta, "typingSpeedCps" | "autoAdvanceMs"> {
+  const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  return {
+    typingSpeedCps: typeof record.typingSpeedCps === "number" && record.typingSpeedCps > 0
+      ? record.typingSpeedCps
+      : 30,
+    autoAdvanceMs: typeof record.autoAdvanceMs === "number" && Number.isInteger(record.autoAdvanceMs) && record.autoAdvanceMs >= 0
+      ? record.autoAdvanceMs
+      : 1_200,
+  };
+}
+
 export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const [state, setState] = useState<NovelState>(createInitialState);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +190,12 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const audioRef = useRef<AudioEngine | null>(null);
   const stateRef = useRef(state);
   const runtimeRef = useRef<RuntimeServices | null>(null);
+  const runtimeProjectRef = useRef<string | null>(null);
+
+  if (runtimeProjectRef.current !== project.path) {
+    runtimeProjectRef.current = project.path;
+    runtimeRef.current = null;
+  }
 
   useEffect(() => {
     stateRef.current = state;
@@ -180,6 +227,20 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
           markRead: (key) => runtimeRef.current?.persistent.markRead(key),
         },
         replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
+        onStableCheckpoint: (event) => {
+          void runtimeRef.current?.save.autoSave(event.reason).catch((autoSaveError) => {
+            runtimeRef.current?.status?.report({
+              level: "error",
+              code: "runtime_auto_save_failed",
+              message: autoSaveError instanceof Error ? autoSaveError.message : String(autoSaveError),
+            });
+          });
+        },
+      });
+      const activeSettings = runtimeRef.current?.settings.getSettings();
+      player.setPlaybackTiming({
+        textSpeedCps: activeSettings?.textSpeedCps ?? validated.meta.typingSpeedCps,
+        autoAdvanceMs: activeSettings?.autoAdvanceMs ?? validated.meta.autoAdvanceMs,
       });
       const previewContent = buildProjectPreviewContent(project);
       player.loadGraph(
@@ -191,6 +252,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       // contentBase 传原始 content 目录。engine.resolveAsset 会在最终文件路径级别
       // 调用 Tauri convertFileSrc，避免把 asset 协议的目录 URL 当普通 URL 继续拼接。
       audio = new AudioEngine(validated.manifest as Manifest, contentDirAbs);
+      if (activeSettings) audio.setVolumes(activeSettings.volumes);
       audioRef.current = audio;
 
       player.subscribe((s) => {
@@ -206,6 +268,8 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       setMedia(null);
       player?.dispose();
       audio?.dispose();
+      if (playerRef.current === player) playerRef.current = null;
+      if (audioRef.current === audio) audioRef.current = null;
     };
   }, [project]);
 
@@ -237,10 +301,15 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     choose,
     setAutoPlay: (on) => playerRef.current?.setAutoPlay(on),
     setSkipMode: (mode) => playerRef.current?.setSkipMode(mode),
-    rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point),
+    rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point) ?? { warnings: [] },
     restart,
   };
-  runtimeRef.current ??= createInMemoryRuntimeServices({
+  runtimeRef.current ??= createProjectPreviewRuntimeServices({
+    meta: readPreviewPlaybackTiming(project.content.meta),
+    applyPlaybackTiming: (timing) => {
+      playerRef.current?.setPlaybackTiming(timing);
+      setState({ ...stateRef.current });
+    },
     getState: () => playerRef.current?.getState() ?? stateRef.current,
     manifest: project.content.manifest ?? EMPTY_MANIFEST,
     createSnapshot: () => playerRef.current?.createSnapshot() ?? createInitialRuntimeSnapshot(stateRef.current),
@@ -249,7 +318,8 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     currentStoryPoint: () => playerRef.current?.getCurrentStoryPoint() ?? null,
     currentNodeId: () => playerRef.current?.getCurrentNodeId() ?? "preview",
     getBacklog: () => playerRef.current?.getBacklog() ?? [],
-    rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point),
+    rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point) ?? { warnings: [] },
+    rollbackHistoryEntry: (entryId) => playerRef.current?.rollbackToHistoryEntry(entryId) ?? { warnings: [] },
     replayVoice: (entryId) => playerRef.current?.replayVoice(entryId),
     audio: {
       replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),

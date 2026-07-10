@@ -5,6 +5,7 @@ import {
   createInMemoryRuntimeServices,
   validateRendererManifestContract,
   type BacklogEntry,
+  type HistoryService,
   type RendererProps,
   type RuntimeSettingsRecord,
 } from "./renderer";
@@ -15,6 +16,16 @@ function Component() {
 }
 
 describe("renderer contract", () => {
+  it("historyServiceKeepsVoidRollbackImplementationsCompatible", () => {
+    const history: HistoryService = {
+      getBacklog: () => [],
+      replayVoice: vi.fn(),
+      rollbackTo: (): void => {},
+    };
+
+    expect(history.rollbackTo("entry-1")).toBeUndefined();
+  });
+
   it("rendererPropsRequiresControlsAdvance", () => {
     const advance = vi.fn();
     const props: RendererProps = {
@@ -254,6 +265,88 @@ describe("renderer contract", () => {
     expect(appliedSettings.at(-1)?.volumes).toEqual({ master: 0.4, bgm: 0.3, sfx: 0.2, voice: 0.1 });
   });
 
+  it("settingsServiceReturnsEffectiveProjectTimingValues", () => {
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      settingsFallback: { textSpeedCps: 42, autoAdvanceMs: 987 },
+      initialSettings: {
+        schemaVersion: 1,
+        volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
+      },
+    });
+
+    expect(runtime.settings.getSettings()).toEqual(expect.objectContaining({
+      textSpeedCps: 42,
+      autoAdvanceMs: 987,
+    }));
+  });
+
+  it("settingsServiceKeepsTheSavedValueWhenPersistenceFails", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const writeSettings = vi.spyOn(adapter, "writeSettings").mockRejectedValueOnce(new Error("disk full"));
+    const setVolumes = vi.fn();
+    const onSettingsChanged = vi.fn();
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      persistenceAdapter: adapter,
+      settingsFallback: { textSpeedCps: 30, autoAdvanceMs: 1_200 },
+      audio: { setVolumes },
+      onSettingsChanged,
+    });
+    const before = runtime.settings.getSettings();
+
+    await expect(runtime.settings.updateSettings({ textSpeedCps: 90 })).rejects.toThrow("disk full");
+
+    expect(writeSettings).toHaveBeenCalledOnce();
+    expect(runtime.settings.getSettings()).toEqual(before);
+    expect(setVolumes).not.toHaveBeenCalled();
+    expect(onSettingsChanged).not.toHaveBeenCalled();
+  });
+
+  it("runtimePersistenceMutationsAreSerialized", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const originalWriteSaveSlot = adapter.writeSaveSlot.bind(adapter);
+    let activeWrites = 0;
+    let maxActiveWrites = 0;
+    vi.spyOn(adapter, "writeSaveSlot").mockImplementation(async (...args) => {
+      activeWrites += 1;
+      maxActiveWrites = Math.max(maxActiveWrites, activeWrites);
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      await originalWriteSaveSlot(...args);
+      activeWrites -= 1;
+    });
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      persistenceAdapter: adapter,
+    });
+
+    await Promise.all([
+      runtime.save.save("manual-01"),
+      runtime.save.save("manual-02"),
+      runtime.settings.updateSettings({ textSpeedCps: 45 }),
+    ]);
+
+    expect(maxActiveWrites).toBe(1);
+  });
+
+  it("runtimeStatusPublishesRendererReadableStructuredNotices", () => {
+    const runtime = createInMemoryRuntimeServices({ getState: createInitialState });
+    const listener = vi.fn();
+    const unsubscribe = runtime.status!.subscribe(listener);
+
+    runtime.status!.report({ level: "warning", code: "runtime_storage_fallback", message: "Using memory storage." });
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(runtime.status!.getNotices()).toEqual([
+      expect.objectContaining({
+        level: "warning",
+        code: "runtime_storage_fallback",
+        message: "Using memory storage.",
+      }),
+    ]);
+    unsubscribe();
+  });
+
   it("historyServiceReturnsBacklogEntriesWithStoryPoint", () => {
     const entry: BacklogEntry = {
       id: "entry-1",
@@ -262,7 +355,9 @@ describe("renderer contract", () => {
       text: "今天也很安静呢。",
       readKey: { nodeId: "start", instructionId: "line_01", textHash: "line-hash" },
     };
-    const rollbackTo = vi.fn();
+    const rollbackTo = vi.fn(() => ({
+      warnings: [{ code: "story_point_not_found", message: "The story point was removed." }],
+    }));
     const runtime = createInMemoryRuntimeServices({
       getState: createInitialState,
       initialBacklog: [entry],
@@ -270,7 +365,9 @@ describe("renderer contract", () => {
     });
 
     expect(runtime.history.getBacklog()).toEqual([entry]);
-    runtime.history.rollbackTo("entry-1");
+    expect(runtime.history.rollbackTo("entry-1")).toEqual({
+      warnings: [{ code: "story_point_not_found", message: "The story point was removed." }],
+    });
 
     expect(rollbackTo).toHaveBeenCalledWith(entry.storyPoint);
   });
