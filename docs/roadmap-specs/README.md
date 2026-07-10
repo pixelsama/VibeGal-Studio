@@ -22,3 +22,4 @@
 - [Spec 12 — Contract-Driven Rust Validation And Backend Modularization](./archive/12-contract-driven-rust-validation-and-backend-modularization.spec.md)
 - [Spec 13 — Default Renderer Player UX And Runtime Settings](./archive/13-default-renderer-player-ux-and-runtime-settings.spec.md)
 - [Note 15 — Gallery / Replay / Music / Endings Implementation](./archive/15-gallery-replay-music-endings-implementation-note.md)
+- [Note 16 — Asset Management / Project Settings Implementation](./archive/16-asset-management-project-settings-implementation-note.md)

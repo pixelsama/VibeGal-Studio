@@ -40,6 +40,11 @@ pub enum AssetKind {
     Bgm,
     Sfx,
     Voice,
+    Cg,
+    Video,
+    Font,
+    Ui,
+    Animation,
     Unknown,
 }
 
@@ -56,6 +61,18 @@ impl AssetKind {
             Self::Sfx
         } else if lower.starts_with("assets/audio/voice/") {
             Self::Voice
+        } else if lower.starts_with("assets/cg/") {
+            Self::Cg
+        } else if lower.starts_with("assets/videos/") {
+            Self::Video
+        } else if lower.starts_with("assets/fonts/") {
+            Self::Font
+        } else if lower.starts_with("assets/ui/") {
+            Self::Ui
+        } else if lower.starts_with("assets/atlases/")
+            || lower.starts_with("assets/animations/")
+        {
+            Self::Animation
         } else {
             Self::Unknown
         }
@@ -68,6 +85,11 @@ impl AssetKind {
             Self::Bgm => "bgm",
             Self::Sfx => "sfx",
             Self::Voice => "voice",
+            Self::Cg => "cg",
+            Self::Video => "video",
+            Self::Font => "font",
+            Self::Ui => "ui",
+            Self::Animation => "animation",
             Self::Unknown => "unknown",
         }
     }

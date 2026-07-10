@@ -28,6 +28,11 @@ fn list_assets_classifies_kind_by_path() {
             "assets/audio/bgm/theme.mp3",
             "assets/audio/sfx/boom.wav",
             "assets/audio/voice/v01.mp3",
+            "assets/cg/rooftop.png",
+            "assets/videos/op.mp4",
+            "assets/fonts/body.ttf",
+            "assets/ui/classic/frame.png",
+            "assets/atlases/heroine.png",
             "assets/misc/unknown.bin",
         ],
     );
@@ -39,6 +44,11 @@ fn list_assets_classifies_kind_by_path() {
     assert!(kinds.contains(&AssetKind::Bgm));
     assert!(kinds.contains(&AssetKind::Sfx));
     assert!(kinds.contains(&AssetKind::Voice));
+    assert!(kinds.contains(&AssetKind::Cg));
+    assert!(kinds.contains(&AssetKind::Video));
+    assert!(kinds.contains(&AssetKind::Font));
+    assert!(kinds.contains(&AssetKind::Ui));
+    assert!(kinds.contains(&AssetKind::Animation));
     assert!(kinds.contains(&AssetKind::Unknown));
     let _ = fs::remove_dir_all(&dir);
 }

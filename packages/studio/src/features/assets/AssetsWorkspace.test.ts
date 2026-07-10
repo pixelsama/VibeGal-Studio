@@ -34,6 +34,7 @@ import {
   removeManifestEntry,
   stageManifestDraft,
 } from "./AssetsWorkspace";
+import { deriveAssetView } from "./useAssets";
 import type { ToastInput } from "../common/Toast";
 import type { FileRevision, Manifest, ProjectData } from "../../lib/types";
 
@@ -71,17 +72,63 @@ describe("applyAssetRegistrations", () => {
     ]);
     expect(base).toEqual(before);
   });
+
+  it("registers extended manifest asset types with editable default metadata", () => {
+    const next = applyAssetRegistrations(base, [
+      { id: "rooftop", path: "assets/cg/rooftop.png", kind: "cg" },
+      { id: "op", path: "assets/videos/op.mp4", kind: "video" },
+      { id: "body", path: "assets/fonts/body.ttf", kind: "font" },
+      { id: "classic_frame", path: "assets/ui/classic/frame.png", kind: "ui" },
+      { id: "heroine", path: "assets/atlases/heroine.png", kind: "animation" },
+    ]);
+
+    expect(next.cg.rooftop).toEqual({ path: "assets/cg/rooftop.png", name: "rooftop" });
+    expect(next.videos.op).toEqual({ path: "assets/videos/op.mp4", name: "op" });
+    expect(next.fonts.body).toEqual({ path: "assets/fonts/body.ttf", family: "body" });
+    expect(next.uiSkins.classic_frame).toEqual({
+      name: "classic_frame",
+      assets: { default: "assets/ui/classic/frame.png" },
+    });
+    expect(next.animationAtlases.heroine).toEqual({ image: "assets/atlases/heroine.png" });
+  });
 });
 
 describe("bulk asset cleanup helpers", () => {
+  it("derives dangling references for extended asset registries", () => {
+    const manifest: Manifest = {
+      ...base,
+      cg: { rooftop: { path: "assets/cg/rooftop.png", thumbnail: "assets/cg/thumbs/rooftop.png" } },
+      videos: { op: { path: "assets/videos/op.mp4", poster: "assets/videos/op.jpg" } },
+      fonts: { body: { path: "assets/fonts/body.ttf", family: "Body" } },
+      uiSkins: { classic: { assets: { frame: "assets/ui/classic/frame.png" } } },
+      animationAtlases: { heroine: { image: "assets/atlases/heroine.png", json: "assets/atlases/heroine.json" } },
+    };
+
+    const view = deriveAssetView([
+      { relPath: "assets/cg/rooftop.png", size: 1, kind: "cg" },
+      { relPath: "assets/videos/op.mp4", size: 1, kind: "video" },
+      { relPath: "assets/fonts/body.ttf", size: 1, kind: "font" },
+      { relPath: "assets/ui/classic/frame.png", size: 1, kind: "ui" },
+      { relPath: "assets/atlases/heroine.png", size: 1, kind: "animation" },
+    ], manifest, undefined);
+
+    expect(view.dangling.map((entry) => entry.source).sort()).toEqual(expect.arrayContaining([
+      "animationAtlases.heroine.json",
+      "cg.rooftop.thumbnail",
+      "videos.op.poster",
+    ]));
+  });
+
   it("registers multiple orphan assets into the matching manifest tables", () => {
     const next = registerOrphanAssets(base, [
       { relPath: "assets/backgrounds/night.png", size: 1, kind: "background" },
       { relPath: "assets/audio/voice/line02.ogg", size: 1, kind: "voice" },
+      { relPath: "assets/cg/rooftop.png", size: 1, kind: "cg" },
     ]);
 
     expect(next.backgrounds.night).toBe("assets/backgrounds/night.png");
     expect(next.audio.voice.line02).toBe("assets/audio/voice/line02.ogg");
+    expect(next.cg.rooftop.path).toBe("assets/cg/rooftop.png");
   });
 
   it("removes multiple dangling refs in one pass", () => {
@@ -163,6 +210,28 @@ describe("countRefs", () => {
     const counts = countRefs(m);
     expect(counts.get("shared.png")).toBe(2);
   });
+
+  it("counts extended manifest asset references including optional preview files", () => {
+    const m: Manifest = {
+      ...base,
+      cg: { rooftop: { path: "assets/cg/rooftop.png", thumbnail: "assets/cg/thumbs/rooftop.png" } },
+      videos: { op: { path: "assets/videos/op.mp4", poster: "assets/videos/op.jpg" } },
+      fonts: { body: { path: "assets/fonts/body.ttf", family: "Body" } },
+      uiSkins: { classic: { assets: { frame: "assets/ui/classic/frame.png" } } },
+      animationAtlases: { heroine: { image: "assets/atlases/heroine.png", json: "assets/atlases/heroine.json" } },
+    };
+
+    const counts = countRefs(m);
+
+    expect(counts.get("assets/cg/rooftop.png")).toBe(1);
+    expect(counts.get("assets/cg/thumbs/rooftop.png")).toBe(1);
+    expect(counts.get("assets/videos/op.mp4")).toBe(1);
+    expect(counts.get("assets/videos/op.jpg")).toBe(1);
+    expect(counts.get("assets/fonts/body.ttf")).toBe(1);
+    expect(counts.get("assets/ui/classic/frame.png")).toBe(1);
+    expect(counts.get("assets/atlases/heroine.png")).toBe(1);
+    expect(counts.get("assets/atlases/heroine.json")).toBe(1);
+  });
 });
 
 describe("removeAllRefsToPath", () => {
@@ -200,6 +269,34 @@ describe("removeAllRefsToPath", () => {
     };
     const next = removeAllRefsToPath(m, "assets\\characters\\h.svg");
     expect(next.characters.h.sprites.default).toBeUndefined();
+  });
+
+  it("removes extended manifest references when deleting their files", () => {
+    const m: Manifest = {
+      ...base,
+      cg: { rooftop: { path: "assets/cg/rooftop.png", thumbnail: "assets/cg/thumbs/rooftop.png" } },
+      videos: { op: { path: "assets/videos/op.mp4", poster: "assets/videos/op.jpg" } },
+      fonts: { body: { path: "assets/fonts/body.ttf", family: "Body" } },
+      uiSkins: { classic: { assets: { frame: "assets/ui/classic/frame.png" } } },
+      animationAtlases: { heroine: { image: "assets/atlases/heroine.png", json: "assets/atlases/heroine.json" } },
+    };
+
+    const withoutCgThumb = removeAllRefsToPath(m, "assets/cg/thumbs/rooftop.png");
+    expect(withoutCgThumb.cg.rooftop.path).toBe("assets/cg/rooftop.png");
+    expect(withoutCgThumb.cg.rooftop.thumbnail).toBeUndefined();
+
+    const withoutVideo = removeAllRefsToPath(m, "assets/videos/op.mp4");
+    expect(withoutVideo.videos.op).toBeUndefined();
+
+    const withoutFont = removeAllRefsToPath(m, "assets/fonts/body.ttf");
+    expect(withoutFont.fonts.body).toBeUndefined();
+
+    const withoutSkinAsset = removeAllRefsToPath(m, "assets/ui/classic/frame.png");
+    expect(withoutSkinAsset.uiSkins.classic.assets.frame).toBeUndefined();
+
+    const withoutAtlasJson = removeAllRefsToPath(m, "assets/atlases/heroine.json");
+    expect(withoutAtlasJson.animationAtlases.heroine.image).toBe("assets/atlases/heroine.png");
+    expect(withoutAtlasJson.animationAtlases.heroine.json).toBeUndefined();
   });
 });
 
@@ -551,6 +648,23 @@ describe("read-only asset UI", () => {
     expect(html).toContain("aria-label=\"资产\"");
     expect(html).toContain("总览");
     expect(html).toContain("背景");
+    expect(html).toContain("CG");
+    expect(html).toContain("视频");
+    expect(html).toContain("字体");
+    expect(html).toContain("UI Skin");
+    expect(html).toContain("动画图集");
+  });
+
+  it("shows import controls for extended asset sections", () => {
+    const html = renderToStaticMarkup(createElement(AssetsToolbar, {
+      section: "cg",
+      search: "",
+      onSearch: () => {},
+      onImport: () => {},
+      count: 0,
+    }));
+
+    expect(html).toContain("导入CG");
   });
 
   it("disables import controls when the manifest is invalid", () => {

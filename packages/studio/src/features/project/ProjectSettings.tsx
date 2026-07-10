@@ -33,6 +33,39 @@ const STAGE_PRESETS: StageResolution[] = [
   { width: 1024, height: 768 },
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validInteger(value: unknown, min: number, max: number): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
+}
+
+const DEFAULT_PROJECT_META_SETTINGS: ProjectMetaSettings = {
+  title: "",
+  typingSpeedCps: 30,
+  autoAdvanceMs: 1200,
+  chapterGapMs: 1500,
+  stage: DEFAULT_STAGE_RESOLUTION,
+};
+
+export interface ProjectMetaSettings {
+  title: string;
+  typingSpeedCps: number;
+  autoAdvanceMs: number;
+  chapterGapMs: number;
+  stage: StageResolution;
+}
+
+export interface ProjectSettingsFormDraft {
+  titleText: string;
+  typingSpeedText: string;
+  autoAdvanceText: string;
+  chapterGapText: string;
+  widthText: string;
+  heightText: string;
+}
+
 export async function saveProjectStageResolution({
   project,
   stage,
@@ -51,6 +84,58 @@ export async function saveProjectStageResolution({
     JSON.stringify(nextMeta, null, 2),
     expectedRevision,
   );
+}
+
+export async function saveProjectSettings({
+  project,
+  settings,
+  expectedRevision = project.metaRevision,
+  saveFileFn = saveFile,
+}: {
+  project: ProjectData;
+  settings: ProjectMetaSettings;
+  expectedRevision?: FileRevision | null;
+  saveFileFn?: SaveFileFn;
+}): Promise<void | FileRevision | null> {
+  const nextMeta = withProjectMetaSettings(project.content.meta, settings);
+  return saveFileFn(
+    project.path,
+    "content/meta.json",
+    JSON.stringify(nextMeta, null, 2),
+    expectedRevision,
+  );
+}
+
+export function readProjectMetaSettings(meta: unknown): ProjectMetaSettings {
+  const record = isRecord(meta) ? meta : {};
+  return {
+    title: typeof record.title === "string" ? record.title : DEFAULT_PROJECT_META_SETTINGS.title,
+    typingSpeedCps: typeof record.typingSpeedCps === "number" && record.typingSpeedCps > 0
+      ? record.typingSpeedCps
+      : DEFAULT_PROJECT_META_SETTINGS.typingSpeedCps,
+    autoAdvanceMs: validInteger(record.autoAdvanceMs, 0, Number.MAX_SAFE_INTEGER)
+      ? record.autoAdvanceMs
+      : DEFAULT_PROJECT_META_SETTINGS.autoAdvanceMs,
+    chapterGapMs: validInteger(record.chapterGapMs, 0, Number.MAX_SAFE_INTEGER)
+      ? record.chapterGapMs
+      : DEFAULT_PROJECT_META_SETTINGS.chapterGapMs,
+    stage: readStageResolution(meta),
+  };
+}
+
+export function withProjectMetaSettings(meta: unknown, settings: ProjectMetaSettings): Record<string, unknown> {
+  const base = isRecord(meta) ? { ...meta } : {};
+  return {
+    ...base,
+    title: settings.title,
+    typingSpeedCps: settings.typingSpeedCps,
+    autoAdvanceMs: settings.autoAdvanceMs,
+    chapterGapMs: settings.chapterGapMs,
+    stage: {
+      width: settings.stage.width,
+      height: settings.stage.height,
+    },
+  };
 }
 
 export interface StoredStageSettingsDraft {
@@ -73,8 +158,43 @@ export function isStageDraftDirty(base: StageResolution, widthText: string, heig
   return widthText !== String(base.width) || heightText !== String(base.height);
 }
 
+export interface StoredProjectSettingsDraft extends ProjectSettingsFormDraft {
+  version: 2;
+  baseSettings?: ProjectMetaSettings;
+  baseRevision?: FileRevision | null;
+}
+
+export function loadProjectSettingsDraft(storage: DraftStorage | null, key: string): StoredProjectSettingsDraft | null {
+  const value = loadProjectDraft(storage, key);
+  if (!value || typeof value !== "object") return null;
+  const draft = value as Partial<StoredProjectSettingsDraft>;
+  if (
+    draft.version !== 2 ||
+    typeof draft.titleText !== "string" ||
+    typeof draft.typingSpeedText !== "string" ||
+    typeof draft.autoAdvanceText !== "string" ||
+    typeof draft.chapterGapText !== "string" ||
+    typeof draft.widthText !== "string" ||
+    typeof draft.heightText !== "string"
+  ) {
+    return null;
+  }
+  return draft as StoredProjectSettingsDraft;
+}
+
+export function isProjectSettingsDraftDirty(base: ProjectMetaSettings, draft: ProjectSettingsFormDraft): boolean {
+  return (
+    draft.titleText !== base.title ||
+    draft.typingSpeedText !== String(base.typingSpeedCps) ||
+    draft.autoAdvanceText !== String(base.autoAdvanceMs) ||
+    draft.chapterGapText !== String(base.chapterGapMs) ||
+    draft.widthText !== String(base.stage.width) ||
+    draft.heightText !== String(base.stage.height)
+  );
+}
+
 export function projectSettingsDraftStorageKey(projectPath: string): string {
-  return projectDraftStorageKey(projectPath, "content/meta.json:stage");
+  return projectDraftStorageKey(projectPath, "content/meta.json:settings");
 }
 
 export function ProjectSettings({
@@ -86,51 +206,72 @@ export function ProjectSettings({
   onSaved: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const initialStage = useMemo(() => readStageResolution(project.content.meta), [project.content.meta]);
+  const initialSettings = useMemo(() => readProjectMetaSettings(project.content.meta), [project.content.meta]);
   const draftStorage = useMemo(getSessionDraftStorage, []);
   const draftStorageKey = useMemo(
     () => projectSettingsDraftStorageKey(project.path),
     [project.path],
   );
   const restoredDraft = useMemo(
-    () => loadStageSettingsDraft(draftStorage, draftStorageKey),
+    () => loadProjectSettingsDraft(draftStorage, draftStorageKey),
     [draftStorage, draftStorageKey],
   );
-  const [widthText, setWidthText] = useState(restoredDraft?.widthText ?? String(initialStage.width));
-  const [heightText, setHeightText] = useState(restoredDraft?.heightText ?? String(initialStage.height));
+  const [titleText, setTitleText] = useState(restoredDraft?.titleText ?? initialSettings.title);
+  const [typingSpeedText, setTypingSpeedText] = useState(restoredDraft?.typingSpeedText ?? String(initialSettings.typingSpeedCps));
+  const [autoAdvanceText, setAutoAdvanceText] = useState(restoredDraft?.autoAdvanceText ?? String(initialSettings.autoAdvanceMs));
+  const [chapterGapText, setChapterGapText] = useState(restoredDraft?.chapterGapText ?? String(initialSettings.chapterGapMs));
+  const [widthText, setWidthText] = useState(restoredDraft?.widthText ?? String(initialSettings.stage.width));
+  const [heightText, setHeightText] = useState(restoredDraft?.heightText ?? String(initialSettings.stage.height));
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draftBaseVersion, setDraftBaseVersion] = useState(0);
-  const baseStageRef = useRef(restoredDraft?.baseStage ?? initialStage);
+  const baseSettingsRef = useRef(restoredDraft?.baseSettings ?? initialSettings);
   const loadedRevisionRef = useRef<FileRevision | null | undefined>(
     restoredDraft?.baseRevision ?? project.metaRevision,
   );
   const draftVersionRef = useRef(0);
-  const dirty = isStageDraftDirty(baseStageRef.current, widthText, heightText);
+  const formDraft: ProjectSettingsFormDraft = {
+    titleText,
+    typingSpeedText,
+    autoAdvanceText,
+    chapterGapText,
+    widthText,
+    heightText,
+  };
+  const dirty = isProjectSettingsDraftDirty(baseSettingsRef.current, formDraft);
 
   useEffect(() => {
     if (dirty) return;
-    baseStageRef.current = initialStage;
+    if (loadedRevisionRef.current !== undefined && loadedRevisionRef.current !== project.metaRevision) return;
+    baseSettingsRef.current = initialSettings;
     loadedRevisionRef.current = project.metaRevision;
-    setWidthText(String(initialStage.width));
-    setHeightText(String(initialStage.height));
+    setTitleText(initialSettings.title);
+    setTypingSpeedText(String(initialSettings.typingSpeedCps));
+    setAutoAdvanceText(String(initialSettings.autoAdvanceMs));
+    setChapterGapText(String(initialSettings.chapterGapMs));
+    setWidthText(String(initialSettings.stage.width));
+    setHeightText(String(initialSettings.stage.height));
     setStatus(null);
-  }, [dirty, initialStage, project.metaRevision]);
+  }, [dirty, initialSettings, project.metaRevision]);
 
   useEffect(() => {
     if (dirty) {
       saveProjectDraft(draftStorage, draftStorageKey, {
-        version: 1,
+        version: 2,
+        titleText,
+        typingSpeedText,
+        autoAdvanceText,
+        chapterGapText,
         widthText,
         heightText,
-        baseStage: baseStageRef.current,
+        baseSettings: baseSettingsRef.current,
         baseRevision: loadedRevisionRef.current,
-      } satisfies StoredStageSettingsDraft);
+      } satisfies StoredProjectSettingsDraft);
     } else {
       clearProjectDraft(draftStorage, draftStorageKey);
     }
     onDirtyChange?.(dirty);
-  }, [dirty, draftBaseVersion, draftStorage, draftStorageKey, heightText, onDirtyChange, widthText]);
+  }, [autoAdvanceText, chapterGapText, dirty, draftBaseVersion, draftStorage, draftStorageKey, heightText, onDirtyChange, titleText, typingSpeedText, widthText]);
 
   useEffect(() => () => {
     onDirtyChange?.(false);
@@ -145,9 +286,9 @@ export function ProjectSettings({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [dirty]);
 
-  const draft = parseStageDraft(widthText, heightText);
+  const draft = parseProjectSettingsDraft(formDraft);
   const activePreset = draft
-    ? STAGE_PRESETS.find((preset) => preset.width === draft.width && preset.height === draft.height)
+    ? STAGE_PRESETS.find((preset) => preset.width === draft.stage.width && preset.height === draft.stage.height)
     : null;
 
   const handlePreset = (stage: StageResolution) => {
@@ -163,13 +304,13 @@ export function ProjectSettings({
     setSaving(true);
     setStatus(null);
     try {
-      const nextRevision = await saveProjectStageResolution({
+      const nextRevision = await saveProjectSettings({
         project,
-        stage: draft,
+        settings: draft,
         expectedRevision: loadedRevisionRef.current,
       });
       loadedRevisionRef.current = nextRevision ?? undefined;
-      baseStageRef.current = draft;
+      baseSettingsRef.current = draft;
       setDraftBaseVersion((version) => version + 1);
       await onSaved();
       setStatus(isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)
@@ -204,12 +345,46 @@ export function ProjectSettings({
     setStatus(null);
   };
 
+  const setDraftText = (setter: (value: string) => void, value: string) => {
+    draftVersionRef.current += 1;
+    setter(value);
+    setStatus(null);
+  };
+
   return (
     <div style={pageStyle}>
       <section style={sectionStyle}>
         <div style={headerRowStyle}>
           <h2 style={sectionTitleStyle}>项目</h2>
           {status && <span style={statusStyle}>{status}</span>}
+        </div>
+
+        <div style={fieldGroupStyle}>
+          <span style={fieldLabelStyle}>基础信息</span>
+          <TextField label="项目标题" value={titleText} onChange={(value) => setDraftText(setTitleText, value)} />
+          <div style={numberRowStyle}>
+            <NumberField
+              label="默认打字速度"
+              value={typingSpeedText}
+              min={0.1}
+              step={0.1}
+              onChange={(value) => setDraftText(setTypingSpeedText, value)}
+            />
+            <NumberField
+              label="默认自动播放间隔"
+              value={autoAdvanceText}
+              min={0}
+              step={1}
+              onChange={(value) => setDraftText(setAutoAdvanceText, value)}
+            />
+            <NumberField
+              label="章节间隔"
+              value={chapterGapText}
+              min={0}
+              step={1}
+              onChange={(value) => setDraftText(setChapterGapText, value)}
+            />
+          </div>
         </div>
 
         <div style={fieldGroupStyle}>
@@ -235,8 +410,22 @@ export function ProjectSettings({
             })}
           </div>
           <div style={numberRowStyle}>
-            <NumberField label="宽" value={widthText} onChange={handleWidthChange} />
-            <NumberField label="高" value={heightText} onChange={handleHeightChange} />
+            <NumberField
+              label="宽"
+              value={widthText}
+              min={STAGE_WIDTH_RANGE.min}
+              max={STAGE_WIDTH_RANGE.max}
+              step={1}
+              onChange={handleWidthChange}
+            />
+            <NumberField
+              label="高"
+              value={heightText}
+              min={STAGE_HEIGHT_RANGE.min}
+              max={STAGE_HEIGHT_RANGE.max}
+              step={1}
+              onChange={handleHeightChange}
+            />
             <button
               type="button"
               onClick={() => void handleSave()}
@@ -272,7 +461,25 @@ function parseStageDraft(widthText: string, heightText: string): StageResolution
   return { width, height };
 }
 
-function NumberField({
+function parseProjectSettingsDraft(draft: ProjectSettingsFormDraft): ProjectMetaSettings | null {
+  const stage = parseStageDraft(draft.widthText, draft.heightText);
+  const typingSpeedCps = Number(draft.typingSpeedText);
+  const autoAdvanceMs = Number(draft.autoAdvanceText);
+  const chapterGapMs = Number(draft.chapterGapText);
+  if (!stage) return null;
+  if (!Number.isFinite(typingSpeedCps) || typingSpeedCps <= 0) return null;
+  if (!Number.isInteger(autoAdvanceMs) || autoAdvanceMs < 0) return null;
+  if (!Number.isInteger(chapterGapMs) || chapterGapMs < 0) return null;
+  return {
+    title: draft.titleText,
+    typingSpeedCps,
+    autoAdvanceMs,
+    chapterGapMs,
+    stage,
+  };
+}
+
+function TextField({
   label,
   value,
   onChange,
@@ -285,11 +492,39 @@ function NumberField({
     <label style={numberFieldStyle}>
       <span style={numberLabelStyle}>{label}</span>
       <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={textInputStyle}
+      />
+    </label>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  min: number;
+  max?: number;
+  step: number;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={numberFieldStyle}>
+      <span style={numberLabelStyle}>{label}</span>
+      <input
         type="number"
         value={value}
-        min={label === "宽" ? STAGE_WIDTH_RANGE.min : STAGE_HEIGHT_RANGE.min}
-        max={label === "宽" ? STAGE_WIDTH_RANGE.max : STAGE_HEIGHT_RANGE.max}
-        step={1}
+        min={min}
+        max={max}
+        step={step}
         onChange={(event) => onChange(event.target.value)}
         style={numberInputStyle}
       />
@@ -383,6 +618,12 @@ const numberInputStyle: CSSProperties = {
   background: "var(--bg-inset)",
   color: "var(--text-primary)",
   padding: "0 var(--space-2)",
+};
+
+const textInputStyle: CSSProperties = {
+  ...numberInputStyle,
+  width: 320,
+  maxWidth: "100%",
 };
 
 const saveButtonStyle: CSSProperties = {

@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ManifestSchema } from "@vibegal/engine";
-import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
+import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type AssetKind, type FileRevision, type Manifest } from "../../lib/types";
 import {
   deleteAsset,
   importAsset,
@@ -50,6 +50,17 @@ interface AssetsWorkspaceProps {
   onSidebarCollapsedChange: (collapsed: boolean) => void;
   onSaved: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+}
+
+type RegistrableAssetKind = Exclude<AssetKind, "character" | "unknown">;
+type ExtendedAssetSection = "cg" | "video" | "font" | "ui" | "animation";
+
+function isRegistrableAssetKind(kind: AssetSection): kind is RegistrableAssetKind {
+  return kind !== "overview" && kind !== "character" && kind !== "unknown";
+}
+
+function isExtendedAssetSection(section: AssetSection): section is ExtendedAssetSection {
+  return section === "cg" || section === "video" || section === "font" || section === "ui" || section === "animation";
 }
 
 export function AssetsWorkspace({
@@ -218,14 +229,14 @@ export function AssetsWorkspace({
     if (readOnly) return;
     const savedDraftVersion = draftVersionRef.current;
     const kind = section === "overview" ? "background" : section;
-    if (kind === "character" || kind === "unknown") return;
-    const files = await pickAssetFiles(kind as "background" | "bgm" | "sfx" | "voice");
+    if (!isRegistrableAssetKind(kind)) return;
+    const files = await pickAssetFiles(kind);
     if (files.length === 0) return;
 
     // 逐个导入；目标路径 = assets/<分类目录>/<原文件名>
     const subDir = kindDir(kind);
     const errors: string[] = [];
-    const newPaths: { id: string; path: string; kind: typeof kind }[] = [];
+    const newPaths: { id: string; path: string; kind: RegistrableAssetKind }[] = [];
     for (const src of files) {
       const fileName = src.split(/[/\\]/).pop() ?? "asset";
       const id = baseName(fileName);
@@ -399,6 +410,14 @@ export function AssetsWorkspace({
               onDeleteOrphans={handleDeleteAllOrphans}
               disabled={readOnly}
             />
+            {isExtendedAssetSection(section) && (
+              <ExtendedAssetRegistryEditor
+                section={section}
+                manifest={manifest}
+                disabled={readOnly}
+                onChange={handleStageManifestDraft}
+              />
+            )}
             {cleanupProposal.removeSources.length > 0 && (
               <div style={cleanupBarStyle}>
                 <span>{`Cleanup dry-run: ${cleanupProposal.removeSources.length} 个 manifest 条目可清理，${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未注册`}</span>
@@ -651,6 +670,249 @@ export function DraftManifestBanner({ isDirty, canSave, onSave, onDiscard, savin
   );
 }
 
+function ExtendedAssetRegistryEditor({
+  section,
+  manifest,
+  disabled,
+  onChange,
+}: {
+  section: ExtendedAssetSection;
+  manifest: Manifest;
+  disabled: boolean;
+  onChange: (manifest: Manifest) => void;
+}) {
+  if (section === "cg") {
+    const entries = Object.entries(manifest.cg ?? {});
+    return (
+      <RegistryPanel title="CG 登记" empty={entries.length === 0}>
+        {entries.map(([id, asset]) => (
+          <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `cg.${id}`))} disabled={disabled}>
+            <RegistryTextField label="path" value={asset.path} disabled={disabled} onChange={(path) => {
+              onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, path } } });
+            }} />
+            <RegistryTextField label="名称" value={asset.name ?? ""} disabled={disabled} onChange={(name) => {
+              onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, name: optionalText(name) } } });
+            }} />
+            <RegistryTextField label="缩略图" value={asset.thumbnail ?? ""} disabled={disabled} onChange={(thumbnail) => {
+              onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, thumbnail: optionalText(thumbnail) } } });
+            }} />
+            <RegistryTextField label="标签" value={(asset.tags ?? []).join(", ")} disabled={disabled} onChange={(tags) => {
+              onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, tags: parseTags(tags) } } });
+            }} />
+            <RegistryTextField label="分组" value={asset.group ?? ""} disabled={disabled} onChange={(group) => {
+              onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, group: optionalText(group) } } });
+            }} />
+            <RegistryTextField label="unlockId" value={asset.unlockId ?? ""} disabled={disabled} onChange={(unlockId) => {
+              onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, unlockId: optionalText(unlockId) } } });
+            }} />
+          </RegistryCard>
+        ))}
+      </RegistryPanel>
+    );
+  }
+
+  if (section === "video") {
+    const entries = Object.entries(manifest.videos ?? {});
+    return (
+      <RegistryPanel title="视频登记" empty={entries.length === 0}>
+        {entries.map(([id, asset]) => (
+          <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `videos.${id}`))} disabled={disabled}>
+            <RegistryTextField label="path" value={asset.path} disabled={disabled} onChange={(path) => {
+              onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, path } } });
+            }} />
+            <RegistryTextField label="名称" value={asset.name ?? ""} disabled={disabled} onChange={(name) => {
+              onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, name: optionalText(name) } } });
+            }} />
+            <RegistryTextField label="poster" value={asset.poster ?? ""} disabled={disabled} onChange={(poster) => {
+              onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, poster: optionalText(poster) } } });
+            }} />
+            <RegistryTextField label="标签" value={(asset.tags ?? []).join(", ")} disabled={disabled} onChange={(tags) => {
+              onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, tags: parseTags(tags) } } });
+            }} />
+            <label style={registryCheckboxStyle}>
+              <input
+                type="checkbox"
+                checked={asset.skippable ?? false}
+                disabled={disabled}
+                onChange={(event) => {
+                  onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, skippable: event.target.checked } } });
+                }}
+              />
+              可跳过
+            </label>
+          </RegistryCard>
+        ))}
+      </RegistryPanel>
+    );
+  }
+
+  if (section === "font") {
+    const entries = Object.entries(manifest.fonts ?? {});
+    return (
+      <RegistryPanel title="字体登记" empty={entries.length === 0}>
+        {entries.map(([id, font]) => (
+          <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `fonts.${id}`))} disabled={disabled}>
+            <RegistryTextField label="path" value={font.path} disabled={disabled} onChange={(path) => {
+              onChange({ ...manifest, fonts: { ...(manifest.fonts ?? {}), [id]: { ...font, path } } });
+            }} />
+            <RegistryTextField label="family" value={font.family} disabled={disabled} onChange={(family) => {
+              onChange({ ...manifest, fonts: { ...(manifest.fonts ?? {}), [id]: { ...font, family } } });
+            }} />
+            <RegistryTextField label="weight" value={font.weight ?? ""} disabled={disabled} onChange={(weight) => {
+              onChange({ ...manifest, fonts: { ...(manifest.fonts ?? {}), [id]: { ...font, weight: optionalText(weight) } } });
+            }} />
+            <RegistryTextField label="style" value={font.style ?? ""} disabled={disabled} onChange={(style) => {
+              onChange({ ...manifest, fonts: { ...(manifest.fonts ?? {}), [id]: { ...font, style: optionalText(style) } } });
+            }} />
+          </RegistryCard>
+        ))}
+      </RegistryPanel>
+    );
+  }
+
+  if (section === "ui") {
+    const entries = Object.entries(manifest.uiSkins ?? {});
+    return (
+      <RegistryPanel title="UI Skin 登记" empty={entries.length === 0}>
+        {entries.map(([id, skin]) => (
+          <RegistryCard key={id} id={id} onDelete={() => onChange(removeUiSkin(manifest, id))} disabled={disabled}>
+            <RegistryTextField label="名称" value={skin.name ?? ""} disabled={disabled} onChange={(name) => {
+              onChange({ ...manifest, uiSkins: { ...(manifest.uiSkins ?? {}), [id]: { ...skin, name: optionalText(name) } } });
+            }} />
+            {Object.entries(skin.assets ?? {}).map(([assetId, path]) => (
+              <RegistryTextField key={assetId} label={`assets.${assetId}`} value={path} disabled={disabled} onChange={(nextPath) => {
+                onChange({
+                  ...manifest,
+                  uiSkins: {
+                    ...(manifest.uiSkins ?? {}),
+                    [id]: { ...skin, assets: { ...(skin.assets ?? {}), [assetId]: nextPath } },
+                  },
+                });
+              }} />
+            ))}
+            {Object.keys(skin.assets ?? {}).length === 0 && (
+              <div style={registryEmptyTextStyle}>没有 UI 资源槽；导入或登记 UI 资源会创建 default 槽。</div>
+            )}
+          </RegistryCard>
+        ))}
+      </RegistryPanel>
+    );
+  }
+
+  const entries = Object.entries(manifest.animationAtlases ?? {});
+  return (
+    <RegistryPanel title="动画图集登记" empty={entries.length === 0}>
+      {entries.map(([id, atlas]) => (
+        <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `animationAtlases.${id}.image`))} disabled={disabled}>
+          <RegistryTextField label="image" value={atlas.image} disabled={disabled} onChange={(image) => {
+            onChange({ ...manifest, animationAtlases: { ...(manifest.animationAtlases ?? {}), [id]: { ...atlas, image } } });
+          }} />
+          <RegistryTextField label="json" value={atlas.json ?? ""} disabled={disabled} onChange={(json) => {
+            onChange({ ...manifest, animationAtlases: { ...(manifest.animationAtlases ?? {}), [id]: { ...atlas, json: optionalText(json) } } });
+          }} />
+          <RegistryTextField label="frameWidth" value={atlas.frameWidth ? String(atlas.frameWidth) : ""} disabled={disabled} onChange={(value) => {
+            onChange({ ...manifest, animationAtlases: { ...(manifest.animationAtlases ?? {}), [id]: { ...atlas, frameWidth: positiveIntegerOrUndefined(value) } } });
+          }} />
+          <RegistryTextField label="frameHeight" value={atlas.frameHeight ? String(atlas.frameHeight) : ""} disabled={disabled} onChange={(value) => {
+            onChange({ ...manifest, animationAtlases: { ...(manifest.animationAtlases ?? {}), [id]: { ...atlas, frameHeight: positiveIntegerOrUndefined(value) } } });
+          }} />
+        </RegistryCard>
+      ))}
+    </RegistryPanel>
+  );
+}
+
+function RegistryPanel({ title, empty, children }: { title: string; empty: boolean; children: React.ReactNode }) {
+  return (
+    <section style={registryPanelStyle} aria-label={title}>
+      <div style={registryPanelHeaderStyle}>
+        <span style={registryPanelTitleStyle}>{title}</span>
+        <span style={registryPanelHintStyle}>导入/登记后在这里编辑 manifest 字段，统一通过底部草稿条保存。</span>
+      </div>
+      {empty ? (
+        <div style={registryEmptyTextStyle}>暂无条目。可先导入该类型资产，或登记当前分类下的孤儿文件。</div>
+      ) : (
+        <div style={registryCardListStyle}>{children}</div>
+      )}
+    </section>
+  );
+}
+
+function RegistryCard({
+  id,
+  disabled,
+  onDelete,
+  children,
+}: {
+  id: string;
+  disabled: boolean;
+  onDelete: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={registryCardStyle}>
+      <div style={registryCardHeaderStyle}>
+        <span style={registryIdStyle}>{id}</span>
+        <button
+          type="button"
+          style={registryDeleteButtonStyle}
+          disabled={disabled}
+          onClick={onDelete}
+        >
+          移除登记
+        </button>
+      </div>
+      <div style={registryFieldsStyle}>{children}</div>
+    </div>
+  );
+}
+
+function RegistryTextField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={registryFieldStyle}>
+      <span style={registryFieldLabelStyle}>{label}</span>
+      <input
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        style={registryInputStyle}
+      />
+    </label>
+  );
+}
+
+function optionalText(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function parseTags(value: string): string[] | undefined {
+  const tags = value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  return tags.length > 0 ? tags : undefined;
+}
+
+function positiveIntegerOrUndefined(value: string): number | undefined {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function removeUiSkin(manifest: Manifest, id: string): Manifest {
+  const next = { ...(manifest.uiSkins ?? {}) };
+  delete next[id];
+  return { ...manifest, uiSkins: next };
+}
+
 export interface DeleteAssetAndPruneManifestRefsParams {
   projectPath: string;
   relPath: string;
@@ -706,7 +968,7 @@ export async function deleteAssetAndPruneManifestRefs({
 }
 
 /** 按 kind 决定导入目标子目录（与 Rust AssetKind::from_rel_path 对齐）。 */
-function kindDir(kind: "background" | "bgm" | "sfx" | "voice"): string {
+function kindDir(kind: RegistrableAssetKind): string {
   switch (kind) {
     case "background":
       return "backgrounds";
@@ -716,13 +978,23 @@ function kindDir(kind: "background" | "bgm" | "sfx" | "voice"): string {
       return "audio/sfx";
     case "voice":
       return "audio/voice";
+    case "cg":
+      return "cg";
+    case "video":
+      return "videos";
+    case "font":
+      return "fonts";
+    case "ui":
+      return "ui";
+    case "animation":
+      return "atlases";
   }
 }
 
 /** 把一批 (id, path, kind) 登记进 manifest。同 id 已存在则跳过。 */
 export function applyAssetRegistrations(
   manifest: Manifest,
-  registrations: { id: string; path: string; kind: "background" | "bgm" | "sfx" | "voice" }[],
+  registrations: { id: string; path: string; kind: RegistrableAssetKind }[],
 ): Manifest {
   let next = manifest;
   for (const { id, path, kind } of registrations) {
@@ -747,6 +1019,31 @@ export function applyAssetRegistrations(
           next = { ...next, audio: { ...next.audio, voice: { ...next.audio.voice, [id]: path } } };
         }
         break;
+      case "cg":
+        if (!(id in (next.cg ?? {}))) {
+          next = { ...next, cg: { ...(next.cg ?? {}), [id]: { path, name: id } } };
+        }
+        break;
+      case "video":
+        if (!(id in (next.videos ?? {}))) {
+          next = { ...next, videos: { ...(next.videos ?? {}), [id]: { path, name: id } } };
+        }
+        break;
+      case "font":
+        if (!(id in (next.fonts ?? {}))) {
+          next = { ...next, fonts: { ...(next.fonts ?? {}), [id]: { path, family: id } } };
+        }
+        break;
+      case "ui":
+        if (!(id in (next.uiSkins ?? {}))) {
+          next = { ...next, uiSkins: { ...(next.uiSkins ?? {}), [id]: { name: id, assets: { default: path } } } };
+        }
+        break;
+      case "animation":
+        if (!(id in (next.animationAtlases ?? {}))) {
+          next = { ...next, animationAtlases: { ...(next.animationAtlases ?? {}), [id]: { image: path } } };
+        }
+        break;
     }
   }
   return next;
@@ -754,8 +1051,8 @@ export function applyAssetRegistrations(
 
 export function registerOrphanAssets(manifest: Manifest, entries: AssetEntry[]): Manifest {
   const registrations = entries
-    .filter((entry): entry is AssetEntry & { kind: "background" | "bgm" | "sfx" | "voice" } =>
-      entry.kind === "background" || entry.kind === "bgm" || entry.kind === "sfx" || entry.kind === "voice")
+    .filter((entry): entry is AssetEntry & { kind: RegistrableAssetKind } =>
+      isRegistrableAssetKind(entry.kind))
     .map((entry) => ({
       id: baseName(entry.relPath),
       path: entry.relPath,
@@ -799,10 +1096,22 @@ export function removeManifestEntry(manifest: Manifest, source: string): Manifes
     delete next[parts[1]];
     return { ...manifest, cg: next };
   }
+  if (parts[0] === "cg" && parts.length === 3 && parts[2] === "thumbnail") {
+    const asset = manifest.cg?.[parts[1]];
+    if (!asset) return manifest;
+    const { thumbnail: _thumbnail, ...rest } = asset;
+    return { ...manifest, cg: { ...(manifest.cg ?? {}), [parts[1]]: rest } };
+  }
   if (parts[0] === "videos" && parts.length === 2) {
     const next = { ...(manifest.videos ?? {}) };
     delete next[parts[1]];
     return { ...manifest, videos: next };
+  }
+  if (parts[0] === "videos" && parts.length === 3 && parts[2] === "poster") {
+    const asset = manifest.videos?.[parts[1]];
+    if (!asset) return manifest;
+    const { poster: _poster, ...rest } = asset;
+    return { ...manifest, videos: { ...(manifest.videos ?? {}), [parts[1]]: rest } };
   }
   if (parts[0] === "fonts" && parts.length === 2) {
     const next = { ...(manifest.fonts ?? {}) };
@@ -817,6 +1126,11 @@ export function removeManifestEntry(manifest: Manifest, source: string): Manifes
     return { ...manifest, uiSkins: { ...manifest.uiSkins, [parts[1]]: { ...skin, assets } } };
   }
   if (parts[0] === "animationAtlases" && parts.length === 3) {
+    if (parts[2] === "image") {
+      const next = { ...(manifest.animationAtlases ?? {}) };
+      delete next[parts[1]];
+      return { ...manifest, animationAtlases: next };
+    }
     const atlas = manifest.animationAtlases?.[parts[1]];
     if (!atlas) return manifest;
     const nextAtlas = { ...atlas };
@@ -885,8 +1199,14 @@ function collectManifestEntrySources(manifest: Manifest): { source: string; path
   Object.entries(manifest.audio?.bgm ?? {}).forEach(([id, path]) => entries.push({ source: `audio.bgm.${id}`, path }));
   Object.entries(manifest.audio?.sfx ?? {}).forEach(([id, path]) => entries.push({ source: `audio.sfx.${id}`, path }));
   Object.entries(manifest.audio?.voice ?? {}).forEach(([id, path]) => entries.push({ source: `audio.voice.${id}`, path }));
-  Object.entries(manifest.cg ?? {}).forEach(([id, asset]) => entries.push({ source: `cg.${id}`, path: asset.path }));
-  Object.entries(manifest.videos ?? {}).forEach(([id, asset]) => entries.push({ source: `videos.${id}`, path: asset.path }));
+  Object.entries(manifest.cg ?? {}).forEach(([id, asset]) => {
+    entries.push({ source: `cg.${id}`, path: asset.path });
+    if (asset.thumbnail) entries.push({ source: `cg.${id}.thumbnail`, path: asset.thumbnail });
+  });
+  Object.entries(manifest.videos ?? {}).forEach(([id, asset]) => {
+    entries.push({ source: `videos.${id}`, path: asset.path });
+    if (asset.poster) entries.push({ source: `videos.${id}.poster`, path: asset.poster });
+  });
   Object.entries(manifest.fonts ?? {}).forEach(([id, font]) => entries.push({ source: `fonts.${id}`, path: font.path }));
   Object.entries(manifest.uiSkins ?? {}).forEach(([id, skin]) => {
     Object.entries(skin.assets ?? {}).forEach(([assetId, path]) => entries.push({ source: `uiSkins.${id}.assets.${assetId}`, path }));
@@ -905,12 +1225,11 @@ function normalizeAssetPath(path: string): string {
 /** 统计每个磁盘路径被多少 manifest 条目引用。 */
 export function countRefs(manifest: Manifest): Map<string, number> {
   const counts = new Map<string, number>();
-  const bump = (path: string) => counts.set(path, (counts.get(path) ?? 0) + 1);
-  Object.values(manifest.backgrounds).forEach(bump);
-  Object.values(manifest.characters).forEach((c) => Object.values(c.sprites).forEach(bump));
-  Object.values(manifest.audio.bgm).forEach(bump);
-  Object.values(manifest.audio.sfx).forEach(bump);
-  Object.values(manifest.audio.voice).forEach(bump);
+  const bump = (path: string) => {
+    const normalized = normalizeAssetPath(path);
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  };
+  collectManifestEntrySources(manifest).forEach((entry) => bump(entry.path));
   return counts;
 }
 
@@ -921,43 +1240,10 @@ export function countRefs(manifest: Manifest): Map<string, number> {
  */
 export function removeAllRefsToPath(manifest: Manifest, path: string): Manifest {
   const target = path.replace(/\\/g, "/");
-  const match = (p: string) => p.replace(/\\/g, "/") === target;
-
-  // backgrounds
-  const backgrounds: Record<string, string> = {};
-  for (const [id, p] of Object.entries(manifest.backgrounds)) {
-    if (!match(p)) backgrounds[id] = p;
-  }
-
-  // characters.<id>.sprites.<expr>
-  const characters: typeof manifest.characters = {};
-  for (const [id, char] of Object.entries(manifest.characters)) {
-    const sprites: Record<string, string> = {};
-    for (const [expr, p] of Object.entries(char.sprites)) {
-      if (!match(p)) sprites[expr] = p;
-    }
-    characters[id] = { ...char, sprites };
-  }
-
-  // audio 子表
-  const stripAudio = (table: Record<string, string>): Record<string, string> => {
-    const out: Record<string, string> = {};
-    for (const [id, p] of Object.entries(table)) {
-      if (!match(p)) out[id] = p;
-    }
-    return out;
-  };
-
-  return {
-    ...manifest,
-    backgrounds,
-    characters,
-    audio: {
-      bgm: stripAudio(manifest.audio.bgm),
-      sfx: stripAudio(manifest.audio.sfx),
-      voice: stripAudio(manifest.audio.voice),
-    },
-  };
+  const sources = collectManifestEntrySources(manifest)
+    .filter((entry) => normalizeAssetPath(entry.path) === target)
+    .map((entry) => entry.source);
+  return removeDanglingRefs(manifest, sources);
 }
 
 // ── 样式 ──
@@ -1005,6 +1291,113 @@ const cleanupButtonStyle: React.CSSProperties = {
   color: "var(--text-bright)",
   cursor: "pointer",
   flexShrink: 0,
+};
+
+const registryPanelStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+  padding: "var(--space-3) 14px",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-app)",
+};
+
+const registryPanelHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  flexWrap: "wrap",
+  gap: "var(--space-2)",
+};
+
+const registryPanelTitleStyle: React.CSSProperties = {
+  fontSize: "var(--text-base)",
+  fontWeight: 650,
+  color: "var(--text-primary)",
+};
+
+const registryPanelHintStyle: React.CSSProperties = {
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
+};
+
+const registryCardListStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+  maxHeight: 260,
+  overflowY: "auto",
+};
+
+const registryCardStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--bg-panel)",
+};
+
+const registryCardHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "var(--space-2)",
+};
+
+const registryIdStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  fontWeight: 650,
+  color: "var(--text-bright)",
+};
+
+const registryDeleteButtonStyle: React.CSSProperties = {
+  fontSize: "var(--text-xs)",
+  padding: "4px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-panel)",
+  color: "var(--status-error-text)",
+};
+
+const registryFieldsStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "var(--space-2)",
+};
+
+const registryFieldStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-1)",
+};
+
+const registryFieldLabelStyle: React.CSSProperties = {
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
+};
+
+const registryInputStyle: React.CSSProperties = {
+  height: 28,
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-inset)",
+  color: "var(--text-primary)",
+  padding: "0 var(--space-2)",
+  fontSize: "var(--text-sm)",
+};
+
+const registryCheckboxStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-2)",
+  fontSize: "var(--text-sm)",
+  color: "var(--text-secondary)",
+};
+
+const registryEmptyTextStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
 };
 
 const invalidBannerStyle: React.CSSProperties = {

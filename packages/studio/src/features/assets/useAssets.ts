@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { listAssets } from "../../lib/tauri";
-import type { AssetEntry, AssetReport, Manifest } from "../../lib/types";
+import type { AssetEntry, AssetKind, AssetReport, Manifest } from "../../lib/types";
 
 export interface AssetView {
   /** 磁盘上存在的资产（list_assets 返回） */
@@ -24,7 +24,7 @@ export interface AssetView {
 }
 
 export interface DanglingAsset {
-  kind: "background" | "character" | "bgm" | "sfx" | "voice";
+  kind: AssetKind;
   /** manifest 里的 id */
   id: string;
   /** 声明的相对路径 */
@@ -59,6 +59,37 @@ function collectDeclared(manifest: Manifest): DanglingAsset[] {
       out.push({ kind: sub, id, path, source: `audio.${sub}.${id}` });
     }
   });
+
+  for (const [id, asset] of Object.entries(manifest.cg ?? {})) {
+    out.push({ kind: "cg", id, path: asset.path, source: `cg.${id}` });
+    if (asset.thumbnail) {
+      out.push({ kind: "cg", id: `${id}/thumbnail`, path: asset.thumbnail, source: `cg.${id}.thumbnail` });
+    }
+  }
+
+  for (const [id, asset] of Object.entries(manifest.videos ?? {})) {
+    out.push({ kind: "video", id, path: asset.path, source: `videos.${id}` });
+    if (asset.poster) {
+      out.push({ kind: "video", id: `${id}/poster`, path: asset.poster, source: `videos.${id}.poster` });
+    }
+  }
+
+  for (const [id, font] of Object.entries(manifest.fonts ?? {})) {
+    out.push({ kind: "font", id, path: font.path, source: `fonts.${id}` });
+  }
+
+  for (const [id, skin] of Object.entries(manifest.uiSkins ?? {})) {
+    for (const [assetId, path] of Object.entries(skin.assets ?? {})) {
+      out.push({ kind: "ui", id: `${id}/${assetId}`, path, source: `uiSkins.${id}.assets.${assetId}` });
+    }
+  }
+
+  for (const [id, atlas] of Object.entries(manifest.animationAtlases ?? {})) {
+    out.push({ kind: "animation", id, path: atlas.image, source: `animationAtlases.${id}.image` });
+    if (atlas.json) {
+      out.push({ kind: "animation", id: `${id}/json`, path: atlas.json, source: `animationAtlases.${id}.json` });
+    }
+  }
 
   return out;
 }

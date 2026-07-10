@@ -352,16 +352,23 @@ Current resource registry:
 }
 ```
 
+Current supported registries include:
+
+- background,
+- character,
+- audio (`bgm` / `sfx` / `voice`),
+- CG,
+- video,
+- UI skin,
+- font,
+- animation atlas,
+- unlock registries for CG/music/replay/endings.
+
 Current gaps:
 
-- No CG registry.
-- No video registry.
-- No UI skin registry.
-- No font registry.
-- No animation atlas registry.
 - No Live2D/Spine model registry.
 - No shader/particle registry.
-- No asset tags, display names, thumbnails, or usage metadata.
+- No batch metadata editing, generated thumbnails, or asset-reference jump navigation.
 
 ### 5.4 `content/graph.json`
 
@@ -590,7 +597,7 @@ Assets workspace owns:
 - deleting asset files,
 - editing manifest entries,
 - character editor,
-- background/audio registration,
+- background/audio/CG/video/font/UI skin/animation atlas registration,
 - previews for image/audio assets,
 - asset report display.
 
@@ -601,11 +608,23 @@ Current asset kinds:
 - bgm,
 - sfx,
 - voice,
+- cg,
+- video,
+- font,
+- ui,
+- animation,
 - unknown.
 
 ### 8.5 Project Workspace
 
-Project workspace currently includes project-level settings such as fixed stage resolution.
+Project workspace includes project-level settings stored in `content/meta.json`:
+
+- project title,
+- default typing speed,
+- default auto-play interval,
+- chapter gap interval,
+- fixed stage resolution.
+
 Future project-level data should be added here when it is about project metadata or contracts,
 not about renderer-specific visual UI.
 

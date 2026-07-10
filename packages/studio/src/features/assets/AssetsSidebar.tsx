@@ -16,6 +16,11 @@ export const SECTIONS: { id: AssetSection; label: string }[] = [
   { id: "bgm", label: "BGM" },
   { id: "sfx", label: "音效" },
   { id: "voice", label: "语音" },
+  { id: "cg", label: "CG" },
+  { id: "video", label: "视频" },
+  { id: "font", label: "字体" },
+  { id: "ui", label: "UI Skin" },
+  { id: "animation", label: "动画图集" },
 ];
 
 interface AssetsSidebarProps {
@@ -28,7 +33,7 @@ export function AssetsSidebar({ active, onSelect }: AssetsSidebarProps) {
     <nav style={sidebarStyle} aria-label="资产分类">
       {SECTIONS.map((section, index) => {
         const isActive = section.id === active;
-        const showDivider = index === 1 || index === 3;
+        const showDivider = index === 1 || index === 3 || index === 6;
         return (
           <div key={section.id}>
             {showDivider && <div style={dividerStyle} />}

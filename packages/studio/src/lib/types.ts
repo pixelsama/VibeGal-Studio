@@ -158,6 +158,11 @@ export type AssetKind =
   | "bgm"
   | "sfx"
   | "voice"
+  | "cg"
+  | "video"
+  | "font"
+  | "ui"
+  | "animation"
   | "unknown";
 
 export interface AssetEntry {

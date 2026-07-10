@@ -31,6 +31,11 @@ const ASSET_FILTERS: Record<Exclude<AssetKind, "unknown">, { name: string; exten
   bgm: { name: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
   sfx: { name: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
   voice: { name: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
+  cg: { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"] },
+  video: { name: "Video", extensions: ["mp4", "webm", "mov", "mkv"] },
+  font: { name: "Fonts", extensions: ["ttf", "otf", "woff", "woff2"] },
+  ui: { name: "UI Assets", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "json", "css"] },
+  animation: { name: "Animation Atlases", extensions: ["png", "jpg", "jpeg", "webp", "json"] },
 };
 
 /**

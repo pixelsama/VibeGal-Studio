@@ -36,7 +36,7 @@ export function AssetsToolbar({
   disabled = false,
 }: AssetsToolbarProps) {
   const importLabel =
-    section === "overview" || section === "character"
+    section === "overview" || section === "character" || section === "unknown"
       ? null
       : `导入${sectionLabel(section)}`;
 
@@ -95,6 +95,16 @@ function sectionLabel(section: AssetSection): string {
       return "音效";
     case "voice":
       return "语音";
+    case "cg":
+      return "CG";
+    case "video":
+      return "视频";
+    case "font":
+      return "字体";
+    case "ui":
+      return "UI Skin";
+    case "animation":
+      return "动画图集";
     default:
       return "资源";
   }
