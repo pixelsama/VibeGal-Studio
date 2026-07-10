@@ -2,7 +2,9 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-当前没有仍在规划或开发中的 roadmap spec。
+当前仍在规划或开发中的 roadmap spec：
+
+- [Spec 13 — Default Renderer Player UX And Runtime Settings](./13-default-renderer-player-ux-and-runtime-settings.spec.md)
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
