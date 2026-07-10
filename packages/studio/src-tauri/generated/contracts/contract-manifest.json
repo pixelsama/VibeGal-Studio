@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "generatorVersion": 1,
+  "zodVersion": "4.4.3",
+  "sourceSha256": {
+    "src/schema.ts": "17c0ac18d9fdcd1e3caf434104f162835edfcfa9e436df8eabaf52b0277f0c47",
+    "src/diagnostics.ts": "a05bd821e37bc3269f33902b395c69efa22c1293e9e762416033c3c5d08e81c5",
+    "src/schemaExport.ts": "981bd65b0858e19814f7f033f0242bc7088e8dbf4fecc14c2fd0febb0981cf70",
+    "scripts/generate-contracts.ts": "db788f5d66deece6654794ae78f3190753c469826b9650762cb338c7c04d92b5",
+    "package.json": "49d42da14f943b68c16080b69241f2c2916acefff279125a9933f9cc3543b2aa"
+  },
+  "artifactSha256": {
+    "nodeFile.schema.json": "8378670f66bfc20f1ee983beb8927d7a87b1a0ea232a9df38dfe76171d28753e",
+    "graph.schema.json": "8a593237d24a4510930bc41c9b3ffc28fe991c8a9170e974d46f725703a9ae9a",
+    "manifest.schema.json": "a96e46e82aa581597b372806f2d27522fe5069883c075552826bf080d91f25b7",
+    "meta.schema.json": "04b94a6153bc11bb010b483cbf209fb89cef979bc94b014d3a471ad0610b8ca5",
+    "diagnostics.json": "d24cd17a33cdeb3af8ee4cd92e9016139786d6d48b4863dda12e88b4e72012b7"
+  }
+}

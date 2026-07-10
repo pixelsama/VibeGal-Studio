@@ -17,9 +17,10 @@ The core product idea is:
 VibeGal-Studio = project IDE + data contract editor + renderer preview host + validation/export tool
 ```
 
-The project is intentionally split into three responsibilities:
+The project is intentionally split into four responsibilities:
 
-- **Engine**: owns stable schemas, pure interpretation, playback state, graph-aware routing, and low-level runtime contracts.
+- **Contracts**: owns project-content Zod schemas, generated JSON Schema, stable diagnostics, and semantic validation metadata.
+- **Engine**: owns pure interpretation, playback state, graph-aware routing, renderer/runtime contracts, and semantic validation that consumes `@vibegal/contracts`.
 - **Studio editor**: owns project/file operations, graph editing, asset management, validation reports, preview hosting, renderer discovery, hot reload, and safe persistence.
 - **Project renderer**: owns how the actual game looks and feels: dialogue box, menus, title screen, save/load UI, transitions, advanced animation, layout, and other presentation choices.
 
@@ -108,6 +109,13 @@ This is a pnpm workspace with a Tauri desktop app.
 
 ```text
 packages/
+  contracts/
+    fixtures/
+    scripts/generate-contracts.ts
+    src/
+      schema.ts
+      diagnostics.ts
+      validation.ts
   engine/
     src/
       schema.ts
@@ -136,7 +144,17 @@ packages/
         common/
       templates/default-renderer/
     src-tauri/
+      generated/contracts/
       src/backend/
+        contracts/
+        fs/
+        validation/
+        project/
+        mutation/
+        renderer/
+        watcher/
+        commands/
+        tauri_app.rs
       src/bin/cli.rs
 docs/
   renderer-contract.md
@@ -150,7 +168,8 @@ examples/
 
 ### Main Packages
 
-- `@vibegal/engine`: TypeScript package containing schemas, runtime state, interpreters, players, validation, renderer contract, and Scenario DSL parsing.
+- `@vibegal/contracts`: canonical project-content schemas, diagnostics, validation policies, generated artifacts, and cross-language fixtures.
+- `@vibegal/engine`: TypeScript runtime state, interpreters, players, semantic validation, renderer contract, and Scenario DSL parsing. Its schema exports forward the canonical contracts for compatibility.
 - `@vibegal/studio`: React + Tauri editor application.
 - `packages/studio/src-tauri`: Rust backend for filesystem access, project initialization, path safety, file watching, renderer file reads, asset operations, and CLI support.
 
@@ -158,7 +177,8 @@ examples/
 
 ### 4.1 Instruction Schema
 
-Node files contain `Instruction[]`. The canonical schema lives in `packages/engine/src/schema.ts`.
+Node files contain `Instruction[]`. The canonical schema lives in `packages/contracts/src/schema.ts`.
+`packages/engine/src/schema.ts` is a compatibility forwarding layer, not a second schema owner.
 
 Current instruction types:
 
@@ -614,13 +634,26 @@ The Rust backend owns:
 - path traversal defense,
 - revision checks.
 
+The backend uses real Rust module boundaries rather than textual `include!` composition:
+
+- `contracts` embeds generated product schemas and executes metadata-driven validation;
+- `fs` owns `ProjectRoot` / `ContentRoot`, path capabilities, revisions, atomic writes, and trash;
+- `validation` is pure over data supplied by callers;
+- `project` owns loading, graph projection, initialization, templates, and asset scanning;
+- `mutation`, `renderer`, and `watcher` expose narrow domain services;
+- `commands` contains the 26 stable Tauri adapters, while `tauri_app` owns registration and app wiring.
+
 ### 9.2 Path Safety
 
 All filesystem operations must centralize path validation.
 
-Important helpers:
+Important capabilities and helpers:
 
-- `canonical_project_root`
+- `ProjectRoot::open`
+- `ProjectRoot::content_root`
+- `ContentRoot::read_control_json`
+- `ContentRoot::resolve_existing_file`
+- `ContentRoot::resolve_write_target`
 - `validate_plain_name`
 - `safe_relative_path`
 - `resolve_relative_under`
@@ -672,16 +705,26 @@ The CLI currently supports:
 
 ```text
 vibegal-cli validate <project-path> --format json|text
+vibegal-cli renderer-check <project-path> --renderer <id> --format json|text
+vibegal-cli build <project-path> --target web --out <dir> --format json|text
+vibegal-cli smoke <dist-dir> --target web --format json|text
 ```
 
 It opens the project through the same backend loading/validation path and returns machine-readable
 issues. This is the key bridge for external AI agents and CI-like checks.
 
-Current gap: there is no `build`, `export`, or `package` command for playable games yet.
+`validate` is self-contained and does not require Node. Web `build` uses the packaged exporter and
+currently requires a system Node runtime (or `VIBEGAL_NODE`); `smoke` performs browser-level behavior checks.
 
 ## 10. Validation Model
 
 Validation is layered:
+
+### Shared Contract Validation
+
+`@vibegal/contracts` owns the four input schemas, stable diagnostic codes, structural policies,
+instruction reference metadata, and canonical shared fixtures. Rust validates the generated,
+build-time-verified JSON Schema bytes embedded in the CLI/app; it never trusts project-local schema copies.
 
 ### Engine Validation
 
@@ -969,8 +1012,8 @@ Good expert guidance should answer:
 VibeGal-Studio is a graph-first, data-driven galgame editor built as a React/Tauri monorepo. Projects are
 plain directories with `gal.project.json`, `content/graph.json`, `content/nodes/*.json`,
 `content/manifest.json`, `content/meta.json`, and project-local React renderers under `renderers/`.
-The engine owns schemas, pure instruction interpretation, graph-aware playback, validation, and a
-semantic `NovelState`; the Tauri backend owns safe filesystem access, hot reload, validation reports,
+The contracts package owns project-content schemas and diagnostic policy; the engine owns pure instruction
+interpretation, graph-aware playback, semantic validation, and a semantic `NovelState`; the Tauri backend owns safe filesystem access, hot reload, validation reports,
 renderer file loading, and CLI validation; the React editor owns graph/script/assets/project tools and
 preview hosting. The product deliberately forbids in-app AI and should support external agents through
 stable files, schemas, validation, and hot reload. Future work should strengthen the editor as a

@@ -1,28 +1,6 @@
 const CLI_COMMAND_NAME: &str = "vibegal-cli";
 
-fn cli_executable_name() -> &'static str {
-    if cfg!(windows) {
-        "vibegal-cli.exe"
-    } else {
-        CLI_COMMAND_NAME
-    }
-}
-
-fn cli_sidecar_target_triple() -> Option<&'static str> {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("aarch64-apple-darwin")
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some("x86_64-apple-darwin")
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("x86_64-unknown-linux-gnu")
-    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Some("x86_64-pc-windows-msvc")
-    } else {
-        None
-    }
-}
-
-fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
+pub(crate) fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if cfg!(target_os = "macos") {
         paths.push(PathBuf::from("/usr/local/bin").join(CLI_COMMAND_NAME));
@@ -39,76 +17,6 @@ fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
         );
     }
     paths
-}
-
-fn cli_binary_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Ok(path) = env::var("VIBEGAL_CLI_PATH") {
-        candidates.push(PathBuf::from(path));
-    }
-
-    if let Ok(exe) = env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            candidates.push(parent.join(cli_executable_name()));
-            if let Some(triple) = cli_sidecar_target_triple() {
-                candidates.push(parent.join(format!("{}-{}", CLI_COMMAND_NAME, triple)));
-                if cfg!(windows) {
-                    candidates.push(parent.join(format!("{}-{}.exe", CLI_COMMAND_NAME, triple)));
-                }
-            }
-        }
-    }
-
-    if let Ok(resources) = app_handle.path().resource_dir() {
-        candidates.push(resources.join(cli_executable_name()));
-        candidates.push(resources.join("bin").join(cli_executable_name()));
-        if let Some(triple) = cli_sidecar_target_triple() {
-            candidates.push(resources.join(format!("{}-{}", CLI_COMMAND_NAME, triple)));
-            if cfg!(windows) {
-                candidates.push(resources.join(format!("{}-{}.exe", CLI_COMMAND_NAME, triple)));
-            }
-        }
-    }
-
-    candidates
-}
-
-fn resolve_cli_binary_path(app_handle: &tauri::AppHandle) -> PathBuf {
-    let candidates = cli_binary_path_candidates(app_handle);
-    candidates
-        .iter()
-        .find(|path| path.is_file())
-        .cloned()
-        .or_else(|| candidates.into_iter().next())
-        .unwrap_or_else(|| PathBuf::from(cli_executable_name()))
-}
-
-fn cli_launcher_path_from_resource_dir(resource_dir: &Path) -> PathBuf {
-    resource_dir.join("bin").join(cli_executable_name())
-}
-
-fn cli_launcher_path_candidates(app_handle: &tauri::AppHandle) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Ok(path) = env::var("VIBEGAL_CLI_LAUNCHER_PATH") {
-        candidates.push(PathBuf::from(path));
-    }
-
-    if let Ok(resources) = app_handle.path().resource_dir() {
-        candidates.push(cli_launcher_path_from_resource_dir(&resources));
-        candidates.push(resources.join("resources/bin").join(cli_executable_name()));
-    }
-
-    candidates
-}
-
-fn resolve_cli_launcher_path(app_handle: &tauri::AppHandle) -> PathBuf {
-    let candidates = cli_launcher_path_candidates(app_handle);
-    candidates
-        .iter()
-        .find(|path| path.is_file())
-        .cloned()
-        .or_else(|| candidates.into_iter().next())
-        .unwrap_or_else(|| PathBuf::from(cli_executable_name()))
 }
 
 fn resolve_symlink_target(link_path: &Path, target: PathBuf) -> PathBuf {
@@ -150,7 +58,7 @@ fn path_env_contains_dir(path_env: Option<&str>, dir: &Path) -> bool {
     env::split_paths(raw_path).any(|candidate| paths_point_to_same_file(&candidate, dir))
 }
 
-fn cli_tool_status_inner(
+pub(crate) fn cli_tool_status_inner(
     launcher_path: &Path,
     sidecar_path: &Path,
     candidate_link_paths: &[PathBuf],
@@ -213,7 +121,7 @@ fn cli_tool_status_inner(
 }
 
 #[cfg(unix)]
-fn create_cli_tool_symlink(cli_path: &Path, link_path: &Path) -> Result<(), String> {
+pub(crate) fn create_cli_tool_symlink(cli_path: &Path, link_path: &Path) -> Result<(), String> {
     match std::os::unix::fs::symlink(cli_path, link_path) {
         Ok(()) => Ok(()),
         Err(error) => {
@@ -260,7 +168,7 @@ fn create_cli_tool_symlink_with_admin_prompt(
     }
 }
 
-fn admin_symlink_script(cli_path: &Path, link_path: &Path) -> Result<String, String> {
+pub(crate) fn admin_symlink_script(cli_path: &Path, link_path: &Path) -> Result<String, String> {
     let Some(parent) = link_path.parent() else {
         return Err(format!("命令链接路径没有父目录: {}", link_path.display()));
     };
@@ -280,7 +188,7 @@ fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-fn applescript_string_literal(value: &str) -> String {
+pub(crate) fn applescript_string_literal(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     escaped.push('"');
     for ch in value.chars() {
@@ -295,11 +203,11 @@ fn applescript_string_literal(value: &str) -> String {
 }
 
 #[cfg(not(unix))]
-fn create_cli_tool_symlink(_cli_path: &Path, _link_path: &Path) -> Result<(), String> {
+pub(crate) fn create_cli_tool_symlink(_cli_path: &Path, _link_path: &Path) -> Result<(), String> {
     Err("当前平台暂不支持从应用内安装命令行工具".to_string())
 }
 
-fn install_cli_tool_inner(
+pub(crate) fn install_cli_tool_inner(
     launcher_path: &Path,
     sidecar_path: &Path,
     candidate_link_paths: &[PathBuf],
@@ -387,7 +295,7 @@ fn install_cli_tool_inner(
     Err(fallback_error.unwrap_or_else(|| "安装命令行工具失败".to_string()))
 }
 
-fn uninstall_cli_tool_inner(
+pub(crate) fn uninstall_cli_tool_inner(
     launcher_path: &Path,
     sidecar_path: &Path,
     candidate_link_paths: &[PathBuf],
@@ -404,45 +312,9 @@ fn uninstall_cli_tool_inner(
     cli_tool_status_inner(launcher_path, sidecar_path, candidate_link_paths, path_env)
 }
 
-#[tauri::command]
-fn cli_tool_status(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let launcher_path = resolve_cli_launcher_path(&app_handle);
-    let sidecar_path = resolve_cli_binary_path(&app_handle);
-    let link_paths = cli_tool_candidate_link_paths();
-    let path_env = env::var("PATH").ok();
-    cli_tool_status_inner(
-        &launcher_path,
-        &sidecar_path,
-        &link_paths,
-        path_env.as_deref(),
-    )
-}
-
-#[tauri::command]
-fn install_cli_tool(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let launcher_path = resolve_cli_launcher_path(&app_handle);
-    let sidecar_path = resolve_cli_binary_path(&app_handle);
-    let link_paths = cli_tool_candidate_link_paths();
-    let path_env = env::var("PATH").ok();
-    install_cli_tool_inner(
-        &launcher_path,
-        &sidecar_path,
-        &link_paths,
-        path_env.as_deref(),
-    )
-}
-
-#[tauri::command]
-fn uninstall_cli_tool(app_handle: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let launcher_path = resolve_cli_launcher_path(&app_handle);
-    let sidecar_path = resolve_cli_binary_path(&app_handle);
-    let link_paths = cli_tool_candidate_link_paths();
-    let path_env = env::var("PATH").ok();
-    uninstall_cli_tool_inner(
-        &launcher_path,
-        &sidecar_path,
-        &link_paths,
-        path_env.as_deref(),
-    )
-}
-
+use super::model::CliToolStatus;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;

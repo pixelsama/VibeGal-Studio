@@ -1,6 +1,30 @@
+use std::path::{Path, PathBuf};
+
+#[path = "build_support/contracts.rs"]
+mod contract_artifacts;
+
+use contract_artifacts::{verify_contracts, CONTRACT_SOURCES};
+
 fn main() {
+    verify_embedded_contracts();
     prepare_cli_sidecar_placeholder();
     tauri_build::build()
+}
+
+/// The Rust build never invokes Node or regenerates contracts. Generated
+/// artifacts are tracked input and must prove their provenance through hashes.
+fn verify_embedded_contracts() {
+    let generated = Path::new("generated/contracts");
+    let contracts = Path::new("../../contracts");
+    println!("cargo:rerun-if-changed={}", generated.display());
+    for source in CONTRACT_SOURCES {
+        println!(
+            "cargo:rerun-if-changed={}",
+            contracts.join(source).display()
+        );
+    }
+
+    verify_contracts(generated, contracts).unwrap_or_else(|error| panic!("{error}"));
 }
 
 fn prepare_cli_sidecar_placeholder() {
@@ -13,21 +37,14 @@ fn prepare_cli_sidecar_placeholder() {
     } else {
         ""
     };
-    let sidecar =
-        std::path::PathBuf::from("binaries").join(format!("vibegal-cli-{target}{exe_suffix}"));
-
+    let sidecar = PathBuf::from("binaries").join(format!("vibegal-cli-{target}{exe_suffix}"));
     if sidecar.exists() {
         return;
     }
     if let Some(parent) = sidecar.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-
-    let _ = std::fs::write(
-        &sidecar,
-        b"#!/bin/sh\necho 'vibegal-cli sidecar placeholder; run tauri build to bundle the release CLI.' >&2\nexit 1\n",
-    );
-
+    let _ = std::fs::write(&sidecar, b"#!/bin/sh\necho 'vibegal-cli sidecar placeholder; run tauri build to bundle the release CLI.' >&2\nexit 1\n");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

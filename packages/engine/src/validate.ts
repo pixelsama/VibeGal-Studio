@@ -8,13 +8,24 @@ import {
   ManifestSchema,
   MetaSchema,
 } from "./schema";
+import {
+  contractDiagnostics,
+  instructionPolicies,
+  validateContractInput,
+  type DiagnosticCode,
+  type DiagnosticSource,
+  type InstructionPolicy,
+  type InstructionRule,
+} from "@vibegal/contracts";
 import type { Manifest, Meta, Chapter } from "./types";
 
 export interface ValidationIssue {
   level: "error" | "warn";
-  code?: string;
+  code?: DiagnosticCode;
+  source?: DiagnosticSource;
   file: string;
   index?: number; // 指令序号（chapter 校验时）
+  jsonPath?: string;
   message: string;
 }
 
@@ -29,49 +40,45 @@ export class ContentValidationError extends Error {
 
 /** 校验单个 chapter 的指令结构（不检查 id 引用，那一步在 validateReferences 里做） */
 export function validateChapter(raw: unknown, file: string): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
+  const structuralIssues = contractIssues("nodeFile", raw, file);
+  if (structuralIssues.length > 0) return structuralIssues;
+
   const result = ChapterSchema.safeParse(raw);
-  if (!result.success) {
-    for (const err of result.error.issues) {
-      // zod 的 path 形如 [3, "id"]，取首段作为指令序号
-      const idx = typeof err.path[0] === "number" ? err.path[0] : undefined;
-      issues.push({ level: "error", file, index: idx, message: err.message });
-    }
-    return issues;
-  }
-  issues.push(...validateInstructionIdentity(result.data, file));
-  return issues;
+  if (!result.success) throw new Error("contracts normalizer accepted a chapter rejected by ChapterSchema");
+  return validateInstructionIdentity(result.data, file);
 }
 
-const STORY_POINT_INSTRUCTION_TYPES = new Set(["say", "narrate", "wait", "pause"]);
+function instructionPolicy(instruction: { t: string }): InstructionPolicy | undefined {
+  return instructionPolicies[instruction.t as keyof typeof instructionPolicies];
+}
 
 function validateInstructionIdentity(chapter: Chapter, file: string): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const firstIndexById = new Map<string, number>();
 
   chapter.forEach((instr, index) => {
-    if (!STORY_POINT_INSTRUCTION_TYPES.has(instr.t)) return;
-    const instructionId = "id" in instr ? instr.id : undefined;
-    if (!instructionId) {
-      issues.push({
-        level: "warn",
-        code: "instruction_id_missing",
+    if (!instructionPolicy(instr)?.storyPoint) return;
+    const instructionId = (instr as Record<string, unknown>).id;
+    if (typeof instructionId !== "string" || !instructionId) {
+      issues.push(productIssue(
+        "instruction_id_missing",
         file,
+        `${instr.t} 指令缺少稳定 id；存档、已读和回滚将无法稳定定位该停点。`,
         index,
-        message: `${instr.t} 指令缺少稳定 id；存档、已读和回滚将无法稳定定位该停点。`,
-      });
+        `$[${index}].id`,
+      ));
       return;
     }
 
     const firstIndex = firstIndexById.get(instructionId);
     if (firstIndex != null) {
-      issues.push({
-        level: "error",
-        code: "instruction_id_duplicate",
+      issues.push(productIssue(
+        "instruction_id_duplicate",
         file,
+        `同一节点内重复的停点 instruction id: "${instructionId}"（首次出现于 #${firstIndex}）。`,
         index,
-        message: `同一节点内重复的停点 instruction id: "${instructionId}"（首次出现于 #${firstIndex}）。`,
-      });
+        `$[${index}].id`,
+      ));
       return;
     }
     firstIndexById.set(instructionId, index);
@@ -82,20 +89,12 @@ function validateInstructionIdentity(chapter: Chapter, file: string): Validation
 
 /** 校验 manifest 结构 */
 export function validateManifest(raw: unknown, file = "manifest.json"): ValidationIssue[] {
-  const result = ManifestSchema.safeParse(raw);
-  if (!result.success) {
-    return result.error.issues.map((err) => ({ level: "error" as const, file, message: err.message }));
-  }
-  return [];
+  return contractIssues("manifest", raw, file);
 }
 
 /** 校验 meta 结构 */
 export function validateMeta(raw: unknown, file = "meta.json"): ValidationIssue[] {
-  const result = MetaSchema.safeParse(raw);
-  if (!result.success) {
-    return result.error.issues.map((err) => ({ level: "error" as const, file, message: err.message }));
-  }
-  return [];
+  return contractIssues("meta", raw, file);
 }
 
 /**
@@ -109,56 +108,118 @@ export function validateReferences(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const parsed = ChapterSchema.safeParse(chapter);
-  if (!parsed.success) return [{ level: "error", file, message: "剧本结构非法，无法做引用检查" }];
+  if (!parsed.success) return contractIssues("nodeFile", chapter, file);
 
-  parsed.data.forEach((instr, index) => {
-    switch (instr.t) {
-      case "bg":
-        if (!(instr.id in manifest.backgrounds))
-          issues.push({ level: "error", code: "missing_background_ref", file, index, message: `引用了不存在的 background id: "${instr.id}"` });
-        break;
-      case "bgm":
-        if (!(instr.id in manifest.audio.bgm))
-          issues.push({ level: "error", code: "missing_bgm_ref", file, index, message: `引用了不存在的 bgm id: "${instr.id}"` });
-        break;
-      case "sfx":
-        if (!(instr.id in manifest.audio.sfx))
-          issues.push({ level: "error", code: "missing_sfx_ref", file, index, message: `引用了不存在的 sfx id: "${instr.id}"` });
-        break;
-      case "voice":
-        if (!(instr.id in manifest.audio.voice))
-          issues.push({ level: "error", code: "missing_voice_ref", file, index, message: `引用了不存在的 voice id: "${instr.id}"` });
-        break;
-      case "char":
-      case "say": {
-        const charId = instr.t === "char" ? instr.id : instr.who;
-        const char = manifest.characters[charId];
-        if (!char) {
-          issues.push({ level: "error", code: "missing_character_ref", file, index, message: `引用了不存在的 character id: "${charId}"` });
-          break;
-        }
-        if (!(instr.expr in char.sprites))
-          issues.push({ level: "error", code: "missing_character_expr", file, index, message: `角色 "${charId}" 没有表情 "${instr.expr}"（可用: ${Object.keys(char.sprites).join(", ")}）` });
-        break;
-      }
-      case "unlock": {
-        const table = manifest.unlocks[instr.kind];
-        if (!(instr.id in table)) {
-          issues.push({ level: "error", code: "missing_unlock_ref", file, index, message: `引用了不存在的 unlock id: "${instr.id}"` });
-        }
-        break;
-      }
-      case "showCg":
-        if (!(instr.id in manifest.cg))
-          issues.push({ level: "error", code: "missing_cg_ref", file, index, message: `引用了不存在的 cg id: "${instr.id}"` });
-        break;
-      case "playVideo":
-        if (!(instr.id in manifest.videos))
-          issues.push({ level: "error", code: "missing_video_ref", file, index, message: `引用了不存在的 video id: "${instr.id}"` });
-        break;
+  parsed.data.forEach((instruction, index) => {
+    const fields = instruction as Record<string, unknown>;
+    for (const rule of instructionPolicy(instruction)?.references ?? []) {
+      validateReferenceRule(rule, fields, manifest, file, index, issues);
     }
   });
   return issues;
+}
+
+function validateReferenceRule(
+  rule: InstructionRule,
+  fields: Record<string, unknown>,
+  manifest: Manifest,
+  file: string,
+  index: number,
+  issues: ValidationIssue[],
+) {
+  if (rule.kind === "registry") {
+    const id = fields[rule.idField];
+    const registry = recordAtPath(manifest, rule.registryPath);
+    if (typeof id === "string" && !(id in registry)) {
+      issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `$[${index}].${rule.idField}`));
+    }
+    return;
+  }
+
+  if (rule.kind === "characterExpression") {
+    const characterId = fields[rule.characterIdField];
+    const expression = fields[rule.expressionField] ?? rule.defaultExpression;
+    if (typeof characterId !== "string") return;
+    const character = manifest.characters[characterId];
+    if (!character) {
+      issues.push(productIssue("missing_character_ref", file, `引用了不存在的 character id: "${characterId}"`, index, `$[${index}].${rule.characterIdField}`));
+      return;
+    }
+    if (typeof expression === "string" && !(expression in character.sprites)) {
+      issues.push(productIssue("missing_character_expr", file, `角色 "${characterId}" 没有表情 "${expression}"（可用: ${Object.keys(character.sprites).join(", ")}）`, index, `$[${index}].${rule.expressionField}`));
+    }
+    return;
+  }
+
+  if (rule.kind === "registryByDiscriminator") {
+    const discriminator = fields[rule.discriminatorField];
+    const id = fields[rule.idField];
+    const branch = typeof discriminator === "string" ? rule.registryByValue[discriminator] : undefined;
+    if (!branch || typeof id !== "string") return;
+    const registry = recordAtPath(manifest, [...rule.registryPath, ...branch]);
+    if (!(id in registry)) {
+      issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `$[${index}].${rule.idField}`));
+    }
+    return;
+  }
+
+  // Story-point is consumed by validateInstructionIdentity. Keep this branch
+  // explicit so new metadata rule kinds cannot be silently mistaken for refs.
+  if (rule.kind !== "storyPoint") {
+    const exhaustive: never = rule;
+    throw new Error(`未知 contracts 引用规则: ${String(exhaustive)}`);
+  }
+}
+
+function recordAtPath(value: unknown, path: readonly string[]): Record<string, unknown> {
+  let current: unknown = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return {};
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current && typeof current === "object" && !Array.isArray(current)
+    ? current as Record<string, unknown>
+    : {};
+}
+
+function contractIssues(
+  schema: "nodeFile" | "manifest" | "meta",
+  raw: unknown,
+  file: string,
+): ValidationIssue[] {
+  return validateContractInput(schema, raw).map((issue) => ({
+    level: issue.severity,
+    code: issue.code,
+    source: issue.source,
+    file,
+    index: instructionIndex(issue.jsonPath),
+    jsonPath: issue.jsonPath,
+    message: issue.message,
+  }));
+}
+
+function productIssue(
+  code: DiagnosticCode,
+  file: string,
+  message: string,
+  index?: number,
+  jsonPath?: string,
+): ValidationIssue {
+  const definition = contractDiagnostics[code];
+  return {
+    level: definition.severity,
+    code,
+    source: definition.source,
+    file,
+    index,
+    jsonPath,
+    message,
+  };
+}
+
+function instructionIndex(jsonPath: string): number | undefined {
+  const match = /^\$\[(\d+)]/.exec(jsonPath);
+  return match ? Number(match[1]) : undefined;
 }
 
 /** 一站式：跑完结构校验，再对每个 chapter 跑引用校验。返回值含解析后的 chapters（已应用默认值）。 */

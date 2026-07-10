@@ -15,3 +15,4 @@
 - [Spec 09 — Unlock Media Replay Runtime](./09-unlock-media-replay-runtime.spec.md)
 - [Spec 10 — Renderer Diagnostics And Contract Tooling](./10-renderer-diagnostics-and-contract-tooling.spec.md)
 - [Spec 11 — Export Hardening And Desktop Prep](./11-export-hardening-and-desktop-prep.spec.md)
+- [Spec 12 — Contract-Driven Rust Validation And Backend Modularization](./12-contract-driven-rust-validation-and-backend-modularization.spec.md)

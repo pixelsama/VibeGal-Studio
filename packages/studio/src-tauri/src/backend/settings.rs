@@ -1,27 +1,14 @@
-fn default_renderer_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app_handle
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("获取 resource_dir 失败: {}", e))?
-        .join("resources/default-renderer"))
-}
+use super::fs::atomic_write_text;
+use super::model::AppSettings;
+use std::fs;
+use std::path::Path;
 
 // ──────────────────────────────────────────────
 // 应用级设置（非项目级），存到 app config 目录的 settings.json
 // ──────────────────────────────────────────────
 
-fn settings_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("获取 app_config_dir 失败: {}", e))?
-        .join("settings.json"))
-}
-
 /// 加载应用设置。文件不存在时返回默认值（首次运行，默认跟随系统）。
-#[tauri::command]
-fn load_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
-    let path = settings_path(&app_handle)?;
+pub(crate) fn load(path: &Path) -> Result<AppSettings, String> {
     if !path.exists() {
         return Ok(AppSettings::default());
     }
@@ -32,9 +19,7 @@ fn load_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String
 }
 
 /// 保存应用设置。
-#[tauri::command]
-fn save_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
-    let path = settings_path(&app_handle)?;
+pub(crate) fn save(path: &Path, settings: AppSettings) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建设置目录失败: {}", e))?;
     }

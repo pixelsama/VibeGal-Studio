@@ -2546,7 +2546,7 @@ mod tests {
     #[test]
     fn validate_cli_matches_shared_node_contract_fixture() {
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/src/__fixtures__/node-validation-contract.json");
+            .join("../../contracts/fixtures/node-semantic-contract.json");
         let fixture: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
         let dir = unique_temp_dir("cli-node-contract");
@@ -2573,29 +2573,308 @@ mod tests {
             .iter()
             .filter(|issue| issue.source == "node")
             .map(|issue| {
-                let json_path = issue.json_path.as_deref().unwrap();
-                let index = json_path
-                    .strip_prefix("$[")
-                    .and_then(|path| path.split_once(']'))
-                    .and_then(|(index, _)| index.parse::<usize>().ok())
-                    .unwrap();
                 serde_json::json!({
                     "code": issue.code,
                     "severity": match issue.severity {
                         app_lib::GraphIssueSeverity::Error => "error",
                         app_lib::GraphIssueSeverity::Warn => "warn",
                     },
-                    "index": index,
+                    "source": issue.source,
+                    "jsonPath": issue.json_path,
                 })
             })
             .collect::<Vec<_>>();
-        actual.sort_by_key(|issue| issue["index"].as_u64().unwrap());
+        actual.sort_by_key(|issue| format!("{}\0{}", issue["jsonPath"], issue["code"]));
+        let mut expected = fixture["expectedIssues"].as_array().unwrap().clone();
+        expected.sort_by_key(|issue| format!("{}\0{}", issue["jsonPath"], issue["code"]));
+
+        assert_eq!(actual, expected);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_cli_returns_one_for_contract_invalid_graph() {
+        let dir = unique_temp_dir("cli-invalid-graph-structure");
+        make_project(&dir, Some(r#"{"version":1,"nodes":[],"edges":[]}"#));
+
+        let code = run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Json);
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let issue = project
+            .project_report
+            .unwrap()
+            .project_issues
+            .into_iter()
+            .find(|issue| issue.code == "graph_invalid_structure")
+            .expect("invalid graph must remain a structured project issue");
+
+        assert_eq!(code, 1);
+        assert_eq!(issue.severity, app_lib::GraphIssueSeverity::Error);
+        assert_eq!(issue.source, "graph");
+        assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+        assert_eq!(issue.json_path.as_deref(), Some("$.entryNodeId"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn validate_cli_matches_shared_structural_contract_corpus() {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../contracts/fixtures/validation-contract.json");
+        let corpus: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
+        let mut structural_codes = corpus["nodeCases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(corpus["schemaCases"].as_array().unwrap())
+            .flat_map(|case| case["issues"].as_array().unwrap())
+            .map(|issue| issue["code"].as_str().unwrap().to_string())
+            .collect::<std::collections::BTreeSet<_>>();
+        structural_codes.insert(
+            corpus["limitCase"]["repeatedIssue"]["code"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+        structural_codes.insert(
+            corpus["limitCase"]["truncationIssue"]["code"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+
+        for case in corpus["nodeCases"].as_array().unwrap() {
+            let dir = unique_temp_dir(case["id"].as_str().unwrap());
+            make_project(
+                &dir,
+                Some(
+                    r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","file":"nodes/a.json"}],"edges":[]}"#,
+                ),
+            );
+            write_text(
+                &dir.join("content/nodes/a.json"),
+                &serde_json::to_string(&case["input"]).unwrap(),
+            );
+
+            assert_cli_contract_case(&dir, case, &structural_codes);
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        for case in corpus["schemaCases"].as_array().unwrap() {
+            let dir = unique_temp_dir(case["id"].as_str().unwrap());
+            make_project(
+                &dir,
+                Some(
+                    r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","file":"nodes/a.json"}],"edges":[]}"#,
+                ),
+            );
+            write_text(&dir.join("content/nodes/a.json"), "[]");
+            let rel_path = match case["schema"].as_str().unwrap() {
+                "graph" => "content/graph.json",
+                "manifest" => "content/manifest.json",
+                "meta" => "content/meta.json",
+                schema => panic!("unsupported CLI corpus schema: {schema}"),
+            };
+            write_text(
+                &dir.join(rel_path),
+                &serde_json::to_string(&case["input"]).unwrap(),
+            );
+
+            assert_cli_contract_case(&dir, case, &structural_codes);
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        let limit = &corpus["limitCase"];
+        let count = limit["count"].as_u64().unwrap() as usize;
+        let retained = limit["retained"].as_u64().unwrap() as usize;
+        let input = serde_json::Value::Array((0..count).map(|_| serde_json::json!({})).collect());
+        let repeated = &limit["repeatedIssue"];
+        let mut expected = (0..count)
+            .map(|index| {
+                serde_json::json!({
+                    "code": repeated["code"],
+                    "severity": repeated["severity"],
+                    "source": repeated["source"],
+                    "jsonPath": repeated["jsonPathTemplate"]
+                        .as_str()
+                        .unwrap()
+                        .replace("{index}", &index.to_string()),
+                })
+            })
+            .collect::<Vec<_>>();
+        expected.sort_by_key(|issue| format!("{}\0{}", issue["jsonPath"], issue["code"]));
+        expected.truncate(retained);
+        expected.push(limit["truncationIssue"].clone());
+        expected.sort_by_key(|issue| format!("{}\0{}", issue["jsonPath"], issue["code"]));
+        let case = serde_json::json!({
+            "id": limit["id"],
+            "input": input,
+            "issues": expected,
+        });
+        let dir = unique_temp_dir(limit["id"].as_str().unwrap());
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","file":"nodes/a.json"}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            &serde_json::to_string(&case["input"]).unwrap(),
+        );
+        assert_cli_contract_case(&dir, &case, &structural_codes);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cli_open_uses_shared_defaults_without_rewriting_raw_files() {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../contracts/fixtures/default-projection-contract.json");
+        let fixture: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
+        let find_case = |schema: &str| {
+            fixture["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|case| case["schema"] == schema)
+                .unwrap()
+        };
+        let dir = unique_temp_dir("cli-default-projection");
+        make_project(
+            &dir,
+            Some(&serde_json::to_string(&find_case("graph")["input"]).unwrap()),
+        );
+        let mut node_input = find_case("nodeFile")["input"].as_array().unwrap().clone();
+        node_input.retain(|instruction| instruction["t"] != "bgm");
+        write_text(
+            &dir.join("content/nodes/start.json"),
+            &serde_json::to_string(&node_input).unwrap(),
+        );
+        write_text(
+            &dir.join("content/manifest.json"),
+            &serde_json::to_string(&find_case("manifest")["input"]).unwrap(),
+        );
+        write_text(
+            &dir.join("content/meta.json"),
+            &serde_json::to_string(&find_case("meta")["input"]).unwrap(),
+        );
+        let watched = [
+            "content/graph.json",
+            "content/nodes/start.json",
+            "content/manifest.json",
+            "content/meta.json",
+        ];
+        let before = watched
+            .iter()
+            .map(|path| (*path, std::fs::read(dir.join(path)).unwrap()))
+            .collect::<Vec<_>>();
+
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let graph = serde_json::to_value(project.graph.unwrap()).unwrap();
+        assert_eq!(graph["version"], 1);
+        assert_eq!(
+            graph["nodes"][0]["position"],
+            serde_json::json!({ "x": 0.0, "y": 0.0 })
+        );
+        assert_eq!(graph["edges"][0]["mode"], "linear");
+        assert_eq!(graph["edges"][0]["label"], serde_json::Value::Null);
+        assert_eq!(project.content.manifest, find_case("manifest")["input"]);
+        assert_eq!(project.content.meta, find_case("meta")["input"]);
+        assert!(project
+            .project_report
+            .unwrap()
+            .project_issues
+            .iter()
+            .all(|issue| !matches!(
+                issue.code.as_str(),
+                "graph_invalid_structure"
+                    | "instruction_invalid_field"
+                    | "manifest_invalid_structure"
+                    | "meta_invalid_structure"
+            )));
+        for (path, bytes) in before {
+            assert_eq!(std::fs::read(dir.join(path)).unwrap(), bytes, "{path}");
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn validate_cli_ignores_tampered_project_local_schemas() {
+        let dir = unique_temp_dir("cli-tampered-project-schema");
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","nodes":[{"id":"a","file":"nodes/a.json"}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            r#"[{"t":"downloaded-code"}]"#,
+        );
+
+        let before = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref())
+            .unwrap()
+            .project_report
+            .unwrap()
+            .project_issues;
+        write_text(
+            &dir.join(".galstudio/schemas/nodeFile.json"),
+            r#"{"$schema":"https://json-schema.org/draft/2020-12/schema"}"#,
+        );
+        let after = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref())
+            .unwrap()
+            .project_report
+            .unwrap()
+            .project_issues;
+
+        let stable = |issues: Vec<app_lib::ProjectIssue>| {
+            issues
+                .into_iter()
+                .map(|issue| (issue.code, issue.source, issue.json_path, issue.severity))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(stable(after), stable(before));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn assert_cli_contract_case(
+        project_path: &Path,
+        case: &serde_json::Value,
+        structural_codes: &std::collections::BTreeSet<String>,
+    ) {
+        let project = app_lib::open_project_for_cli(project_path.to_string_lossy().as_ref())
+            .unwrap_or_else(|error| panic!("case {} failed to open: {error}", case["id"]));
+        let mut actual = project
+            .project_report
+            .into_iter()
+            .flat_map(|report| report.project_issues)
+            .filter(|issue| structural_codes.contains(&issue.code))
+            .map(|issue| {
+                serde_json::json!({
+                    "code": issue.code,
+                    "severity": match issue.severity {
+                        app_lib::GraphIssueSeverity::Error => "error",
+                        app_lib::GraphIssueSeverity::Warn => "warn",
+                    },
+                    "source": issue.source,
+                    "jsonPath": issue.json_path.unwrap_or_else(|| "$".to_string()),
+                })
+            })
+            .collect::<Vec<_>>();
+        actual.sort_by_key(|issue| {
+            format!(
+                "{}\0{}",
+                issue["jsonPath"].as_str().unwrap(),
+                issue["code"].as_str().unwrap()
+            )
+        });
 
         assert_eq!(
             actual,
-            fixture["expectedIssues"].as_array().unwrap().clone()
+            case["issues"].as_array().unwrap().clone(),
+            "CLI shared corpus case {}",
+            case["id"]
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

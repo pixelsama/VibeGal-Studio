@@ -32,10 +32,10 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Frontend build
-        run: pnpm --filter @vibegal/studio build
+      - name: Workspace build
+        run: pnpm build
 
-      - name: Engine schema export + drift check
+      - name: Contracts generation + schema drift check
         run: pnpm run check:schemas
 
       - name: Default renderer drift check
@@ -76,11 +76,34 @@ jobs:
 
       - name: Rust test
         working-directory: packages/studio/src-tauri
-        run: cargo test
+        run: cargo test --locked
 
       - name: Rust build
         working-directory: packages/studio/src-tauri
-        run: cargo build
+        run: cargo build --locked --bins
+
+  rust-msrv:
+    name: Pure Cargo (Rust 1.77.2, locked/offline)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup exact MSRV
+        uses: dtolnay/rust-toolchain@1.77.2
+
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked --manifest-path packages/studio/src-tauri/Cargo.toml
+
+      - name: Check all targets offline
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo check --locked --all-targets --manifest-path packages/studio/src-tauri/Cargo.toml
+
+      - name: Test all Cargo targets offline
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo test --locked --manifest-path packages/studio/src-tauri/Cargo.toml
 
   desktop-bundle:
     name: Desktop bundle (${{ matrix.os }})
@@ -112,16 +135,115 @@ jobs:
       - name: Build Tauri bundle
         run: pnpm tauri build
 
-      - name: Smoke app-bundled CLI (macOS)
+      - name: Stage installed CLI smoke artifact (macOS)
         if: runner.os == 'macOS'
-        run: packages/studio/src-tauri/target/release/bundle/macos/VibeGal-Studio.app/Contents/MacOS/vibegal-cli build examples/sample-novel --target web --out "$RUNNER_TEMP/vibegal-installed-cli-web" --format json
+        run: |
+          STAGE="$RUNNER_TEMP/installed-cli-smoke"
+          mkdir -p "$STAGE"
+          ditto packages/studio/src-tauri/target/release/bundle/macos/VibeGal-Studio.app "$STAGE/VibeGal App.app"
+          ditto examples/sample-novel "$STAGE/Project With Spaces"
+          tar -czf "$RUNNER_TEMP/installed-cli-macos.tar.gz" -C "$STAGE" .
 
-      - name: Smoke bundled CLI (Windows)
+      - name: Stage installed CLI smoke artifact (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $stage = Join-Path $env:RUNNER_TEMP "installed-cli-smoke"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
           $installer = Get-ChildItem packages/studio/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
-          $installDir = Join-Path $env:RUNNER_TEMP "VibeGal-Studio"
-          & $installer.FullName /S "/D=$installDir"
+          Copy-Item $installer.FullName (Join-Path $stage "VibeGal Installer.exe")
+          Copy-Item examples/sample-novel (Join-Path $stage "Project With Spaces") -Recurse
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath (Join-Path $env:RUNNER_TEMP "installed-cli-windows.zip")
+
+      - name: Upload installed CLI smoke artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-cli-macOS
+          path: ${{ runner.temp }}/installed-cli-macos.tar.gz
+
+      - name: Upload installed CLI smoke artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-cli-Windows
+          path: ${{ runner.temp }}/installed-cli-windows.zip
+
+  installed-cli-smoke:
+    name: Installed CLI without source (${{ matrix.os }})
+    needs: desktop-bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download installed CLI smoke artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: installed-cli-${{ runner.os }}
+          path: ${{ runner.temp }}
+
+      - name: Validate installed CLI without Node or source (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          STAGE="$RUNNER_TEMP/installed-cli-smoke"
+          mkdir -p "$STAGE"
+          tar -xzf "$RUNNER_TEMP/installed-cli-macos.tar.gz" -C "$STAGE"
+          CLI="$STAGE/VibeGal App.app/Contents/Resources/bin/vibegal-cli"
+          PROJECT="$STAGE/Project With Spaces"
+          cd "$RUNNER_TEMP"
+          env -i HOME="$HOME" PATH="/usr/bin:/bin" "$CLI" validate "$PROJECT" --format json
+
+      - name: Validate installed CLI without Node or source (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "installed-cli-smoke"
+          Expand-Archive (Join-Path $env:RUNNER_TEMP "installed-cli-windows.zip") -DestinationPath $stage
+          $installDir = Join-Path $stage "VibeGal App"
+          $installer = Join-Path $stage "VibeGal Installer.exe"
+          & $installer /S "/D=$installDir"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & (Join-Path $installDir "vibegal-cli.exe") build examples/sample-novel --target web --out (Join-Path $env:RUNNER_TEMP "vibegal-installed-cli-web") --format json
+          $cli = Join-Path $installDir "vibegal-cli.exe"
+          $project = Join-Path $stage "Project With Spaces"
+          Push-Location $env:RUNNER_TEMP
+          $originalPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32"
+          & $cli validate $project --format json
+          $exitCode = $LASTEXITCODE
+          $env:PATH = $originalPath
+          Pop-Location
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Setup Node for installed exporter smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and smoke with installed CLI (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          STAGE="$RUNNER_TEMP/installed-cli-smoke"
+          CLI="$STAGE/VibeGal App.app/Contents/Resources/bin/vibegal-cli"
+          PROJECT="$STAGE/Project With Spaces"
+          OUT="$RUNNER_TEMP/VibeGal Export With Spaces"
+          cd "$RUNNER_TEMP"
+          "$CLI" build "$PROJECT" --target web --out "$OUT" --format json
+          "$CLI" smoke "$OUT" --target web --format json
+
+      - name: Build and smoke with installed CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "installed-cli-smoke"
+          $cli = Join-Path $stage "VibeGal App\vibegal-cli.exe"
+          $project = Join-Path $stage "Project With Spaces"
+          $outDir = Join-Path $env:RUNNER_TEMP "VibeGal Export With Spaces"
+          Push-Location $env:RUNNER_TEMP
+          & $cli build $project --target web --out $outDir --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $cli smoke $outDir --target web --format json
+          $exitCode = $LASTEXITCODE
+          Pop-Location
+          if ($exitCode -ne 0) { exit $exitCode }

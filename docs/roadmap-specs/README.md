@@ -2,9 +2,7 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-当前规划：
-
-- [Spec 12 - Contract-Driven Rust Validation And Backend Modularization](./12-contract-driven-rust-validation-and-backend-modularization.spec.md)
+当前没有仍在规划或开发中的 roadmap spec。
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
@@ -19,3 +17,4 @@
 - [Spec 09 — Unlock Media Replay Runtime](./archive/09-unlock-media-replay-runtime.spec.md)
 - [Spec 10 — Renderer Diagnostics And Contract Tooling](./archive/10-renderer-diagnostics-and-contract-tooling.spec.md)
 - [Spec 11 — Export Hardening And Desktop Prep](./archive/11-export-hardening-and-desktop-prep.spec.md)
+- [Spec 12 — Contract-Driven Rust Validation And Backend Modularization](./archive/12-contract-driven-rust-validation-and-backend-modularization.spec.md)

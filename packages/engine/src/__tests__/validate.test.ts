@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { ManifestSchema } from "../schema";
-import { validateChapter, validateContent, validateManifest, validateReferences } from "../validate";
+import { validateChapter, validateContent, validateManifest, validateMeta, validateReferences } from "../validate";
 
 const manifest = {
   characters: {
@@ -276,21 +276,78 @@ describe("runtime instruction identity", () => {
 });
 
 describe("shared node validation contract", () => {
-  it("reports the same issue codes, severities and instruction indexes as Rust and CLI", () => {
+  it("consumes the contracts structural corpus through engine validators", () => {
+    const corpus = JSON.parse(readFileSync(
+      new URL("../../../contracts/fixtures/validation-contract.json", import.meta.url),
+      "utf8",
+    )) as {
+      nodeCases: Array<{ id: string; input: unknown; issues: Array<Record<string, unknown>> }>;
+      schemaCases: Array<{
+        id: string;
+        schema: "graph" | "manifest" | "meta";
+        input: unknown;
+        issues: Array<Record<string, unknown>>;
+      }>;
+    };
+    const stable = (issues: ReturnType<typeof validateChapter>) => issues.map((issue) => ({
+      code: issue.code,
+      severity: issue.level,
+      source: issue.source,
+      jsonPath: issue.jsonPath,
+    }));
+
+    for (const testCase of corpus.nodeCases) {
+      expect(stable(validateChapter(testCase.input, `${testCase.id}.json`)), testCase.id)
+        .toEqual(testCase.issues);
+    }
+    for (const testCase of corpus.schemaCases.filter(({ schema }) => schema !== "graph")) {
+      const issues = testCase.schema === "manifest"
+        ? validateManifest(testCase.input, `${testCase.id}.json`)
+        : validateMeta(testCase.input, `${testCase.id}.json`);
+      expect(stable(issues), testCase.id).toEqual(testCase.issues);
+    }
+  });
+
+  it("normalizes structural issues with contracts-owned code and path", () => {
+    const issues = validateChapter(
+      [{ t: "playVideo", id: "opening", skippable: "yes" }],
+      "nodes/contract.json",
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: "instruction_invalid_field",
+        level: "error",
+        source: "node",
+        file: "nodes/contract.json",
+        index: 0,
+        jsonPath: "$[0].skippable",
+      }),
+    ]);
+  });
+
+  it("matches the contracts semantic corpus across stable issue fields", () => {
     const fixture = JSON.parse(readFileSync(
-      new URL("../__fixtures__/node-validation-contract.json", import.meta.url),
+      new URL("../../../contracts/fixtures/node-semantic-contract.json", import.meta.url),
       "utf8",
     ));
     const parsedManifest = ManifestSchema.parse(fixture.manifest);
     const issues = [
       ...validateChapter(fixture.instructions, "nodes/contract.json"),
       ...validateReferences(fixture.instructions, parsedManifest, "nodes/contract.json"),
-    ].sort((left, right) => (left.index ?? -1) - (right.index ?? -1));
+    ];
 
-    expect(issues.map((issue) => ({
+    const stable = issues.map((issue) => ({
       code: issue.code,
       severity: issue.level,
-      index: issue.index,
-    }))).toEqual(fixture.expectedIssues);
+      source: issue.source,
+      jsonPath: issue.jsonPath,
+    })).sort((left, right) => `${left.jsonPath}\0${left.code}`.localeCompare(
+      `${right.jsonPath}\0${right.code}`,
+    ));
+    const expected = [...fixture.expectedIssues].sort((left, right) =>
+      `${left.jsonPath}\0${left.code}`.localeCompare(`${right.jsonPath}\0${right.code}`));
+
+    expect(stable).toEqual(expected);
   });
 });

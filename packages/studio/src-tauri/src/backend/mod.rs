@@ -1,19 +1,17 @@
-include!("imports.rs");
-include!("templates.rs");
-include!("types.rs");
-include!("project.rs");
-include!("graph_validation.rs");
-include!("node_validation.rs");
-include!("asset_validation.rs");
-include!("data_validation.rs");
-include!("graph_io.rs");
-include!("project_commands.rs");
-include!("renderers.rs");
-include!("fs_safety.rs");
-include!("settings.rs");
-include!("cli_tool.rs");
-include!("init_helpers.rs");
-include!("run.rs");
+pub(crate) mod api;
+mod cli_tool;
+mod commands;
+mod contracts;
+mod fs;
+pub(crate) mod model;
+mod mutation;
+mod project;
+mod renderer;
+mod resources;
+mod settings;
+pub(crate) mod tauri_app;
+mod validation;
+mod watcher;
 
 #[cfg(test)]
-include!("tests.rs");
+mod tests;

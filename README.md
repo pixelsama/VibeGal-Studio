@@ -44,6 +44,8 @@ pnpm tauri dev
 
 ## Packages
 
+- `@vibegal/contracts`: canonical project-content schemas, stable diagnostics,
+  generated Rust JSON Schema artifacts, and cross-language validation fixtures.
 - `@vibegal/engine`: renderer contract, runtime state, schema validation,
   interpreter/player logic, persistence helpers, and scenario parsing.
 - `@vibegal/studio`: React + Tauri editor, renderer preview host, asset/project

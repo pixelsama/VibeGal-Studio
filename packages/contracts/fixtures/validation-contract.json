@@ -1,0 +1,217 @@
+{
+  "nodeCases": [
+    {
+      "id": "node.valid.all-instructions",
+      "input": [
+        { "t": "bg", "id": "room" },
+        { "t": "bgm", "id": "theme" },
+        { "t": "sfx", "id": "bell" },
+        { "t": "voice", "id": "line" },
+        { "t": "char", "id": "hero" },
+        { "t": "say", "id": "say-1", "who": "hero", "text": "Hello" },
+        { "t": "narrate", "id": "narrate-1", "text": "Narration" },
+        { "t": "set", "key": "route", "value": "a" },
+        { "t": "wait", "id": "wait-1", "ms": 10 },
+        { "t": "effect", "type": "shake" },
+        { "t": "transition", "type": "fade_in" },
+        { "t": "pause", "id": "pause-1" },
+        { "t": "unlock", "kind": "cg", "id": "ending" },
+        { "t": "showCg", "id": "ending" },
+        { "t": "playVideo", "id": "opening" }
+      ],
+      "issues": []
+    },
+    {
+      "id": "node.invalid.root-type",
+      "input": {},
+      "issues": [
+        { "code": "node_not_array", "severity": "error", "source": "node", "jsonPath": "$" }
+      ]
+    },
+    {
+      "id": "node.invalid.non-object-instruction",
+      "input": [42],
+      "issues": [
+        { "code": "instruction_invalid_field", "severity": "error", "source": "node", "jsonPath": "$[0]" }
+      ]
+    },
+    {
+      "id": "node.invalid.missing-type",
+      "input": [{}],
+      "issues": [
+        { "code": "instruction_unknown_type", "severity": "error", "source": "node", "jsonPath": "$[0].t" }
+      ]
+    },
+    {
+      "id": "node.invalid.non-string-type",
+      "input": [{ "t": 7 }],
+      "issues": [
+        { "code": "instruction_unknown_type", "severity": "error", "source": "node", "jsonPath": "$[0].t" }
+      ]
+    },
+    {
+      "id": "node.invalid.deprecated-choice",
+      "input": [{ "t": "choice" }],
+      "issues": [
+        { "code": "choice_instruction_not_supported", "severity": "error", "source": "node", "jsonPath": "$[0].t" }
+      ]
+    },
+    {
+      "id": "node.invalid.play-video-skippable",
+      "input": [{ "t": "playVideo", "id": "opening", "skippable": "yes" }],
+      "issues": [
+        { "code": "instruction_invalid_field", "severity": "error", "source": "node", "jsonPath": "$[0].skippable" }
+      ]
+    },
+    {
+      "id": "node.invalid.empty-story-point-id",
+      "input": [{ "t": "pause", "id": "" }],
+      "issues": [
+        { "code": "instruction_invalid_field", "severity": "error", "source": "node", "jsonPath": "$[0].id" }
+      ]
+    },
+    {
+      "id": "node.valid.unknown-field-is-nonstrict",
+      "input": [{ "t": "pause", "id": "pause-1", "extension": true }],
+      "issues": []
+    }
+  ],
+  "schemaCases": [
+    {
+      "id": "manifest.valid.default-audio",
+      "schema": "manifest",
+      "input": { "characters": {}, "backgrounds": {} },
+      "issues": []
+    },
+    {
+      "id": "manifest.invalid.flat-audio",
+      "schema": "manifest",
+      "input": { "characters": {}, "backgrounds": {}, "audio": { "theme": "theme.mp3" } },
+      "issues": [
+        { "code": "manifest_invalid_audio", "severity": "error", "source": "manifest", "jsonPath": "$.audio" }
+      ]
+    },
+    {
+      "id": "manifest.invalid.unknown-root-field",
+      "schema": "manifest",
+      "input": { "characters": {}, "backgrounds": {}, "legacy": true },
+      "issues": [
+        { "code": "manifest_invalid_structure", "severity": "error", "source": "manifest", "jsonPath": "$" }
+      ]
+    },
+    {
+      "id": "manifest.invalid.missing-required-backgrounds",
+      "schema": "manifest",
+      "input": { "characters": {} },
+      "issues": [
+        { "code": "manifest_invalid_structure", "severity": "error", "source": "manifest", "jsonPath": "$.backgrounds" }
+      ]
+    },
+    {
+      "id": "manifest.invalid.animation-atlas-range",
+      "schema": "manifest",
+      "input": {
+        "characters": {},
+        "backgrounds": {},
+        "animationAtlases": { "hero": { "image": "hero.png", "frameWidth": 0 } }
+      },
+      "issues": [
+        { "code": "manifest_invalid_structure", "severity": "error", "source": "manifest", "jsonPath": "$.animationAtlases.hero.frameWidth" }
+      ]
+    },
+    {
+      "id": "manifest.invalid.asset-union-leaf",
+      "schema": "manifest",
+      "input": { "characters": {}, "backgrounds": {}, "cg": { "hero": {} } },
+      "issues": [
+        { "code": "manifest_invalid_structure", "severity": "error", "source": "manifest", "jsonPath": "$.cg.hero.path" }
+      ]
+    },
+    {
+      "id": "manifest.invalid.numeric-object-key-path",
+      "schema": "manifest",
+      "input": { "characters": { "123": { "name": "Numeric" } }, "backgrounds": {} },
+      "issues": [
+        { "code": "manifest_invalid_structure", "severity": "error", "source": "manifest", "jsonPath": "$.characters[\"123\"].sprites" }
+      ]
+    },
+    {
+      "id": "meta.valid.defaults-and-unknown-field",
+      "schema": "meta",
+      "input": { "extension": true },
+      "issues": []
+    },
+    {
+      "id": "meta.invalid.stage-width",
+      "schema": "meta",
+      "input": { "stage": { "width": 10 } },
+      "issues": [
+        { "code": "meta_invalid_stage", "severity": "error", "source": "meta", "jsonPath": "$.stage.width" }
+      ]
+    },
+    {
+      "id": "meta.invalid.timing-range",
+      "schema": "meta",
+      "input": { "typingSpeedCps": 0 },
+      "issues": [
+        { "code": "meta_invalid_timing", "severity": "error", "source": "meta", "jsonPath": "$.typingSpeedCps" }
+      ]
+    },
+    {
+      "id": "graph.valid.defaults-and-unknown-field",
+      "schema": "graph",
+      "input": {
+        "entryNodeId": "start",
+        "nodes": [{ "id": "start", "file": "nodes/start.json" }],
+        "edges": [],
+        "extension": true
+      },
+      "issues": []
+    },
+    {
+      "id": "graph.invalid.version-over-u32",
+      "schema": "graph",
+      "input": { "version": 4294967296, "entryNodeId": "", "nodes": [], "edges": [] },
+      "issues": [
+        { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.version" }
+      ]
+    },
+    {
+      "id": "graph.invalid.missing-entry-node-id",
+      "schema": "graph",
+      "input": { "nodes": [], "edges": [] },
+      "issues": [
+        { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.entryNodeId" }
+      ]
+    },
+    {
+      "id": "graph.invalid.edge-mode-enum",
+      "schema": "graph",
+      "input": {
+        "entryNodeId": "",
+        "nodes": [],
+        "edges": [{ "id": "a-b", "from": "a", "to": "b", "mode": "manual" }]
+      },
+      "issues": [
+        { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.edges[0].mode" }
+      ]
+    }
+  ],
+  "limitCase": {
+    "id": "node.invalid.error-limit",
+    "count": 66,
+    "retained": 64,
+    "repeatedIssue": {
+      "code": "instruction_unknown_type",
+      "severity": "error",
+      "source": "node",
+      "jsonPathTemplate": "$[{index}].t"
+    },
+    "truncationIssue": {
+      "code": "contract_error_truncated",
+      "severity": "error",
+      "source": "contract",
+      "jsonPath": "$"
+    }
+  }
+}

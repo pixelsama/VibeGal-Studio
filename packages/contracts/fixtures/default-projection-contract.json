@@ -1,0 +1,72 @@
+{
+  "cases": [
+    {
+      "id": "node.defaults.bg-bgm-char-say",
+      "schema": "nodeFile",
+      "input": [
+        { "t": "bg", "id": "room" },
+        { "t": "bgm", "id": "theme" },
+        { "t": "char", "id": "hero" },
+        { "t": "say", "id": "line-1", "who": "hero", "text": "Hello" }
+      ],
+      "expected": [
+        { "t": "bg", "id": "room", "trans": "fade", "ms": 1000 },
+        { "t": "bgm", "id": "theme", "fade": 1500, "loop": true },
+        { "t": "char", "id": "hero", "pos": "center", "expr": "default", "trans": "fade", "ms": 600, "clear": false, "remove": false },
+        { "t": "say", "id": "line-1", "who": "hero", "expr": "default", "text": "Hello" }
+      ]
+    },
+    {
+      "id": "manifest.defaults.registries-and-character-color",
+      "schema": "manifest",
+      "input": {
+        "characters": {
+          "hero": { "name": "Hero", "sprites": { "default": "hero.png" } }
+        },
+        "backgrounds": { "room": "room.png" },
+        "cg": {},
+        "videos": {}
+      },
+      "expected": {
+        "characters": {
+          "hero": { "name": "Hero", "color": "#ffffff", "sprites": { "default": "hero.png" } }
+        },
+        "backgrounds": { "room": "room.png" },
+        "audio": { "bgm": {}, "sfx": {}, "voice": {} },
+        "cg": {},
+        "videos": {},
+        "fonts": {},
+        "uiSkins": {},
+        "animationAtlases": {},
+        "unlocks": { "cg": {}, "music": {}, "replay": {}, "endings": {} }
+      }
+    },
+    {
+      "id": "meta.defaults.complete-projection",
+      "schema": "meta",
+      "input": {},
+      "expected": {
+        "title": "",
+        "typingSpeedCps": 30,
+        "autoAdvanceMs": 1200,
+        "chapterGapMs": 1500,
+        "stage": { "width": 1280, "height": 720 }
+      }
+    },
+    {
+      "id": "graph.defaults.nodes-and-edges",
+      "schema": "graph",
+      "input": {
+        "entryNodeId": "start",
+        "nodes": [{ "id": "start", "file": "nodes/start.json" }],
+        "edges": [{ "id": "loop", "from": "start", "to": "start" }]
+      },
+      "expected": {
+        "version": 1,
+        "entryNodeId": "start",
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } }],
+        "edges": [{ "id": "loop", "from": "start", "to": "start", "mode": "linear", "label": null, "condition": null }]
+      }
+    }
+  ]
+}

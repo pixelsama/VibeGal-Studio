@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { instructionPolicies } from "./diagnostics";
 
 /**
  * @vibegal/contracts 中的 Zod schema 是数据契约的【唯一来源】。
@@ -17,24 +18,24 @@ export const BgInstruction = z.object({
   id: z.string(), // 引用 manifest.backgrounds 的 key
   trans: z.enum(["fade", "cut", "dissolve"]).default("fade"),
   ms: z.number().int().nonnegative().default(1000),
-});
+}).meta({ "x-vibegal": instructionPolicies.bg });
 
 export const BgmInstruction = z.object({
   t: z.literal("bgm"),
   id: z.string(), // 引用 manifest.audio.bgm 的 key
   fade: z.number().int().nonnegative().default(1500),
   loop: z.boolean().default(true),
-});
+}).meta({ "x-vibegal": instructionPolicies.bgm });
 
 export const SfxInstruction = z.object({
   t: z.literal("sfx"),
   id: z.string(), // 引用 manifest.audio.sfx 的 key
-});
+}).meta({ "x-vibegal": instructionPolicies.sfx });
 
 export const VoiceInstruction = z.object({
   t: z.literal("voice"),
   id: z.string(), // 引用 manifest.audio.voice 的 key
-});
+}).meta({ "x-vibegal": instructionPolicies.voice });
 
 export const CharInstruction = z.object({
   t: z.literal("char"),
@@ -45,7 +46,7 @@ export const CharInstruction = z.object({
   ms: z.number().int().nonnegative().default(600),
   clear: z.boolean().default(false), // true = 先清空场上所有立绘再登场
   remove: z.boolean().default(false), // true = 让该角色退场
-});
+}).meta({ "x-vibegal": instructionPolicies.char });
 
 export const StableInstructionIdSchema = z
   .string()
@@ -59,14 +60,14 @@ export const SayInstruction = z.object({
   expr: z.string().default("default"),
   text: z.string().min(1),
   ms: z.number().int().nonnegative().optional(), // 打完后的停顿覆盖（0=跟随全局）
-});
+}).meta({ "x-vibegal": instructionPolicies.say });
 
 export const NarrateInstruction = z.object({
   t: z.literal("narrate"),
   id: StableInstructionIdSchema.optional(),
   text: z.string().min(1),
   ms: z.number().int().nonnegative().optional(), // 该条旁白的自动停顿覆盖（0=跟随全局）
-});
+}).meta({ "x-vibegal": instructionPolicies.narrate });
 
 export const VariableValueSchema = z.union([
   z.string(),
@@ -79,48 +80,48 @@ export const SetInstruction = z.object({
   t: z.literal("set"),
   key: z.string().min(1),
   value: VariableValueSchema,
-});
+}).meta({ "x-vibegal": instructionPolicies.set });
 
 export const WaitInstruction = z.object({
   t: z.literal("wait"),
   id: StableInstructionIdSchema.optional(),
   ms: z.number().int().nonnegative(),
-});
+}).meta({ "x-vibegal": instructionPolicies.wait });
 
 export const EffectInstruction = z.object({
   t: z.literal("effect"),
   type: z.enum(["shake", "flash", "blur"]),
   intensity: z.number().min(0).max(20).default(6),
   ms: z.number().int().nonnegative().default(400),
-});
+}).meta({ "x-vibegal": instructionPolicies.effect });
 
 export const TransitionInstruction = z.object({
   t: z.literal("transition"),
   type: z.enum(["fade_in", "fade_out", "white_in", "white_out", "black"]),
   ms: z.number().int().nonnegative().default(1000),
-});
+}).meta({ "x-vibegal": instructionPolicies.transition });
 
 export const PauseInstruction = z.object({
   t: z.literal("pause"),
   id: StableInstructionIdSchema.optional(),
-});
+}).meta({ "x-vibegal": instructionPolicies.pause });
 
 export const UnlockInstruction = z.object({
   t: z.literal("unlock"),
   kind: z.enum(["cg", "music", "replay", "endings"]),
   id: z.string().min(1),
-});
+}).meta({ "x-vibegal": instructionPolicies.unlock });
 
 export const ShowCgInstruction = z.object({
   t: z.literal("showCg"),
   id: z.string().min(1),
-});
+}).meta({ "x-vibegal": instructionPolicies.showCg });
 
 export const PlayVideoInstruction = z.object({
   t: z.literal("playVideo"),
   id: z.string().min(1),
   skippable: z.boolean().optional(),
-});
+}).meta({ "x-vibegal": instructionPolicies.playVideo });
 
 export const InstructionSchema = z.discriminatedUnion("t", [
   BgInstruction,
@@ -295,7 +296,7 @@ export const GraphEdgeSchema = z.object({
 });
 
 export const ProjectGraphSchema = z.object({
-  version: z.number().int().nonnegative().default(1),
+  version: z.number().int().nonnegative().max(4_294_967_295).default(1),
   entryNodeId: z.string(), // 空串 = 未设置入口
   nodes: z.array(GraphNodeSchema).default([]),
   edges: z.array(GraphEdgeSchema).default([]),

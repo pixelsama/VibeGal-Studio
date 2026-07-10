@@ -1,0 +1,162 @@
+{
+  "formatVersion": 1,
+  "diagnostics": {
+    "node_not_array": {
+      "severity": "error",
+      "source": "node"
+    },
+    "instruction_unknown_type": {
+      "severity": "error",
+      "source": "node"
+    },
+    "instruction_invalid_field": {
+      "severity": "error",
+      "source": "node"
+    },
+    "instruction_id_missing": {
+      "severity": "warn",
+      "source": "node"
+    },
+    "instruction_id_duplicate": {
+      "severity": "error",
+      "source": "node"
+    },
+    "choice_instruction_not_supported": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_background_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_bgm_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_sfx_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_voice_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_character_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_character_expr": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_unlock_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_cg_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "missing_video_ref": {
+      "severity": "error",
+      "source": "node"
+    },
+    "graph_invalid_structure": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "manifest_not_object": {
+      "severity": "error",
+      "source": "manifest"
+    },
+    "manifest_invalid_audio": {
+      "severity": "error",
+      "source": "manifest"
+    },
+    "manifest_invalid_structure": {
+      "severity": "error",
+      "source": "manifest"
+    },
+    "meta_not_object": {
+      "severity": "error",
+      "source": "meta"
+    },
+    "meta_invalid_title": {
+      "severity": "error",
+      "source": "meta"
+    },
+    "meta_invalid_timing": {
+      "severity": "error",
+      "source": "meta"
+    },
+    "meta_invalid_stage": {
+      "severity": "error",
+      "source": "meta"
+    },
+    "meta_invalid_structure": {
+      "severity": "error",
+      "source": "meta"
+    },
+    "contract_invalid_value": {
+      "severity": "error",
+      "source": "contract"
+    },
+    "contract_error_truncated": {
+      "severity": "error",
+      "source": "contract"
+    }
+  },
+  "structuralPolicies": {
+    "nodeFile": {
+      "defaultCode": "instruction_invalid_field",
+      "rootTypeCode": "node_not_array"
+    },
+    "graph": {
+      "defaultCode": "graph_invalid_structure"
+    },
+    "manifest": {
+      "defaultCode": "manifest_invalid_structure",
+      "rootTypeCode": "manifest_not_object",
+      "pathOverrides": [
+        {
+          "code": "manifest_invalid_audio",
+          "exact": [
+            "$.audio"
+          ],
+          "prefixes": [
+            "$.audio."
+          ]
+        }
+      ]
+    },
+    "meta": {
+      "defaultCode": "meta_invalid_structure",
+      "rootTypeCode": "meta_not_object",
+      "pathOverrides": [
+        {
+          "code": "meta_invalid_title",
+          "exact": [
+            "$.title"
+          ]
+        },
+        {
+          "code": "meta_invalid_stage",
+          "exact": [
+            "$.stage"
+          ],
+          "prefixes": [
+            "$.stage."
+          ]
+        },
+        {
+          "code": "meta_invalid_timing",
+          "exact": [
+            "$.typingSpeedCps",
+            "$.autoAdvanceMs",
+            "$.chapterGapMs"
+          ]
+        }
+      ]
+    }
+  }
+}

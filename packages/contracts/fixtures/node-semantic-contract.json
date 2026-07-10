@@ -1,0 +1,65 @@
+{
+  "manifest": {
+    "characters": {
+      "hero": {
+        "name": "Hero",
+        "sprites": {
+          "default": "assets/characters/hero-default.png",
+          "happy": "assets/characters/hero-happy.png"
+        }
+      }
+    },
+    "backgrounds": {
+      "known_bg": "assets/backgrounds/known.png"
+    },
+    "audio": {
+      "bgm": { "known_bgm": "assets/audio/bgm/known.mp3" },
+      "sfx": { "known_sfx": "assets/audio/sfx/known.wav" },
+      "voice": { "known_voice": "assets/audio/voice/known.ogg" }
+    },
+    "cg": { "known_cg": "assets/cg/known.png" },
+    "videos": { "known_video": "assets/videos/known.mp4" },
+    "unlocks": {
+      "cg": { "known_unlock": { "assetId": "known_cg" } },
+      "music": {},
+      "replay": {},
+      "endings": {}
+    }
+  },
+  "instructions": [
+    { "t": "bg", "id": "missing_bg" },
+    { "t": "bgm", "id": "missing_bgm" },
+    { "t": "sfx", "id": "missing_sfx" },
+    { "t": "voice", "id": "missing_voice" },
+    { "t": "char", "id": "ghost" },
+    { "t": "char", "id": "hero", "expr": "angry" },
+    { "t": "say", "id": "say-ghost", "who": "ghost", "text": "Missing character" },
+    { "t": "say", "id": "say-expr", "who": "hero", "expr": "angry", "text": "Missing expression" },
+    { "t": "unlock", "kind": "cg", "id": "missing_unlock" },
+    { "t": "showCg", "id": "missing_cg" },
+    { "t": "playVideo", "id": "missing_video" },
+    { "t": "narrate", "text": "Missing stable id" },
+    { "t": "wait", "id": "duplicate-stop", "ms": 1 },
+    { "t": "pause", "id": "duplicate-stop" },
+    { "t": "bg", "id": "known_bg" },
+    { "t": "char", "id": "hero" },
+    { "t": "unlock", "kind": "cg", "id": "known_unlock" },
+    { "t": "showCg", "id": "known_cg" },
+    { "t": "playVideo", "id": "known_video" }
+  ],
+  "expectedIssues": [
+    { "code": "missing_background_ref", "severity": "error", "source": "node", "jsonPath": "$[0].id" },
+    { "code": "missing_bgm_ref", "severity": "error", "source": "node", "jsonPath": "$[1].id" },
+    { "code": "missing_sfx_ref", "severity": "error", "source": "node", "jsonPath": "$[2].id" },
+    { "code": "missing_voice_ref", "severity": "error", "source": "node", "jsonPath": "$[3].id" },
+    { "code": "missing_character_ref", "severity": "error", "source": "node", "jsonPath": "$[4].id" },
+    { "code": "missing_character_expr", "severity": "error", "source": "node", "jsonPath": "$[5].expr" },
+    { "code": "missing_character_ref", "severity": "error", "source": "node", "jsonPath": "$[6].who" },
+    { "code": "missing_character_expr", "severity": "error", "source": "node", "jsonPath": "$[7].expr" },
+    { "code": "missing_unlock_ref", "severity": "error", "source": "node", "jsonPath": "$[8].id" },
+    { "code": "missing_cg_ref", "severity": "error", "source": "node", "jsonPath": "$[9].id" },
+    { "code": "missing_video_ref", "severity": "error", "source": "node", "jsonPath": "$[10].id" },
+    { "code": "instruction_id_missing", "severity": "warn", "source": "node", "jsonPath": "$[11].id" },
+    { "code": "instruction_id_duplicate", "severity": "error", "source": "node", "jsonPath": "$[13].id" }
+  ]
+}

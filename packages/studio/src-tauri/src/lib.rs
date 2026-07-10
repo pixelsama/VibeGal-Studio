@@ -5,6 +5,9 @@
 
 mod backend;
 
-pub use backend::{
-    open_project_for_cli, run, GraphIssue, GraphIssueSeverity, ProjectData, ProjectIssue,
-};
+pub use backend::api::open_project_for_cli;
+pub use backend::model::{GraphIssue, GraphIssueSeverity, ProjectData, ProjectIssue, ProjectMeta};
+
+pub fn run() {
+    backend::tauri_app::run();
+}
