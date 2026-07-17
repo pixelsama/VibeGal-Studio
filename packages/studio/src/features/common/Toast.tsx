@@ -41,6 +41,7 @@ export function Toast({ toast, onClose }: ToastProps) {
     <div
       role={role}
       aria-live={toast.kind === "error" ? "assertive" : "polite"}
+      className="gs-anim-toast"
       style={{
         ...toastStyle,
         borderColor: tone.border,
@@ -52,7 +53,7 @@ export function Toast({ toast, onClose }: ToastProps) {
         <div style={{ ...messageStyle, color: tone.text }}>{toast.message}</div>
         {toast.detail && <div style={detailStyle}>{toast.detail}</div>}
       </div>
-      <button type="button" aria-label="关闭消息" onClick={onClose} style={closeStyle}>
+      <button type="button" aria-label="关闭消息" onClick={onClose} className="gs-chip-btn" style={closeLayoutStyle}>
         <X size={13} />
       </button>
     </div>
@@ -103,7 +104,7 @@ const toastStyle: React.CSSProperties = {
   overflow: "hidden",
   border: "1px solid var(--border-input)",
   borderRadius: "var(--radius-md)",
-  boxShadow: "0 12px 32px var(--overlay-strong)",
+  boxShadow: "var(--shadow-pop)",
 };
 
 function accentStyle(background: string): React.CSSProperties {
@@ -130,15 +131,7 @@ const detailStyle: React.CSSProperties = {
   wordBreak: "break-word",
 };
 
-const closeStyle: React.CSSProperties = {
+const closeLayoutStyle: React.CSSProperties = {
   alignSelf: "start",
   margin: "var(--space-2)",
-  width: 24,
-  height: 24,
-  border: "1px solid var(--border-input)",
-  borderRadius: "var(--radius-sm)",
-  background: "transparent",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  lineHeight: 1,
 };

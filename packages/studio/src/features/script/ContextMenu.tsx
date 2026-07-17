@@ -67,7 +67,7 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
   }, [onClose]);
 
   return (
-    <div ref={ref} role="menu" style={{ ...menuStyle, left: pos.x, top: pos.y }}>
+    <div ref={ref} role="menu" className="gs-anim-pop" style={{ ...menuStyle, left: pos.x, top: pos.y }}>
       {items.map((item) => (
         <div key={item.key}>
           {item.dividerBefore && <div style={dividerStyle} />}
@@ -75,25 +75,19 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
             type="button"
             role="menuitem"
             disabled={item.disabled}
+            className="gs-menu-item"
             onClick={() => {
               if (item.disabled) return;
               item.onSelect();
               onClose();
             }}
             style={{
-              ...itemStyle,
               color: item.disabled
                 ? "var(--text-dim)"
                 : item.danger
                   ? "var(--status-error-text)"
                   : "var(--text-primary)",
               cursor: item.disabled ? "not-allowed" : "pointer",
-            }}
-            onMouseEnter={(event) => {
-              if (!item.disabled) event.currentTarget.style.background = "var(--bg-hover)";
-            }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.background = "transparent";
             }}
           >
             {item.label}
@@ -113,22 +107,10 @@ const menuStyle: React.CSSProperties = {
   background: "var(--bg-panel)",
   border: "1px solid var(--border-input)",
   borderRadius: "var(--radius-md)",
-  boxShadow: "0 12px 32px var(--overlay)",
+  boxShadow: "var(--shadow-pop)",
   display: "flex",
   flexDirection: "column",
   gap: 2,
-};
-
-const itemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  width: "100%",
-  padding: "var(--space-2) var(--space-3)",
-  border: "none",
-  background: "transparent",
-  borderRadius: "var(--radius-sm)",
-  fontSize: "var(--text-base)",
-  textAlign: "left",
 };
 
 const dividerStyle: React.CSSProperties = {

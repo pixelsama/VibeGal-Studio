@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Redo2, Undo2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Redo2, Undo2, Workflow } from "lucide-react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -21,7 +21,9 @@ import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
-import { flowPositionFromClientPoint } from "./canvasMenu";
+import { flowPositionFromClientPoint, flowPositionFromViewportCenter } from "./canvasMenu";
+import { EmptyState } from "../common/EmptyState";
+import { Button } from "../common/Button";
 
 interface GraphCanvasProps {
   graph: ProjectGraph;
@@ -91,6 +93,7 @@ export function GraphCanvas({
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const colorMode = useResolvedTheme();
 
   const flow = useMemo(() => {
@@ -240,9 +243,36 @@ export function GraphCanvas({
     }
   };
 
+  // 空画布主操作：在画布可视中心创建第一个节点
+  const handleCreateAtCenter = () => {
+    if (!flowInstance || !onCreateNodeAt) return;
+    const bounds = shellRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const center = flowPositionFromViewportCenter(bounds, flowInstance.screenToFlowPosition);
+    onCreateNodeAt({ x: Math.round(center.x), y: Math.round(center.y) });
+  };
+
   return (
-    <div style={canvasShellStyle} onContextMenu={(e) => e.preventDefault()}>
-      {flowNodes.length === 0 && <div style={emptyStateStyle}>暂无节点</div>}
+    <div ref={shellRef} style={canvasShellStyle} onContextMenu={(e) => e.preventDefault()}>
+      {flowNodes.length === 0 && (
+        // 空画布引导层：整体不挡画布交互，仅操作区恢复可点
+        <div style={emptyOverlayStyle}>
+          <EmptyState
+            icon={Workflow}
+            title="画布还是空的"
+            description="右键画布空白处新建节点，双击节点进入编辑"
+            action={
+              onCreateNodeAt ? (
+                <div style={{ pointerEvents: "auto" }}>
+                  <Button variant="primary" disabled={!flowInstance} onClick={handleCreateAtCenter}>
+                    新建第一个节点
+                  </Button>
+                </div>
+              ) : undefined
+            }
+          />
+        </div>
+      )}
       <ReactFlow<GraphCanvasFlowNode, Edge>
         nodes={flowNodes}
         edges={flowEdges}
@@ -336,18 +366,12 @@ const canvasShellStyle: React.CSSProperties = {
   background: "var(--bg-inset)",
 };
 
-const emptyStateStyle: React.CSSProperties = {
+const emptyOverlayStyle: React.CSSProperties = {
   position: "absolute",
-  top: 24,
-  left: "50%",
-  transform: "translateX(-50%)",
+  inset: 0,
+  display: "grid",
+  placeItems: "center",
   zIndex: 2,
-  padding: "var(--space-2) var(--space-3)",
-  borderRadius: "var(--radius-pill)",
-  background: "var(--bg-panel)",
-  border: "1px solid var(--border)",
-  color: "var(--text-secondary)",
-  fontSize: "var(--text-base)",
   pointerEvents: "none",
 };
 

@@ -53,6 +53,14 @@
   --overlay: rgba(0, 0, 0, 0.5);
   --overlay-strong: rgba(0, 0, 0, 0.6);
 
+  /* 阴影（弹层两级：pop=菜单/Toast，modal=对话框） */
+  --shadow-pop: 0 12px 32px var(--overlay-strong);
+  --shadow-modal: 0 16px 40px var(--overlay-strong);
+
+  /* 强调色光晕（选中态描边外环、连接点辉光） */
+  --accent-halo: rgba(159, 200, 227, 0.2);
+  --accent-glow: rgba(58, 110, 165, 0.16);
+
   /* 节点类型标签 */
   --tag-say-bg: #2a3a5a;
   --tag-say-text: #9fc8e3;
@@ -148,6 +156,12 @@
 
   --overlay: rgba(0, 0, 0, 0.35);
   --overlay-strong: rgba(0, 0, 0, 0.45);
+
+  --shadow-pop: 0 12px 32px var(--overlay-strong);
+  --shadow-modal: 0 16px 40px var(--overlay-strong);
+
+  --accent-halo: rgba(42, 109, 176, 0.18);
+  --accent-glow: rgba(42, 109, 176, 0.14);
 
   --tag-say-bg: #d8e6f5;
   --tag-say-text: #1a5694;
@@ -358,4 +372,205 @@ textarea,
 .gs-list-row:focus-visible {
   outline: 2px solid var(--accent-bright);
   outline-offset: 1px;
+}
+
+/* ── 动效（克制：只用于入场与状态反馈，120–180ms） ──────────────────
+   .gs-anim-fade  纯淡入（遮罩、面板切换）
+   .gs-anim-pop   淡入 + 轻微上浮/缩放（对话框、右键菜单、弹层）
+   .gs-anim-toast 从右下角滑入（Toast） */
+@keyframes gs-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes gs-pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes gs-toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes gs-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.gs-anim-fade {
+  animation: gs-fade-in 140ms ease-out;
+}
+.gs-anim-pop {
+  animation: gs-pop-in 160ms ease-out;
+}
+.gs-anim-toast {
+  animation: gs-toast-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-anim-fade,
+  .gs-anim-pop,
+  .gs-anim-toast,
+  .gs-skeleton {
+    animation: none;
+  }
+}
+
+/* ── 小号按钮：配合 .gs-btn 使用（卡片操作区等紧凑场景） ── */
+.gs-btn--sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-xs);
+  gap: 2px;
+}
+
+/* ── 小方块铬合金按钮（弹窗/Toast 的关闭钮等）：透明底，hover 显底 ── */
+.gs-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease,
+    color 120ms ease;
+}
+.gs-chip-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.gs-chip-btn:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+}
+
+/* ── 输入控件焦点环：内联样式未写 outline 的控件统一获得可见焦点 ── */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -1px;
+}
+
+/* ── 空态（common/EmptyState.tsx）：图标 + 标题 + 说明 + 主操作 ── */
+.gs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+}
+.gs-empty__icon {
+  color: var(--text-dim);
+  margin-bottom: var(--space-2);
+}
+.gs-empty__title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.gs-empty__desc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 420px;
+  white-space: pre-line;
+}
+.gs-empty__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ── 骨架屏：加载占位，微光扫过 ── */
+.gs-skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 25%,
+    var(--bg-active) 50%,
+    var(--bg-hover) 75%
+  );
+  background-size: 200% 100%;
+  animation: gs-shimmer 1.4s ease-in-out infinite;
+}
+
+/* ── 图节点（script/GraphNodeView）：选中/状态色的过渡由 class 承担 ── */
+.gs-graph-node {
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+/* ── 面板拖拽分隔条：悬停/拖拽时显示强调色反馈 ── */
+.gs-resize-handle {
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+.gs-resize-handle:hover {
+  background: var(--accent-glow);
+}
+
+/* ── 右键菜单项（script/ContextMenu）：静态样式在类里，动态 color/cursor 内联 ── */
+.gs-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+}
+.gs-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+/* ── 问题卡片（common/StatusPanel）：severity 边框色与 cursor 仍内联 ── */
+.gs-issue-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+}
+.gs-issue-card--clickable:hover {
+  background: var(--bg-hover);
+}
+.gs-issue-card--clickable:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+}
+
+/* ── 状态指示器按钮（common/StatusPanel）：颜色/尺寸/透明度按状态内联 ── */
+.gs-status-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  cursor: pointer;
+}
+.gs-status-indicator:hover {
+  background: var(--bg-hover);
 }

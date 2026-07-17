@@ -31,11 +31,12 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
 
   return (
     <div
+      className="gs-graph-node"
       style={{
         ...nodeStyle,
         borderColor: accent,
         boxShadow: selected
-          ? "0 0 0 1px rgba(159, 200, 227, 0.2), 0 8px 18px var(--overlay)"
+          ? "0 0 0 1px var(--accent-halo), 0 8px 18px var(--overlay)"
           : "none",
       }}
     >
@@ -126,5 +127,5 @@ const connectionHandleStyle: React.CSSProperties = {
   height: 9,
   background: "var(--bg-app)",
   border: "1px solid var(--accent)",
-  boxShadow: "0 0 0 2px rgba(58, 110, 165, 0.16)",
+  boxShadow: "0 0 0 2px var(--accent-glow)",
 };

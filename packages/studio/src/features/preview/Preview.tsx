@@ -37,7 +37,13 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange }: Pr
     return <Centered mono>{`渲染层加载失败（${rendererId}）：\n\n${detail}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且渲染层源码没有未支持的 import。`}</Centered>;
   }
   if (!renderer) {
-    return <Centered>加载渲染层中…</Centered>;
+    // 渲染层加载期间用 16:9 骨架舞台占位，比一行字更接近真实布局
+    return (
+      <div style={loadingShellStyle}>
+        <div className="gs-skeleton" style={loadingStageStyle} />
+        <div style={loadingHintStyle}>加载渲染层中…</div>
+      </div>
+    );
   }
 
   const Renderer = renderer.Component;
@@ -68,4 +74,24 @@ const layoutStyle: React.CSSProperties = {
 const stagePaneStyle: React.CSSProperties = {
   minWidth: 0,
   height: "100%",
+};
+
+const loadingShellStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "var(--space-3)",
+  height: "100%",
+};
+
+const loadingStageStyle: React.CSSProperties = {
+  width: "min(640px, 80%)",
+  aspectRatio: "16 / 9",
+  borderRadius: "var(--radius-md)",
+};
+
+const loadingHintStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
 };

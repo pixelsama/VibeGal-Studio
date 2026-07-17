@@ -12,6 +12,7 @@ import { loadWorkspaceDir, saveWorkspaceDir, sortProjectsByName } from "../../li
 import { getDesktopPlatform } from "../../lib/platform";
 import { Button, IconButton } from "../common/Button";
 import { ConfirmDialog } from "../common/Dialogs";
+import { EmptyState } from "../common/EmptyState";
 
 interface Props {
   onOpen: (project: ProjectData) => void;
@@ -166,9 +167,17 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
               <span style={workspaceDirStyle} title={workspaceDir}>{workspaceDir}</span>
             </div>
             {workspaceProjects == null ? (
-              <div style={emptyStyle}>正在扫描工作区…</div>
+              // 扫描未返回时先放两条骨架行，贴近真实列表行的占位
+              <div style={workspaceSkeletonStyle}>
+                <div className="gs-skeleton" style={{ height: 56 }} />
+                <div className="gs-skeleton" style={{ height: 56 }} />
+              </div>
             ) : workspaceProjects.length === 0 ? (
-              <div style={emptyStyle}>这个目录下还没有 VibeGal-Studio 项目。</div>
+              <EmptyState
+                icon={FolderOpen}
+                title="这个目录下还没有项目"
+                description="在别处新建项目，或把已有项目目录放进这个工作区。"
+              />
             ) : (
               <WorkspaceProjectList
                 items={workspaceProjects}
@@ -178,17 +187,23 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
             )}
           </section>
         ) : (
-          <div style={emptyStyle}>
-            {loading
-              ? "加载中…"
-              : "选择一个项目目录打开（目录还不是项目时会先询问是否初始化），或选择一个工作区目录自动列出其中的项目。"}
-          </div>
+          <EmptyState
+            icon={FolderOpen}
+            title="还没有打开的项目"
+            description="选择一个项目目录打开（目录还不是项目时会先询问是否初始化），或选择一个工作区目录自动列出其中的项目。"
+            action={
+              <>
+                <Button variant="secondary" onClick={handlePickProject} disabled={loading}>打开项目…</Button>
+                <Button variant="primary" onClick={handleNew} disabled={loading}>新建项目</Button>
+              </>
+            }
+          />
         )}
       </section>
 
       {newProjectParent && (
-        <div style={modalOverlayStyle}>
-          <form onSubmit={handleCreateProject} style={modalStyle}>
+        <div className="gs-anim-fade" style={modalOverlayStyle}>
+          <form onSubmit={handleCreateProject} className="gs-anim-pop" style={modalStyle}>
             <div style={modalHeaderStyle}>新建项目</div>
             <div style={parentPathStyle}>{newProjectParent}</div>
             <input
@@ -359,4 +374,4 @@ const errorStyle: React.CSSProperties = {
   borderRadius: "var(--radius-sm)", color: "var(--status-error-text)", fontSize: "var(--text-base)", marginBottom: "var(--space-4)", whiteSpace: "pre-wrap",
 };
 const modalErrorStyle: React.CSSProperties = { ...errorStyle, marginTop: "var(--space-3)", marginBottom: 0 };
-const emptyStyle: React.CSSProperties = { color: "var(--text-dim)", fontSize: "var(--text-md)", padding: "var(--space-6)", textAlign: "center" };
+const workspaceSkeletonStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-2)" };

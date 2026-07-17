@@ -90,13 +90,14 @@ export function AssetCard({
       {!readOnly && (
         <div style={actionsStyle}>
           {isOrphan && onRegisterOrphan && (
-            <button type="button" style={smallBtnStyle} onClick={() => onRegisterOrphan(entry)}>
+            <button type="button" className="gs-btn gs-btn--sm gs-btn--secondary" onClick={() => onRegisterOrphan(entry)}>
               登记
             </button>
           )}
           <button
             type="button"
-            style={{ ...smallBtnStyle, color: "var(--status-error-text)" }}
+            className="gs-btn gs-btn--sm gs-btn--secondary"
+            style={{ color: "var(--status-error-text)" }}
             onClick={() => onDelete(entry.relPath, entry.revision)}
             aria-label={`删除 ${name}`}
           >
@@ -138,7 +139,8 @@ export function DanglingCard({
         {!readOnly && (
           <button
             type="button"
-            style={{ ...smallBtnStyle, color: "var(--status-error-text)" }}
+            className="gs-btn gs-btn--sm gs-btn--secondary"
+            style={{ color: "var(--status-error-text)" }}
             onClick={() => onRemoveRef(source)}
           >
             移除引用
@@ -230,16 +232,6 @@ const actionsStyle: React.CSSProperties = {
   justifyContent: "flex-end",
   gap: "var(--space-1)",
   padding: "var(--space-1) var(--space-3) var(--space-2)",
-};
-
-const smallBtnStyle: React.CSSProperties = {
-  fontSize: "var(--text-xs)",
-  padding: "var(--space-1) var(--space-2)",
-  borderRadius: "var(--radius-xs)",
-  border: `1px solid var(--border-input)`,
-  background: "var(--bg-app)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
 };
 
 const danglingSourceStyle: React.CSSProperties = {

@@ -71,6 +71,7 @@ export function StatusPanel({
         aria-label={label}
         title={label}
         onClick={() => setDialogOpen(true)}
+        className="gs-status-indicator"
         style={indicatorButtonStyle(hasIssues, hasErrors)}
       >
         <span style={indicatorIconStyle(hasIssues)}>{hasIssues ? "!" : "✓"}</span>
@@ -162,12 +163,13 @@ export function StatusDialog({
 
   return (
     <div
+      className="gs-anim-fade"
       style={overlayStyle}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-label={dialogAriaLabel} style={dialogStyle}>
+      <div role="dialog" aria-modal="true" aria-label={dialogAriaLabel} className="gs-anim-pop" style={dialogStyle}>
         <div style={dialogHeaderStyle}>
           <div>
             <div style={dialogTitleStyle}>{dialogTitle}</div>
@@ -175,7 +177,7 @@ export function StatusDialog({
               {issues.length > 0 ? `${errors.length} error / ${warnings.length} warn` : emptyDescription ?? okLabel}
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label={`关闭 ${dialogTitle}`} style={closeButtonStyle}>
+          <button type="button" onClick={onClose} aria-label={`关闭 ${dialogTitle}`} className="gs-chip-btn">
             <X size={14} />
           </button>
         </div>
@@ -256,6 +258,7 @@ function IssueCard({
   return (
     <button
       type="button"
+      className={clickable ? "gs-issue-card gs-issue-card--clickable" : "gs-issue-card"}
       onClick={() => {
         if (clickable && onIssueClick) {
           onIssueClick(issue);
@@ -263,7 +266,6 @@ function IssueCard({
         }
       }}
       style={{
-        ...issueButtonStyle,
         borderColor: issue.severity === "error" ? "var(--border-error)" : "var(--border-warn)",
         cursor: clickable ? "pointer" : "default",
       }}
@@ -291,6 +293,8 @@ function IssueCard({
 }
 
 // ── 样式（数值与原 GraphIssuesPanel 完全一致，保证视觉统一） ──
+// 指示器按钮的静态样式与 hover 在 .gs-status-indicator（index.css），
+// 这里只保留按状态变化的颜色 / 尺寸 / 透明度。
 
 const indicatorShellStyle: React.CSSProperties = {
   position: "absolute",
@@ -302,19 +306,9 @@ const indicatorShellStyle: React.CSSProperties = {
 function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSSProperties {
   const color = !hasIssues ? "var(--status-ok-text)" : hasErrors ? "var(--status-error-text)" : "var(--status-warn-text)";
   return {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
     minWidth: hasIssues ? 34 : 24,
-    height: 22,
     padding: hasIssues ? "0 var(--space-1)" : 0,
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border)",
-    background: "var(--bg-app)",
     color,
-    cursor: "pointer",
     opacity: hasIssues ? 1 : 0.72,
   };
 }
@@ -352,7 +346,7 @@ const dialogStyle: React.CSSProperties = {
   background: "var(--bg-panel)",
   border: "1px solid var(--border-input)",
   borderRadius: "var(--radius-lg)",
-  boxShadow: "0 16px 40px var(--overlay-strong)",
+  boxShadow: "var(--shadow-modal)",
   overflow: "hidden",
 };
 
@@ -375,18 +369,6 @@ const dialogMetaStyle: React.CSSProperties = {
   marginTop: "var(--space-1)",
   color: "var(--text-muted)",
   fontSize: "var(--text-sm)",
-};
-
-const closeButtonStyle: React.CSSProperties = {
-  width: "var(--control-lg)",
-  height: "var(--control-lg)",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-app)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  fontSize: "var(--text-xl)",
-  lineHeight: 1,
 };
 
 const dialogContentStyle: React.CSSProperties = {
@@ -412,20 +394,6 @@ const groupTitleStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   fontSize: "var(--text-xs)",
   textTransform: "uppercase",
-};
-
-const issueButtonStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "var(--space-2)",
-  width: "100%",
-  padding: "var(--space-2)",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid",
-  background: "var(--bg-panel)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
-  textAlign: "left",
 };
 
 const severityDotStyle: React.CSSProperties = {

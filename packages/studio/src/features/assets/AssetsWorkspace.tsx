@@ -12,6 +12,7 @@
  * 根容器 position: relative 以锚定右下角的 StatusPanel（absolute）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Inbox } from "lucide-react";
 import { ManifestSchema } from "@vibegal/engine";
 import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type AssetKind, type FileRevision, type Manifest } from "../../lib/types";
 import {
@@ -22,6 +23,7 @@ import {
 } from "../../lib/tauri";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { ConfirmDialog } from "../common/Dialogs";
+import { EmptyState } from "../common/EmptyState";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
 import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
@@ -830,7 +832,7 @@ function RegistryPanel({ title, empty, children }: { title: string; empty: boole
         <span style={registryPanelHintStyle}>导入/登记后在这里编辑 manifest 字段，统一通过底部草稿条保存。</span>
       </div>
       {empty ? (
-        <div style={registryEmptyTextStyle}>暂无条目。可先导入该类型资产，或登记当前分类下的孤儿文件。</div>
+        <EmptyState icon={Inbox} title="暂无条目" description="可先导入该类型资产，或登记当前分类下的孤儿文件。" />
       ) : (
         <div style={registryCardListStyle}>{children}</div>
       )}

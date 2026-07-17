@@ -143,7 +143,7 @@ const commandMenuStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
-  boxShadow: "0 14px 34px rgba(15, 23, 42, 0.18)",
+  boxShadow: "var(--shadow-pop)",
 };
 
 const commandMenuButtonStyle: CSSProperties = {

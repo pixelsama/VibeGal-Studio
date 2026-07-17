@@ -185,6 +185,7 @@ export function AlertDialog({ message, title, confirmLabel = "知道了", danger
 function Overlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   return (
     <div
+      className="gs-anim-fade"
       style={overlayStyle}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -237,6 +238,7 @@ function DialogSurface({
       role={role}
       aria-modal="true"
       tabIndex={-1}
+      className="gs-anim-pop"
       style={dialogStyle}
       onKeyDown={(event) => {
         if (event.key !== "Tab") return;
@@ -318,7 +320,7 @@ const dialogStyle: React.CSSProperties = {
   background: "var(--bg-panel)",
   border: "1px solid var(--border-input)",
   borderRadius: "var(--radius-lg)",
-  boxShadow: "0 16px 40px var(--overlay-strong)",
+  boxShadow: "var(--shadow-modal)",
 };
 
 const dialogTitleStyle: React.CSSProperties = {
@@ -351,7 +353,6 @@ const promptInputStyle: React.CSSProperties = {
   background: "var(--bg-inset)",
   color: "var(--text-bright)",
   fontSize: "var(--text-md)",
-  outline: "none",
   marginBottom: 18,
 };
 

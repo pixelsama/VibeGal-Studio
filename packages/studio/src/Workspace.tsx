@@ -388,8 +388,8 @@ export function Workspace({
         </div>
       </header>
 
-      {/* 内容区 */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      {/* 内容区：key 绑定工作台标识，切换标签时整体重挂载并淡入 */}
+      <div key={workspace} className="gs-anim-fade" style={{ flex: 1, overflow: "hidden" }}>
         {workspace === "render" && (
           <div style={renderWorkspaceStyle}>
             <CollapsibleSidebar

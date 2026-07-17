@@ -31,7 +31,15 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
     return <PreviewMessage mono>{`渲染层加载失败（${rendererId}）：\n\n${detail}`}</PreviewMessage>;
   }
-  if (!renderer) return <PreviewMessage>加载渲染层中…</PreviewMessage>;
+  if (!renderer) {
+    // 与 Preview 一致的加载骨架：16:9 舞台占位 + 说明文字
+    return (
+      <div style={loadingShellStyle}>
+        <div className="gs-skeleton" style={loadingStageStyle} />
+        <div style={loadingHintStyle}>加载渲染层中…</div>
+      </div>
+    );
+  }
   if (nodeData == null) return <PreviewMessage>节点无内容。保存后会在这里预览。</PreviewMessage>;
 
   const Renderer = renderer.Component;
@@ -78,6 +86,26 @@ const stagePaneStyle: React.CSSProperties = {
   position: "relative",
   minWidth: 0,
   height: "100%",
+};
+
+const loadingShellStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "var(--space-3)",
+  height: "100%",
+};
+
+const loadingStageStyle: React.CSSProperties = {
+  width: "min(640px, 80%)",
+  aspectRatio: "16 / 9",
+  borderRadius: "var(--radius-md)",
+};
+
+const loadingHintStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
 };
 
 const previewToolbarStyle: React.CSSProperties = {

@@ -696,6 +696,7 @@ export function NodeEditor({
           role="separator"
           aria-label="调整 Inspector 宽度"
           aria-orientation="vertical"
+          className="gs-resize-handle"
           onPointerDown={handleInspectorResizeStart}
           style={{
             ...inspectorResizeHandleStyle,
@@ -710,9 +711,10 @@ export function NodeEditor({
           aria-label="切换 Inspector 面板"
           aria-controls={NODE_INSPECTOR_REGION_ID}
           aria-expanded={!inspectorPaneLayout.collapsed}
+          className="gs-btn gs-btn--secondary"
           onClick={handleToggleInspectorPane}
           style={{
-            ...inspectorToggleButtonStyle,
+            ...inspectorTogglePositionStyle,
             right: inspectorPaneLayout.collapsed ? 12 : Math.max(12, inspectorPaneLayout.paneWidth - 120),
           }}
         >
@@ -763,25 +765,22 @@ const issueItemStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const inspectorToggleButtonStyle: CSSProperties = {
+/* 颜色/悬停/焦点统一走 .gs-btn--secondary；这里只留定位与外观差异的覆盖。 */
+const inspectorTogglePositionStyle: CSSProperties = {
   position: "absolute",
   top: 10,
   zIndex: 5,
   padding: "var(--space-2) var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-input)",
   background: "color-mix(in srgb, var(--bg-panel) 92%, transparent)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
   fontSize: "var(--text-sm)",
   whiteSpace: "nowrap",
 };
 
+/* 底色与悬停反馈走 .gs-resize-handle；内联只保留定位（避免盖住 :hover）。 */
 const inspectorResizeHandleStyle: CSSProperties = {
   position: "absolute",
   top: 0,
   bottom: 0,
   zIndex: 4,
   width: 6,
-  background: "transparent",
 };
