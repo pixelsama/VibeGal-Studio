@@ -164,8 +164,9 @@ export function ScenarioInspector({
   const instruction = selection.instruction;
 
   if (!instruction) {
+    // 空闲态不再重复"节点摘要"标题——外层 BottomSheet 标题栏已经标明
     return (
-      <InspectorPanel title="节点摘要">
+      <InspectorPanel>
         {selection.message && <IssueText>{selection.message}</IssueText>}
         {diagnostics.length > 0 ? (
           <div style={issueListStyle}>
@@ -410,10 +411,10 @@ export function ScenarioInspector({
   }
 }
 
-function InspectorPanel({ title, children }: { title: string; children: ReactNode }) {
+function InspectorPanel({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <div style={inspectorPanelStyle}>
-      <div style={inspectorTitleStyle}>{title}</div>
+      {title && <div style={inspectorTitleStyle}>{title}</div>}
       <div style={inspectorBodyStyle}>{children}</div>
     </div>
   );

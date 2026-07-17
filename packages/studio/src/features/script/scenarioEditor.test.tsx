@@ -232,7 +232,8 @@ describe("ScenarioInspector", () => {
       onReplaceInstruction: () => {},
     }));
 
-    expect(html).toContain("节点摘要");
+    // 空闲态不再重复外层 BottomSheet 栏的"节点摘要"标题
+    expect(html).not.toContain("节点摘要");
     expect(html).toContain("测试诊断");
   });
 });
