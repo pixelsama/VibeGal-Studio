@@ -13,6 +13,7 @@ import {
   scenarioCommandTriggerAtCursor,
 } from "./NodeEditor";
 import { isSaveKeyboardShortcut } from "./unsavedChanges";
+import { NodeEditorToolbar } from "./NodeEditorToolbar";
 import type { ProjectData } from "../../lib/types";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -134,6 +135,42 @@ describe("NodeEditor scenario surface", () => {
 
     expect(html).toContain("data-region=\"scenario-starter-guide\"");
     expect(html).toContain("从模板开始");
+  });
+});
+
+describe("NodeEditorToolbar external update entry", () => {
+  function renderToolbar(overrides: { hasExternalUpdate?: boolean; writeConflict?: boolean }) {
+    return renderToStaticMarkup(createElement(NodeEditorToolbar, {
+      title: "开始",
+      file: "nodes/start.json",
+      dirty: true,
+      diagnosticsCount: 0,
+      hasExternalUpdate: overrides.hasExternalUpdate ?? false,
+      writeConflict: overrides.writeConflict ?? false,
+      saving: false,
+      canSave: true,
+      status: "",
+      draftCopyPath: null,
+      onModeToggle: () => {},
+      onOpenExternalDiff: () => {},
+      onSaveDraftCopy: () => {},
+      onSave: () => {},
+    }));
+  }
+
+  it("routes external updates through the diff view instead of a blind load", () => {
+    const html = renderToolbar({ hasExternalUpdate: true });
+
+    expect(html).toContain("外部已更新，查看差异");
+    expect(html).not.toContain("载入外部版本");
+  });
+
+  it("routes write conflicts through the diff view and keeps the draft-copy escape", () => {
+    const html = renderToolbar({ writeConflict: true });
+
+    expect(html).toContain("冲突：查看差异");
+    expect(html).toContain("另存为副本");
+    expect(html).not.toContain("载入外部版本");
   });
 });
 

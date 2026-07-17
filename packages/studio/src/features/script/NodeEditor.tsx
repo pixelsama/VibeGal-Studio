@@ -23,6 +23,8 @@ import {
   type NodeEditorMode,
 } from "./nodeEditorModel";
 import { NodeEditorToolbar } from "./NodeEditorToolbar";
+import { ExternalDiffPanel } from "./ExternalDiffPanel";
+import { diffLines, externalDiffTexts, summarizeDiff } from "./externalDiff";
 import { NodePreviewPanel } from "./NodePreviewPanel";
 import {
   CommandMenuSource,
@@ -220,6 +222,8 @@ export function NodeEditor({
   const [hasExternalUpdate, setHasExternalUpdate] = useState(false);
   const [writeConflict, setWriteConflict] = useState(false);
   const [draftCopyPath, setDraftCopyPath] = useState<string | null>(null);
+  const [externalDiffOpen, setExternalDiffOpen] = useState(false);
+  const externalFetchRequestedRef = useRef(false);
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -264,8 +268,34 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setDraftCopyPath(null);
+    setExternalDiffOpen(false);
     setStatus("");
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
+
+  const externalJsonText = pendingExternalText ?? incomingJsonText;
+  // 写入冲突刚发生时，watcher 可能还没把新内容送进来，此时没有可对比的外部文本。
+  const externalTextUnavailable = writeConflict
+    && pendingExternalText == null
+    && incomingJsonText === loadedTextRef.current;
+
+  // diff 面板打开但外部文本还没到位时，主动触发一次项目重读（每次打开只触发一次）。
+  useEffect(() => {
+    if (!externalDiffOpen) {
+      externalFetchRequestedRef.current = false;
+      return;
+    }
+    if (externalTextUnavailable && !externalFetchRequestedRef.current) {
+      externalFetchRequestedRef.current = true;
+      void onSaved();
+    }
+  }, [externalDiffOpen, externalTextUnavailable, onSaved]);
+
+  const externalDiff = useMemo(() => {
+    if (!externalDiffOpen || externalTextUnavailable) return null;
+    const { beforeText, afterText } = externalDiffTexts({ mode, draftText: text, externalJsonText });
+    const rows = diffLines(beforeText, afterText);
+    return { rows, ...summarizeDiff(rows) };
+  }, [externalDiffOpen, externalTextUnavailable, externalJsonText, mode, text]);
 
   useEffect(() => {
     saveNodeInspectorPaneState(inspectorPane);
@@ -444,6 +474,7 @@ export function NodeEditor({
         setHasExternalUpdate(false);
         setWriteConflict(false);
         setDraftCopyPath(null);
+        setExternalDiffOpen(false);
       }
       if (!dirty) setStatus("已保存 ✓");
       onSaved();
@@ -489,6 +520,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setDraftCopyPath(null);
+    setExternalDiffOpen(false);
     setStatus("已载入外部更新。");
   };
 
@@ -667,10 +699,21 @@ export function NodeEditor({
         status={status}
         draftCopyPath={draftCopyPath}
         onModeToggle={handleModeToggle}
-        onLoadExternal={handleLoadExternal}
+        onOpenExternalDiff={() => setExternalDiffOpen(true)}
         onSaveDraftCopy={handleSaveDraftCopy}
         onSave={handleSave}
       />
+      {externalDiffOpen && (hasExternalUpdate || writeConflict) && (
+        <ExternalDiffPanel
+          writeConflict={writeConflict}
+          loading={externalDiff == null}
+          rows={externalDiff?.rows ?? null}
+          saving={saving}
+          onLoadExternal={handleLoadExternal}
+          onSaveDraftCopy={handleSaveDraftCopy}
+          onDismiss={() => setExternalDiffOpen(false)}
+        />
+      )}
       <ScenarioTextEditor
         mode={mode}
         text={text}

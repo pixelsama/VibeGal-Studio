@@ -14,7 +14,7 @@ export function NodeEditorToolbar({
   status,
   draftCopyPath,
   onModeToggle,
-  onLoadExternal,
+  onOpenExternalDiff,
   onSaveDraftCopy,
   onSave,
 }: {
@@ -29,7 +29,7 @@ export function NodeEditorToolbar({
   status: string;
   draftCopyPath: string | null;
   onModeToggle: (mode: NodeEditorMode) => void;
-  onLoadExternal: () => void;
+  onOpenExternalDiff: () => void;
   onSaveDraftCopy: () => void;
   onSave: () => void;
 }) {
@@ -45,14 +45,14 @@ export function NodeEditorToolbar({
       {dirty && <StatusText tone="warn">未保存</StatusText>}
       {diagnosticsCount > 0 && <StatusText tone="error">剧本有 {diagnosticsCount} 个问题</StatusText>}
       {hasExternalUpdate && !writeConflict && (
-        <Button onClick={onLoadExternal} disabled={saving} style={warnButtonStyle}>
-          外部已更新，点击载入
+        <Button onClick={onOpenExternalDiff} disabled={saving} style={warnButtonStyle}>
+          外部已更新，查看差异
         </Button>
       )}
       {writeConflict && (
         <>
-          <Button onClick={onLoadExternal} disabled={saving} style={warnButtonStyle}>
-            载入外部版本
+          <Button onClick={onOpenExternalDiff} disabled={saving} style={warnButtonStyle}>
+            冲突：查看差异
           </Button>
           <Button onClick={onSaveDraftCopy} disabled={saving} style={warnButtonStyle}>
             另存为副本
