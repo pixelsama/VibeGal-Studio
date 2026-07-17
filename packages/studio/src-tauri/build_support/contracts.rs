@@ -59,7 +59,7 @@ pub fn verify_contracts(generated: &Path, contracts: &Path) -> Result<(), String
         )?;
     }
     for source in CONTRACT_SOURCES {
-        verify_hash(
+        verify_source_hash(
             &contracts.join(source),
             source_hashes.get(source),
             &format!("generated contracts do not match source: {source}"),
@@ -111,4 +111,40 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     let bytes =
         std::fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+fn verify_source_hash(
+    path: &Path,
+    expected: Option<&serde_json::Value>,
+    message: &str,
+) -> Result<(), String> {
+    let expected = expected
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("{message}: missing hash"))?;
+    let actual = sha256_text_file(path)?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(message.to_string())
+    }
+}
+
+/// Mirrors `hashTextFile` in packages/contracts/scripts/generate-contracts.ts:
+/// contract sources are hashed after normalizing CRLF to LF, so Windows
+/// checkouts (autocrlf) produce the same digest as LF platforms.
+fn sha256_text_file(path: &Path) -> Result<String, String> {
+    let bytes =
+        std::fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    Ok(format!("{:x}", Sha256::digest(normalize_lf(&bytes))))
+}
+
+fn normalize_lf(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    for (index, &byte) in bytes.iter().enumerate() {
+        if byte == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+            continue;
+        }
+        out.push(byte);
+    }
+    out
 }

@@ -337,6 +337,7 @@ fn cli_tool_status_without_install_paths_degrades_to_manual_guidance() {
     let root = unique_temp_dir("cli-status-manual");
     let launcher = root.join("vibegal-cli");
     let sidecar = root.join("vibegal-cli-sidecar");
+    fs::create_dir_all(&root).unwrap();
     fs::write(&launcher, "bin").unwrap();
     fs::write(&sidecar, "bin").unwrap();
 
@@ -371,6 +372,7 @@ fn install_cli_tool_without_install_paths_errors() {
     let root = unique_temp_dir("cli-install-no-paths");
     let launcher = root.join("vibegal-cli");
     let sidecar = root.join("vibegal-cli-sidecar");
+    fs::create_dir_all(&root).unwrap();
     fs::write(&launcher, "bin").unwrap();
     fs::write(&sidecar, "bin").unwrap();
 
