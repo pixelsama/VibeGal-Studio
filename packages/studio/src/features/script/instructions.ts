@@ -66,7 +66,9 @@ export type InsertableKind =
   | "wait"
   | "effect"
   | "transition"
-  | "set";
+  | "set"
+  | "showCg"
+  | "playVideo";
 
 /**
  * 构造各插入按钮的占位指令对象（带 schema 默认值，对齐 engine/schema.ts）。
@@ -106,6 +108,10 @@ export function defaultInstruction(kind: InsertableKind): Instruction {
       return { t: "transition", type: "fade_in", ms: 1000 };
     case "set":
       return { t: "set", key: "flag", value: true };
+    case "showCg":
+      return { t: "showCg", id: "" };
+    case "playVideo":
+      return { t: "playVideo", id: "" };
   }
 }
 

@@ -25,6 +25,8 @@ const manifest: Manifest = {
     classroom: "assets/backgrounds/classroom.png",
   },
   audio: { bgm: { daily: "assets/audio/daily.mp3" }, sfx: {}, voice: {} },
+  cg: { cg_001: { path: "assets/cg/cg_001.png" } },
+  videos: { op: { path: "assets/videos/op.mp4" } },
 };
 
 describe("scenario editor helpers", () => {
@@ -197,6 +199,29 @@ describe("ScenarioInspector", () => {
     expect(unlock).toContain("true_end");
     expect(pause).toContain("停顿");
     expect(pause).not.toContain("该命令可直接在剧本文本中编辑");
+  });
+
+  it("renders media pickers for showCg and playVideo commands", () => {
+    const showCg = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@showCg cg_001", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const playVideo = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@playVideo op true", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(showCg).toContain("CG");
+    expect(showCg).toContain("cg_001");
+    expect(showCg).not.toContain("该命令可直接在剧本文本中编辑");
+    expect(playVideo).toContain("视频");
+    expect(playVideo).toContain("op");
+    expect(playVideo).toContain("可跳过");
+    expect(playVideo).not.toContain("该命令可直接在剧本文本中编辑");
   });
 
   it("renders node summary when no editable line is selected", () => {

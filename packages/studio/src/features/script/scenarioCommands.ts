@@ -22,6 +22,8 @@ const SCENARIO_COMMANDS: ScenarioCommandOption[] = [
   { kind: "sfx", label: "音效", detail: "播放音效", aliases: ["sfx", "sound", "音效"] },
   { kind: "voice", label: "语音", detail: "播放语音", aliases: ["voice", "语音"] },
   { kind: "char", label: "角色", detail: "登场或切换立绘", aliases: ["char", "character", "角色"] },
+  { kind: "showCg", label: "CG", detail: "全屏展示一张 CG", aliases: ["showcg", "cg"] },
+  { kind: "playVideo", label: "视频", detail: "播放一段视频", aliases: ["playvideo", "video", "视频"] },
   { kind: "wait", label: "等待", detail: "等待指定毫秒", aliases: ["wait", "等待"] },
   { kind: "effect", label: "效果", detail: "触发画面效果", aliases: ["effect", "fx", "效果"] },
   { kind: "transition", label: "转场", detail: "触发转场覆盖层", aliases: ["transition", "trans", "转场"] },
@@ -99,6 +101,8 @@ export function defaultScenarioInstruction(kind: InsertableKind, project: Projec
   const firstBgm = Object.keys(manifest.audio.bgm)[0] ?? "bgm";
   const firstSfx = Object.keys(manifest.audio.sfx)[0] ?? "sfx";
   const firstVoice = Object.keys(manifest.audio.voice)[0] ?? "voice";
+  const firstCg = Object.keys(manifest.cg ?? {})[0] ?? "cg";
+  const firstVideo = Object.keys(manifest.videos ?? {})[0] ?? "video";
 
   switch (draft.t) {
     case "narrate":
@@ -115,6 +119,10 @@ export function defaultScenarioInstruction(kind: InsertableKind, project: Projec
       return { ...draft, id: firstVoice };
     case "char":
       return { ...draft, id: firstCharacter };
+    case "showCg":
+      return { ...draft, id: firstCg };
+    case "playVideo":
+      return { ...draft, id: firstVideo };
     case "set":
       return { ...draft, key: "flag", value: true };
     default:

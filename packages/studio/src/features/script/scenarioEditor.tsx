@@ -23,6 +23,8 @@ export type ScenarioSelectionKind =
   | "set"
   | "pause"
   | "unlock"
+  | "showCg"
+  | "playVideo"
   | "invalid";
 
 export interface ScenarioSelection {
@@ -344,9 +346,44 @@ export function ScenarioInspector({
           />
         </InspectorPanel>
       );
-    default:
+    case "showCg":
       return (
-        <InspectorPanel title={instruction.t}>
+        <InspectorPanel title="CG">
+          <ResourcePicker
+            label="CG"
+            manifest={manifest}
+            kind="cg"
+            value={instruction.id}
+            onChange={(id) => onReplaceInstruction({ ...instruction, id })}
+          />
+        </InspectorPanel>
+      );
+    case "playVideo":
+      return (
+        <InspectorPanel title="视频">
+          <ResourcePicker
+            label="视频"
+            manifest={manifest}
+            kind="video"
+            value={instruction.id}
+            onChange={(id) => onReplaceInstruction({ ...instruction, id })}
+          />
+          <EnumField
+            label="可跳过"
+            value={instruction.skippable == null ? "default" : String(instruction.skippable)}
+            options={["default", "true", "false"]}
+            optionLabels={{ default: "默认", true: "是", false: "否" }}
+            onChange={(value) => onReplaceInstruction({
+              ...instruction,
+              skippable: value === "default" ? undefined : value === "true",
+            })}
+          />
+        </InspectorPanel>
+      );
+    default:
+      // 当前 switch 已覆盖全部指令类型；保留兜底以防未来新增指令类型时没有表单。
+      return (
+        <InspectorPanel title={(instruction as Instruction).t}>
           <div style={mutedTextStyle}>该命令可直接在剧本文本中编辑。</div>
         </InspectorPanel>
       );
@@ -397,11 +434,13 @@ function EnumField({
   label,
   value,
   options,
+  optionLabels,
   onChange,
 }: {
   label: string;
   value: string;
   options: string[];
+  optionLabels?: Record<string, string>;
   onChange: (value: string) => void;
 }) {
   return (
@@ -409,7 +448,7 @@ function EnumField({
       <span style={fieldLabelStyle}>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
         {options.map((option) => (
-          <option key={option} value={option}>{option}</option>
+          <option key={option} value={option}>{optionLabels?.[option] ?? option}</option>
         ))}
       </select>
     </label>

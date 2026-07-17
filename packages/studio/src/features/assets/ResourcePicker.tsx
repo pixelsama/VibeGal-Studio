@@ -7,7 +7,7 @@ export interface ResourceOption {
   hint?: string;
 }
 
-export type ResourcePickerKind = "background" | "bgm" | "sfx" | "voice" | "character" | "expression";
+export type ResourcePickerKind = "background" | "bgm" | "sfx" | "voice" | "character" | "expression" | "cg" | "video";
 
 type ResourcePickerProps = {
   label?: string;
@@ -58,6 +58,16 @@ export function buildResourcePickerOptions(
         label: expr,
       }));
     }
+    case "cg":
+      return Object.entries(manifest.cg ?? {}).map(([id, asset]) => ({
+        value: id,
+        label: asset.name || id,
+      }));
+    case "video":
+      return Object.entries(manifest.videos ?? {}).map(([id, asset]) => ({
+        value: id,
+        label: asset.name || id,
+      }));
   }
 }
 

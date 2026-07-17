@@ -36,6 +36,12 @@ const manifest: Manifest = {
       line01: "assets/audio/voice/line01.ogg",
     },
   },
+  cg: {
+    cg_001: { path: "assets/cg/cg_001.png", name: "毕业照" },
+  },
+  videos: {
+    op: { path: "assets/videos/op.mp4" },
+  },
 };
 
 describe("buildResourcePickerOptions", () => {
@@ -45,6 +51,8 @@ describe("buildResourcePickerOptions", () => {
     expect(
       buildResourcePickerOptions(manifest, { kind: "expression", characterId: "hero" }).map((option) => option.value),
     ).toEqual(["default", "happy"]);
+    expect(buildResourcePickerOptions(manifest, { kind: "cg" })).toEqual([{ value: "cg_001", label: "毕业照" }]);
+    expect(buildResourcePickerOptions(manifest, { kind: "video" })).toEqual([{ value: "op", label: "op" }]);
   });
 });
 

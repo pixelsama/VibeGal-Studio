@@ -38,6 +38,14 @@ import {
   ScenarioNodeLayout,
 } from "./scenarioEditor";
 import { ScenarioTextEditor } from "./ScenarioTextEditor";
+import {
+  createUndoHistory,
+  recordUndoCheckpoint,
+  redoScenarioText,
+  undoScenarioText,
+  undoShortcutType,
+  type UndoHistory,
+} from "./undoHistory";
 import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "./unsavedChanges";
 import { useSaveShortcut } from "../common/useSaveShortcut";
 import {
@@ -217,6 +225,7 @@ export function NodeEditor({
   const layoutRootRef = useRef<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
   const draftVersionRef = useRef(0);
+  const undoHistoryRef = useRef<UndoHistory>(createUndoHistory());
   const loadedTextRef = useRef(restoredDraft?.baseJsonText ?? incomingJsonText);
   const loadedRevisionRef = useRef(restoredDraft?.baseRevision ?? project.nodeRevisions?.[node.file] ?? undefined);
   const [inspectorPane, setInspectorPane] = useState<NodeInspectorPaneState>(() => loadNodeInspectorPaneState());
@@ -245,6 +254,7 @@ export function NodeEditor({
     }
     loadedTextRef.current = incomingJsonText;
     loadedRevisionRef.current = incomingRevision;
+    undoHistoryRef.current = createUndoHistory();
     setText(mode === "json" ? incomingJsonText : incomingScenarioText);
     setInstructions(incomingInstructions);
     setLastValidInstructions(incomingInstructions);
@@ -348,7 +358,12 @@ export function NodeEditor({
     setStatus(`节点问题位置：第 ${index + 1} 条指令（${focusRequest.jsonPath}）`);
   }, [focusRequest]);
 
-  const applyScenarioText = (nextText: string) => {
+  const applyScenarioText = (nextText: string, options: { programmatic?: boolean; skipHistory?: boolean } = {}) => {
+    if (!options.skipHistory) {
+      undoHistoryRef.current = recordUndoCheckpoint(undoHistoryRef.current, text, {
+        programmatic: options.programmatic,
+      });
+    }
     draftVersionRef.current += 1;
     setText(nextText);
     setDirty(true);
@@ -449,6 +464,7 @@ export function NodeEditor({
     }
     const nextJsonText = pendingExternalText ?? incomingJsonText;
     draftVersionRef.current += 1;
+    undoHistoryRef.current = createUndoHistory();
     const parsed = parseJsonInstructionText(nextJsonText);
     const nextInstructions = parsed.ok ? parsed.instructions : [];
     loadedTextRef.current = nextJsonText;
@@ -524,17 +540,32 @@ export function NodeEditor({
     pendingSelectionRef.current = inserted.cursorOffset;
     setCursorOffset(inserted.cursorOffset);
     setCommandMenuSource(null);
-    applyScenarioText(inserted.text);
+    applyScenarioText(inserted.text, { programmatic: true });
   };
 
   const handleInsertTemplate = (templateText: string) => {
     if (mode !== "scenario") return;
     pendingSelectionRef.current = templateText.length;
     setCursorOffset(templateText.length);
-    applyScenarioText(templateText);
+    applyScenarioText(templateText, { programmatic: true });
   };
 
   const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mode === "scenario") {
+      const shortcut = undoShortcutType(event);
+      if (shortcut) {
+        const result = shortcut === "undo"
+          ? undoScenarioText(undoHistoryRef.current, text)
+          : redoScenarioText(undoHistoryRef.current, text);
+        if (!result) return; // 栈空时交给 textarea 原生撤销
+        event.preventDefault();
+        undoHistoryRef.current = result.history;
+        pendingSelectionRef.current = result.text.length;
+        setCursorOffset(result.text.length);
+        applyScenarioText(result.text, { skipHistory: true });
+        return;
+      }
+    }
     if (event.key === "Escape" && commandMenuSource) {
       event.preventDefault();
       setCommandMenuSource(null);
@@ -555,6 +586,7 @@ export function NodeEditor({
         return;
       }
       draftVersionRef.current += 1;
+      undoHistoryRef.current = createUndoHistory();
       setMode("json");
       setText(built.payload);
       setInstructions(built.nextInstructions);
@@ -570,6 +602,7 @@ export function NodeEditor({
       return;
     }
     draftVersionRef.current += 1;
+    undoHistoryRef.current = createUndoHistory();
     setMode("scenario");
     setText(formatScenarioText(nextInstructions));
     setInstructions(nextInstructions);
@@ -664,7 +697,10 @@ export function NodeEditor({
       selection={scenarioSelection}
       manifest={project.content.manifest}
       diagnostics={diagnostics}
-      onReplaceInstruction={(instruction) => applyScenarioText(replaceScenarioSelectionInstruction(text, scenarioSelection, instruction))}
+      onReplaceInstruction={(instruction) => applyScenarioText(
+        replaceScenarioSelectionInstruction(text, scenarioSelection, instruction),
+        { programmatic: true },
+      )}
     />
   ) : (
     <div style={jsonInspectorStyle}>
