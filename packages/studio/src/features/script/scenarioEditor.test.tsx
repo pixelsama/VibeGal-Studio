@@ -128,6 +128,77 @@ describe("ScenarioInspector", () => {
     expect(html).toContain("center");
   });
 
+  it("renders resource pickers for bgm, sfx and voice commands", () => {
+    const bgm = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@bgm daily", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const sfx = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@sfx knock", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const voice = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@voice akari_001", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(bgm).toContain("背景音乐");
+    expect(bgm).toContain("daily");
+    expect(sfx).toContain("音效");
+    expect(voice).toContain("语音");
+  });
+
+  it("renders parameter fields for wait, effect, transition, unlock and pause commands", () => {
+    const wait = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@wait 800", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const effect = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@effect shake", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const transition = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@transition fade_in", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const unlock = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@unlock endings true_end", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const pause = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@pause", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(wait).toContain("等待");
+    expect(wait).toContain("毫秒");
+    expect(wait).toContain("800");
+    expect(effect).toContain("画面效果");
+    expect(effect).toContain("shake");
+    expect(transition).toContain("转场");
+    expect(transition).toContain("fade_in");
+    expect(unlock).toContain("解锁");
+    expect(unlock).toContain("true_end");
+    expect(pause).toContain("停顿");
+    expect(pause).not.toContain("该命令可直接在剧本文本中编辑");
+  });
+
   it("renders node summary when no editable line is selected", () => {
     const html = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("", 0),

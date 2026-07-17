@@ -108,6 +108,33 @@ describe("NodeEditor scenario surface", () => {
     expect(html).not.toContain("连接下一个节点");
     expect(html).not.toContain("添加玩家选择");
   });
+
+  it("shows starter templates instead of a blank editor when the node is empty", () => {
+    const node = { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 } };
+    const project: ProjectData = {
+      path: "/tmp/vibegal-test",
+      meta: { name: "Test", activeRendererId: "default", createdAt: "2026-01-01T00:00:00.000Z" },
+      content: {
+        manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
+        meta: { stage: { width: 1280, height: 720 } },
+      },
+      rendererIds: ["default"],
+      graph: { version: 1, entryNodeId: "start", nodes: [node], edges: [] },
+      nodes: [{ relPath: "nodes/start.json", data: [] }],
+      projectReport: { projectIssues: [] },
+    };
+
+    const html = renderToStaticMarkup(createElement(NodeEditor, {
+      project,
+      rendererId: "default",
+      node,
+      nodeData: [],
+      onSaved: () => {},
+    }));
+
+    expect(html).toContain("data-region=\"scenario-starter-guide\"");
+    expect(html).toContain("从模板开始");
+  });
 });
 
 describe("NodeEditor inspector pane layout", () => {

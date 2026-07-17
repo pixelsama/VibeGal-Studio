@@ -527,6 +527,13 @@ export function NodeEditor({
     applyScenarioText(inserted.text);
   };
 
+  const handleInsertTemplate = (templateText: string) => {
+    if (mode !== "scenario") return;
+    pendingSelectionRef.current = templateText.length;
+    setCursorOffset(templateText.length);
+    applyScenarioText(templateText);
+  };
+
   const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Escape" && commandMenuSource) {
       event.preventDefault();
@@ -632,6 +639,7 @@ export function NodeEditor({
           textareaRef.current?.focus();
         }}
         onInsertCommand={handleInsertCommand}
+        onInsertTemplate={handleInsertTemplate}
         onScenarioTextChange={handleScenarioTextChange}
         onJsonTextChange={handleJsonTextChange}
         onSyncCursor={syncCursorFromTextarea}

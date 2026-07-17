@@ -250,6 +250,100 @@ export function ScenarioInspector({
           />
         </InspectorPanel>
       );
+    case "bgm":
+      return (
+        <InspectorPanel title="背景音乐">
+          <ResourcePicker
+            label="BGM"
+            manifest={manifest}
+            kind="bgm"
+            value={instruction.id}
+            onChange={(id) => onReplaceInstruction({ ...instruction, id })}
+          />
+          <div style={mutedTextStyle}>淡入与循环参数请切到 JSON 模式编辑。</div>
+        </InspectorPanel>
+      );
+    case "sfx":
+      return (
+        <InspectorPanel title="音效">
+          <ResourcePicker
+            label="音效"
+            manifest={manifest}
+            kind="sfx"
+            value={instruction.id}
+            onChange={(id) => onReplaceInstruction({ ...instruction, id })}
+          />
+        </InspectorPanel>
+      );
+    case "voice":
+      return (
+        <InspectorPanel title="语音">
+          <ResourcePicker
+            label="语音"
+            manifest={manifest}
+            kind="voice"
+            value={instruction.id}
+            onChange={(id) => onReplaceInstruction({ ...instruction, id })}
+          />
+        </InspectorPanel>
+      );
+    case "wait":
+      return (
+        <InspectorPanel title="等待">
+          <NumberField
+            label="毫秒"
+            value={instruction.ms}
+            min={0}
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms: Math.round(ms) })}
+          />
+        </InspectorPanel>
+      );
+    case "effect":
+      return (
+        <InspectorPanel title="画面效果">
+          <EnumField
+            label="类型"
+            value={instruction.type}
+            options={["shake", "flash", "blur"]}
+            onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
+          />
+          <div style={mutedTextStyle}>强度与时长参数请切到 JSON 模式编辑。</div>
+        </InspectorPanel>
+      );
+    case "transition":
+      return (
+        <InspectorPanel title="转场">
+          <EnumField
+            label="类型"
+            value={instruction.type}
+            options={["fade_in", "fade_out", "white_in", "white_out", "black"]}
+            onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
+          />
+          <div style={mutedTextStyle}>时长参数请切到 JSON 模式编辑。</div>
+        </InspectorPanel>
+      );
+    case "pause":
+      return (
+        <InspectorPanel title="停顿">
+          <div style={mutedTextStyle}>等待玩家点击后继续。空行会自动产生停顿，一般无需手动插入 @pause。</div>
+        </InspectorPanel>
+      );
+    case "unlock":
+      return (
+        <InspectorPanel title="解锁">
+          <EnumField
+            label="类型"
+            value={instruction.kind}
+            options={["cg", "music", "replay", "endings"]}
+            onChange={(kind) => onReplaceInstruction({ ...instruction, kind: kind as typeof instruction.kind })}
+          />
+          <TextField
+            label="解锁 ID"
+            value={instruction.id}
+            onChange={(id) => onReplaceInstruction({ ...instruction, id })}
+          />
+        </InspectorPanel>
+      );
     default:
       return (
         <InspectorPanel title={instruction.t}>
@@ -277,6 +371,24 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
     <label style={fieldStyle}>
       <span style={fieldLabelStyle}>{label}</span>
       <input type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
+    </label>
+  );
+}
+
+function NumberField({ label, value, min = 0, onChange }: { label: string; value: number; min?: number; onChange: (value: number) => void }) {
+  return (
+    <label style={fieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (Number.isFinite(next) && next >= min) onChange(next);
+        }}
+        style={inputStyle}
+      />
     </label>
   );
 }

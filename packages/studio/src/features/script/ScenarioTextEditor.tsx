@@ -3,6 +3,19 @@ import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption } from "./scenarioCommands";
 
+export interface ScenarioStarterTemplate {
+  label: string;
+  detail: string;
+  text: string;
+}
+
+/** 空节点引导模板：必须能被 scenario DSL 无损解析（有测试守护）。 */
+export const SCENARIO_STARTER_TEMPLATES: ScenarioStarterTemplate[] = [
+  { label: "旁白开场", detail: "一段叙述文本", text: "夜深了。" },
+  { label: "角色台词", detail: "名字: 台词", text: "角色名: 你好，世界。" },
+  { label: "场景开场", detail: "背景 + 台词", text: "@bg 背景id fade\n\n角色名: 你好，世界。" },
+];
+
 export function ScenarioTextEditor({
   mode,
   text,
@@ -12,6 +25,7 @@ export function ScenarioTextEditor({
   visibleCommands,
   onToggleLineCommandMenu,
   onInsertCommand,
+  onInsertTemplate,
   onScenarioTextChange,
   onJsonTextChange,
   onSyncCursor,
@@ -26,14 +40,35 @@ export function ScenarioTextEditor({
   visibleCommands: ScenarioCommandOption[];
   onToggleLineCommandMenu: () => void;
   onInsertCommand: (kind: InsertableKind) => void;
+  onInsertTemplate: (text: string) => void;
   onScenarioTextChange: (textarea: HTMLTextAreaElement) => void;
   onJsonTextChange: (textarea: HTMLTextAreaElement) => void;
   onSyncCursor: (textarea: HTMLTextAreaElement) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onScroll: (scrollTop: number) => void;
 }) {
+  const showStarterGuide = mode === "scenario" && text.trim() === "";
   return (
     <div style={scenarioTextWrapStyle}>
+      {showStarterGuide && (
+        <div style={starterGuideStyle} data-region="scenario-starter-guide">
+          <div style={starterGuideTitleStyle}>空节点：直接输入，或从模板开始</div>
+          <div style={starterGuideListStyle}>
+            {SCENARIO_STARTER_TEMPLATES.map((template) => (
+              <button
+                key={template.label}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onInsertTemplate(template.text)}
+                style={starterGuideButtonStyle}
+              >
+                <span style={starterGuideLabelStyle}>{template.label}</span>
+                <span style={starterGuideDetailStyle}>{template.detail}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {mode === "scenario" && (
         <button
           type="button"
@@ -113,6 +148,52 @@ const scenarioTextWrapStyle: CSSProperties = {
   position: "relative",
   flex: 1,
   minHeight: 0,
+};
+
+/* 空态引导浮层：容器不拦截输入，只有按钮可点。 */
+const starterGuideStyle: CSSProperties = {
+  position: "absolute",
+  top: 16,
+  left: 46,
+  zIndex: 2,
+  display: "grid",
+  gap: "var(--space-2)",
+  maxWidth: 360,
+  pointerEvents: "none",
+};
+
+const starterGuideTitleStyle: CSSProperties = {
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
+};
+
+const starterGuideListStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-1)",
+  width: 240,
+};
+
+const starterGuideButtonStyle: CSSProperties = {
+  display: "grid",
+  gap: 2,
+  padding: "7px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-panel)",
+  color: "var(--text-primary)",
+  textAlign: "left",
+  cursor: "pointer",
+  pointerEvents: "auto",
+};
+
+const starterGuideLabelStyle: CSSProperties = {
+  fontSize: "var(--text-base)",
+  fontWeight: 600,
+};
+
+const starterGuideDetailStyle: CSSProperties = {
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
 };
 
 const linePlusButtonStyle: CSSProperties = {

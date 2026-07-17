@@ -5,7 +5,31 @@ interface RuntimeStateInspectorProps {
   currentNodeLabel?: string | null;
 }
 
+/** 预览尚未产生任何可见状态（背景/角色/音频/变量全空）时为 true。 */
+export function isRuntimeStateEmpty(state: NovelState): boolean {
+  return state.background == null
+    && state.speaker == null
+    && state.choice == null
+    && state.audio.bgm == null
+    && state.audio.voice == null
+    && state.audio.sfx.length === 0
+    && state.sprites.length === 0
+    && Object.keys(state.vars).length === 0;
+}
+
 export function RuntimeStateInspector({ state, currentNodeLabel }: RuntimeStateInspectorProps) {
+  if (isRuntimeStateEmpty(state)) {
+    return (
+      <aside style={panelStyle}>
+        <div style={titleStyle}>Runtime</div>
+        <div style={contentStyle}>
+          {currentNodeLabel != null && <Field label="当前节点" value={currentNodeLabel} />}
+          <div style={emptyHintStyle}>预览运行后，这里会显示背景、角色、音频与变量状态。</div>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside style={panelStyle}>
       <div style={titleStyle}>Runtime</div>
@@ -89,4 +113,10 @@ const valueStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-primary)",
   wordBreak: "break-word",
+};
+
+const emptyHintStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
+  lineHeight: 1.6,
 };
