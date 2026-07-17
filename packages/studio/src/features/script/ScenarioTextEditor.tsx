@@ -1,7 +1,13 @@
-import type { CSSProperties, KeyboardEvent, RefObject } from "react";
+import { useMemo, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption } from "./scenarioCommands";
+import { highlightScenarioLine, type ScenarioTokenKind } from "./scenarioHighlight";
+
+/** 剧本编辑区的行高/内边距常量：gutter、高亮层、命令菜单定位共用同一份度量。 */
+export const SCENARIO_LINE_HEIGHT = 24;
+export const SCENARIO_TEXT_PADDING_TOP = 16;
+export const SCENARIO_GUTTER_WIDTH = 40;
 
 export interface ScenarioStarterTemplate {
   label: string;
@@ -20,6 +26,8 @@ export function ScenarioTextEditor({
   mode,
   text,
   textareaRef,
+  currentLine,
+  implicitPauseLines,
   lineActionTop,
   commandMenuVisible,
   visibleCommands,
@@ -35,6 +43,8 @@ export function ScenarioTextEditor({
   mode: NodeEditorMode;
   text: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
+  currentLine: number;
+  implicitPauseLines: number[];
   lineActionTop: number;
   commandMenuVisible: boolean;
   visibleCommands: ScenarioCommandOption[];
@@ -47,7 +57,13 @@ export function ScenarioTextEditor({
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onScroll: (scrollTop: number) => void;
 }) {
-  const showStarterGuide = mode === "scenario" && text.trim() === "";
+  const scenario = mode === "scenario";
+  const showStarterGuide = scenario && text.trim() === "";
+  const [scroll, setScroll] = useState({ top: 0, left: 0 });
+  const lines = useMemo(() => text.replace(/\r\n/g, "\n").split("\n"), [text]);
+  const highlightedLines = useMemo(() => lines.map(highlightScenarioLine), [lines]);
+  const pauseLineSet = useMemo(() => new Set(implicitPauseLines), [implicitPauseLines]);
+
   return (
     <div style={scenarioTextWrapStyle}>
       {showStarterGuide && (
@@ -69,23 +85,51 @@ export function ScenarioTextEditor({
           </div>
         </div>
       )}
-      {mode === "scenario" && (
-        <button
-          type="button"
-          aria-label="插入当前行命令"
-          title="插入当前行命令"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onToggleLineCommandMenu}
-          style={{ ...linePlusButtonStyle, top: lineActionTop }}
-        >
-          +
-        </button>
+      {scenario && (
+        <div style={gutterStyle} data-region="scenario-gutter">
+          <div style={{ transform: `translateY(${-scroll.top}px)`, paddingTop: SCENARIO_TEXT_PADDING_TOP }}>
+            {lines.map((_, index) => {
+              const lineNumber = index + 1;
+              const isCurrent = lineNumber === currentLine;
+              const hasPause = pauseLineSet.has(lineNumber);
+              return (
+                <div
+                  key={lineNumber}
+                  style={{
+                    ...gutterRowStyle,
+                    color: isCurrent ? "var(--text-bright)" : "var(--text-muted)",
+                  }}
+                >
+                  {hasPause && (
+                    <div
+                      style={pauseMarkerStyle}
+                      data-pause-marker={lineNumber}
+                      title="空行 = 一次停顿"
+                    />
+                  )}
+                  {isCurrent ? (
+                    <button
+                      type="button"
+                      aria-label="插入当前行命令"
+                      title="插入当前行命令"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={onToggleLineCommandMenu}
+                      style={gutterPlusStyle}
+                    >
+                      +
+                    </button>
+                  ) : lineNumber}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
       {commandMenuVisible && (
         <div
           role="menu"
           aria-label="剧本命令"
-          style={{ ...commandMenuStyle, top: lineActionTop + 30 }}
+          style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
         >
           {visibleCommands.map((command) => (
             <button
@@ -102,24 +146,61 @@ export function ScenarioTextEditor({
           ))}
         </div>
       )}
+      {scenario && (
+        <pre
+          aria-hidden
+          data-region="scenario-highlight"
+          style={{
+            ...highlightLayerStyle,
+            transform: `translate(${-scroll.left}px, ${-scroll.top}px)`,
+          }}
+        >
+          {highlightedLines.map((tokens, index) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <span key={index}>
+              {tokens.map((token, tokenIndex) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <span key={tokenIndex} style={{ color: SCENARIO_TOKEN_COLORS[token.kind] }}>{token.text}</span>
+              ))}
+              {index < highlightedLines.length - 1 ? "\n" : ""}
+            </span>
+          ))}
+          {" "}
+        </pre>
+      )}
       <textarea
         ref={textareaRef}
         value={text}
+        wrap={scenario ? "off" : "soft"}
         onChange={(event) => {
-          if (mode === "scenario") onScenarioTextChange(event.currentTarget);
+          if (scenario) onScenarioTextChange(event.currentTarget);
           else onJsonTextChange(event.currentTarget);
         }}
         onSelect={(event) => onSyncCursor(event.currentTarget)}
         onClick={(event) => onSyncCursor(event.currentTarget)}
         onKeyDown={onKeyDown}
         onKeyUp={(event) => onSyncCursor(event.currentTarget)}
-        onScroll={(event) => onScroll(event.currentTarget.scrollTop)}
+        onScroll={(event) => {
+          setScroll({ top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft });
+          onScroll(event.currentTarget.scrollTop);
+        }}
         spellCheck={false}
-        style={mode === "scenario" ? scenarioTextareaStyle : textareaStyle}
+        style={scenario ? scenarioTextareaStyle : textareaStyle}
       />
     </div>
   );
 }
+
+const SCENARIO_TOKEN_COLORS: Record<ScenarioTokenKind, string> = {
+  command: "var(--accent-bright)",
+  param: "var(--text-secondary)",
+  speaker: "var(--status-ok-text)",
+  text: "var(--text-primary)",
+  dim: "var(--text-muted)",
+  invalid: "var(--status-error-text)",
+};
+
+const monoFont = "ui-monospace, 'SF Mono', monospace";
 
 const textareaStyle: CSSProperties = {
   flex: 1,
@@ -128,34 +209,110 @@ const textareaStyle: CSSProperties = {
   resize: "none",
   border: "none",
   outline: "none",
+  margin: 0,
   padding: "var(--space-4)",
-  background: "var(--bg-inset)",
+  background: "transparent",
   color: "var(--text-primary)",
-  fontFamily: "ui-monospace, 'SF Mono', monospace",
+  fontFamily: monoFont,
   fontSize: "var(--text-base)",
   lineHeight: 1.6,
 };
 
+/* 透明文字 + 底层高亮：字体度量必须与 highlightLayerStyle 完全一致。 */
 const scenarioTextareaStyle: CSSProperties = {
   ...textareaStyle,
-  fontFamily: "ui-monospace, 'SF Mono', monospace",
+  position: "relative",
+  zIndex: 1,
+  padding: `${SCENARIO_TEXT_PADDING_TOP}px var(--space-4) var(--space-4) ${SCENARIO_GUTTER_WIDTH + 6}px`,
+  color: "transparent",
+  caretColor: "var(--text-bright)",
   fontSize: "var(--text-md)",
-  lineHeight: 1.7,
-  paddingLeft: 46,
+  lineHeight: `${SCENARIO_LINE_HEIGHT}px`,
+};
+
+const highlightLayerStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  zIndex: 0,
+  margin: 0,
+  border: "none",
+  padding: `${SCENARIO_TEXT_PADDING_TOP}px var(--space-4) var(--space-4) ${SCENARIO_GUTTER_WIDTH + 6}px`,
+  background: "transparent",
+  color: "var(--text-primary)",
+  fontFamily: monoFont,
+  fontSize: "var(--text-md)",
+  lineHeight: `${SCENARIO_LINE_HEIGHT}px`,
+  whiteSpace: "pre",
+  overflow: "hidden",
+  pointerEvents: "none",
 };
 
 const scenarioTextWrapStyle: CSSProperties = {
   position: "relative",
   flex: 1,
   minHeight: 0,
+  background: "var(--bg-inset)",
+};
+
+const gutterStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  left: 0,
+  zIndex: 2,
+  width: SCENARIO_GUTTER_WIDTH,
+  overflow: "hidden",
+  fontFamily: monoFont,
+  fontSize: "var(--text-xs)",
+  pointerEvents: "none",
+};
+
+const gutterRowStyle: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  height: SCENARIO_LINE_HEIGHT,
+  paddingRight: 6,
+  lineHeight: `${SCENARIO_LINE_HEIGHT}px`,
+  boxSizing: "border-box",
+};
+
+const pauseMarkerStyle: CSSProperties = {
+  position: "absolute",
+  bottom: 2,
+  left: "50%",
+  transform: "translateX(-50%)",
+  width: 14,
+  height: 2,
+  borderRadius: 1,
+  background: "var(--text-muted)",
+  opacity: 0.7,
+  pointerEvents: "auto",
+};
+
+/* 当前行的 + 按钮：替代行号，避免额外浮层的对齐计算。 */
+const gutterPlusStyle: CSSProperties = {
+  width: 18,
+  height: 18,
+  marginRight: 2,
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-panel)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  fontSize: "var(--text-sm)",
+  lineHeight: 1,
+  padding: 0,
+  pointerEvents: "auto",
 };
 
 /* 空态引导浮层：容器不拦截输入，只有按钮可点。 */
 const starterGuideStyle: CSSProperties = {
   position: "absolute",
   top: 16,
-  left: 46,
-  zIndex: 2,
+  left: SCENARIO_GUTTER_WIDTH + 6,
+  zIndex: 3,
   display: "grid",
   gap: "var(--space-2)",
   maxWidth: 360,
@@ -194,21 +351,6 @@ const starterGuideLabelStyle: CSSProperties = {
 const starterGuideDetailStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
-};
-
-const linePlusButtonStyle: CSSProperties = {
-  position: "absolute",
-  left: 10,
-  zIndex: 3,
-  width: 24,
-  height: 24,
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-panel)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  fontSize: "var(--text-lg)",
-  lineHeight: "20px",
 };
 
 const commandMenuStyle: CSSProperties = {

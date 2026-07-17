@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { Play, StepBack, StepForward } from "lucide-react";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { RuntimeStateInspector } from "../preview/RuntimeStateInspector";
 import { StageFrame } from "../preview/StageFrame";
@@ -7,20 +8,24 @@ import { formatRendererDiagnostics } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
 import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
 import { RuntimeMediaOverlay } from "../preview/RuntimeMediaOverlay";
-import { collectNodeStoryPoints, sliceNodeDataFromStoryPoint } from "./nodePreviewStart";
+import { collectNodeStoryPoints, sliceNodeDataFromIndex } from "./nodePreviewStart";
 import { useNodePreview } from "./useNodePreview";
 
-export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
+export function NodePreviewPanel({ project, rendererId, node, nodeData, previewStartIndex, currentLineStartIndex, onPreviewStartChange }: {
   project: ProjectData;
   rendererId: string;
   node: GraphNode;
   nodeData: unknown | null;
+  /** 当前生效的预览起跑指令下标；null = 从节点开始。 */
+  previewStartIndex: number | null;
+  /** 光标所在剧本行对应的起跑下标；null = 该行不可起跑（有诊断或越界）。 */
+  currentLineStartIndex: number | null;
+  onPreviewStartChange: (index: number | null) => void;
 }) {
   const storyPoints = useMemo(() => collectNodeStoryPoints(nodeData), [nodeData]);
-  const [startInstructionId, setStartInstructionId] = useState("");
   const previewData = useMemo(
-    () => sliceNodeDataFromStoryPoint(nodeData, startInstructionId || null),
-    [nodeData, startInstructionId],
+    () => sliceNodeDataFromIndex(nodeData, previewStartIndex),
+    [nodeData, previewStartIndex],
   );
   const player = useNodePreview(project, node, previewData);
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
@@ -42,25 +47,59 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData }: {
   }
   if (nodeData == null) return <PreviewMessage>节点无内容。保存后会在这里预览。</PreviewMessage>;
 
+  const startSelectValue = previewStartIndex == null ? "" : String(previewStartIndex);
+  const startInStoryPoints = previewStartIndex != null && storyPoints.some((point) => point.index === previewStartIndex);
+
   const Renderer = renderer.Component;
   return (
     <div style={layoutStyle}>
       <div style={stagePaneStyle}>
-        {storyPoints.length > 0 && (
-          <div style={previewToolbarStyle}>
-            <select
-              value={startInstructionId}
-              onChange={(event) => setStartInstructionId(event.target.value)}
-              style={previewSelectStyle}
-              aria-label="预览起点"
-            >
-              <option value="">从节点开始</option>
-              {storyPoints.map((point) => (
-                <option key={point.id} value={point.id}>{point.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div style={previewToolbarStyle}>
+          <button
+            type="button"
+            disabled={currentLineStartIndex == null}
+            onClick={() => {
+              if (currentLineStartIndex != null) onPreviewStartChange(currentLineStartIndex);
+            }}
+            style={previewButtonStyle}
+            title="从光标所在行开始预览"
+          >
+            <Play size={12} />
+            从当前行
+          </button>
+          <select
+            value={startSelectValue}
+            onChange={(event) => onPreviewStartChange(event.target.value === "" ? null : Number(event.target.value))}
+            style={previewSelectStyle}
+            aria-label="预览起点"
+          >
+            <option value="">从节点开始</option>
+            {storyPoints.map((point) => (
+              <option key={point.id} value={String(point.index)}>{point.label}</option>
+            ))}
+            {previewStartIndex != null && !startInStoryPoints && (
+              <option value={String(previewStartIndex)}>第 {previewStartIndex + 1} 条指令</option>
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={() => player.seekBy(-1)}
+            style={previewButtonStyle}
+            title="上一条指令"
+            aria-label="上一条指令"
+          >
+            <StepBack size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => player.stepOnce()}
+            style={previewButtonStyle}
+            title="下一条指令"
+            aria-label="下一条指令"
+          >
+            <StepForward size={12} />
+          </button>
+        </div>
         <StageFrame stage={player.rendererProps.stage}>
           <Renderer {...player.rendererProps} />
           <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
@@ -113,6 +152,22 @@ const previewToolbarStyle: React.CSSProperties = {
   top: 10,
   right: 10,
   zIndex: 2,
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-1)",
+};
+
+const previewButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "5px var(--space-2)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-app)",
+  color: "var(--text-primary)",
+  fontSize: "var(--text-sm)",
+  cursor: "pointer",
 };
 
 const previewSelectStyle: React.CSSProperties = {

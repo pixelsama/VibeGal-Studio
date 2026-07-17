@@ -37,7 +37,8 @@ import {
   ScenarioInspector,
   ScenarioNodeLayout,
 } from "./scenarioEditor";
-import { ScenarioTextEditor } from "./ScenarioTextEditor";
+import { ScenarioTextEditor, SCENARIO_LINE_HEIGHT, SCENARIO_TEXT_PADDING_TOP } from "./ScenarioTextEditor";
+import { mapScenarioFrames } from "./scenarioFrames";
 import {
   createUndoHistory,
   recordUndoCheckpoint,
@@ -324,6 +325,13 @@ export function NodeEditor({
   }, []);
 
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
+  const scenarioFrameMap = useMemo(() => mapScenarioFrames(text), [text]);
+  const [previewStartIndex, setPreviewStartIndex] = useState<number | null>(null);
+  const currentLineStartIndex = useMemo(() => {
+    if (mode !== "scenario" || diagnostics.length > 0) return null;
+    const index = scenarioFrameMap.startIndexByLine[scenarioSelection.line - 1];
+    return index != null && index < instructions.length ? index : null;
+  }, [diagnostics.length, instructions.length, mode, scenarioFrameMap, scenarioSelection.line]);
   const scenarioCommandTrigger = useMemo(
     () => (mode === "scenario" ? scenarioCommandTriggerAtCursor(text, cursorOffset) : null),
     [cursorOffset, mode, text],
@@ -332,7 +340,10 @@ export function NodeEditor({
   const visibleCommands = useMemo(() => scenarioCommandOptionsForQuery(commandQuery), [commandQuery]);
   const commandMenuVisible = mode === "scenario"
     && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
-  const lineActionTop = Math.max(8, 16 + (scenarioSelection.line - 1) * 23.8 - textareaScrollTop);
+  const lineActionTop = Math.max(
+    8,
+    SCENARIO_TEXT_PADDING_TOP + (scenarioSelection.line - 1) * SCENARIO_LINE_HEIGHT - textareaScrollTop,
+  );
   const canSave = useMemo(() => {
     if (mode === "scenario") return diagnostics.length === 0;
     return parseJsonInstructionText(text).ok;
@@ -664,6 +675,8 @@ export function NodeEditor({
         mode={mode}
         text={text}
         textareaRef={textareaRef}
+        currentLine={scenarioSelection.line}
+        implicitPauseLines={scenarioFrameMap.implicitPauseLines}
         lineActionTop={lineActionTop}
         commandMenuVisible={commandMenuVisible}
         visibleCommands={visibleCommands}
@@ -689,6 +702,9 @@ export function NodeEditor({
       rendererId={rendererId}
       node={node}
       nodeData={lastValidInstructions}
+      previewStartIndex={previewStartIndex}
+      currentLineStartIndex={currentLineStartIndex}
+      onPreviewStartChange={setPreviewStartIndex}
     />
   );
 
