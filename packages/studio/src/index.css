@@ -519,6 +519,34 @@ select:focus-visible {
   background: var(--accent-glow);
 }
 
+/* ── 沉底折叠面板标题栏（common/BottomSheet）：配色在类里（内联会盖住 :hover），布局内联 ── */
+.gs-bottom-sheet-bar {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+.gs-bottom-sheet-bar:hover {
+  background: var(--bg-hover);
+}
+.gs-bottom-sheet-bar:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
+}
+
+/* ── Inspector 竖轨切换按钮（scenarioEditor/ScenarioNodeLayout）：配色在类里，布局内联 ── */
+.gs-inspector-rail {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+}
+.gs-inspector-rail:hover {
+  background: var(--bg-hover);
+}
+.gs-inspector-rail:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: -2px;
+}
+
 /* ── 右键菜单项（script/ContextMenu）：静态样式在类里，动态 color/cursor 内联 ── */
 .gs-menu-item {
   display: flex;

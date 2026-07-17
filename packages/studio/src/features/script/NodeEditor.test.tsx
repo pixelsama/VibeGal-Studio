@@ -7,6 +7,7 @@ import {
   conflictDraftCopyPath,
   insertScenarioCommandAtCursor,
   isWriteConflictError,
+  loadNodeInspectorPaneState,
   NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
   resolveNodeInspectorPaneLayout,
@@ -188,5 +189,17 @@ describe("NodeEditor inspector pane layout", () => {
       paneWidth: 0,
       gridTemplateColumns: "minmax(0, 1fr) 0px",
     });
+  });
+
+  it("always starts expanded and only restores the stored width", () => {
+    const storage = {
+      getItem: () => JSON.stringify({ collapsed: true, width: 520 }),
+      setItem: () => {},
+    };
+
+    const state = loadNodeInspectorPaneState(storage);
+
+    expect(state.collapsed).toBe(false);
+    expect(state.width).toBe(520);
   });
 });

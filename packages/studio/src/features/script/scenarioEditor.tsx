@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   formatScenarioInstruction,
   parseScenarioLine,
@@ -6,6 +7,7 @@ import {
   type Instruction,
 } from "@vibegal/engine";
 import { ResourcePicker } from "../assets/ResourcePicker";
+import { BottomSheet } from "../common/BottomSheet";
 import type { Manifest } from "../../lib/types";
 
 export type ScenarioSelectionKind =
@@ -77,6 +79,8 @@ export function replaceScenarioSelectionInstruction(
   return lines.join("\n");
 }
 
+export const INSPECTOR_RAIL_WIDTH = 30;
+
 export function ScenarioNodeLayout({
   editor,
   preview,
@@ -86,7 +90,7 @@ export function ScenarioNodeLayout({
   inspectorCollapsed = false,
   inspectorPaneWidth,
   draggingInspector = false,
-  controls,
+  onToggleInspectorPane,
   resizeHandle,
 }: {
   editor: ReactNode;
@@ -97,7 +101,7 @@ export function ScenarioNodeLayout({
   inspectorCollapsed?: boolean;
   inspectorPaneWidth?: number;
   draggingInspector?: boolean;
-  controls?: ReactNode;
+  onToggleInspectorPane: () => void;
   resizeHandle?: ReactNode;
 }) {
   const rightWidth = inspectorCollapsed ? "0px" : inspectorPaneWidth ? `${inspectorPaneWidth}px` : "minmax(360px, 42%)";
@@ -108,7 +112,7 @@ export function ScenarioNodeLayout({
       data-node-inspector-state={inspectorCollapsed ? "collapsed" : "expanded"}
       style={{
         ...layoutStyle,
-        gridTemplateColumns: `minmax(0, 1fr) ${rightWidth}`,
+        gridTemplateColumns: `minmax(0, 1fr) ${rightWidth} ${INSPECTOR_RAIL_WIDTH}px`,
         transition: draggingInspector ? "none" : "grid-template-columns 160ms ease",
       }}
     >
@@ -122,10 +126,26 @@ export function ScenarioNodeLayout({
         }}
       >
         <div data-region="node-preview" style={previewRegionStyle}>{preview}</div>
-        <div data-region="scenario-inspector" style={inspectorRegionStyle}>{inspector}</div>
+        <BottomSheet title="节点摘要" expandedHeight="48%">
+          <div data-region="scenario-inspector" style={inspectorRegionStyle}>{inspector}</div>
+        </BottomSheet>
       </section>
+      <div style={railStyle}>
+        <button
+          type="button"
+          className="gs-inspector-rail"
+          aria-label="切换 Inspector 面板"
+          aria-controls={inspectorPaneId}
+          aria-expanded={!inspectorCollapsed}
+          title={inspectorCollapsed ? "显示 Inspector" : "收起 Inspector"}
+          onClick={onToggleInspectorPane}
+          style={railButtonStyle}
+        >
+          {inspectorCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+        </button>
+        <span style={railLabelStyle}>Inspector</span>
+      </div>
       {resizeHandle}
-      {controls}
     </div>
   );
 }
@@ -498,25 +518,55 @@ const editorRegionStyle: CSSProperties = {
 };
 
 const rightRegionStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateRows: "minmax(240px, 52%) minmax(220px, 48%)",
+  display: "flex",
+  flexDirection: "column",
   minWidth: 0,
   minHeight: 0,
+  height: "100%",
 };
 
 const previewRegionStyle: CSSProperties = {
+  flex: "1 1 0",
   minWidth: 0,
   minHeight: 0,
   overflow: "hidden",
   background: "var(--bg-app)",
-  borderBottom: "1px solid var(--border)",
 };
 
 const inspectorRegionStyle: CSSProperties = {
+  height: "100%",
   minWidth: 0,
   minHeight: 0,
-  overflow: "auto",
+  overflowY: "auto",
   background: "var(--bg-panel)",
+};
+
+/* 常驻竖轨：顶部是与顶栏按钮同高的紧凑切换按钮（配色/hover 走 .gs-inspector-rail），下方竖排标签。 */
+const railStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) 0",
+  borderLeft: "1px solid var(--border)",
+  background: "var(--bg-panel)",
+};
+
+const railButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 5,
+  fontFamily: "inherit",
+  cursor: "pointer",
+};
+
+const railLabelStyle: CSSProperties = {
+  writingMode: "vertical-rl",
+  letterSpacing: 2,
+  color: "var(--text-muted)",
+  fontSize: "var(--text-xs)",
+  userSelect: "none",
 };
 
 const inspectorPanelStyle: CSSProperties = {

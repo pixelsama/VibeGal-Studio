@@ -48,4 +48,14 @@ describe("RuntimeStateInspector", () => {
     expect(html).toContain("BGM");
     expect(html).not.toContain("预览运行后");
   });
+
+  it("drops its own title and side border when docked into a bottom sheet", () => {
+    const state = { ...createInitialState(), background: "school" };
+
+    const html = renderToStaticMarkup(createElement(RuntimeStateInspector, { state, dock: "bottom" }));
+
+    expect(html).toContain("school");
+    expect(html).not.toContain("Runtime");
+    expect(html).not.toContain("border-left");
+  });
 });

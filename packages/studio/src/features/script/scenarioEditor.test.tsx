@@ -243,11 +243,19 @@ describe("ScenarioNodeLayout", () => {
       editor: createElement("div", null, "editor"),
       preview: createElement("div", null, "preview"),
       inspector: createElement("div", null, "inspector"),
+      onToggleInspectorPane: () => {},
     }));
 
     expect(html).toContain("data-region=\"scenario-editor\"");
     expect(html).toContain("data-region=\"node-preview\"");
     expect(html).toContain("data-region=\"scenario-inspector\"");
+    // 节点摘要沉底面板默认展开
+    expect(html).toContain("data-sheet-state=\"expanded\"");
+    expect(html).toContain("节点摘要");
+    // 常驻竖轨承载 Inspector 开关，展开态 aria-expanded=true
+    expect(html).toContain("aria-label=\"切换 Inspector 面板\"");
+    expect(html).toContain("aria-expanded=\"true\"");
+    expect(html).toContain("minmax(0, 1fr) minmax(360px, 42%) 30px");
   });
 
   it("marks the inspector pane collapsed through explicit layout props", () => {
@@ -257,10 +265,13 @@ describe("ScenarioNodeLayout", () => {
       inspector: createElement("div", null, "inspector"),
       inspectorCollapsed: true,
       inspectorPaneWidth: 420,
+      onToggleInspectorPane: () => {},
     }));
 
     expect(html).toContain("data-node-inspector-state=\"collapsed\"");
     expect(html).toContain("aria-hidden=\"true\"");
-    expect(html).toContain("minmax(0, 1fr) 0px");
+    // 收起后面板列宽归零，只留 30px 竖轨
+    expect(html).toContain("minmax(0, 1fr) 0px 30px");
+    expect(html).toContain("aria-expanded=\"false\"");
   });
 });

@@ -35,6 +35,7 @@ import {
 } from "./scenarioCommands";
 import {
   getScenarioSelection,
+  INSPECTOR_RAIL_WIDTH,
   replaceScenarioSelectionInstruction,
   ScenarioInspector,
   ScenarioNodeLayout,
@@ -141,7 +142,7 @@ function getBrowserStorage(): StorageLike | null {
   return typeof globalThis.localStorage === "undefined" ? null : globalThis.localStorage;
 }
 
-function loadNodeInspectorPaneState(storage: StorageLike | null = getBrowserStorage()): NodeInspectorPaneState {
+export function loadNodeInspectorPaneState(storage: StorageLike | null = getBrowserStorage()): NodeInspectorPaneState {
   const fallback = { collapsed: false, width: NODE_INSPECTOR_PANE_DEFAULT_WIDTH };
   if (!storage) return fallback;
 
@@ -150,7 +151,8 @@ function loadNodeInspectorPaneState(storage: StorageLike | null = getBrowserStor
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<NodeInspectorPaneState>;
     return {
-      collapsed: parsed.collapsed === true,
+      // 每次启动都默认展开，避免新用户不知道右侧有可收起的 Inspector；仅记忆宽度
+      collapsed: false,
       width: clampNodeInspectorPaneWidth(parsed.width ?? fallback.width),
     };
   } catch {
@@ -162,7 +164,6 @@ function saveNodeInspectorPaneState(state: NodeInspectorPaneState, storage: Stor
   if (!storage) return;
   try {
     storage.setItem(NODE_INSPECTOR_PANE_STORAGE_KEY, JSON.stringify({
-      collapsed: state.collapsed,
       width: clampNodeInspectorPaneWidth(state.width),
     }));
   } catch {
@@ -796,27 +797,12 @@ export function NodeEditor({
           onPointerDown={handleInspectorResizeStart}
           style={{
             ...inspectorResizeHandleStyle,
-            right: inspectorPaneLayout.paneWidth - 3,
+            right: inspectorPaneLayout.paneWidth + INSPECTOR_RAIL_WIDTH - 3,
             cursor: draggingInspector ? "col-resize" : "ew-resize",
           }}
         />
       )}
-      controls={(
-        <button
-          type="button"
-          aria-label="切换 Inspector 面板"
-          aria-controls={NODE_INSPECTOR_REGION_ID}
-          aria-expanded={!inspectorPaneLayout.collapsed}
-          className="gs-btn gs-btn--secondary"
-          onClick={handleToggleInspectorPane}
-          style={{
-            ...inspectorTogglePositionStyle,
-            right: inspectorPaneLayout.collapsed ? 12 : Math.max(12, inspectorPaneLayout.paneWidth - 120),
-          }}
-        >
-          {inspectorPaneLayout.collapsed ? "显示 Inspector" : "收起 Inspector"}
-        </button>
-      )}
+      onToggleInspectorPane={handleToggleInspectorPane}
     />
   );
 }
@@ -859,17 +845,6 @@ const issueItemStyle: CSSProperties = {
   color: "var(--status-error-text)",
   fontSize: "var(--text-sm)",
   lineHeight: 1.5,
-};
-
-/* 颜色/悬停/焦点统一走 .gs-btn--secondary；这里只留定位与外观差异的覆盖。 */
-const inspectorTogglePositionStyle: CSSProperties = {
-  position: "absolute",
-  top: 10,
-  zIndex: 5,
-  padding: "var(--space-2) var(--space-2)",
-  background: "color-mix(in srgb, var(--bg-panel) 92%, transparent)",
-  fontSize: "var(--text-sm)",
-  whiteSpace: "nowrap",
 };
 
 /* 底色与悬停反馈走 .gs-resize-handle；内联只保留定位（避免盖住 :hover）。 */

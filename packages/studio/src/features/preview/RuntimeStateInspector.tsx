@@ -3,6 +3,11 @@ import type { NovelState } from "@vibegal/engine";
 interface RuntimeStateInspectorProps {
   state: NovelState;
   currentNodeLabel?: string | null;
+  /**
+   * right（默认）= 侧栏全高面板，带标题行与左边框（全屏预览页）。
+   * bottom = 嵌入沉底折叠面板：无标题/边框，标题交给外层 BottomSheet。
+   */
+  dock?: "right" | "bottom";
 }
 
 /** 预览尚未产生任何可见状态（背景/角色/音频/变量全空）时为 true。 */
@@ -17,11 +22,15 @@ export function isRuntimeStateEmpty(state: NovelState): boolean {
     && Object.keys(state.vars).length === 0;
 }
 
-export function RuntimeStateInspector({ state, currentNodeLabel }: RuntimeStateInspectorProps) {
+export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right" }: RuntimeStateInspectorProps) {
+  const dockedBottom = dock === "bottom";
+  const frameStyle = dockedBottom ? bottomDockPanelStyle : panelStyle;
+  const title = dockedBottom ? null : <div style={titleStyle}>Runtime</div>;
+
   if (isRuntimeStateEmpty(state)) {
     return (
-      <aside style={panelStyle}>
-        <div style={titleStyle}>Runtime</div>
+      <aside style={frameStyle}>
+        {title}
         <div style={contentStyle}>
           {currentNodeLabel != null && <Field label="当前节点" value={currentNodeLabel} />}
           <div style={emptyHintStyle}>预览运行后，这里会显示背景、角色、音频与变量状态。</div>
@@ -31,8 +40,8 @@ export function RuntimeStateInspector({ state, currentNodeLabel }: RuntimeStateI
   }
 
   return (
-    <aside style={panelStyle}>
-      <div style={titleStyle}>Runtime</div>
+    <aside style={frameStyle}>
+      {title}
       <div style={contentStyle}>
         <Field label="当前节点" value={currentNodeLabel ?? "当前预览"} />
         <Field label="背景" value={state.background ?? "无"} />
@@ -78,6 +87,15 @@ const panelStyle: React.CSSProperties = {
   maxWidth: 320,
   height: "100%",
   borderLeft: "1px solid var(--border)",
+  background: "var(--bg-app)",
+};
+
+/** dock="bottom"：去掉侧栏边框与宽度限制，撑满 BottomSheet 内容区。 */
+const bottomDockPanelStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  minWidth: 0,
+  height: "100%",
   background: "var(--bg-app)",
 };
 

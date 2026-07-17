@@ -6,6 +6,7 @@ import { StageFrame } from "../preview/StageFrame";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { formatRendererDiagnostics } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
+import { BottomSheet } from "../common/BottomSheet";
 import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
 import { RuntimeMediaOverlay } from "../preview/RuntimeMediaOverlay";
 import { collectNodeStoryPoints, sliceNodeDataFromIndex } from "./nodePreviewStart";
@@ -105,7 +106,9 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData, previewS
           <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
         </StageFrame>
       </div>
-      <RuntimeStateInspector state={player.state} currentNodeLabel={`${node.title} (${node.id})`} />
+      <BottomSheet title="Runtime" expandedHeight="min(300px, 60%)" defaultExpanded={false}>
+        <RuntimeStateInspector state={player.state} currentNodeLabel={`${node.title} (${node.id})`} dock="bottom" />
+      </BottomSheet>
     </div>
   );
 }
@@ -115,16 +118,17 @@ function PreviewMessage({ children, mono = false }: { children: ReactNode; mono?
 }
 
 const layoutStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
+  display: "flex",
+  flexDirection: "column",
   width: "100%",
   height: "100%",
 };
 
 const stagePaneStyle: React.CSSProperties = {
   position: "relative",
+  flex: "1 1 0",
   minWidth: 0,
-  height: "100%",
+  minHeight: 0,
 };
 
 const loadingShellStyle: React.CSSProperties = {
