@@ -296,9 +296,16 @@ pub(crate) fn save_app_settings(
 }
 
 fn cli_paths(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf, Vec<PathBuf>, Option<String>) {
+    let sidecar = resources::cli_binary_path(app_handle);
+    // Unix：全局命令链接指向 app 内的 bash 启动脚本（解析 .app 位置后 exec sidecar）；
+    // Windows：没有启动脚本概念，直接把 sidecar 可执行文件当作 CLI 本体展示。
+    #[cfg(unix)]
+    let launcher = resources::cli_launcher_path(app_handle);
+    #[cfg(not(unix))]
+    let launcher = sidecar.clone();
     (
-        resources::cli_launcher_path(app_handle),
-        resources::cli_binary_path(app_handle),
+        launcher,
+        sidecar,
         cli_tool::cli_tool_candidate_link_paths(),
         env::var("PATH").ok(),
     )

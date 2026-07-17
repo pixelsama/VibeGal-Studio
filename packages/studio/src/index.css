@@ -292,3 +292,70 @@ button:focus-visible {
   background: var(--bg-hover);
   color: var(--accent-bright);
 }
+
+/* ── 滚动条：细化并跟随主题 token ─────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── 基础过渡：尚未迁移到 .gs-btn 的内联样式控件也至少有颜色过渡 ── */
+button,
+input,
+select,
+textarea,
+[role="button"] {
+  transition: background-color 120ms ease, border-color 120ms ease,
+    color 120ms ease, opacity 120ms ease;
+}
+
+/* ── 可点击列表行（工作区项目列表等）：hover/focus 由全局类承担 ── */
+.gs-list-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+.gs-list-row:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-input);
+}
+.gs-list-row:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.gs-list-row:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+}

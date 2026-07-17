@@ -7,6 +7,7 @@
  * - 其余分类：显示「导入<分类名>」
  */
 import type { AssetSection } from "./AssetsSidebar";
+import { Button } from "../common/Button";
 
 interface AssetsToolbarProps {
   section: AssetSection;
@@ -52,34 +53,30 @@ export function AssetsToolbar({
       <span style={countStyle}>{count} 项</span>
       <div style={{ flex: 1 }} />
       {importLabel && (
-        <button
-          type="button"
-          style={{
-            ...importBtnStyle,
-            opacity: disabled ? 0.48 : 1,
-            cursor: disabled ? "not-allowed" : "pointer",
-          }}
+        <Button
+          variant="primary"
+          style={actionButtonStyle}
           onClick={onImport}
           disabled={disabled}
           title={disabled ? "manifest 结构异常，修复后才能导入资产" : undefined}
         >
           {importLabel}
-        </button>
+        </Button>
       )}
       {orphanCount > 0 && onRegisterOrphans && (
-        <button type="button" style={secondaryBtnStyle} onClick={onRegisterOrphans} disabled={disabled}>
+        <Button style={actionButtonStyle} onClick={onRegisterOrphans} disabled={disabled}>
           {`登记 ${orphanCount} 个孤儿`}
-        </button>
+        </Button>
       )}
       {danglingCount > 0 && onRemoveDanglingRefs && (
-        <button type="button" style={secondaryBtnStyle} onClick={onRemoveDanglingRefs} disabled={disabled}>
+        <Button style={actionButtonStyle} onClick={onRemoveDanglingRefs} disabled={disabled}>
           {`清理 ${danglingCount} 个悬空引用`}
-        </button>
+        </Button>
       )}
       {orphanCount > 0 && onDeleteOrphans && (
-        <button type="button" style={dangerBtnStyle} onClick={onDeleteOrphans} disabled={disabled}>
+        <Button variant="danger" style={actionButtonStyle} onClick={onDeleteOrphans} disabled={disabled}>
           {`删除 ${orphanCount} 个孤儿`}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -134,27 +131,7 @@ const countStyle: React.CSSProperties = {
   color: "var(--text-muted)",
 };
 
-const importBtnStyle: React.CSSProperties = {
+/* 按钮颜色/悬停/禁用统一走 .gs-btn；这里只覆盖字号。 */
+const actionButtonStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
-  padding: "5px var(--space-3)",
-  borderRadius: "var(--radius-sm)",
-  border: `1px solid var(--border-input)`,
-  background: "var(--bg-active)",
-  color: "var(--text-bright)",
-  cursor: "pointer",
-};
-
-const secondaryBtnStyle: React.CSSProperties = {
-  fontSize: "var(--text-sm)",
-  padding: "5px var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: `1px solid var(--border-input)`,
-  background: "var(--bg-panel)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-};
-
-const dangerBtnStyle: React.CSSProperties = {
-  ...secondaryBtnStyle,
-  color: "var(--status-error-text)",
 };

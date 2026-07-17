@@ -1,10 +1,15 @@
 /**
  * 项目入口页 —— 打开项目目录，或在父目录下新建项目。
+ *
+ * 「工作区目录」= 包含多个项目的共同父目录。记住上次浏览的工作区目录，
+ * 进入入口页就直接列出其中的项目，点一下即可打开。
  */
-import { useCallback, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Settings as SettingsIcon } from "lucide-react";
-import { createProject, initializeProject, openProject, pickDirectory } from "../../lib/tauri";
-import type { ProjectData } from "../../lib/types";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, FolderOpen, Plus, Settings as SettingsIcon } from "lucide-react";
+import { createProject, initializeProject, listProjects, openProject, pickDirectory } from "../../lib/tauri";
+import type { ProjectData, ProjectListItem } from "../../lib/types";
+import { loadWorkspaceDir, saveWorkspaceDir, sortProjectsByName } from "../../lib/workspaceProjects";
+import { getDesktopPlatform } from "../../lib/platform";
 import { Button, IconButton } from "../common/Button";
 import { ConfirmDialog } from "../common/Dialogs";
 
@@ -21,6 +26,8 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [initTarget, setInitTarget] = useState<string | null>(null);
+  const [workspaceDir, setWorkspaceDir] = useState<string | null>(() => loadWorkspaceDir());
+  const [workspaceProjects, setWorkspaceProjects] = useState<ProjectListItem[] | null>(null);
 
   const openDirectory = useCallback(async (dir: string) => {
     const target = dir.trim();
@@ -57,6 +64,34 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
       setInitTarget(null);
     }
   }, [initTarget, onOpen]);
+
+  // 工作区目录变化（含启动时读到的记忆值）→ 扫描其中的项目
+  useEffect(() => {
+    if (!workspaceDir) {
+      setWorkspaceProjects(null);
+      return;
+    }
+    let active = true;
+    setWorkspaceProjects(null);
+    listProjects(workspaceDir)
+      .then((items) => {
+        if (active) setWorkspaceProjects(items);
+      })
+      .catch((scanError) => {
+        if (active) setError(String(scanError));
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaceDir]);
+
+  const handleBrowseWorkspace = async () => {
+    const dir = await pickDirectory();
+    if (!dir) return;
+    setError(null);
+    saveWorkspaceDir(dir);
+    setWorkspaceDir(dir);
+  };
 
   const handlePickProject = async () => {
     const dir = await pickDirectory();
@@ -116,13 +151,39 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
             <Plus size={15} />
             新建项目
           </Button>
+          <Button variant="ghost" onClick={() => void handleBrowseWorkspace()} disabled={loading}>
+            <FolderOpen size={15} />
+            {workspaceDir ? "更换工作区…" : "浏览工作区…"}
+          </Button>
         </div>
 
         {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
 
-        <div style={emptyStyle}>
-          {loading ? "加载中…" : "选择一个项目目录打开；如果目录还不是 VibeGal-Studio 项目，会先询问是否添加工程文件。"}
-        </div>
+        {workspaceDir ? (
+          <section style={workspaceSectionStyle}>
+            <div style={workspaceHeaderStyle}>
+              <span style={workspaceLabelStyle}>工作区</span>
+              <span style={workspaceDirStyle} title={workspaceDir}>{workspaceDir}</span>
+            </div>
+            {workspaceProjects == null ? (
+              <div style={emptyStyle}>正在扫描工作区…</div>
+            ) : workspaceProjects.length === 0 ? (
+              <div style={emptyStyle}>这个目录下还没有 VibeGal-Studio 项目。</div>
+            ) : (
+              <WorkspaceProjectList
+                items={workspaceProjects}
+                disabled={loading}
+                onOpen={(path) => void openDirectory(path)}
+              />
+            )}
+          </section>
+        ) : (
+          <div style={emptyStyle}>
+            {loading
+              ? "加载中…"
+              : "选择一个项目目录打开（目录还不是项目时会先询问是否初始化），或选择一个工作区目录自动列出其中的项目。"}
+          </div>
+        )}
       </section>
 
       {newProjectParent && (
@@ -177,6 +238,35 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   );
 }
 
+/** 工作区目录下的项目列表：按名称排序，点击打开。 */
+export function WorkspaceProjectList({
+  items,
+  disabled = false,
+  onOpen,
+}: {
+  items: ProjectListItem[];
+  disabled?: boolean;
+  onOpen: (path: string) => void;
+}) {
+  return (
+    <ul style={projectListStyle}>
+      {sortProjectsByName(items).map((item) => (
+        <li key={item.path} style={projectListItemStyle}>
+          <button
+            type="button"
+            className="gs-list-row"
+            disabled={disabled}
+            onClick={() => onOpen(item.path)}
+          >
+            <span style={projectNameStyle}>{item.meta.name}</span>
+            <span style={projectPathStyle}>{item.path}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const pageStyle: React.CSSProperties = {
   padding: "var(--space-12) var(--space-16)",
   maxWidth: 900,
@@ -190,11 +280,49 @@ const workspaceRow: React.CSSProperties = { display: "flex", gap: "var(--space-2
 const navOverlayStyle: React.CSSProperties = {
   position: "fixed",
   top: 10,
-  left: 88,
+  // macOS Overlay 标题栏需避让红绿灯；其他平台（原生标题栏）正常左边距
+  left: getDesktopPlatform() === "macos" ? 88 : "var(--space-3)",
   display: "flex",
   gap: "var(--space-1)",
   zIndex: 10,
 };
+const workspaceSectionStyle: React.CSSProperties = {
+  padding: "var(--space-4)",
+  background: "var(--bg-inset)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+};
+const workspaceHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  gap: "var(--space-2)",
+  marginBottom: "var(--space-3)",
+  minWidth: 0,
+};
+const workspaceLabelStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  flexShrink: 0,
+};
+const workspaceDirStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+const projectListStyle: React.CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+};
+const projectListItemStyle: React.CSSProperties = { display: "block" };
+const projectNameStyle: React.CSSProperties = { fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-bright)" };
+const projectPathStyle: React.CSSProperties = { fontSize: "var(--text-sm)", color: "var(--text-muted)", wordBreak: "break-all" };
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,

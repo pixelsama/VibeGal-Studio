@@ -6,6 +6,13 @@
 - Node.js + pnpm
 - Rust + Cargo
 - macOS 打包时（若需要）：对应 Xcode Command Line Tools
+- Windows 打包时：Windows 10+（需 WebView2 运行时，Windows 11 自带）+ Rust MSVC 工具链
+
+## Windows 平台说明
+- `pnpm tauri build` 产出 NSIS 安装包（`packages/studio/src-tauri/target/release/bundle/nsis/`）。
+- Windows 保留原生标题栏（`titleBarStyle: Overlay` 仅 macOS 生效），前端按平台做红绿灯避让。
+- 应用内「一键安装命令行工具」依赖 symlink，仅 macOS/Linux 提供；Windows 请在 设置 → 命令行工具 中复制随附的 `vibegal-cli.exe` 路径，把它所在目录手动加入 PATH 后使用。
+- symlink 相关的安全测试用例标注 `#[cfg(unix)]`，Windows 下运行 `cargo test` 时自动跳过。
 
 ## 常用命令（本地）
 - 安装依赖：`pnpm install`

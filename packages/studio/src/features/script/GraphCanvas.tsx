@@ -18,6 +18,7 @@ import {
 } from "@xyflow/react";
 import type { GraphReport, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
+import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { flowPositionFromClientPoint } from "./canvasMenu";
@@ -90,6 +91,7 @@ export function GraphCanvas({
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
+  const colorMode = useResolvedTheme();
 
   const flow = useMemo(() => {
     const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries);
@@ -245,7 +247,7 @@ export function GraphCanvas({
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={nodeTypes}
-        colorMode="dark"
+        colorMode={colorMode}
         fitView
         nodesDraggable
         nodesConnectable
@@ -287,8 +289,8 @@ export function GraphCanvas({
             type="button"
             onClick={() => onUndo?.()}
             disabled={!canUndo}
-            title="撤销图编辑"
-            aria-label="撤销图编辑"
+            title="撤销图编辑（Ctrl+Z）"
+            aria-label="撤销图编辑（Ctrl+Z）"
           >
             <Undo2 size={14} />
           </ControlButton>
@@ -296,8 +298,8 @@ export function GraphCanvas({
             type="button"
             onClick={() => onRedo?.()}
             disabled={!canRedo}
-            title="重做图编辑"
-            aria-label="重做图编辑"
+            title="重做图编辑（Ctrl+Shift+Z）"
+            aria-label="重做图编辑（Ctrl+Shift+Z）"
           >
             <Redo2 size={14} />
           </ControlButton>

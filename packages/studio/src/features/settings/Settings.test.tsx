@@ -204,6 +204,37 @@ describe("Settings", () => {
     // 禁用态视觉由共享 Button 的 .gs-btn:disabled 规则承担（opacity/cursor 在 CSS 里）
     expect(installButton?.props.className).toContain("gs-btn");
   });
+  it("无一键安装路径的平台降级为手动引导（复制路径加入 PATH）", () => {
+    const status: CliToolStatus = {
+      command: "vibegal-cli",
+      cliPath: "C:\\Program Files\\VibeGal-Studio\\vibegal-cli.exe",
+      linkPath: "",
+      installed: false,
+      cliAvailable: true,
+      linkOccupied: false,
+      inPath: false,
+      issue: null,
+    };
+
+    const html = renderToStaticMarkup(
+      <CommandLineToolSection
+        status={status}
+        busy={false}
+        error={null}
+        message={null}
+        onRefresh={noop}
+        onInstall={noop}
+        onUninstall={noop}
+        onCopyPath={noop}
+      />,
+    );
+
+    expect(html).toContain("已随应用提供");
+    expect(html).toContain("加入 PATH");
+    expect(html).toContain("复制 CLI 路径");
+    expect(html).not.toContain("安装 vibegal-cli");
+    expect(html).not.toContain("卸载");
+  });
 });
 
 function resolveFunctionComponents(node: ReactNode): ReactNode {

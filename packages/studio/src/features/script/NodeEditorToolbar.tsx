@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
+import { Button } from "../common/Button";
 import type { NodeEditorMode } from "./nodeEditorModel";
+
 export function NodeEditorToolbar({
   title,
   file,
@@ -38,23 +40,23 @@ export function NodeEditorToolbar({
         <div style={metaStyle}>{file}</div>
       </div>
       <div style={toolbarSpacerStyle} />
-      <button type="button" onClick={() => onModeToggle("scenario")} disabled={saving} style={toggleButtonStyle}>剧本</button>
-      <button type="button" onClick={() => onModeToggle("json")} disabled={saving} style={toggleButtonStyle}>JSON</button>
+      <Button onClick={() => onModeToggle("scenario")} disabled={saving} style={modeButtonStyle}>剧本</Button>
+      <Button onClick={() => onModeToggle("json")} disabled={saving} style={modeButtonStyle}>JSON</Button>
       {dirty && <StatusText tone="warn">未保存</StatusText>}
       {diagnosticsCount > 0 && <StatusText tone="error">剧本有 {diagnosticsCount} 个问题</StatusText>}
       {hasExternalUpdate && !writeConflict && (
-        <button type="button" onClick={onLoadExternal} disabled={saving} style={loadButtonStyle}>
+        <Button onClick={onLoadExternal} disabled={saving} style={warnButtonStyle}>
           外部已更新，点击载入
-        </button>
+        </Button>
       )}
       {writeConflict && (
         <>
-          <button type="button" onClick={onLoadExternal} disabled={saving} style={loadButtonStyle}>
+          <Button onClick={onLoadExternal} disabled={saving} style={warnButtonStyle}>
             载入外部版本
-          </button>
-          <button type="button" onClick={onSaveDraftCopy} disabled={saving} style={loadButtonStyle}>
+          </Button>
+          <Button onClick={onSaveDraftCopy} disabled={saving} style={warnButtonStyle}>
             另存为副本
-          </button>
+          </Button>
         </>
       )}
       {status && (
@@ -63,9 +65,9 @@ export function NodeEditorToolbar({
         </StatusText>
       )}
       {draftCopyPath && <span style={statusTextStyle}>{draftCopyPath}</span>}
-      <button type="button" onClick={onSave} disabled={saving || !canSave} style={saveButtonStyle}>
+      <Button variant="primary" onClick={onSave} disabled={saving || !canSave} style={saveButtonStyle}>
         {saving ? "保存中…" : "保存"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -115,29 +117,20 @@ const statusTextStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
 };
 
-const toggleButtonStyle: CSSProperties = {
-  padding: "var(--space-2) var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-panel)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
+/* 按钮颜色/悬停/禁用统一走 .gs-btn；这里只覆盖字号等布局差异。 */
+const modeButtonStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
+  color: "var(--text-secondary)",
+  padding: "var(--space-2)",
 };
 
-const loadButtonStyle: CSSProperties = {
-  ...toggleButtonStyle,
+const warnButtonStyle: CSSProperties = {
+  fontSize: "var(--text-sm)",
   color: "var(--status-warn-text)",
   borderColor: "var(--status-warn)",
 };
 
 const saveButtonStyle: CSSProperties = {
   padding: "var(--space-2) var(--space-4)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--accent)",
-  background: "var(--accent)",
-  color: "var(--text-on-accent)",
-  cursor: "pointer",
-  fontSize: "var(--text-base)",
   flexShrink: 0,
 };

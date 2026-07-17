@@ -64,6 +64,12 @@ Keep filesystem access in the Tauri backend. The React frontend should call type
 
 Be conservative with user files. Initialization may add VibeGal-Studio files, but it must not silently overwrite existing files.
 
+Platform differences to keep in mind:
+
+- The custom title bar uses `titleBarStyle: Overlay` (macOS only); macOS needs the 88px traffic-light offset in the frontend (`getDesktopPlatform()` in `src/lib/platform.ts`), while Windows/Linux keep native decorations.
+- In-app CLI one-click install is Unix-only (symlink into a global bin dir). On Windows the Settings page degrades to manual guidance: copy the bundled `vibegal-cli.exe` path and add it to PATH.
+- Symlink-based security tests are gated with `#[cfg(unix)]` (Windows skips them; symlink creation needs admin/developer mode there).
+
 When changing renderer loading, remember there are two paths:
 
 - Dev: Vite imports project renderer TSX through `/@fs/...`

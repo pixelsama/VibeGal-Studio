@@ -6,15 +6,18 @@ pub(crate) fn cli_tool_candidate_link_paths() -> Vec<PathBuf> {
         paths.push(PathBuf::from("/usr/local/bin").join(CLI_COMMAND_NAME));
         return paths;
     }
-    if cfg!(unix) {
+    // Windows：命令链接依赖 symlink 权限、也没有稳定的全局 bin 目录，
+    // 不提供一键安装路径，前端据此降级为手动引导（复制 CLI 路径、自行加入 PATH）。
+    #[cfg(unix)]
+    {
         paths.push(PathBuf::from("/usr/local/bin").join(CLI_COMMAND_NAME));
-    }
-    if let Ok(home) = env::var("HOME") {
-        paths.push(
-            PathBuf::from(home)
-                .join(".local/bin")
-                .join(CLI_COMMAND_NAME),
-        );
+        if let Ok(home) = env::var("HOME") {
+            paths.push(
+                PathBuf::from(home)
+                    .join(".local/bin")
+                    .join(CLI_COMMAND_NAME),
+            );
+        }
     }
     paths
 }
@@ -64,8 +67,29 @@ pub(crate) fn cli_tool_status_inner(
     candidate_link_paths: &[PathBuf],
     path_env: Option<&str>,
 ) -> Result<CliToolStatus, String> {
+    // 没有可用安装路径的平台（如 Windows）：返回"不可一键安装"的状态而非报错，
+    // 让前端降级为手动引导（复制 CLI 路径、自行加入 PATH）。
     let Some(default_link_path) = candidate_link_paths.first() else {
-        return Err("当前平台没有可用的命令行安装路径".to_string());
+        let cli_available = launcher_path.is_file() && sidecar_path.is_file();
+        let issue = if cli_available {
+            None
+        } else {
+            Some(format!(
+                "找不到随应用提供的 {} 执行文件: {}",
+                CLI_COMMAND_NAME,
+                launcher_path.display()
+            ))
+        };
+        return Ok(CliToolStatus {
+            command: CLI_COMMAND_NAME.to_string(),
+            cli_path: launcher_path.to_string_lossy().to_string(),
+            link_path: String::new(),
+            installed: false,
+            cli_available,
+            link_occupied: false,
+            in_path: false,
+            issue,
+        });
     };
     let installed_link_path = candidate_link_paths
         .iter()

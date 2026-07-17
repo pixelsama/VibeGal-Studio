@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { deleteFile, saveFile, saveGraph, saveGraphPositions } from "../../lib/tauri";
+import { Button } from "../common/Button";
+import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
 import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
@@ -546,19 +548,43 @@ export function ScriptWorkspace({
     void persistGraph(next);
   };
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     const nextState = undoGraphHistory(graphHistory);
     if (nextState === graphHistory) return;
     setGraphHistory(nextState);
     void persistGraph(nextState.graph);
-  };
+  }, [graphHistory, persistGraph]);
 
-  const handleRedo = () => {
+  const handleRedo = useCallback(() => {
     const nextState = redoGraphHistory(graphHistory);
     if (nextState === graphHistory) return;
     setGraphHistory(nextState);
     void persistGraph(nextState.graph);
-  };
+  }, [graphHistory, persistGraph]);
+
+  // 图视图快捷键：Ctrl/Cmd+Z 撤销，Ctrl+Shift+Z / Ctrl+Y 重做。
+  // 弹窗打开时不拦截；输入控件内的按键留给文本编辑自身的撤销栈。
+  useEffect(() => {
+    if (view !== "graph" || confirm || prompt) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const action = resolveUndoRedoShortcut({
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        targetIsEditable: isEditableEventTarget(event.target),
+      });
+      if (!action) return;
+      event.preventDefault();
+      if (action === "undo") {
+        handleUndo();
+      } else {
+        handleRedo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view, confirm, prompt, handleUndo, handleRedo]);
 
   return (
     <div style={containerStyle}>
@@ -591,10 +617,10 @@ export function ScriptWorkspace({
             <div style={canvasPaneStyle}>
               <div style={canvasColumnStyle}>
                 <div style={toolbarStyle}>
-                  <button type="button" onClick={() => handleCreateNode()} disabled={savingGraph} style={{ ...primaryButtonStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>
+                  <Button variant="primary" onClick={() => handleCreateNode()} disabled={savingGraph}>
                     <Plus size={15} />
                     新建节点
-                  </button>
+                  </Button>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
@@ -637,14 +663,14 @@ export function ScriptWorkspace({
               <div style={inspectorTabsStyle}>
                 <button
                   type="button"
-                  style={inspectorTabButtonStyle(inspectorTab === "node")}
+                  className={inspectorTab === "node" ? "gs-tab gs-tab--active" : "gs-tab"}
                   onClick={() => setInspectorTab("node")}
                 >
                   节点
                 </button>
                 <button
                   type="button"
-                  style={inspectorTabButtonStyle(inspectorTab === "analysis")}
+                  className={inspectorTab === "analysis" ? "gs-tab gs-tab--active" : "gs-tab"}
                   onClick={() => setInspectorTab("analysis")}
                 >
                   分析
@@ -761,17 +787,6 @@ const toolbarStyle: React.CSSProperties = {
   background: "var(--bg-app)",
 };
 
-const primaryButtonStyle: React.CSSProperties = {
-  padding: "var(--space-2) var(--space-3)",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid var(--accent)",
-  background: "var(--accent)",
-  color: "var(--text-on-accent)",
-  cursor: "pointer",
-  fontSize: "var(--text-base)",
-  fontWeight: 600,
-};
-
 const toolbarSpacerStyle: React.CSSProperties = {
   flex: 1,
 };
@@ -795,19 +810,6 @@ const inspectorTabsStyle: React.CSSProperties = {
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
 };
-
-function inspectorTabButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "var(--space-2) var(--space-3)",
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border)",
-    background: active ? "var(--bg-active)" : "var(--bg-panel)",
-    color: active ? "var(--text-bright)" : "var(--text-secondary)",
-    cursor: "pointer",
-    fontSize: "var(--text-sm)",
-    fontWeight: active ? 600 : 500,
-  };
-}
 
 const inspectorContentStyle: React.CSSProperties = {
   minHeight: 0,

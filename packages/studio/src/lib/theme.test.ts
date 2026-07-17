@@ -4,6 +4,7 @@ import {
   createLatestSettingsSaver,
   resolveTheme,
   subscribeSystemThemeChanges,
+  themeFromAttribute,
   type AppSettings,
   type ResolvedTheme,
 } from "./theme";
@@ -75,6 +76,15 @@ describe("theme resolution", () => {
     expect(observed).toEqual(["light"]);
 
     unsubscribe();
+  });
+});
+
+describe("themeFromAttribute", () => {
+  it("parses the applied data-theme attribute into a resolved theme", () => {
+    expect(themeFromAttribute("light")).toBe("light");
+    expect(themeFromAttribute("dark")).toBe("dark");
+    expect(themeFromAttribute(undefined)).toBe("dark");
+    expect(themeFromAttribute("")).toBe("dark");
   });
 });
 

@@ -44,6 +44,8 @@ fn app_settings_deserialize_unknown_theme_uses_default() {
     assert_eq!(back.theme, ThemeMode::System);
 }
 
+// symlink 安装流程只在 Unix 上可用（Windows 走"手动加入 PATH"降级），相关用例仅 Unix 运行。
+#[cfg(unix)]
 #[test]
 fn cli_tool_status_detects_managed_symlink() {
     let root = unique_temp_dir("cli-status");
@@ -75,6 +77,7 @@ fn cli_tool_status_detects_managed_symlink() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
 #[test]
 fn cli_tool_status_does_not_report_app_path_as_terminal_issue() {
     let root = unique_temp_dir("cli-status-no-app-path");
@@ -108,16 +111,26 @@ fn cli_tool_candidate_link_paths_use_global_shell_path_on_macos() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn cli_tool_candidate_link_paths_empty_on_windows() {
+    // Windows 不支持一键安装命令链接：候选路径必须为空，让状态降级为手动引导
+    assert!(cli_tool_candidate_link_paths().is_empty());
+}
+
 #[test]
 fn cli_launcher_path_uses_resource_bin_wrapper() {
     let resources = PathBuf::from("/Applications/VibeGal-Studio.app/Contents/Resources");
-
-    assert_eq!(
-        cli_launcher_path_from_resource_dir(&resources),
+    let expected = if cfg!(windows) {
+        resources.join("bin/vibegal-cli.exe")
+    } else {
         resources.join("bin/vibegal-cli")
-    );
+    };
+
+    assert_eq!(cli_launcher_path_from_resource_dir(&resources), expected);
 }
 
+#[cfg(unix)]
 #[test]
 fn install_cli_tool_links_global_command_to_wrapper_not_sidecar() {
     let root = unique_temp_dir("cli-install-wrapper");
@@ -145,6 +158,7 @@ fn install_cli_tool_links_global_command_to_wrapper_not_sidecar() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
 #[test]
 fn cli_tool_status_allows_repairing_legacy_sidecar_symlink() {
     let root = unique_temp_dir("cli-status-legacy-sidecar");
@@ -174,6 +188,7 @@ fn cli_tool_status_allows_repairing_legacy_sidecar_symlink() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
 #[test]
 fn install_cli_tool_replaces_legacy_sidecar_symlink_with_wrapper() {
     let root = unique_temp_dir("cli-install-legacy-sidecar");
@@ -286,6 +301,7 @@ fn install_cli_tool_refuses_to_overwrite_existing_command() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
 #[test]
 fn uninstall_cli_tool_only_removes_managed_symlink() {
     let root = unique_temp_dir("cli-uninstall");
@@ -309,6 +325,61 @@ fn uninstall_cli_tool_only_removes_managed_symlink() {
     assert!(!link.exists());
     assert!(!status.installed);
     assert!(status.cli_available);
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+// ── 无一键安装路径的平台（Windows）降级行为 ──
+
+#[test]
+fn cli_tool_status_without_install_paths_degrades_to_manual_guidance() {
+    // link_path 为空、不报错、CLI 可用：前端据此展示"复制路径 + 手动加入 PATH"的引导
+    let root = unique_temp_dir("cli-status-manual");
+    let launcher = root.join("vibegal-cli");
+    let sidecar = root.join("vibegal-cli-sidecar");
+    fs::write(&launcher, "bin").unwrap();
+    fs::write(&sidecar, "bin").unwrap();
+
+    let status = cli_tool_status_inner(&launcher, &sidecar, &[], None).unwrap();
+
+    assert!(!status.installed);
+    assert!(status.cli_available);
+    assert!(status.link_path.is_empty());
+    assert!(!status.link_occupied);
+    assert!(!status.in_path);
+    assert_eq!(status.issue, None);
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cli_tool_status_without_install_paths_reports_missing_cli() {
+    let root = unique_temp_dir("cli-status-manual-missing");
+    let launcher = root.join("vibegal-cli");
+    let sidecar = root.join("vibegal-cli-sidecar");
+
+    let status = cli_tool_status_inner(&launcher, &sidecar, &[], None).unwrap();
+
+    assert!(!status.cli_available);
+    assert!(status.issue.is_some());
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn install_cli_tool_without_install_paths_errors() {
+    let root = unique_temp_dir("cli-install-no-paths");
+    let launcher = root.join("vibegal-cli");
+    let sidecar = root.join("vibegal-cli-sidecar");
+    fs::write(&launcher, "bin").unwrap();
+    fs::write(&sidecar, "bin").unwrap();
+
+    let error = install_cli_tool_inner(&launcher, &sidecar, &[], None).unwrap_err();
+
+    assert!(
+        error.contains("没有可用的命令行安装路径"),
+        "unexpected error: {error}"
+    );
 
     let _ = fs::remove_dir_all(&root);
 }

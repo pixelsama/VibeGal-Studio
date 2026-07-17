@@ -34,6 +34,7 @@ import { clearRendererTrust } from "./features/renderers/rendererTrust";
 import { sameLocation, workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
 import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPrefs } from "./lib/sidebarPrefs";
 import { RevisionedProjectMutationQueue } from "./lib/projectMutation";
+import { getDesktopPlatform } from "./lib/platform";
 
 interface Props {
   project: ProjectData;
@@ -585,8 +586,9 @@ const titleBarStyle: React.CSSProperties = {
   alignItems: "center",
   gap: "var(--space-3)",
   height: 38,
-  // 左侧 88px 为 macOS 红绿灯避让（约 70px）+ 一点间距；右 12px
-  padding: "0 var(--space-3) 0 88px",
+  // 左侧 88px 为 macOS 红绿灯避让（约 70px）+ 一点间距；
+  // Windows/Linux 上 titleBarStyle 不生效（原生标题栏），无需避让
+  padding: getDesktopPlatform() === "macos" ? "0 var(--space-3) 0 88px" : "0 var(--space-3)",
   borderBottom: "1px solid var(--border)",
   background: "var(--bg-app)",
 };

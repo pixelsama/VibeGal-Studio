@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AppSettings, ThemeMode } from "../../lib/theme";
+import { getDesktopPlatform } from "../../lib/platform";
 import { Button, IconButton } from "../common/Button";
 import {
   getCliToolStatus,
@@ -75,6 +76,19 @@ export function Settings({
     }
   }, []);
 
+  const copyCliPath = useCallback(async () => {
+    const path = cliStatus?.cliPath;
+    if (!path) return;
+    setCliError(null);
+    setCliMessage(null);
+    try {
+      await navigator.clipboard.writeText(path);
+      setCliMessage("已复制 CLI 路径；把它所在目录加入 PATH 后即可在终端使用");
+    } catch {
+      setCliError("复制失败，请手动复制下方「随应用提供」的路径");
+    }
+  }, [cliStatus]);
+
   const content = (
     <div style={contentStyle}>
       <AppearanceSection settings={settings} onUpdate={onUpdate} />
@@ -87,6 +101,7 @@ export function Settings({
         onRefresh={() => void refreshCliStatus()}
         onInstall={() => void installCli()}
         onUninstall={() => void uninstallCli()}
+        onCopyPath={() => void copyCliPath()}
       />
     </div>
   );
@@ -155,6 +170,7 @@ export function CommandLineToolSection({
   onRefresh,
   onInstall,
   onUninstall,
+  onCopyPath,
 }: {
   status: CliToolStatus | null;
   busy: boolean;
@@ -163,20 +179,29 @@ export function CommandLineToolSection({
   onRefresh: () => void;
   onInstall: () => void;
   onUninstall: () => void;
+  onCopyPath?: () => void;
 }) {
+  // 平台没有可安装的命令链接路径（Windows）：降级为手动引导
+  const manualOnly = status != null && status.linkPath === "";
   const statusText = status
     ? status.installed
       ? `已安装到 ${status.linkPath}`
-      : status.linkOccupied
-        ? `目标路径已被占用：${status.linkPath}`
-        : "未安装命令链接"
+      : manualOnly
+        ? status.cliAvailable
+          ? "已随应用提供（未注册到 PATH）"
+          : "未找到随附的 vibegal-cli"
+        : status.linkOccupied
+          ? `目标路径已被占用：${status.linkPath}`
+          : "未安装命令链接"
     : "正在检查 vibegal-cli";
   const detailText = status
     ? status.installed
       ? `命令已注册到全局命令目录，可在终端和外部 Agent 中直接运行 ${status.command}。`
-      : status.linkOccupied
-        ? "VibeGal-Studio 不会覆盖非自己管理的同名命令。"
-        : `将创建全局命令链接：${status.linkPath}`
+      : manualOnly
+        ? "当前平台暂不支持一键注册全局命令。可将下方的 CLI 路径加入 PATH，即可在终端和外部 Agent 中使用。"
+        : status.linkOccupied
+          ? "VibeGal-Studio 不会覆盖非自己管理的同名命令。"
+          : `将创建全局命令链接：${status.linkPath}`
     : "VibeGal-Studio 会显式创建命令链接，不会静默修改 shell 配置。";
   const installDisabled =
     busy || !status?.cliAvailable || Boolean(status.installed) || Boolean(status?.linkOccupied);
@@ -196,7 +221,7 @@ export function CommandLineToolSection({
             background: status?.installed ? "var(--bg-accent-soft)" : "var(--bg-inset)",
             color: status?.installed ? "var(--accent-bright)" : "var(--text-muted)",
           }}>
-            {status ? (status.installed ? "已安装" : "未安装") : "检查中"}
+            {status ? (status.installed ? "已安装" : manualOnly ? "手动使用" : "未安装") : "检查中"}
           </span>
         </div>
         <p style={cliDetailStyle}>{detailText}</p>
@@ -205,12 +230,20 @@ export function CommandLineToolSection({
         {error && <p role="alert" style={cliIssueStyle}>{error}</p>}
         {message && <p role="status" style={cliMessageStyle}>{message}</p>}
         <div style={cliActionRowStyle}>
-          <Button variant="primary" onClick={onInstall} disabled={installDisabled}>
-            {status?.installed ? "已安装" : "安装 vibegal-cli"}
-          </Button>
-          <Button variant="secondary" onClick={onUninstall} disabled={busy || !status?.installed}>
-            卸载
-          </Button>
+          {manualOnly ? (
+            <Button variant="primary" onClick={onCopyPath} disabled={busy || !status.cliAvailable}>
+              复制 CLI 路径
+            </Button>
+          ) : (
+            <>
+              <Button variant="primary" onClick={onInstall} disabled={installDisabled}>
+                {status?.installed ? "已安装" : "安装 vibegal-cli"}
+              </Button>
+              <Button variant="secondary" onClick={onUninstall} disabled={busy || !status?.installed}>
+                卸载
+              </Button>
+            </>
+          )}
           <Button variant="secondary" onClick={onRefresh} disabled={busy}>
             重新检查
           </Button>
@@ -282,7 +315,8 @@ const headerStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 10,
   height: 38,
-  padding: "0 12px 0 88px",
+  // macOS Overlay 标题栏避让红绿灯；Windows/Linux 原生标题栏无需避让
+  padding: getDesktopPlatform() === "macos" ? "0 12px 0 88px" : "0 12px",
   background: "var(--bg-app)",
   borderBottom: "1px solid var(--border)",
   flexShrink: 0,

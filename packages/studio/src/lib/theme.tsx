@@ -78,6 +78,31 @@ export function resolveTheme(mode: ThemeMode, systemTheme: ResolvedTheme = getSy
   return mode === "system" ? systemTheme : mode;
 }
 
+/** 从 <html data-theme> 的属性值解析主题（applyTheme 写入的总是已解析值）。 */
+export function themeFromAttribute(value: string | null | undefined): ResolvedTheme {
+  return value === "light" ? "light" : "dark";
+}
+
+function readDocumentTheme(): ResolvedTheme {
+  if (typeof document === "undefined") return "dark";
+  return themeFromAttribute(document.documentElement.dataset.theme);
+}
+
+function subscribeDocumentTheme(onChange: () => void): () => void {
+  if (typeof document === "undefined" || typeof MutationObserver === "undefined") return () => {};
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
+
+/**
+ * 订阅当前已应用的主题（<html data-theme>，由 App 顶层的 useAppSettings 维护）。
+ * 供深层组件（如 React Flow 画布的 colorMode）跟随主题切换，无需层层传 props。
+ */
+export function useResolvedTheme(): ResolvedTheme {
+  return useSyncExternalStore(subscribeDocumentTheme, readDocumentTheme, readDocumentTheme);
+}
+
 /** 订阅系统配色偏好变化。 */
 export function subscribeSystemThemeChanges(onChange: () => void): () => void {
   const media = getSystemThemeMediaQuery();
