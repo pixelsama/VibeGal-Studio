@@ -67,6 +67,11 @@ fn open_project_with_scope(
     scope_state: &AssetScopeState,
 ) -> Result<ProjectData, String> {
     let data = project::open_project_inner(path)?;
+    // 老项目可能缺 .galstudio 自描述文件：只补缺失，不覆盖用户改动。
+    // 回填失败（如权限问题）不阻塞打开。
+    if let Err(error) = project::ensure_project_self_description(Path::new(&data.path)) {
+        eprintln!("[vibegal] 补齐项目自描述文件失败（已跳过）: {error}");
+    }
     let content_root = ProjectRoot::open(Path::new(&data.path))?.content_root()?;
     let scope = app_handle.asset_protocol_scope();
     let mut active = scope_state

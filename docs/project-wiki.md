@@ -724,7 +724,8 @@ The CLI currently supports:
 
 ```text
 vibegal-cli validate <project-path> --format json|text
-vibegal-cli renderer-check <project-path> --renderer <id> --format json|text
+vibegal-cli renderer-check <project-path> --renderer <id> [--no-compile] --format json|text
+vibegal-cli renderer-snapshot <project-path> --renderer <id> --out <dir> --format json|text
 vibegal-cli build <project-path> --target web --out <dir> --format json|text
 vibegal-cli smoke <dist-dir> --target web --format json|text
 ```
@@ -734,6 +735,10 @@ issues. This is the key bridge for external AI agents and CI-like checks.
 
 `validate` is self-contained and does not require Node. Web `build` uses the packaged exporter and
 currently requires a system Node runtime (or `VIBEGAL_NODE`); `smoke` performs browser-level behavior checks.
+`renderer-check` runs static contract checks plus a real compile/typecheck through the bundled node
+worker (`--no-compile` skips it). `renderer-snapshot` headlessly mounts the renderer onto built-in
+scene fixtures and writes PNG screenshots via headless Chrome (`VIBEGAL_SMOKE_BROWSER` overrides the
+executable), so agents can see what their renderer looks like without opening the app.
 
 ## 10. Validation Model
 

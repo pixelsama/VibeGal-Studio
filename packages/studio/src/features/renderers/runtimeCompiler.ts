@@ -1,30 +1,24 @@
 /**
  * 运行时渲染层编译器 —— 在 webview 里把用户写的 .tsx 编译成可执行的 JS。
  *
- * 方案（源码预处理 + 全局变量，零 bare import）：
+ * 方案（单趟 esbuild.build + 插件，产物零 bare import）：
  *   1. studio 启动时把 react / @vibegal/engine 注入 globalThis.__GAL_VENDOR__
  *      （见 main.tsx）。单例，studio 与渲染层共用同一份实例。
- *   2. 用户 .tsx 进入 esbuild 前，先做字符串预处理：把 bare import 改写成
- *      从 globalThis.__GAL_VENDOR__ 取具名导出。
- *      例：`import { jsx } from "react/jsx-runtime"` →
- *          `const { jsx } = globalThis.__GAL_VENDOR__["react/jsx-runtime"];`
- *   3. esbuild bundle 整个渲染层（jsx automatic，此时 jsx-runtime 的 import 已被改成
- *      全局变量取值，但 esbuild 的 jsx:'automatic' 会自己生成 import jsx from 'react/jsx-runtime'。
- *      所以预处理要在 esbuild transform 之后做，对生成的 import 语句再改写）。
+ *   2. 一次 esbuild.build 完成编译与打包，插件负责模块解析：
+ *      - 相对 import → 内存文件表（带扩展名 / 目录 index 补全）；
+ *      - bare import（react / react-dom / @vibegal/engine）→ vendor shim 虚拟模块，
+ *        shim 在运行时从 globalThis.__GAL_VENDOR__ 取真实模块并 re-export；
+ *      - 其余 bare import → 编译错误（esbuild 自动带上 import 语句的真实行列位置）。
+ *   3. esbuild 的 jsx automatic 生成的 react/jsx-runtime import 同样走 vendor shim，链路自洽。
  *
- * 实际顺序：先用 esbuild.transform 逐文件编译（jsx→jsx 函数调用，含 import jsx），
- *          再把每个编译产物的 bare import 改写成全局变量，
- *          最后用 esbuild.build（仅做模块图合并，不再 transform）bundle。
- *
- * 这样产物零 bare import，blob URL + dynamic import 直接可用，无需 import map。
+ * 产物零外部依赖，blob URL + dynamic import 直接可用，无需 import map。
  */
 import * as esbuild from "esbuild-wasm";
-import type { Plugin } from "esbuild-wasm";
+import type { Loader, Message, Plugin } from "esbuild-wasm";
 import type { RendererFile } from "../../lib/tauri";
 import {
   RendererDiagnosticError,
   rendererFilePath,
-  sourceLocation,
   type RendererDiagnostic,
 } from "./diagnostics";
 
@@ -108,179 +102,15 @@ function isRelativeSpecifier(spec: string): boolean {
   return spec.startsWith("./") || spec.startsWith("../");
 }
 
-function normalizeNamedImports(names: string): string {
-  return names
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const match = part.match(/^(.+?)\s+as\s+(.+)$/);
-      return match ? `${match[1].trim()}: ${match[2].trim()}` : part;
-    })
-    .join(", ");
-}
-
-function exportLocalNames(names: string): string {
-  return names
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const match = part.match(/^(.+?)\s+as\s+(.+)$/);
-      return match ? match[2].trim() : part;
-    })
-    .join(", ");
-}
-
-function vendorAccess(key: string): string {
-  return `globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}]`;
-}
-
-function vendorLocalName(key: string): string {
-  return `__gal_vendor_${key.replace(/[^A-Za-z0-9_$]/g, "_")}`;
-}
-
-/**
- * 把一段 ESM 代码里的 bare import 改写成从 globalThis.__GAL_VENDOR__ 取值。
- * 处理三种形式：import 声明、export ... from、动态 import()。
- */
-function rewriteBareImports(code: string): { code: string; unknownSpecs: string[] } {
-  const unknown: string[] = [];
-
-  // 1. import 声明：import def, { a, b as c } from "spec" / import { a } from "spec" / import def from "spec" / import * as ns from "spec"
-  code = code.replace(
-    /import\s+([A-Za-z_$][\w$]*)\s*,\s*\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
-    (_m, def: string, names: string, spec: string) => {
-      if (isRelativeSpecifier(spec)) return _m;
-      const key = bareKey(spec);
-      if (!key) { unknown.push(spec); return _m; }
-      const vendor = vendorLocalName(key);
-      return `const ${vendor} = ${vendorAccess(key)}; const ${def} = ${vendor}.default ?? ${vendor}; const { ${normalizeNamedImports(names)} } = ${vendor};`;
-    },
-  );
-  code = code.replace(
-    /import\s+\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
-    (_m, names: string, spec: string) => {
-      if (isRelativeSpecifier(spec)) return _m;
-      const key = bareKey(spec);
-      if (!key) { unknown.push(spec); return _m; }
-      return `const { ${normalizeNamedImports(names)} } = ${vendorAccess(key)};`;
-    },
-  );
-  code = code.replace(
-    /import\s+(\w+)\s+from\s+["']([^"']+)["']/g,
-    (_m, def: string, spec: string) => {
-      if (isRelativeSpecifier(spec)) return _m;
-      const key = bareKey(spec);
-      if (!key) { unknown.push(spec); return _m; }
-      return `const ${def} = (${vendorAccess(key)}).default ?? ${vendorAccess(key)};`;
-    },
-  );
-  code = code.replace(
-    /import\s+\*\s+as\s+(\w+)\s+from\s+["']([^"']+)["']/g,
-    (_m, ns: string, spec: string) => {
-      if (isRelativeSpecifier(spec)) return _m;
-      const key = bareKey(spec);
-      if (!key) { unknown.push(spec); return _m; }
-      return `const ${ns} = ${vendorAccess(key)};`;
-    },
-  );
-
-  // 2. export ... from "spec" —— 渲染层一般不 re-export bare，但兜底
-  code = code.replace(
-    /export\s+\{([^}]*)\}\s+from\s+["']([^"']+)["']/g,
-    (_m, names: string, spec: string) => {
-      if (isRelativeSpecifier(spec)) return _m;
-      const key = bareKey(spec);
-      if (!key) { unknown.push(spec); return _m; }
-      return `const { ${normalizeNamedImports(names)} } = ${vendorAccess(key)}; export { ${exportLocalNames(names)} };`;
-    },
-  );
-
-  // 3. 动态 import("spec") —— bare 的改写
-  code = code.replace(/import\(\s*["']([^"']+)["']\s*\)/g, (_m, spec: string) => {
-    if (isRelativeSpecifier(spec)) return _m;
-    const key = bareKey(spec);
-    if (!key) { unknown.push(spec); return _m; }
-    return `Promise.resolve(${vendorAccess(key)})`;
-  });
-
-  return { code, unknownSpecs: unknown };
-}
-
-export function __rewriteBareImportsForTest(code: string): { code: string; unknownSpecs: string[] } {
-  return rewriteBareImports(code);
-}
-
-export type RuntimeCompilerError =
-  | { kind: "unsupported-import"; file: string; specs: string[]; diagnostics?: RendererDiagnostic[] }
-  | { kind: "esbuild"; message: string };
-
-export function formatRuntimeCompilerError({
-  rendererId,
-  error,
-}: {
-  rendererId: string;
-  error: RuntimeCompilerError;
-}): string {
-  if (error.kind === "unsupported-import") {
-    const diagnostic = error.diagnostics?.[0];
-    const location = diagnostic?.file
-      ? `${diagnostic.file}${diagnostic.line != null && diagnostic.column != null ? `:${diagnostic.line}:${diagnostic.column}` : ""}`
-      : error.file;
-    return `渲染层 ${rendererId} 的 ${location} 使用了未支持的 bare import：${error.specs.join(", ")}。仅支持 react、react/jsx-runtime、react-dom、@vibegal/engine 与相对路径 import。`;
-  }
-  return `渲染层 ${rendererId} 编译失败：${error.message}`;
-}
-
-export function formatRuntimeCompilerErrorForTest(args: {
-  rendererId: string;
-  error: RuntimeCompilerError;
-}): string {
-  return formatRuntimeCompilerError(args);
-}
-
-function memoryPlugin(files: Map<string, string>): Plugin {
-  return {
-    name: "vibegal-memory",
-    setup(build) {
-      // 所有 memory namespace 内的解析（入口 + 相对 import）统一处理
-      build.onResolve({ filter: /.*/, namespace: "memory" }, (args) => {
-        // 入口（path 可能是 "index"，importer 为空）或相对 import
-        const resolved = args.importer ? resolveRel(args.path, args.importer) : normKey(args.path);
-        return { path: resolved, namespace: "memory" };
-      });
-      // 顶层入口解析：entryPoints 形如 memory://index，esbuild 先用默认 namespace 解析
-      build.onResolve({ filter: /^memory:\/\// }, (args) => {
-        const key = args.path.replace(/^memory:\/\//, "");
-        return { path: key, namespace: "memory" };
-      });
-      build.onLoad({ filter: /.*/, namespace: "memory" }, (args) => {
-        const key = normKey(args.path);
-        const content = files.get(key);
-        if (content == null) return { errors: [{ text: `找不到模块: ${args.path}（key=${key}）` }] };
-        // 文件内容已是【bare import 改写完、esbuild transform 过】的 JS
-        return { contents: content, loader: "js" };
-      });
-      // 漏网的 bare import（理论上预处理已改写完）——仅在非 memory namespace 捕获
-      build.onResolve({ filter: /^[^./]/, namespace: "file" }, (args) => {
-        return { path: args.path, namespace: "error" };
-      });
-      build.onLoad({ filter: /.*/, namespace: "error" }, (args) => ({
-        errors: [{ text: `未处理的 bare import: ${args.path}（应为预处理阶段改写，请检查 BARE_MAP）` }],
-      }));
-    },
-  };
-}
+/** 不支持的 bare import 错误文本前缀，esbuild error → diagnostic 映射时据此识别 */
+const UNSUPPORTED_IMPORT_PREFIX = "VIBEGAL_UNSUPPORTED_RENDERER_IMPORT:";
 
 function normKey(p: string): string {
-  let s = p.replace(/^\.?\//, "").replace(/^memory:\/\//, "");
-  // 预处理后所有文件统一存 .mjs 形式的 key，不带原扩展名歧义
-  return s;
+  return p.replace(/^\.?\//, "").replace(/^memory:\/\//, "");
 }
 
 function resolveRel(spec: string, importer: string): string {
-  const importerKey = importer.replace(/^memory:\/\//, "").replace(/^\.?\//, "");
+  const importerKey = normKey(importer);
   const baseDir = importerKey.includes("/") ? importerKey.slice(0, importerKey.lastIndexOf("/")) : "";
   const parts = (baseDir ? baseDir.split("/") : []).concat(spec.split("/"));
   const resolved: string[] = [];
@@ -292,40 +122,121 @@ function resolveRel(spec: string, importer: string): string {
   return resolved.join("/");
 }
 
-function importSpecifierOffset(matchText: string, spec: string): number {
-  const doubleQuoted = matchText.indexOf(`"${spec}"`);
-  if (doubleQuoted >= 0) return doubleQuoted;
-  const singleQuoted = matchText.indexOf(`'${spec}'`);
-  return singleQuoted >= 0 ? singleQuoted : 0;
-}
+/** 相对 specifier 的候选补全顺序：原样 → 补扩展名 → 目录 index */
+const RESOLVE_CANDIDATE_SUFFIXES = ["", ".tsx", ".ts", ".jsx", ".js", "/index.tsx", "/index.ts"];
 
-function findUnsupportedBareImports(files: RendererFile[], rendererId: string): RendererDiagnostic[] {
-  const diagnostics: RendererDiagnostic[] = [];
-  const importPattern = /\b(?:import\s+(?:[^"'()]+?\s+from\s*)?|export\s+[^"']+?\s+from\s*|import\s*\(\s*)["']([^"']+)["']/g;
-  for (const file of files) {
-    if (!file.path.endsWith(".tsx") && !file.path.endsWith(".ts")) continue;
-    for (const match of file.content.matchAll(importPattern)) {
-      const spec = match[1];
-      if (isRelativeSpecifier(spec) || bareKey(spec)) continue;
-      const matchIndex = match.index ?? 0;
-      const quoteIndex = matchIndex + importSpecifierOffset(match[0], spec);
-      const location = sourceLocation(file.content, quoteIndex);
-      diagnostics.push({
-        severity: "error",
-        code: "renderer_unsupported_import",
-        rendererId,
-        step: "compile",
-        message: `Unsupported renderer bare import: ${spec}.`,
-        file: rendererFilePath(rendererId, file.path),
-        ...location,
-      });
-    }
+function resolveMemoryPath(spec: string, importer: string, files: { has(key: string): boolean }): string | null {
+  const base = resolveRel(spec, importer);
+  for (const suffix of RESOLVE_CANDIDATE_SUFFIXES) {
+    const candidate = base + suffix;
+    if (files.has(candidate)) return candidate;
   }
-  return diagnostics;
+  return null;
 }
 
-export function __findUnsupportedBareImportsForTest(files: RendererFile[], rendererId: string): RendererDiagnostic[] {
-  return findUnsupportedBareImports(files, rendererId);
+export function __resolveMemoryPathForTest(
+  spec: string,
+  importer: string,
+  files: { has(key: string): boolean },
+): string | null {
+  return resolveMemoryPath(spec, importer, files);
+}
+
+function loaderFor(path: string): Loader {
+  if (path.endsWith(".tsx")) return "tsx";
+  if (path.endsWith(".ts")) return "ts";
+  if (path.endsWith(".jsx")) return "jsx";
+  return "js";
+}
+
+const VALID_IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+/**
+ * 生成 vendor shim 模块源码：运行时从 globalThis.__GAL_VENDOR__ 取真实模块，
+ * 把它的可枚举导出 re-export 出去（named / default / namespace / 动态 import 均可用）。
+ * 导出名单不硬编码，直接枚举运行时真实模块；vendor 未注入时返回 null。
+ */
+function vendorShimSource(key: string): string | null {
+  const vendor = (globalThis as Record<string, unknown>)[VENDOR_GLOBAL];
+  const mod = vendor && typeof vendor === "object"
+    ? (vendor as Record<string, unknown>)[key]
+    : undefined;
+  if (mod == null || (typeof mod !== "object" && typeof mod !== "function")) return null;
+  const names = [...new Set(
+    Object.keys(mod as object).filter((name) => name !== "default" && VALID_IDENTIFIER.test(name)),
+  )];
+  const lines = [
+    `const __m = globalThis.${VENDOR_GLOBAL}[${JSON.stringify(key)}];`,
+    "export default (__m && __m.default !== undefined) ? __m.default : __m;",
+    ...names.map((name) => `export const ${name} = __m[${JSON.stringify(name)}];`),
+  ];
+  return lines.join("\n") + "\n";
+}
+
+export function __vendorShimForTest(key: string): string | null {
+  return vendorShimSource(key);
+}
+
+function rendererPlugin(files: Map<string, string>): Plugin {
+  return {
+    name: "vibegal-renderer",
+    setup(build) {
+      // 入口解析：entryPoints 形如 memory://index.tsx，在默认 namespace 先剥掉前缀
+      build.onResolve({ filter: /^memory:\/\// }, (args) => ({
+        path: args.path.replace(/^memory:\/\//, ""),
+        namespace: "memory",
+      }));
+      // memory namespace 内的所有 import：相对 → 内存文件；bare → vendor shim / 编译错误
+      build.onResolve({ filter: /.*/, namespace: "memory" }, (args) => {
+        if (isRelativeSpecifier(args.path)) {
+          const resolved = resolveMemoryPath(args.path, args.importer, files);
+          if (resolved == null) {
+            return { errors: [{ text: `找不到模块: ${args.path}（从 ${args.importer} 导入）` }] };
+          }
+          return { path: resolved, namespace: "memory" };
+        }
+        const key = bareKey(args.path);
+        if (key) return { path: key, namespace: "vendor" };
+        return { errors: [{ text: `${UNSUPPORTED_IMPORT_PREFIX}${args.path}` }] };
+      });
+      build.onLoad({ filter: /.*/, namespace: "memory" }, (args) => {
+        const key = normKey(args.path);
+        const content = files.get(key);
+        if (content == null) return { errors: [{ text: `找不到模块: ${args.path}（key=${key}）` }] };
+        return { contents: content, loader: loaderFor(key) };
+      });
+      build.onLoad({ filter: /.*/, namespace: "vendor" }, (args) => {
+        const source = vendorShimSource(args.path);
+        if (source == null) {
+          return { errors: [{ text: `vendor 模块未注入: globalThis.${VENDOR_GLOBAL}[${JSON.stringify(args.path)}]（渲染层运行时依赖 main.tsx 注入的 vendor 单例）` }] };
+        }
+        return { contents: source, loader: "js" };
+      });
+    },
+  };
+}
+
+function esbuildErrorToDiagnostic(rendererId: string, error: Message): RendererDiagnostic {
+  const unsupported = error.text.startsWith(UNSUPPORTED_IMPORT_PREFIX);
+  const spec = unsupported ? error.text.slice(UNSUPPORTED_IMPORT_PREFIX.length) : "";
+  const location = error.location;
+  return {
+    severity: "error",
+    code: unsupported ? "renderer_unsupported_import" : "renderer_compile_failed",
+    rendererId,
+    step: "compile",
+    message: unsupported
+      ? `渲染层使用了未支持的 bare import：${spec}。仅支持 react、react/jsx-runtime、react-dom、@vibegal/engine 与相对路径 import。`
+      : error.text,
+    file: location?.file ? rendererFilePath(rendererId, normKey(location.file)) : undefined,
+    line: location?.line ?? undefined,
+    column: location?.column ?? undefined,
+    snippet: location?.lineText ?? undefined,
+  };
+}
+
+export function __esbuildErrorToDiagnosticForTest(rendererId: string, error: Message): RendererDiagnostic {
+  return esbuildErrorToDiagnostic(rendererId, error);
 }
 
 export async function compileRenderer(
@@ -334,59 +245,32 @@ export async function compileRenderer(
 ): Promise<unknown> {
   await ensureEsbuild();
   const rendererId = options.rendererId ?? "unknown";
-  const unsupportedDiagnostics = findUnsupportedBareImports(files, rendererId);
-  if (unsupportedDiagnostics.length > 0) {
-    throw new RendererDiagnosticError(unsupportedDiagnostics);
-  }
 
-  // 1. 逐文件：esbuild transform（tsx→js，jsx automatic 生成 import jsx）
-  const compiled = new Map<string, string>();
-  for (const f of files) {
-    if (!f.path.endsWith(".tsx") && !f.path.endsWith(".ts")) continue;
-    const result = await esbuild.transform(f.content, {
-      loader: f.path.endsWith(".tsx") ? "tsx" : "ts",
-      jsx: "automatic",
+  const entry = files.some((f) => f.path === "index.tsx") ? "index.tsx"
+    : files.some((f) => f.path === "index.ts") ? "index.ts"
+    : null;
+  if (!entry) throw new Error("渲染层缺少 index.tsx 入口");
+
+  const fileMap = new Map(files.map((f) => [normKey(f.path), f.content]));
+  let result: esbuild.BuildResult & { outputFiles: esbuild.OutputFile[] };
+  try {
+    result = await esbuild.build({
+      entryPoints: [`memory://${entry}`],
+      bundle: true,
       format: "esm",
       target: "es2022",
+      jsx: "automatic",
+      write: false,
+      logLevel: "warning",
+      plugins: [rendererPlugin(fileMap)],
     });
-    // 2. 改写 bare import 为全局变量
-    const { code, unknownSpecs } = rewriteBareImports(result.code);
-    if (unknownSpecs.length > 0) {
-      const diagnostics = unknownSpecs.map((spec) => ({
-        severity: "error" as const,
-        code: "renderer_unsupported_import",
-        rendererId,
-        step: "compile" as const,
-        message: `Unsupported renderer bare import: ${spec}.`,
-        file: rendererFilePath(rendererId, f.path),
-      }));
-      throw {
-        kind: "unsupported-import",
-        file: rendererFilePath(rendererId, f.path),
-        specs: unknownSpecs,
-        diagnostics,
-      } satisfies RuntimeCompilerError;
+  } catch (error) {
+    const messages = (error as { errors?: Message[] }).errors;
+    if (Array.isArray(messages) && messages.length > 0) {
+      throw new RendererDiagnosticError(messages.map((m) => esbuildErrorToDiagnostic(rendererId, m)));
     }
-    compiled.set(stripExt(f.path), code);
+    throw error;
   }
-
-  // 3. bundle（合并模块图，此时只剩相对 import + 全局变量，无 bare import）
-  const entryKey = stripExt(
-    files.some((f) => f.path === "index.tsx") ? "index.tsx"
-      : files.some((f) => f.path === "index.ts") ? "index.ts"
-      : "",
-  );
-  if (!entryKey) throw new Error("渲染层缺少 index.tsx 入口");
-
-  const result = await esbuild.build({
-    entryPoints: [`memory://${entryKey}`],
-    plugins: [memoryPlugin(compiled)],
-    bundle: true,
-    format: "esm",
-    target: "es2022",
-    write: false,
-    logLevel: "warning",
-  });
 
   const code = result.outputFiles[0].text;
   const blob = new Blob([code], { type: "application/javascript" });
@@ -398,10 +282,6 @@ export async function compileRenderer(
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-function stripExt(p: string): string {
-  return p.replace(/\.(tsx?|js)$/, "");
 }
 
 /**
@@ -435,7 +315,7 @@ export async function selfCheck(): Promise<string> {
 
 /**
  * 端到端自检：真实编译项目里的某个渲染层（多文件 .tsx + react + engine bare import）。
- * 验证整条链路：读源码 → esbuild bundle → bare import 改写 → blob import → 拿到 default 导出。
+ * 验证整条链路：读源码 → esbuild build（插件解析 + vendor shim）→ blob import → 拿到 default 导出。
  */
 export async function selfCheckFull(projectPath: string, rendererId: string): Promise<string> {
   const steps: string[] = [];
@@ -445,7 +325,7 @@ export async function selfCheckFull(projectPath: string, rendererId: string): Pr
     const files = await readRendererFiles(projectPath, rendererId);
     steps.push(`2. 读到 ${files.length} 个文件: ${files.map((f) => f.path).join(", ")}`);
 
-    steps.push("3. 编译渲染层（esbuild bundle + bare import 改写）");
+    steps.push("3. 编译渲染层（esbuild build + vendor shim）");
     const defaultExport = await compileRenderer(files);
     steps.push(`4. 编译成功，default 导出类型: ${typeof defaultExport}`);
     if (defaultExport && typeof defaultExport === "object") {

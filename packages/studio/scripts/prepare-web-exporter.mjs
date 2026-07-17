@@ -52,7 +52,11 @@ export function prepareWebExporter(outDir = parseOutArg(process.argv.slice(2))) 
   const copies = [
     [path.join(studioRoot, "package.json"), "packages/studio/package.json"],
     [path.join(scriptDir, "build-web-export.mjs"), "packages/studio/scripts/build-web-export.mjs"],
+    [path.join(scriptDir, "renderer-worker-shared.mjs"), "packages/studio/scripts/renderer-worker-shared.mjs"],
+    [path.join(scriptDir, "renderer-snapshot.mjs"), "packages/studio/scripts/renderer-snapshot.mjs"],
     [path.join(studioRoot, "src/export/webRuntimeHost.ts"), "packages/studio/src/export/webRuntimeHost.ts"],
+    [path.join(studioRoot, "src/export/snapshotScenes.ts"), "packages/studio/src/export/snapshotScenes.ts"],
+    [path.join(studioRoot, "src/export/snapshotHost.ts"), "packages/studio/src/export/snapshotHost.ts"],
     [path.join(studioRoot, "src/features/preview/RuntimeMediaOverlay.tsx"), "packages/studio/src/features/preview/RuntimeMediaOverlay.tsx"],
     [path.join(repoRoot, "packages/engine/src"), "packages/engine/src"],
     [path.join(repoRoot, "packages/contracts/src"), "packages/contracts/src"],

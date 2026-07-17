@@ -38,6 +38,9 @@ jobs:
       - name: Contracts generation + schema drift check
         run: pnpm run check:schemas
 
+      - name: Engine types drift check
+        run: pnpm run check:engine-types
+
       - name: Default renderer drift check
         run: pnpm run check:renderer-template
 

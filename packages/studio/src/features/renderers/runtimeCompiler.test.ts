@@ -1,110 +1,136 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  __findUnsupportedBareImportsForTest,
-  __rewriteBareImportsForTest,
-  formatRuntimeCompilerErrorForTest,
+  __esbuildErrorToDiagnosticForTest,
+  __resolveMemoryPathForTest,
+  __vendorShimForTest,
 } from "./runtimeCompiler";
 
-describe("rewriteBareImports", () => {
-  it("rewrites mixed default and named React imports", () => {
-    const { code, unknownSpecs } = __rewriteBareImportsForTest(
-      'import React, { memo, useEffect as useFx } from "react";\nexport default memo(() => React.createElement("div"));',
-    );
+describe("resolveMemoryPath", () => {
+  const files = new Set([
+    "index.tsx",
+    "layers/Foo.tsx",
+    "layers/Bar.ts",
+    "effects/index.ts",
+  ]);
 
-    expect(unknownSpecs).toEqual([]);
-    expect(code).toContain('const __gal_vendor_react = globalThis.__GAL_VENDOR__["react"];');
-    expect(code).toContain("const React = __gal_vendor_react.default ?? __gal_vendor_react;");
-    expect(code).toContain("const { memo, useEffect: useFx } = __gal_vendor_react;");
-    expect(code).not.toContain("import React");
+  it("resolves an exact relative path with extension", () => {
+    expect(__resolveMemoryPathForTest("./layers/Foo.tsx", "index.tsx", files)).toBe("layers/Foo.tsx");
   });
 
-  it("rewrites aliased named imports using valid destructuring syntax", () => {
-    const { code, unknownSpecs } = __rewriteBareImportsForTest(
-      'import { memo as m, useState } from "react";\nexport { m, useState };',
-    );
-
-    expect(unknownSpecs).toEqual([]);
-    expect(code).toContain("const { memo: m, useState } =");
-    expect(code).not.toContain("memo as m");
+  it("completes missing extensions in tsx / ts order", () => {
+    expect(__resolveMemoryPathForTest("./layers/Foo", "index.tsx", files)).toBe("layers/Foo.tsx");
+    expect(__resolveMemoryPathForTest("./layers/Bar", "index.tsx", files)).toBe("layers/Bar.ts");
   });
 
-  it("rewrites aliased re-exports without exporting undefined locals", () => {
-    const { code, unknownSpecs } = __rewriteBareImportsForTest(
-      'export { memo as rendererMemo, useState } from "react";',
-    );
-
-    expect(unknownSpecs).toEqual([]);
-    expect(code).toContain("const { memo: rendererMemo, useState } =");
-    expect(code).toContain("export { rendererMemo, useState };");
-    expect(code).not.toContain("export { memo as rendererMemo");
+  it("resolves parent-relative specifiers against the importer directory", () => {
+    expect(__resolveMemoryPathForTest("../layers/Foo", "effects/index.ts", files)).toBe("layers/Foo.tsx");
   });
 
-  it("leaves relative renderer imports for the bundler", () => {
-    const { code, unknownSpecs } = __rewriteBareImportsForTest(
-      'import { Stage } from "./Stage";\nexport { Effects } from "../Effects";\nconst mod = import("./lazy");',
-    );
-
-    expect(unknownSpecs).toEqual([]);
-    expect(code).toContain('import { Stage } from "./Stage";');
-    expect(code).toContain('export { Effects } from "../Effects";');
-    expect(code).toContain('import("./lazy")');
+  it("resolves a directory specifier to its index file", () => {
+    expect(__resolveMemoryPathForTest("./effects", "index.tsx", files)).toBe("effects/index.ts");
   });
 
-  it("rewrites the legacy GalStudio engine package alias to the current vendor", () => {
-    const { code, unknownSpecs } = __rewriteBareImportsForTest(
-      'import { resolveAsset } from "@galstudio/engine";\nexport { resolveAsset };',
-    );
+  it("returns null when no candidate exists", () => {
+    expect(__resolveMemoryPathForTest("./Missing", "index.tsx", files)).toBeNull();
+  });
+});
 
-    expect(unknownSpecs).toEqual([]);
-    expect(code).toContain('globalThis.__GAL_VENDOR__["@vibegal/engine"]');
-    expect(code).not.toContain("@galstudio/engine");
+describe("vendorShimSource", () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).__GAL_VENDOR__;
   });
 
-  it("reports unsupported bare imports with renderer and file context", () => {
-    const message = formatRuntimeCompilerErrorForTest({
-      rendererId: "mobile",
-      error: {
-        kind: "unsupported-import",
-        diagnostics: [{
-          severity: "error",
-          code: "renderer_unsupported_import",
-          rendererId: "mobile",
-          step: "compile",
-          message: "Unsupported renderer bare import: lodash-es.",
-          file: "renderers/mobile/Stage.tsx",
-          line: 2,
-          column: 24,
-          snippet: 'import debounce from "lodash-es";',
-        }],
-        file: "renderers/mobile/Stage.tsx",
-        specs: ["lodash-es"],
-      },
-    });
+  it("re-exports the injected vendor module exports", () => {
+    const fakeReact = { useState: () => null, useEffect: () => null, default: { name: "FakeReact" } };
+    (globalThis as Record<string, unknown>).__GAL_VENDOR__ = { react: fakeReact };
 
-    expect(message).toContain("渲染层 mobile");
-    expect(message).toContain("renderers/mobile/Stage.tsx:2:24");
-    expect(message).toContain("lodash-es");
-    expect(message).toContain("仅支持");
+    const shim = __vendorShimForTest("react");
+
+    expect(shim).toContain('const __m = globalThis.__GAL_VENDOR__["react"];');
+    expect(shim).toContain("export default (__m && __m.default !== undefined) ? __m.default : __m;");
+    expect(shim).toContain('export const useState = __m["useState"];');
+    expect(shim).toContain('export const useEffect = __m["useEffect"];');
   });
 
-  it("rendererCheckReportsUnsupportedBareImport", () => {
-    const diagnostics = __findUnsupportedBareImportsForTest(
-      [{ path: "Stage.tsx", content: 'import debounce from "lodash-es";\nexport const Stage = () => null;' }],
-      "mobile",
-    );
+  it("skips default and non-identifier export names", () => {
+    (globalThis as Record<string, unknown>).__GAL_VENDOR__ = {
+      "@vibegal/engine": { resolveAsset: () => null, default: {}, "not-an-identifier": 1 },
+    };
 
-    expect(diagnostics).toEqual([
-      expect.objectContaining({
-        severity: "error",
-        code: "renderer_unsupported_import",
-        rendererId: "mobile",
-        step: "compile",
-        file: "renderers/mobile/Stage.tsx",
+    const shim = __vendorShimForTest("@vibegal/engine");
+
+    expect(shim).toContain('export const resolveAsset = __m["resolveAsset"];');
+    expect(shim).not.toContain("export const default");
+    expect(shim).not.toContain("not-an-identifier");
+  });
+
+  it("returns null when the vendor module is not injected", () => {
+    (globalThis as Record<string, unknown>).__GAL_VENDOR__ = {};
+
+    expect(__vendorShimForTest("react")).toBeNull();
+  });
+});
+
+describe("esbuildErrorToDiagnostic", () => {
+  it("maps unsupported bare import errors with location to renderer_unsupported_import", () => {
+    const diagnostic = __esbuildErrorToDiagnosticForTest("mobile", {
+      text: "VIBEGAL_UNSUPPORTED_RENDERER_IMPORT:lodash-es",
+      location: {
+        file: "index.tsx",
         line: 1,
         column: 22,
-        snippet: 'import debounce from "lodash-es";',
-      }),
-    ]);
+        lineText: 'import debounce from "lodash-es";',
+      },
+    } as never);
+
+    expect(diagnostic).toEqual({
+      severity: "error",
+      code: "renderer_unsupported_import",
+      rendererId: "mobile",
+      step: "compile",
+      message: expect.stringContaining("lodash-es"),
+      file: "renderers/mobile/index.tsx",
+      line: 1,
+      column: 22,
+      snippet: 'import debounce from "lodash-es";',
+    });
+    expect(diagnostic.message).toContain("仅支持 react、react/jsx-runtime、react-dom、@vibegal/engine 与相对路径 import");
+  });
+
+  it("maps generic build errors to renderer_compile_failed and strips the memory:// prefix", () => {
+    const diagnostic = __esbuildErrorToDiagnosticForTest("mobile", {
+      text: 'ERROR: Unexpected "}"',
+      location: {
+        file: "memory://layers/Foo.tsx",
+        line: 3,
+        column: 5,
+        lineText: "const x = }",
+      },
+    } as never);
+
+    expect(diagnostic).toEqual(expect.objectContaining({
+      code: "renderer_compile_failed",
+      message: 'ERROR: Unexpected "}"',
+      file: "renderers/mobile/layers/Foo.tsx",
+      line: 3,
+      column: 5,
+      snippet: "const x = }",
+    }));
+  });
+
+  it("leaves location fields undefined when esbuild reports no location", () => {
+    const diagnostic = __esbuildErrorToDiagnosticForTest("mobile", {
+      text: "ERROR: build failed",
+      location: null,
+    } as never);
+
+    expect(diagnostic).toEqual(expect.objectContaining({
+      code: "renderer_compile_failed",
+      file: undefined,
+      line: undefined,
+      column: undefined,
+      snippet: undefined,
+    }));
   });
 });
 

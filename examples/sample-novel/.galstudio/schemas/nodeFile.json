@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "items": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "bg"
+          },
+          "id": {
+            "type": "string"
+          },
+          "trans": {
+            "default": "fade",
+            "type": "string",
+            "enum": [
+              "fade",
+              "cut",
+              "dissolve"
+            ]
+          },
+          "ms": {
+            "default": 1000,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "backgrounds"
+              ],
+              "idField": "id",
+              "missingCode": "missing_background_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "bgm"
+          },
+          "id": {
+            "type": "string"
+          },
+          "fade": {
+            "default": 1500,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "loop": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "audio",
+                "bgm"
+              ],
+              "idField": "id",
+              "missingCode": "missing_bgm_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "sfx"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "audio",
+                "sfx"
+              ],
+              "idField": "id",
+              "missingCode": "missing_sfx_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "voice"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "audio",
+                "voice"
+              ],
+              "idField": "id",
+              "missingCode": "missing_voice_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "char"
+          },
+          "id": {
+            "type": "string"
+          },
+          "pos": {
+            "default": "center",
+            "type": "string"
+          },
+          "expr": {
+            "default": "default",
+            "type": "string"
+          },
+          "trans": {
+            "default": "fade",
+            "type": "string",
+            "enum": [
+              "fade",
+              "cut",
+              "slide"
+            ]
+          },
+          "ms": {
+            "default": 600,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "clear": {
+            "default": false,
+            "type": "boolean"
+          },
+          "remove": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "characterExpression",
+              "characterIdField": "id",
+              "expressionField": "expr",
+              "defaultExpression": "default"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "say"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
+          "who": {
+            "type": "string"
+          },
+          "expr": {
+            "default": "default",
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "t",
+          "who",
+          "text"
+        ],
+        "x-vibegal": {
+          "storyPoint": true,
+          "references": [
+            {
+              "kind": "characterExpression",
+              "characterIdField": "who",
+              "expressionField": "expr",
+              "defaultExpression": "default"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "narrate"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "t",
+          "text"
+        ],
+        "x-vibegal": {
+          "storyPoint": true
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "set"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "t",
+          "key",
+          "value"
+        ],
+        "x-vibegal": {}
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "wait"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
+          "ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "t",
+          "ms"
+        ],
+        "x-vibegal": {
+          "storyPoint": true
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "effect"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "shake",
+              "flash",
+              "blur"
+            ]
+          },
+          "intensity": {
+            "default": 6,
+            "type": "number",
+            "minimum": 0,
+            "maximum": 20
+          },
+          "ms": {
+            "default": 400,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "t",
+          "type"
+        ],
+        "x-vibegal": {}
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "transition"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "fade_in",
+              "fade_out",
+              "white_in",
+              "white_out",
+              "black"
+            ]
+          },
+          "ms": {
+            "default": 1000,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "t",
+          "type"
+        ],
+        "x-vibegal": {}
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "pause"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          }
+        },
+        "required": [
+          "t"
+        ],
+        "x-vibegal": {
+          "storyPoint": true
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "unlock"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cg",
+              "music",
+              "replay",
+              "endings"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "t",
+          "kind",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registryByDiscriminator",
+              "discriminatorField": "kind",
+              "idField": "id",
+              "registryPath": [
+                "unlocks"
+              ],
+              "registryByValue": {
+                "cg": [
+                  "cg"
+                ],
+                "music": [
+                  "music"
+                ],
+                "replay": [
+                  "replay"
+                ],
+                "endings": [
+                  "endings"
+                ]
+              },
+              "missingCode": "missing_unlock_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "showCg"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "cg"
+              ],
+              "idField": "id",
+              "missingCode": "missing_cg_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "playVideo"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "skippable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "t",
+          "id"
+        ],
+        "x-vibegal": {
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "videos"
+              ],
+              "idField": "id",
+              "missingCode": "missing_video_ref"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

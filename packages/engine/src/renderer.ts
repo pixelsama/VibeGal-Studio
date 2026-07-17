@@ -251,7 +251,7 @@ export function validateRendererManifestContract(raw: unknown): RendererManifest
   return issues;
 }
 
-interface RuntimeAudioBridge extends AudioService {
+export interface RuntimeAudioBridge extends AudioService {
   setVolumes?(volumes: RuntimeSettingsRecord["volumes"]): void;
 }
 

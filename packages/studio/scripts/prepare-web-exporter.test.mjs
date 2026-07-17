@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -42,6 +42,16 @@ test("prepared web exporter runs outside the repository layout", async () => {
     ], { cwd: os.tmpdir(), encoding: "utf8" });
     assert.equal(check.status, 0, check.stdout || check.stderr);
     assert.equal(JSON.parse(check.stdout).ok, true);
+
+    // renderer-snapshot 依赖的共享模块与宿主文件也必须随 exporter 一起分发。
+    for (const relative of [
+      "packages/studio/scripts/renderer-worker-shared.mjs",
+      "packages/studio/scripts/renderer-snapshot.mjs",
+      "packages/studio/src/export/snapshotScenes.ts",
+      "packages/studio/src/export/snapshotHost.ts",
+    ]) {
+      await access(path.join(outDir, relative));
+    }
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }

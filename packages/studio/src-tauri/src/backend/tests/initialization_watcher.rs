@@ -89,6 +89,22 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(renderer_contract.contains("RendererManifest"));
     assert!(renderer_contract.contains("renderers/<id>/index.tsx"));
     assert!(renderer_contract.contains("@vibegal/engine"));
+    let studio_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert_eq!(
+        fs::read(project.join(".galstudio/types/engine.d.ts")).unwrap(),
+        fs::read(studio_root.join("generated/engine-types/engine.d.ts")).unwrap(),
+        "engine.d.ts 必须与嵌入的生成物逐字节一致"
+    );
+    assert_eq!(
+        fs::read(project.join(".galstudio/types/react.d.ts")).unwrap(),
+        fs::read(studio_root.join("../templates/react-shim/react.d.ts")).unwrap(),
+        "react.d.ts 必须与模板逐字节一致"
+    );
+    assert_eq!(
+        fs::read_to_string(project.join("tsconfig.json")).unwrap(),
+        fs::read_to_string(studio_root.join("../templates/project-tsconfig.json")).unwrap(),
+        "tsconfig.json 必须与模板一致"
+    );
     assert_eq!(
         fs::read_to_string(project.join("renderers/default/index.tsx")).unwrap(),
         "export default {};"
@@ -99,6 +115,40 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     let graph = opened.graph.expect("新项目应有 graph.json");
     assert_eq!(graph.entry_node_id, "start");
     assert_eq!(graph.nodes[0].file, "nodes/start.json");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn ensure_project_self_description_backfills_missing_files_without_overwriting() {
+    let root = unique_temp_dir("ensure-self-description");
+    let renderer_template = root.join("template");
+    let project = root.join("story");
+    write_text(&renderer_template.join("index.tsx"), "export default {};");
+    initialize_project_root(&project, "story", &renderer_template).unwrap();
+
+    // 删除部分自描述文件 + 篡改一个既有文件
+    fs::remove_file(project.join("tsconfig.json")).unwrap();
+    fs::remove_file(project.join(".galstudio/types/engine.d.ts")).unwrap();
+    write_text(&project.join(".galstudio/README.md"), "user edited");
+
+    ensure_project_self_description(&project).unwrap();
+
+    let studio_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert_eq!(
+        fs::read_to_string(project.join("tsconfig.json")).unwrap(),
+        fs::read_to_string(studio_root.join("../templates/project-tsconfig.json")).unwrap(),
+        "缺失的 tsconfig.json 应被回填"
+    );
+    assert_eq!(
+        fs::read(project.join(".galstudio/types/engine.d.ts")).unwrap(),
+        fs::read(studio_root.join("generated/engine-types/engine.d.ts")).unwrap(),
+        "缺失的 engine.d.ts 应被回填"
+    );
+    assert_eq!(
+        fs::read_to_string(project.join(".galstudio/README.md")).unwrap(),
+        "user edited",
+        "已存在的文件不能被覆盖"
+    );
     let _ = fs::remove_dir_all(&root);
 }
 

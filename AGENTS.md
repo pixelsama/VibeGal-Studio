@@ -62,6 +62,10 @@ Follow TDD for behavior changes. Add or update focused tests before production c
 
 Keep filesystem access in the Tauri backend. The React frontend should call typed wrappers in `src/lib/tauri.ts` instead of reading project files directly.
 
+Renderer-facing type artifacts: `packages/engine/src/rendererPublic.ts` is the generation entry for the `.galstudio/types/engine.d.ts` shipped into projects. Regenerate with `node packages/studio/scripts/generate-engine-types.mjs` after changing renderer contract types; the drift check is `pnpm check:engine-types`. The React shim (`packages/studio/templates/react-shim/react.d.ts`) and project tsconfig (`packages/studio/templates/project-tsconfig.json`) are hand-maintained and verified by `packages/studio/scripts/engine-types.test.mjs` (fixture projects + the bundled default renderer must typecheck against them).
+
+CLI renderer feedback loop for external Agents: `vibegal-cli renderer-check` runs static contract checks plus a real compile/typecheck through the bundled node worker (`--no-compile` skips it). `vibegal-cli renderer-snapshot <project> --out <dir>` headlessly mounts the renderer onto built-in scene fixtures (`packages/studio/src/export/snapshotScenes.ts`, served by `packages/studio/scripts/renderer-snapshot.mjs` + `src/export/snapshotHost.ts`) and writes PNG screenshots via headless Chrome (`VIBEGAL_SMOKE_BROWSER` overrides the executable). When adding exporter-side scripts, also register them in `packages/studio/scripts/prepare-web-exporter.mjs`.
+
 Be conservative with user files. Initialization may add VibeGal-Studio files, but it must not silently overwrite existing files.
 
 Platform differences to keep in mind:

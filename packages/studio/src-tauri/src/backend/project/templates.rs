@@ -58,12 +58,34 @@ The command validates graph structure, node `Instruction[]` shape, node resource
 meta structure, manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
 exit code when the project has errors or warnings.
 
+## Renderer Authoring Loop
+
+This project is self-contained for renderer work: `tsconfig.json` plus `.galstudio/types/`
+(`engine.d.ts` contract types, `react.d.ts` minimal React shim) let you type-check renderers
+without the VibeGal-Studio source repository.
+
+```bash
+# 1. Type-check the renderer (uses the project tsconfig.json)
+npx tsc --noEmit
+
+# 2. Contract + real compile/typecheck via the bundled worker
+vibegal-cli renderer-check . --format json
+
+# 3. Headless screenshots of built-in scenes (dialogue / narration / choice / sprites)
+vibegal-cli renderer-snapshot . --out .galstudio/snapshots --format json
+```
+
+Read the PNGs from `renderer-snapshot` to see what your renderer actually looks like; scene-level
+render crashes come back as structured JSON errors. `.galstudio/snapshots/` is generated output and
+safe to delete. `renderer-snapshot` needs Chrome/Chromium (override with `VIBEGAL_SMOKE_BROWSER`).
+
 ## Local Reference
 
 - Read `.galstudio/README.md` for project format notes.
 - Read `.galstudio/renderer-contract.md` for the renderer runtime contract.
 - Read `.galstudio/schemas/*.json` for local JSON Schema snapshots.
 - Do not casually edit `.galstudio/schemas`; they are generated from the VibeGal-Studio product schema.
+- `.galstudio/types/engine.d.ts` is generated from the VibeGal-Studio engine contract; do not edit it. You may extend `.galstudio/types/react.d.ts` when a renderer needs more React APIs.
 "#;
 
 pub(crate) const PROJECT_README_MD: &str = r#"# VibeGal-Studio Project Format
@@ -75,9 +97,13 @@ This project is self-describing for external tools and Agents. You do not need t
 ```text
 gal.project.json
 AGENTS.md
+tsconfig.json
 .galstudio/
   README.md
   renderer-contract.md
+  types/
+    engine.d.ts
+    react.d.ts
   schemas/
     graph.json
     nodeFile.json
@@ -175,6 +201,13 @@ Renderer contract notes are copied to `.galstudio/renderer-contract.md`.
 
 Each renderer lives in `renderers/<id>/` and must default-export a `RendererManifest`.
 
+The project ships a self-contained type environment for renderer authoring: `tsconfig.json` maps
+`@vibegal/engine` to `.galstudio/types/engine.d.ts` (generated contract types) and React to the
+minimal shim `.galstudio/types/react.d.ts`. Run `npx tsc --noEmit` from the project root to
+type-check renderers. `vibegal-cli renderer-check . --format json` additionally runs a real
+compile/typecheck via the bundled worker, and `vibegal-cli renderer-snapshot . --out <dir>`
+produces headless screenshots of built-in scenes.
+
 ## Validation
 
 Run from the project root:
@@ -204,6 +237,15 @@ Old `content/meta.json` `chapters` entries and `content/chapters/` are not suppo
 pub(crate) const PROJECT_RENDERER_CONTRACT_MD: &str =
     include_str!("../../../../../../docs/renderer-contract.md");
 
+pub(crate) const PROJECT_ENGINE_DTS: &str =
+    include_str!("../../../generated/engine-types/engine.d.ts");
+
+pub(crate) const PROJECT_REACT_DTS: &str =
+    include_str!("../../../../templates/react-shim/react.d.ts");
+
+pub(crate) const PROJECT_TSCONFIG_JSON: &str =
+    include_str!("../../../../templates/project-tsconfig.json");
+
 pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
     (
         "graph.json",
@@ -223,20 +265,39 @@ pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
     ),
 ];
 
+/// 项目自描述文件全集（相对路径 → 内容）。
+const SELF_DESCRIPTION_FILES: [(&str, &str); 10] = [
+    ("AGENTS.md", PROJECT_AGENTS_MD),
+    (".galstudio/README.md", PROJECT_README_MD),
+    (".galstudio/renderer-contract.md", PROJECT_RENDERER_CONTRACT_MD),
+    (".galstudio/types/engine.d.ts", PROJECT_ENGINE_DTS),
+    (".galstudio/types/react.d.ts", PROJECT_REACT_DTS),
+    ("tsconfig.json", PROJECT_TSCONFIG_JSON),
+    (".galstudio/schemas/graph.json", PROJECT_SCHEMA_FILES[0].1),
+    (".galstudio/schemas/nodeFile.json", PROJECT_SCHEMA_FILES[1].1),
+    (".galstudio/schemas/manifest.json", PROJECT_SCHEMA_FILES[2].1),
+    (".galstudio/schemas/meta.json", PROJECT_SCHEMA_FILES[3].1),
+];
+
+/// 初始化时写入整套自描述文件（调用方已确认不会覆盖既有文件）。
 pub(crate) fn write_project_self_description(project_path: &std::path::Path) -> Result<(), String> {
     use super::super::fs::write_text_file;
 
-    write_text_file(&project_path.join("AGENTS.md"), PROJECT_AGENTS_MD)?;
-    write_text_file(
-        &project_path.join(".galstudio/README.md"),
-        PROJECT_README_MD,
-    )?;
-    write_text_file(
-        &project_path.join(".galstudio/renderer-contract.md"),
-        PROJECT_RENDERER_CONTRACT_MD,
-    )?;
-    for (name, text) in PROJECT_SCHEMA_FILES {
-        write_text_file(&project_path.join(".galstudio/schemas").join(name), text)?;
+    for (relative, text) in SELF_DESCRIPTION_FILES {
+        write_text_file(&project_path.join(relative), text)?;
+    }
+    Ok(())
+}
+
+/// 打开项目时补齐缺失的自描述文件；已存在的文件一律不动。
+pub(crate) fn ensure_project_self_description(project_path: &std::path::Path) -> Result<(), String> {
+    use super::super::fs::write_text_file;
+
+    for (relative, text) in SELF_DESCRIPTION_FILES {
+        let path = project_path.join(relative);
+        if !path.exists() {
+            write_text_file(&path, text)?;
+        }
     }
     Ok(())
 }

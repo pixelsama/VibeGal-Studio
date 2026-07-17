@@ -10,6 +10,7 @@
     "tauri": "pnpm --filter @vibegal/studio tauri",
     "check:versions": "node scripts/check-version-consistency.mjs",
     "check:schemas": "node scripts/check-schema-drift.mjs",
+    "check:engine-types": "node scripts/check-engine-types-drift.mjs",
     "check:renderer-template": "node scripts/check-default-renderer-drift.mjs",
     "check:doc-contract": "node scripts/check-doc-contract.mjs",
     "smoke:release": "node scripts/release-smoke.mjs"

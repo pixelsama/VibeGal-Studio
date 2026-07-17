@@ -6,7 +6,7 @@
  */
 import { RENDERER_CONTRACT_VERSION, type RendererManifest } from "@vibegal/engine";
 import { readRendererFiles } from "../../lib/tauri";
-import { compileRenderer, formatRuntimeCompilerError, type RuntimeCompilerError } from "./runtimeCompiler";
+import { compileRenderer } from "./runtimeCompiler";
 import {
   RendererDiagnosticError,
   findPropertyLocation,
@@ -111,19 +111,7 @@ export async function loadRenderer(
   if (cached) return cached;
 
   const files = await readRendererFiles(projectPath, rendererId);
-  let defaultExport: unknown;
-  try {
-    defaultExport = await compileRenderer(files, { rendererId, beforeExecute: assertExecutionTrusted });
-  } catch (error) {
-    if (error instanceof RendererDiagnosticError) throw error;
-    if (typeof error === "object" && error != null && "kind" in error) {
-      throw new Error(formatRuntimeCompilerError({
-        rendererId,
-        error: error as RuntimeCompilerError,
-      }));
-    }
-    throw error;
-  }
+  const defaultExport = await compileRenderer(files, { rendererId, beforeExecute: assertExecutionTrusted });
 
   const diagnostics = manifestDiagnostics(defaultExport, rendererId, files);
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {

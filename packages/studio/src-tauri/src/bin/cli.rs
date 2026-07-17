@@ -14,7 +14,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -70,6 +70,23 @@ enum Commands {
         /// 指定要检查的 renderer id。默认使用 gal.project.json activeRendererId。
         #[arg(long)]
         renderer: Option<String>,
+        /// 跳过 node worker 的真实编译与类型检查，仅做静态契约检查。
+        #[arg(long = "no-compile")]
+        no_compile: bool,
+        /// 输出格式：text（默认，人类可读）或 json（结构化）
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    /// 无头挂载渲染层到内置场景并截图（供外部 Agent 查看渲染效果）
+    RendererSnapshot {
+        /// 项目根目录路径
+        path: String,
+        /// 指定要截图的 renderer id。默认使用 gal.project.json activeRendererId。
+        #[arg(long)]
+        renderer: Option<String>,
+        /// 截图输出目录（PNG 与 .vibegal-snapshot 调试产物）
+        #[arg(long = "out")]
+        out_dir: PathBuf,
         /// 输出格式：text（默认，人类可读）或 json（结构化）
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
@@ -134,6 +151,66 @@ struct BuildOptions {
 struct RendererCheckOptions {
     project_path: String,
     renderer_id: Option<String>,
+    /// true 时在静态契约检查通过后，经 node worker 做真实编译与类型检查。
+    compile: bool,
+}
+
+#[derive(Debug)]
+struct RendererSnapshotOptions {
+    project_path: String,
+    renderer_id: Option<String>,
+    out_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotStage {
+    width: u32,
+    height: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SnapshotWorkerScene {
+    id: String,
+    title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotWorkerOutput {
+    ok: bool,
+    #[serde(rename = "rendererId")]
+    renderer_id: String,
+    scenes: Vec<SnapshotWorkerScene>,
+    stage: SnapshotStage,
+    #[serde(rename = "snapshotDir")]
+    snapshot_dir: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+struct SnapshotSceneResult {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    file: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+struct RendererSnapshotOutput {
+    ok: bool,
+    #[serde(rename = "rendererId")]
+    renderer_id: String,
+    #[serde(rename = "outDir")]
+    out_dir: String,
+    stage: SnapshotStage,
+    scenes: Vec<SnapshotSceneResult>,
+}
+
+#[derive(Clone, Debug)]
+struct SnapshotPageReport {
+    status: String,
+    error: Option<String>,
 }
 
 #[derive(Serialize, Debug)]
@@ -705,42 +782,33 @@ fn write_json_file_and_hash(path: &Path, value: &serde_json::Value) -> Result<St
 }
 
 const EXPORT_WORKER_RELATIVE_PATH: &str = "exporter/packages/studio/scripts/build-web-export.mjs";
+const SNAPSHOT_WORKER_RELATIVE_PATH: &str = "exporter/packages/studio/scripts/renderer-snapshot.mjs";
 
-fn build_worker_path_candidates(executable: Option<&Path>) -> Vec<PathBuf> {
+fn worker_path_candidates(executable: Option<&Path>, relative_path: &str) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(parent) = executable.and_then(Path::parent) {
-        candidates.push(parent.join(EXPORT_WORKER_RELATIVE_PATH));
-        candidates.push(parent.join("resources").join(EXPORT_WORKER_RELATIVE_PATH));
+        candidates.push(parent.join(relative_path));
+        candidates.push(parent.join("resources").join(relative_path));
         if let Some(parent_parent) = parent.parent() {
-            candidates.push(
-                parent_parent
-                    .join("Resources")
-                    .join(EXPORT_WORKER_RELATIVE_PATH),
-            );
-            candidates.push(
-                parent_parent
-                    .join("resources")
-                    .join(EXPORT_WORKER_RELATIVE_PATH),
-            );
+            candidates.push(parent_parent.join("Resources").join(relative_path));
+            candidates.push(parent_parent.join("resources").join(relative_path));
         }
     }
     candidates
 }
 
-fn build_worker_path() -> Result<PathBuf, String> {
-    if let Ok(path) = std::env::var("VIBEGAL_EXPORT_WORKER") {
+fn resolve_worker_path(env_var: &str, relative_path: &str, debug_relative: &str) -> Result<PathBuf, String> {
+    if let Ok(path) = std::env::var(env_var) {
         let path = PathBuf::from(path);
         return path
             .is_file()
             .then_some(path)
-            .ok_or_else(|| "VIBEGAL_EXPORT_WORKER 指向的导出器不存在".to_string());
+            .ok_or_else(|| format!("{env_var} 指向的导出器不存在"));
     }
 
-    let mut candidates = build_worker_path_candidates(std::env::current_exe().ok().as_deref());
+    let mut candidates = worker_path_candidates(std::env::current_exe().ok().as_deref(), relative_path);
     if cfg!(debug_assertions) {
-        candidates.push(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/build-web-export.mjs"),
-        );
+        candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(debug_relative));
     }
     candidates
         .iter()
@@ -756,6 +824,22 @@ fn build_worker_path() -> Result<PathBuf, String> {
                     .join(", ")
             )
         })
+}
+
+fn build_worker_path() -> Result<PathBuf, String> {
+    resolve_worker_path(
+        "VIBEGAL_EXPORT_WORKER",
+        EXPORT_WORKER_RELATIVE_PATH,
+        "../scripts/build-web-export.mjs",
+    )
+}
+
+fn snapshot_worker_path() -> Result<PathBuf, String> {
+    resolve_worker_path(
+        "VIBEGAL_SNAPSHOT_WORKER",
+        SNAPSHOT_WORKER_RELATIVE_PATH,
+        "../scripts/renderer-snapshot.mjs",
+    )
 }
 
 fn node_executable() -> String {
@@ -875,7 +959,8 @@ fn run_build_worker(options: &BuildOptions, renderer_id: &str) -> Result<(), Bui
     ))
 }
 
-fn renderer_diagnostic(
+fn renderer_diagnostic_with_severity(
+    severity: RendererDiagnosticSeverity,
     code: &str,
     renderer_id: &str,
     step: &str,
@@ -886,7 +971,7 @@ fn renderer_diagnostic(
     snippet: Option<String>,
 ) -> RendererDiagnostic {
     RendererDiagnostic {
-        severity: RendererDiagnosticSeverity::Error,
+        severity,
         code: code.to_string(),
         renderer_id: renderer_id.to_string(),
         step: step.to_string(),
@@ -896,6 +981,29 @@ fn renderer_diagnostic(
         column,
         snippet,
     }
+}
+
+fn renderer_diagnostic(
+    code: &str,
+    renderer_id: &str,
+    step: &str,
+    message: impl Into<String>,
+    file: Option<String>,
+    line: Option<u32>,
+    column: Option<u32>,
+    snippet: Option<String>,
+) -> RendererDiagnostic {
+    renderer_diagnostic_with_severity(
+        RendererDiagnosticSeverity::Error,
+        code,
+        renderer_id,
+        step,
+        message,
+        file,
+        line,
+        column,
+        snippet,
+    )
 }
 
 fn build_error_from_renderer_diagnostics(mut diagnostics: Vec<RendererDiagnostic>) -> BuildError {
@@ -1043,6 +1151,44 @@ fn find_number_property(source: &str, property: &str) -> Option<(i64, u32)> {
         }
     }
     None
+}
+
+/// 经 node worker（--check-only）对渲染层做真实编译与类型检查。
+/// 返回 worker 产出的诊断列表；worker/node 不可用时报 Err（调用方降级为警告）。
+fn renderer_compile_diagnostics(
+    project_path: &str,
+    renderer_id: &str,
+) -> Result<Vec<RendererDiagnostic>, String> {
+    let worker = build_worker_path()?;
+    let output = Command::new(node_executable())
+        .arg(&worker)
+        .arg("--project")
+        .arg(project_path)
+        .arg("--renderer")
+        .arg(renderer_id)
+        .arg("--check-only")
+        .output()
+        .map_err(|e| format!("无法启动渲染层编译检查 worker: {e}"))?;
+    if output.status.success() {
+        return Ok(vec![]);
+    }
+    let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if stderr.trim().is_empty() {
+        stderr = String::from_utf8_lossy(&output.stdout).to_string();
+    }
+    if let Some(error) = parse_worker_error(&stderr, renderer_id, Path::new(project_path)) {
+        return Ok(error.diagnostics);
+    }
+    Ok(vec![renderer_diagnostic(
+        "renderer_compile_failed",
+        renderer_id,
+        "compile",
+        format!("worker={} status={} stderr={}", worker.display(), output.status, stderr.trim()),
+        None,
+        None,
+        None,
+        None,
+    )])
 }
 
 fn renderer_check_project(
@@ -1199,8 +1345,29 @@ fn renderer_check_project(
         )),
     }
 
+    if !diagnostics.iter().any(|d| d.severity == RendererDiagnosticSeverity::Error)
+        && options.compile
+    {
+        match renderer_compile_diagnostics(&options.project_path, &renderer_id) {
+            Ok(worker_diagnostics) => diagnostics.extend(worker_diagnostics),
+            Err(message) => diagnostics.push(renderer_diagnostic_with_severity(
+                RendererDiagnosticSeverity::Warn,
+                "renderer_compile_skipped",
+                &renderer_id,
+                "compile",
+                format!("跳过真实编译检查（需要 node 与随 CLI 分发的 exporter）: {message}"),
+                None,
+                None,
+                None,
+                None,
+            )),
+        }
+    }
+
     Ok(RendererCheckOutput {
-        ok: diagnostics.is_empty(),
+        ok: !diagnostics
+            .iter()
+            .any(|d| d.severity == RendererDiagnosticSeverity::Error),
         renderer_id,
         diagnostics,
     })
@@ -1269,6 +1436,8 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
     let renderer_check = renderer_check_project(RendererCheckOptions {
         project_path: options.project_path.clone(),
         renderer_id: Some(renderer_id.clone()),
+        // build 随后会跑完整 build worker（含 typecheck），这里只做静态检查避免重复编译。
+        compile: false,
     })?;
     if !renderer_check.ok {
         return Err(build_error_from_renderer_diagnostics(
@@ -1500,27 +1669,516 @@ fn run_renderer_check(options: RendererCheckOptions, format: OutputFormat) -> i3
             match format {
                 OutputFormat::Json => print_build_json(&output),
                 OutputFormat::Text => {
-                    if output.ok {
-                        println!("✓ Renderer check 通过: {}", output.renderer_id);
-                    } else {
-                        for diagnostic in &output.diagnostics {
-                            eprintln!(
-                                "[{}] {} (renderer={}, step={})",
-                                diagnostic.code,
-                                diagnostic.message,
-                                diagnostic.renderer_id,
-                                diagnostic.step
-                            );
-                            if let Some(file) = &diagnostic.file {
-                                if let (Some(line), Some(column)) =
-                                    (diagnostic.line, diagnostic.column)
-                                {
-                                    eprintln!("file: {file}:{line}:{column}");
-                                } else {
-                                    eprintln!("file: {file}");
-                                }
+                    for diagnostic in &output.diagnostics {
+                        let severity = match diagnostic.severity {
+                            RendererDiagnosticSeverity::Error => "error",
+                            RendererDiagnosticSeverity::Warn => "warn",
+                        };
+                        eprintln!(
+                            "[{severity}] {} {} (renderer={}, step={})",
+                            diagnostic.code,
+                            diagnostic.message,
+                            diagnostic.renderer_id,
+                            diagnostic.step
+                        );
+                        if let Some(file) = &diagnostic.file {
+                            if let (Some(line), Some(column)) =
+                                (diagnostic.line, diagnostic.column)
+                            {
+                                eprintln!("file: {file}:{line}:{column}");
+                            } else {
+                                eprintln!("file: {file}");
                             }
                         }
+                    }
+                    if output.ok {
+                        println!("✓ Renderer check 通过: {}", output.renderer_id);
+                    }
+                }
+            }
+            if output.ok {
+                0
+            } else {
+                1
+            }
+        }
+        Err(error) => {
+            match format {
+                OutputFormat::Json => print_build_json(&error),
+                OutputFormat::Text => print_build_error_text(&error),
+            }
+            if error.code == "open_project_failed" {
+                70
+            } else {
+                1
+            }
+        }
+    }
+}
+
+fn run_snapshot_worker(
+    options: &RendererSnapshotOptions,
+    renderer_id: &str,
+) -> Result<SnapshotWorkerOutput, BuildError> {
+    let worker = snapshot_worker_path().map_err(|message| {
+        build_error(
+            "snapshot_worker_unavailable",
+            message,
+            "worker",
+            None,
+            Some(renderer_id.to_string()),
+            vec![],
+        )
+    })?;
+    let output = Command::new(node_executable())
+        .arg(&worker)
+        .arg("--project")
+        .arg(&options.project_path)
+        .arg("--renderer")
+        .arg(renderer_id)
+        .arg("--out")
+        .arg(&options.out_dir)
+        .output()
+        .map_err(|e| {
+            build_error(
+                "snapshot_worker_failed",
+                format!("无法启动渲染层快照 worker: {e}"),
+                "worker",
+                None,
+                Some(renderer_id.to_string()),
+                vec![],
+            )
+        })?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.success() {
+        let start = stdout.find('{').ok_or_else(|| {
+            build_error(
+                "snapshot_worker_output_invalid",
+                "快照 worker 未输出 JSON",
+                "worker",
+                None,
+                Some(renderer_id.to_string()),
+                vec![],
+            )
+        })?;
+        return serde_json::from_str(&stdout[start..]).map_err(|e| {
+            build_error(
+                "snapshot_worker_output_invalid",
+                format!("解析快照 worker 输出失败: {e}"),
+                "worker",
+                None,
+                Some(renderer_id.to_string()),
+                vec![],
+            )
+        });
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if let Some(error) = parse_worker_error(&stderr, renderer_id, Path::new(&options.project_path))
+    {
+        return Err(error);
+    }
+    Err(build_error(
+        "snapshot_worker_failed",
+        stderr.trim().to_string(),
+        "worker",
+        None,
+        Some(renderer_id.to_string()),
+        vec![],
+    ))
+}
+
+fn parse_snapshot_page_callback(target: &str) -> Option<(String, SnapshotPageReport)> {
+    let (path, query) = target.split_once('?')?;
+    if path != "/__vibegal_snapshot_result__" {
+        return None;
+    }
+    let values = query
+        .split('&')
+        .filter_map(|field| {
+            let (key, value) = field.split_once('=')?;
+            let decoded = percent_decode_url_path(&value.replace('+', " "))?;
+            Some((key, decoded))
+        })
+        .collect::<BTreeMap<_, _>>();
+    Some((
+        values.get("scene")?.clone(),
+        SnapshotPageReport {
+            status: values.get("status")?.clone(),
+            error: values.get("message").cloned(),
+        },
+    ))
+}
+
+fn serve_snapshot_connection(
+    mut stream: std::net::TcpStream,
+    snapshot_root: &Path,
+    content_root: &Path,
+    reports: &std::sync::Arc<std::sync::Mutex<HashMap<String, SnapshotPageReport>>>,
+) {
+    use std::io::{Read, Write};
+
+    if stream.set_nonblocking(false).is_err() {
+        return;
+    }
+    let mut request = [0_u8; 8192];
+    let Ok(read) = stream.read(&mut request) else {
+        return;
+    };
+    let first_line = String::from_utf8_lossy(&request[..read]);
+    let Some(raw_target) = first_line
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+    else {
+        return;
+    };
+    if std::env::var_os("VIBEGAL_SMOKE_DEBUG").is_some() {
+        eprintln!("[vibegal-snapshot] request {raw_target}");
+    }
+    if let Some((scene, report)) = parse_snapshot_page_callback(raw_target) {
+        if let Ok(mut slot) = reports.lock() {
+            slot.insert(scene, report);
+        }
+        let _ = stream.write_all(
+            b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        );
+        return;
+    }
+    let raw_path = raw_target.split('?').next().unwrap_or("/");
+    let Some(decoded) = percent_decode_url_path(raw_path) else {
+        return;
+    };
+    let relative = decoded.trim_start_matches('/');
+    if relative.split('/').any(|part| part == "..") {
+        return;
+    }
+    let (root, rel) = if let Some(content_rel) = relative.strip_prefix("content/") {
+        (content_root, content_rel)
+    } else {
+        (snapshot_root, relative)
+    };
+    let requested = root.join(if rel.is_empty() { "index.html" } else { rel });
+    let canonical_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+    let canonical_file = match requested.canonicalize() {
+        Ok(path) if path.starts_with(&canonical_root) && path.is_file() => path,
+        _ => {
+            let _ = stream.write_all(
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+            return;
+        }
+    };
+    let Ok(body) = fs::read(&canonical_file) else {
+        return;
+    };
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        smoke_content_type(&canonical_file),
+        body.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    let _ = stream.write_all(&body);
+    let _ = stream.flush();
+}
+
+struct SnapshotSceneRun {
+    png_exists: bool,
+    timed_out: bool,
+    spawn_error: Option<String>,
+}
+
+fn run_snapshot_browser_scene(
+    browser: &str,
+    url: &str,
+    png_path: &Path,
+    stage: &SnapshotStage,
+) -> SnapshotSceneRun {
+    let profile = std::env::temp_dir().join(format!(
+        "vibegal-snapshot-browser-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let mut command = Command::new(browser);
+    command
+        .arg("--headless=new")
+        .arg("--disable-gpu")
+        .arg("--disable-dev-shm-usage")
+        .arg("--disable-background-networking")
+        .arg("--disable-extensions")
+        .arg("--no-first-run")
+        .arg("--no-sandbox")
+        .arg("--hide-scrollbars")
+        .arg("--force-device-scale-factor=1")
+        .arg("--mute-audio")
+        .arg(format!("--window-size={},{}", stage.width, stage.height))
+        .arg(format!("--screenshot={}", png_path.display()))
+        .arg("--virtual-time-budget=10000")
+        .arg(format!("--user-data-dir={}", profile.display()))
+        .arg(url)
+        .stdout(std::process::Stdio::null());
+    if std::env::var_os("VIBEGAL_SMOKE_DEBUG").is_some() {
+        command.stderr(std::process::Stdio::inherit());
+    } else {
+        command.stderr(std::process::Stdio::null());
+    }
+    let result = match command.spawn() {
+        Ok(mut process) => {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+            let mut timed_out = false;
+            loop {
+                match process.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Ok(None) => {
+                        timed_out = true;
+                        let _ = process.kill();
+                        let _ = process.wait();
+                        break;
+                    }
+                    Err(_) => break,
+                }
+            }
+            SnapshotSceneRun {
+                png_exists: png_path.is_file(),
+                timed_out,
+                spawn_error: None,
+            }
+        }
+        Err(error) => SnapshotSceneRun {
+            png_exists: false,
+            timed_out: false,
+            spawn_error: Some(error.to_string()),
+        },
+    };
+    let _ = fs::remove_dir_all(&profile);
+    result
+}
+
+fn classify_snapshot_scene(
+    scene: &SnapshotWorkerScene,
+    png_path: &Path,
+    run: &SnapshotSceneRun,
+    report: Option<SnapshotPageReport>,
+    out_dir: &Path,
+) -> SnapshotSceneResult {
+    let file = png_path
+        .strip_prefix(out_dir)
+        .map(slash_path)
+        .unwrap_or_else(|_| slash_path(png_path));
+    let result = |status: &str, error: Option<String>| SnapshotSceneResult {
+        id: scene.id.clone(),
+        title: scene.title.clone(),
+        file: file.clone(),
+        status: status.to_string(),
+        error,
+    };
+    if let Some(spawn_error) = &run.spawn_error {
+        return result("error", Some(format!("启动浏览器失败: {spawn_error}")));
+    }
+    if run.timed_out {
+        return result("error", Some("浏览器截图超时（45s）".to_string()));
+    }
+    if !run.png_exists {
+        return result("error", Some("浏览器未生成截图".to_string()));
+    }
+    match report {
+        Some(SnapshotPageReport { status, .. }) if status == "ok" => result("ok", None),
+        Some(SnapshotPageReport { error, .. }) => {
+            result("error", Some(error.unwrap_or_else(|| "页面渲染失败".to_string())))
+        }
+        None => result(
+            "warning",
+            Some("未收到页面状态回调（截图已生成，请人工确认）".to_string()),
+        ),
+    }
+}
+
+fn renderer_snapshot_project(
+    options: RendererSnapshotOptions,
+) -> Result<RendererSnapshotOutput, BuildError> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    let project = app_lib::open_project_for_cli(&options.project_path).map_err(|message| {
+        build_error(
+            "open_project_failed",
+            message,
+            "discover",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    let renderer_id = options
+        .renderer_id
+        .clone()
+        .unwrap_or_else(|| project.meta.active_renderer_id.clone());
+    if !project.renderer_ids.iter().any(|id| id == &renderer_id) {
+        return Err(build_error(
+            "renderer_not_found",
+            format!("渲染层不存在或缺少 index.tsx: {renderer_id}"),
+            "discover",
+            Some(format!("renderers/{renderer_id}/index.tsx")),
+            Some(renderer_id),
+            vec![],
+        ));
+    }
+    // 静态契约检查先行（报错信息更好）；类型/编译细节由快照 worker 的 esbuild 覆盖。
+    let check = renderer_check_project(RendererCheckOptions {
+        project_path: options.project_path.clone(),
+        renderer_id: Some(renderer_id.clone()),
+        compile: false,
+    })?;
+    if !check.ok {
+        return Err(build_error_from_renderer_diagnostics(check.diagnostics));
+    }
+    let worker_output = run_snapshot_worker(&options, &renderer_id)?;
+    let browser = smoke_browser_executable().ok_or_else(|| {
+        build_error(
+            "snapshot_browser_unavailable",
+            "渲染层快照需要 Chrome/Chromium/Edge；可通过 VIBEGAL_SMOKE_BROWSER 指定可执行文件",
+            "browser",
+            None,
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+
+    let content_root = Path::new(&project.path).join("content");
+    let snapshot_root = PathBuf::from(&worker_output.snapshot_dir);
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|error| {
+        build_error(
+            "snapshot_server_failed",
+            format!("启动本地快照服务器失败: {error}"),
+            "server",
+            None,
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+    listener.set_nonblocking(true).map_err(|error| {
+        build_error(
+            "snapshot_server_failed",
+            format!("配置本地快照服务器失败: {error}"),
+            "server",
+            None,
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+    let address = listener.local_addr().map_err(|error| {
+        build_error(
+            "snapshot_server_failed",
+            error.to_string(),
+            "server",
+            None,
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let reports = Arc::new(Mutex::new(HashMap::<String, SnapshotPageReport>::new()));
+    let server = {
+        let stop = Arc::clone(&stop);
+        let reports = Arc::clone(&reports);
+        let snapshot_root = snapshot_root.clone();
+        let content_root = content_root.clone();
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        let snapshot_root = snapshot_root.clone();
+                        let content_root = content_root.clone();
+                        let reports = Arc::clone(&reports);
+                        std::thread::spawn(move || {
+                            serve_snapshot_connection(stream, &snapshot_root, &content_root, &reports);
+                        });
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(_) => break,
+                }
+            }
+        })
+    };
+
+    let mut scenes = Vec::new();
+    for scene in &worker_output.scenes {
+        let png_path = options
+            .out_dir
+            .join(format!("{renderer_id}-{}.png", scene.id));
+        let url = format!("http://{address}/snapshot.html?scene={}", scene.id);
+        let run = run_snapshot_browser_scene(&browser, &url, &png_path, &worker_output.stage);
+        // 截图完成后给页面状态回调最多 3s 宽限
+        let report = {
+            let grace = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            loop {
+                let found = reports
+                    .lock()
+                    .ok()
+                    .and_then(|slot| slot.get(&scene.id).cloned());
+                if found.is_some() {
+                    break found;
+                }
+                if std::time::Instant::now() >= grace {
+                    break None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        };
+        scenes.push(classify_snapshot_scene(
+            scene,
+            &png_path,
+            &run,
+            report,
+            &options.out_dir,
+        ));
+    }
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server.join();
+
+    let ok = scenes.iter().all(|scene| scene.status != "error");
+    Ok(RendererSnapshotOutput {
+        ok,
+        renderer_id,
+        out_dir: options.out_dir.to_string_lossy().to_string(),
+        stage: worker_output.stage,
+        scenes,
+    })
+}
+
+fn run_renderer_snapshot(options: RendererSnapshotOptions, format: OutputFormat) -> i32 {
+    match renderer_snapshot_project(options) {
+        Ok(output) => {
+            match format {
+                OutputFormat::Json => print_build_json(&output),
+                OutputFormat::Text => {
+                    for scene in &output.scenes {
+                        let mark = match scene.status.as_str() {
+                            "ok" => "✓",
+                            "warning" => "⚠",
+                            _ => "✗",
+                        };
+                        println!("{mark} {} -> {}", scene.id, scene.file);
+                        if let Some(error) = &scene.error {
+                            eprintln!("    {error}");
+                        }
+                    }
+                    if output.ok {
+                        println!(
+                            "✓ Renderer snapshot 完成: {}（{} 个场景）",
+                            output.renderer_id,
+                            output.scenes.len()
+                        );
                     }
                 }
             }
@@ -1657,6 +2315,7 @@ fn smoke_browser_executable() -> Option<String> {
         "chromium".to_string(),
         "chromium-browser".to_string(),
         "chrome".to_string(),
+        "msedge".to_string(),
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome".to_string(),
         "/Applications/Chromium.app/Contents/MacOS/Chromium".to_string(),
     ];
@@ -1665,6 +2324,13 @@ fn smoke_browser_executable() -> Option<String> {
             candidates.push(
                 Path::new(&root)
                     .join("Google/Chrome/Application/chrome.exe")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+            // Edge 同为 Chromium，headless 截图参数兼容，Windows 机器自带。
+            candidates.push(
+                Path::new(&root)
+                    .join("Microsoft/Edge/Application/msedge.exe")
                     .to_string_lossy()
                     .to_string(),
             );
@@ -1825,7 +2491,7 @@ fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
     let browser = smoke_browser_executable().ok_or_else(|| {
         smoke_error(
             "smoke_browser_unavailable",
-            "行为 smoke 需要 Chrome/Chromium；可通过 VIBEGAL_SMOKE_BROWSER 指定可执行文件",
+            "行为 smoke 需要 Chrome/Chromium/Edge；可通过 VIBEGAL_SMOKE_BROWSER 指定可执行文件",
             "behavior",
             None,
         )
@@ -2245,11 +2911,13 @@ fn main() {
         Commands::RendererCheck {
             path,
             renderer,
+            no_compile,
             format,
         } => run_renderer_check(
             RendererCheckOptions {
                 project_path: path,
                 renderer_id: renderer,
+                compile: !no_compile,
             },
             format,
         ),
@@ -2258,6 +2926,19 @@ fn main() {
             target,
             format,
         } => run_smoke(dist_dir, target, format),
+        Commands::RendererSnapshot {
+            path,
+            renderer,
+            out_dir,
+            format,
+        } => run_renderer_snapshot(
+            RendererSnapshotOptions {
+                project_path: path,
+                renderer_id: renderer,
+                out_dir,
+            },
+            format,
+        ),
     };
     std::process::exit(code);
 }
@@ -2380,6 +3061,7 @@ mod tests {
         RendererCheckOptions {
             project_path: project.to_string_lossy().to_string(),
             renderer_id: renderer_id.map(|id| id.to_string()),
+            compile: true,
         }
     }
 
@@ -3058,6 +3740,162 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn renderer_check_node_available() -> bool {
+        Command::new(node_executable())
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn renderer_check_passes_clean_renderer_with_compile() {
+        if !renderer_check_node_available() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "vibegal-cli-renderer-check-compile-ok-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        make_exportable_project(&dir);
+
+        let output = renderer_check_project(renderer_check_options(&dir, Some("default"))).unwrap();
+
+        assert!(
+            output.ok,
+            "干净渲染层应通过真实编译检查: {:?}",
+            output.diagnostics
+        );
+        assert!(output.diagnostics.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn renderer_check_reports_typecheck_error_from_worker() {
+        if !renderer_check_node_available() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "vibegal-cli-renderer-check-typecheck-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("renderers/default/index.tsx"),
+            "const broken: number = \"not a number\";\nexport default { id: \"default\", name: \"Default\", contractVersion: 1, Component: () => null };",
+        );
+
+        let output = renderer_check_project(renderer_check_options(&dir, Some("default"))).unwrap();
+
+        assert!(!output.ok);
+        assert!(
+            output.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "renderer_typecheck_failed"
+                    && diagnostic.step == "typecheck"
+                    && diagnostic.severity == RendererDiagnosticSeverity::Error
+            }),
+            "应包含 worker 的 typecheck 诊断: {:?}",
+            output.diagnostics
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn renderer_check_no_compile_skips_worker_typecheck() {
+        let dir = std::env::temp_dir().join(format!(
+            "vibegal-cli-renderer-check-no-compile-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("renderers/default/index.tsx"),
+            "const broken: number = \"not a number\";\nexport default { id: \"default\", name: \"Default\", contractVersion: 1, Component: () => null };",
+        );
+
+        let mut options = renderer_check_options(&dir, Some("default"));
+        options.compile = false;
+        let output = renderer_check_project(options).unwrap();
+
+        assert!(output.ok);
+        assert!(output.diagnostics.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_page_callback_parses_scene_status_and_message() {
+        let parsed = parse_snapshot_page_callback(
+            "/__vibegal_snapshot_result__?scene=dialogue&status=ok",
+        );
+        assert_eq!(
+            parsed.map(|(scene, report)| (scene, report.status, report.error)),
+            Some(("dialogue".to_string(), "ok".to_string(), None))
+        );
+
+        let parsed = parse_snapshot_page_callback(
+            "/__vibegal_snapshot_result__?scene=choice&status=error&message=Component%20crashed%20%E5%B4%A9%E6%BA%83",
+        );
+        assert_eq!(
+            parsed.map(|(scene, report)| (scene, report.status, report.error)),
+            Some((
+                "choice".to_string(),
+                "error".to_string(),
+                Some("Component crashed 崩溃".to_string())
+            ))
+        );
+
+        assert!(parse_snapshot_page_callback("/snapshot.html?scene=dialogue").is_none());
+        assert!(parse_snapshot_page_callback("/__vibegal_snapshot_result__?status=ok").is_none());
+    }
+
+    #[test]
+    fn renderer_snapshot_end_to_end() {
+        if !renderer_check_node_available()
+            || smoke_browser_executable().is_none()
+            || snapshot_worker_path().is_err()
+        {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "vibegal-cli-snapshot-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        make_exportable_project(&dir);
+        let out_dir = dir.join("snapshots");
+
+        let output = renderer_snapshot_project(RendererSnapshotOptions {
+            project_path: dir.to_string_lossy().to_string(),
+            renderer_id: Some("default".to_string()),
+            out_dir: out_dir.clone(),
+        })
+        .unwrap();
+
+        assert!(output.ok, "快照应全部成功: {:?}", output.scenes);
+        assert_eq!(output.scenes.len(), 4);
+        for scene in &output.scenes {
+            assert_eq!(scene.status, "ok", "场景 {} 应成功: {:?}", scene.id, scene.error);
+            let png = out_dir.join(format!("default-{}.png", scene.id));
+            assert!(png.is_file(), "缺少截图 {}", png.display());
+            assert!(
+                std::fs::metadata(&png).map(|meta| meta.len()).unwrap_or(0) > 0,
+                "截图不能为空: {}",
+                png.display()
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn renderer_check_reports_missing_default_export() {
         let dir = std::env::temp_dir().join(format!(
@@ -3274,13 +4112,18 @@ mod tests {
     #[test]
     fn installed_cli_resolves_packaged_exporter_candidates() {
         let executable = Path::new("/Applications/VibeGal-Studio.app/Contents/MacOS/vibegal-cli");
-        let candidates = build_worker_path_candidates(Some(executable));
+        let candidates = worker_path_candidates(Some(executable), EXPORT_WORKER_RELATIVE_PATH);
 
         assert!(candidates.contains(&PathBuf::from(
             "/Applications/VibeGal-Studio.app/Contents/Resources/exporter/packages/studio/scripts/build-web-export.mjs"
         )));
         assert!(candidates.contains(&PathBuf::from(
             "/Applications/VibeGal-Studio.app/Contents/MacOS/resources/exporter/packages/studio/scripts/build-web-export.mjs"
+        )));
+
+        let snapshot_candidates = worker_path_candidates(Some(executable), SNAPSHOT_WORKER_RELATIVE_PATH);
+        assert!(snapshot_candidates.contains(&PathBuf::from(
+            "/Applications/VibeGal-Studio.app/Contents/Resources/exporter/packages/studio/scripts/renderer-snapshot.mjs"
         )));
     }
 
