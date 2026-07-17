@@ -574,3 +574,68 @@ select:focus-visible {
 .gs-status-indicator:hover {
   background: var(--bg-hover);
 }
+
+/* ── 文件拖放导入高亮（assets/AssetsWorkspace）──────────────────────
+   pointer-events: none 是必须的：遮罩不能拦截 Tauri 原生拖放事件。 */
+.gs-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+  border: 2px dashed var(--accent);
+  pointer-events: none;
+}
+.gs-drop-overlay-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-modal);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+/* ── 快捷键键帽（common/ShortcutsHelpDialog） ── */
+.gs-kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px var(--space-1);
+  border: 1px solid var(--border-input);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+/* ── 命令面板项（common/CommandPalette）：hover 与键盘高亮分色 ── */
+.gs-command-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+.gs-command-item:hover {
+  background: var(--bg-hover);
+}
+.gs-command-item--active,
+.gs-command-item--active:hover {
+  background: var(--bg-active);
+}

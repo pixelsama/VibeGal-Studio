@@ -9,7 +9,8 @@ import {
   saveProjectDraft,
   type DraftStorage,
 } from "../../lib/draftRecovery";
-import { isDraftSnapshotCurrent, isSaveKeyboardShortcut, preventUnloadWhenDirty } from "../script/unsavedChanges";
+import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
+import { useSaveShortcut } from "../common/useSaveShortcut";
 import {
   DEFAULT_STAGE_RESOLUTION,
   STAGE_HEIGHT_RANGE,
@@ -323,15 +324,7 @@ export function ProjectSettings({
     }
   };
 
-  useEffect(() => {
-    const handleSaveShortcut = (event: globalThis.KeyboardEvent) => {
-      if (!isSaveKeyboardShortcut(event) || !dirty) return;
-      event.preventDefault();
-      if (!saving) void handleSave();
-    };
-    window.addEventListener("keydown", handleSaveShortcut);
-    return () => window.removeEventListener("keydown", handleSaveShortcut);
-  }, [dirty, handleSave, saving]);
+  useSaveShortcut(dirty && !saving, () => void handleSave());
 
   const handleWidthChange = (value: string) => {
     draftVersionRef.current += 1;

@@ -12,9 +12,9 @@
  * 根容器 position: relative 以锚定右下角的 StatusPanel（absolute）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Inbox } from "lucide-react";
+import { Inbox, Upload } from "lucide-react";
 import { ManifestSchema } from "@vibegal/engine";
-import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type AssetKind, type FileRevision, type Manifest } from "../../lib/types";
+import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
 import {
   deleteAsset,
   importAsset,
@@ -25,8 +25,11 @@ import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { ConfirmDialog } from "../common/Dialogs";
 import { EmptyState } from "../common/EmptyState";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
+import { useSaveShortcut } from "../common/useSaveShortcut";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
-import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
+import { AssetsSidebar, SECTIONS, type AssetSection } from "./AssetsSidebar";
+import { planAssetDrop, isRegistrableSection, type RegistrableAssetKind } from "./assetDrop";
+import { useAssetFileDrop } from "./useAssetFileDrop";
 import { AssetsToolbar } from "./AssetsToolbar";
 import { AssetGrid } from "./AssetGrid";
 import { AssetCard, DanglingCard } from "./AssetCard";
@@ -43,7 +46,7 @@ import {
   saveProjectDraft,
   type DraftStorage,
 } from "../../lib/draftRecovery";
-import { isDraftSnapshotCurrent, isSaveKeyboardShortcut, preventUnloadWhenDirty } from "../script/unsavedChanges";
+import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
 
 interface AssetsWorkspaceProps {
   project: ProjectData;
@@ -54,12 +57,7 @@ interface AssetsWorkspaceProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-type RegistrableAssetKind = Exclude<AssetKind, "character" | "unknown">;
 type ExtendedAssetSection = "cg" | "video" | "font" | "ui" | "animation";
-
-function isRegistrableAssetKind(kind: AssetSection): kind is RegistrableAssetKind {
-  return kind !== "overview" && kind !== "character" && kind !== "unknown";
-}
 
 function isExtendedAssetSection(section: AssetSection): section is ExtendedAssetSection {
   return section === "cg" || section === "video" || section === "font" || section === "ui" || section === "animation";
@@ -160,15 +158,7 @@ export function AssetsWorkspace({
     }
   };
 
-  useEffect(() => {
-    const handleSaveShortcut = (event: globalThis.KeyboardEvent) => {
-      if (!isSaveKeyboardShortcut(event) || !draftManifest) return;
-      event.preventDefault();
-      void handleSaveManifestDraft();
-    };
-    window.addEventListener("keydown", handleSaveShortcut);
-    return () => window.removeEventListener("keydown", handleSaveShortcut);
-  }, [draftManifest, savingDraft]);
+  useSaveShortcut(draftManifest !== null, () => void handleSaveManifestDraft());
 
   // 防崩：project.content.manifest 类型声明为 Manifest，但运行时可能是坏数据
   // （如旧 flat audio）。用 ManifestSchema.safeParse 兜底——解析失败则用
@@ -227,22 +217,18 @@ export function AssetsWorkspace({
     [assetUsage.unusedManifestPaths, filteredDangling, filteredDisk, manifest, view.orphanPaths],
   );
 
-  async function handleImport() {
-    if (readOnly) return;
-    const savedDraftVersion = draftVersionRef.current;
-    const kind = section === "overview" ? "background" : section;
-    if (!isRegistrableAssetKind(kind)) return;
-    const files = await pickAssetFiles(kind);
-    if (files.length === 0) return;
-
-    // 逐个导入；目标路径 = assets/<分类目录>/<原文件名>
-    const subDir = kindDir(kind);
+  // 导入管线：导入按钮与文件拖放共用。
+  // 逐个拷贝进 assets/<分类目录>/<原文件名>，成功的登记进 manifest，最后汇总 toast。
+  async function importAssetFiles(
+    items: { src: string; kind: RegistrableAssetKind }[],
+    savedDraftVersion: number,
+  ) {
     const errors: string[] = [];
     const newPaths: { id: string; path: string; kind: RegistrableAssetKind }[] = [];
-    for (const src of files) {
+    for (const { src, kind } of items) {
       const fileName = src.split(/[/\\]/).pop() ?? "asset";
       const id = baseName(fileName);
-      const destRel = `assets/${subDir}/${fileName}`;
+      const destRel = `assets/${kindDir(kind)}/${fileName}`;
       try {
         await importAsset(project.path, src, destRel);
         newPaths.push({ id, path: destRel, kind });
@@ -279,6 +265,36 @@ export function AssetsWorkspace({
     }
     await onSaved();
   }
+
+  async function handleImport() {
+    if (readOnly) return;
+    const kind = section === "overview" ? "background" : section;
+    if (!isRegistrableSection(kind)) return;
+    const files = await pickAssetFiles(kind);
+    if (files.length === 0) return;
+    await importAssetFiles(files.map((src) => ({ src, kind })), draftVersionRef.current);
+  }
+
+  // 文件拖放导入：具体分类全部归入该分类，总览按扩展名推断（assetDrop.planAssetDrop）
+  async function handleDropPaths(paths: string[]) {
+    if (readOnly || paths.length === 0) return;
+    const plan = planAssetDrop(paths, section);
+    if (plan.rejected.length > 0) {
+      notify({
+        kind: "info",
+        message: `已跳过 ${plan.rejected.length} 个无法识别类型的文件`,
+        detail: plan.rejected.join("\n"),
+      });
+    }
+    if (plan.items.length === 0) return;
+    await importAssetFiles(plan.items, draftVersionRef.current);
+  }
+
+  // 角色编辑页不收文件拖放（立绘走 CharacterEditor 内部的导入按钮）
+  const assetDragOver = useAssetFileDrop(!readOnly && section !== "character", handleDropPaths);
+  const dropHint = isRegistrableSection(section)
+    ? `松开导入到「${SECTIONS.find((s) => s.id === section)?.label ?? section}」`
+    : "松开导入资产（按文件类型自动分类）";
 
   async function handleDelete(relPath: string, assetRevision?: FileRevision) {
     if (readOnly) return;
@@ -468,6 +484,16 @@ export function AssetsWorkspace({
         onSave={() => void handleSaveManifestDraft()}
         onDiscard={handleDiscardManifestDraft}
       />
+
+      {/* 文件拖放高亮遮罩（pointer-events: none，不拦截原生拖放事件） */}
+      {assetDragOver && (
+        <div className="gs-drop-overlay" aria-hidden="true">
+          <div className="gs-drop-overlay-card">
+            <Upload size={22} />
+            <span>{dropHint}</span>
+          </div>
+        </div>
+      )}
 
       <Toast toast={toast} onClose={() => setToast(null)} />
 
@@ -1054,7 +1080,7 @@ export function applyAssetRegistrations(
 export function registerOrphanAssets(manifest: Manifest, entries: AssetEntry[]): Manifest {
   const registrations = entries
     .filter((entry): entry is AssetEntry & { kind: RegistrableAssetKind } =>
-      isRegistrableAssetKind(entry.kind))
+      isRegistrableSection(entry.kind))
     .map((entry) => ({
       id: baseName(entry.relPath),
       path: entry.relPath,

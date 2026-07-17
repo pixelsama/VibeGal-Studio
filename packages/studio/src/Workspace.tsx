@@ -16,6 +16,9 @@ import { ProjectSettings } from "./features/project/ProjectSettings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
 import { IconButton } from "./features/common/Button";
+import { CommandPalette, type CommandItem } from "./features/common/CommandPalette";
+import { ShortcutsHelpDialog, isShortcutsHelpToggle } from "./features/common/ShortcutsHelpDialog";
+import { isEditableEventTarget } from "./features/script/graphShortcuts";
 import { AlertDialog, ConfirmDialog, PromptDialog } from "./features/common/Dialogs";
 import { RendererSidebar } from "./features/renderers/RendererSidebar";
 import type { RendererDiagnostic } from "./features/renderers/diagnostics";
@@ -130,6 +133,8 @@ export function Workspace({
   const [rendererDiagnostics, setRendererDiagnostics] = useState<RendererDiagnostic[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [unsavedNavigation, setUnsavedNavigation] = useState<{ action: () => void } | null>(null);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const graphIssueFocusRequestIdRef = useRef(0);
   const projectMetaMutationQueue = useMemo(
     () => new RevisionedProjectMutationQueue(project.projectRevision),
@@ -354,6 +359,51 @@ export function Workspace({
     }
   }, [navigateWithGuard, project.graph]);
 
+  // 命令面板内容：工作台切换 + 节点跳转，都复用带未保存守卫的导航
+  const commandItems = useMemo<CommandItem[]>(() => {
+    const workspaceItems: CommandItem[] = [
+      { id: "ws-render", label: "渲染工作台", hint: "切换", keywords: "render", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "render" }) },
+      { id: "ws-script", label: "脚本工作台", hint: "切换", keywords: "script graph", onSelect: () => navigateWithGuard({ type: "script-graph" }) },
+      { id: "ws-assets", label: "资产工作台", hint: "切换", keywords: "assets", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "assets" }) },
+      { id: "ws-project", label: "项目工作台", hint: "切换", keywords: "project settings", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "project" }) },
+    ];
+    const nodeItems: CommandItem[] = (project.graph?.nodes ?? []).map((node) => ({
+      id: `node-${node.id}`,
+      label: `跳转节点：${node.title || node.id}`,
+      hint: node.id,
+      keywords: `${node.id} ${node.title}`,
+      onSelect: () => navigateWithGuard({ type: "script-node", nodeId: node.id }),
+    }));
+    return [...workspaceItems, ...nodeItems];
+  }, [project.graph, navigateWithGuard]);
+
+  // 全局快捷键：Ctrl/Cmd+K 命令面板，? 快捷键帮助。
+  // 其他弹窗打开时不响应 ? 以免层叠；面板打开时焦点在其输入框（editable），? 天然不触发。
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setShortcutsHelpOpen(false);
+        setPaletteOpen((open) => !open);
+        return;
+      }
+      if (
+        isShortcutsHelpToggle({
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          altKey: event.altKey,
+          targetIsEditable: isEditableEventTarget(event.target),
+        })
+      ) {
+        if (rendererPrompt || rendererConfirm || rendererAlert || unsavedNavigation || paletteOpen) return;
+        setShortcutsHelpOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [rendererPrompt, rendererConfirm, rendererAlert, unsavedNavigation, paletteOpen]);
+
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
       {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
@@ -503,6 +553,8 @@ export function Workspace({
         />
       )}
       {rendererAlert && <AlertDialog danger message={rendererAlert} onClose={() => setRendererAlert(null)} />}
+      {paletteOpen && <CommandPalette items={commandItems} onClose={() => setPaletteOpen(false)} />}
+      {shortcutsHelpOpen && <ShortcutsHelpDialog onClose={() => setShortcutsHelpOpen(false)} />}
       {unsavedNavigation && (
         <ConfirmDialog
           message="当前工作区有未保存的草稿。离开后草稿会保留，并在本次会话中返回时自动恢复。"

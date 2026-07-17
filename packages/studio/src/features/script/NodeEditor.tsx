@@ -38,7 +38,8 @@ import {
   ScenarioNodeLayout,
 } from "./scenarioEditor";
 import { ScenarioTextEditor } from "./ScenarioTextEditor";
-import { isDraftSnapshotCurrent, isSaveKeyboardShortcut, preventUnloadWhenDirty } from "./unsavedChanges";
+import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "./unsavedChanges";
+import { useSaveShortcut } from "../common/useSaveShortcut";
 import {
   clearProjectDraft,
   getSessionDraftStorage,
@@ -437,15 +438,7 @@ export function NodeEditor({
     }
   };
 
-  useEffect(() => {
-    const handleSaveShortcut = (event: globalThis.KeyboardEvent) => {
-      if (!isSaveKeyboardShortcut(event)) return;
-      event.preventDefault();
-      if (!saving) void handleSave();
-    };
-    window.addEventListener("keydown", handleSaveShortcut);
-    return () => window.removeEventListener("keydown", handleSaveShortcut);
-  }, [handleSave, saving]);
+  useSaveShortcut(!saving, () => void handleSave());
 
   const handleLoadExternal = () => {
     if (saving) return;
