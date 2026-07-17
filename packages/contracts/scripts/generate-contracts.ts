@@ -18,6 +18,8 @@ const sourceFiles = [
   "package.json",
 ];
 const sha256 = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+// 源文件哈希按 LF 归一化：Windows（autocrlf）检出为 CRLF，直接哈希磁盘字节会与 LF 平台不一致。
+const hashTextFile = (path: string) => sha256(readFileSync(path, "utf8").replace(/\r\n/g, "\n"));
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 rmSync(generated, { recursive: true, force: true });
@@ -40,7 +42,7 @@ writeFileSync(resolve(generated, "diagnostics.json"), diagnostics);
 artifacts["diagnostics.json"] = sha256(diagnostics);
 const sources = Object.fromEntries(sourceFiles.map((file) => [
   file,
-  sha256(readFileSync(resolve(contractsRoot, file))),
+  hashTextFile(resolve(contractsRoot, file)),
 ]));
 const packageJson = JSON.parse(readFileSync(resolve(contractsRoot, "package.json"), "utf8")) as {
   dependencies: { zod: string };

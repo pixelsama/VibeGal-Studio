@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -21,9 +21,8 @@ if (missing.length > 0) {
 }
 
 const before = new Map(trackedFiles.map((path) => [path, sha256(path)]));
-execFileSync("pnpm", ["--filter", "@vibegal/contracts", "generate-contracts"], {
-  stdio: "inherit",
-});
+// Windows 上 pnpm 是 .cmd 垫片，不经 shell 直接 spawn 会 ENOENT/EINVAL；命令为常量字符串，无注入面。
+execSync("pnpm --filter @vibegal/contracts generate-contracts", { stdio: "inherit" });
 
 const drifted = trackedFiles.filter((path) => before.get(path) !== sha256(path));
 for (const name of schemaNames) {

@@ -6,7 +6,7 @@
     "src/schema.ts": "17c0ac18d9fdcd1e3caf434104f162835edfcfa9e436df8eabaf52b0277f0c47",
     "src/diagnostics.ts": "a05bd821e37bc3269f33902b395c69efa22c1293e9e762416033c3c5d08e81c5",
     "src/schemaExport.ts": "981bd65b0858e19814f7f033f0242bc7088e8dbf4fecc14c2fd0febb0981cf70",
-    "scripts/generate-contracts.ts": "db788f5d66deece6654794ae78f3190753c469826b9650762cb338c7c04d92b5",
+    "scripts/generate-contracts.ts": "7f0618632a5c076b70d34e3e7c97ac7e060c5c074e2e6a78ea22bc568ca3775e",
     "package.json": "49d42da14f943b68c16080b69241f2c2916acefff279125a9933f9cc3543b2aa"
   },
   "artifactSha256": {
