@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_MANIFEST, type FileRevision, type Manifest } from "../../lib/types";
 import {
+  APPEARANCE_TOKEN_GROUPS,
   hexColorOrNull,
   mergeTokenOverrides,
   readSkinTokens,
   saveAppearanceManifest,
   selectEditableSkinId,
   tokenDefaultPlaceholder,
+  tokenGroupsForPart,
   tokenVisibleChecked,
   visibleTokenEditValue,
   withDefaultUiSkin,
@@ -172,6 +174,32 @@ describe("tokenDefaultPlaceholder", () => {
 
   it("未知键退化为「默认」", () => {
     expect(tokenDefaultPlaceholder("unknown.key")).toBe("默认");
+  });
+});
+
+describe("tokenGroupsForPart", () => {
+  it("未选中（null）时返回全部分组", () => {
+    expect(tokenGroupsForPart(null)).toBe(APPEARANCE_TOKEN_GROUPS);
+  });
+
+  it("已知部件映射到对应分组（choiceBox 连按钮样式组）", () => {
+    expect(tokenGroupsForPart("dialogueBox").map((group) => group.id)).toEqual(["dialogueBox"]);
+    expect(tokenGroupsForPart("nameBox").map((group) => group.id)).toEqual(["nameBox"]);
+    expect(tokenGroupsForPart("hud").map((group) => group.id)).toEqual(["hud"]);
+    expect(tokenGroupsForPart("menuWindow").map((group) => group.id)).toEqual(["menuWindow"]);
+    expect(tokenGroupsForPart("choiceBox").map((group) => group.id)).toEqual(["choiceBox", "choiceButton"]);
+  });
+
+  it("第三方渲染器的未知部件合成几何分组（x/y/width/height）", () => {
+    const groups = tokenGroupsForPart("heroBanner");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toContain("heroBanner");
+    expect(groups[0].fields.map((field) => field.key)).toEqual([
+      "heroBanner.x",
+      "heroBanner.y",
+      "heroBanner.width",
+      "heroBanner.height",
+    ]);
   });
 });
 

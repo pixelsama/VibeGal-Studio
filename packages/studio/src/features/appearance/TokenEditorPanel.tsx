@@ -13,6 +13,7 @@ import {
   tokenVisibleChecked,
   visibleTokenEditValue,
   type TokenFieldDef,
+  type TokenGroupDef,
 } from "./appearanceTokens";
 
 interface TokenEditorPanelProps {
@@ -22,12 +23,14 @@ interface TokenEditorPanelProps {
   fontFamilies: string[];
   /** 冲突等状态下锁死编辑 */
   disabled?: boolean;
+  /** 展示的分组（缺省 = 全部；选中部件时由父组件过滤后传入） */
+  groups?: TokenGroupDef[];
   onEdit: (key: string, value: string | number | undefined) => void;
 }
 
 const FONT_DATALIST_ID = "appearance-font-family-options";
 
-export function TokenEditorPanel({ tokens, fontFamilies, disabled = false, onEdit }: TokenEditorPanelProps) {
+export function TokenEditorPanel({ tokens, fontFamilies, disabled = false, groups = APPEARANCE_TOKEN_GROUPS, onEdit }: TokenEditorPanelProps) {
   return (
     <div style={panelStyle}>
       <datalist id={FONT_DATALIST_ID}>
@@ -35,7 +38,7 @@ export function TokenEditorPanel({ tokens, fontFamilies, disabled = false, onEdi
           <option key={family} value={family} />
         ))}
       </datalist>
-      {APPEARANCE_TOKEN_GROUPS.map((group) => (
+      {groups.map((group) => (
         <section key={group.id} style={groupStyle} aria-label={group.title}>
           <div style={groupTitleStyle}>{group.title}</div>
           {group.fields.map((field) => (

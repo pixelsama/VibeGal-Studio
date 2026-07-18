@@ -34,6 +34,7 @@ import {
   readSkinTokens,
   saveAppearanceManifest,
   selectEditableSkinId,
+  tokenGroupsForPart,
   withDefaultUiSkin,
   withUiSkinToken,
 } from "./appearanceTokens";
@@ -61,6 +62,8 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [viewMode, setViewMode] = useState<AppearanceViewMode>(initialViewMode);
   const [sceneId, setSceneId] = useState<string | null>(null);
+  // 舞台拖拽 overlay 外发的选中部件：属性面板按它过滤分组（inspector 模式）
+  const [selectedPart, setSelectedPart] = useState<string | null>(null);
 
   const mutationQueue = useMemo(
     () => new RevisionedProjectMutationQueue(project.manifestRevision),
@@ -212,6 +215,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
 
   const showGrid = () => {
     setFixtureUiHintGlobal(undefined);
+    setSelectedPart(null);
     setViewMode("grid");
   };
   const showSingle = () => {
@@ -220,6 +224,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
   };
   const selectScene = (id: string) => {
     setFixtureUiHintGlobal(scenes.find((scene) => scene.id === id)?.uiHint);
+    setSelectedPart(null);
     setSceneId(id);
   };
 
@@ -245,7 +250,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
 
   return (
     <div style={rootStyle}>
-      {/* 左侧：token 属性编辑 */}
+      {/* 右侧：token 属性编辑（检查器） */}
       <div style={panelColumnStyle}>
         {conflict && (
           <div style={conflictBannerStyle} role="alert">
@@ -272,17 +277,33 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
               编辑皮肤：<span style={skinIdStyle}>{skinId}</span>
               {skinId !== "default" && <span style={skinFallbackHintStyle}>（无 default，回退到第一个条目）</span>}
             </div>
+            {selectedPart !== null && viewMode === "single" && (
+              <div style={selectionBarStyle} data-selected-part={selectedPart}>
+                <span style={selectionLabelStyle}>
+                  已选中部件：<span style={selectionPartStyle}>{selectedPart}</span>
+                </span>
+                <button
+                  type="button"
+                  style={selectionClearStyle}
+                  title="取消选中，显示全部属性"
+                  onClick={() => setSelectedPart(null)}
+                >
+                  全部属性
+                </button>
+              </div>
+            )}
             <TokenEditorPanel
               tokens={skinTokens}
               fontFamilies={fontFamilies}
               disabled={readOnly}
+              groups={selectedPart !== null && viewMode === "single" ? tokenGroupsForPart(selectedPart) : undefined}
               onEdit={handleEditToken}
             />
           </>
         )}
       </div>
 
-      {/* 右侧：场景刷预览（宫格 / 单场景） */}
+      {/* 左侧：场景刷预览（宫格 / 单场景） */}
       <div style={previewColumnStyle}>
         <div style={toolbarStyle}>
           <button
@@ -338,6 +359,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
               stage={stage}
               skinId={skinId}
               onPersistGeometry={handlePersistGeometry}
+              onSelectionChange={setSelectedPart}
             />
           ) : null}
         </div>
@@ -351,7 +373,8 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
 const rootStyle: React.CSSProperties = {
   position: "relative",
   display: "grid",
-  gridTemplateColumns: "minmax(260px, 320px) minmax(0, 1fr)",
+  // 检查器模式：画布（预览）为主居左，属性面板居右（设计工具惯例）
+  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
   width: "100%",
   height: "100%",
   minWidth: 0,
@@ -360,13 +383,19 @@ const rootStyle: React.CSSProperties = {
 };
 
 const panelColumnStyle: React.CSSProperties = {
+  // 显式行位：DOM 顺序是面板（列 2）在前、预览（列 1）在后，只靠 gridColumn
+  // 时自动放置光标「列回退则行 +1」，预览会被挤到第二行（grid 规范行为）
+  gridColumn: 2,
+  gridRow: 1,
   minHeight: 0,
   overflowY: "auto",
-  borderRight: "1px solid var(--border)",
+  borderLeft: "1px solid var(--border)",
   background: "var(--bg-panel)",
 };
 
 const previewColumnStyle: React.CSSProperties = {
+  gridColumn: 1,
+  gridRow: 1,
   minWidth: 0,
   height: "100%",
   display: "flex",
@@ -434,6 +463,42 @@ const skinHeaderStyle: React.CSSProperties = {
   borderBottom: "1px solid var(--border)",
   fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
+};
+
+const selectionBarStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) var(--space-3)",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--bg-tag-accent, rgba(120, 160, 255, 0.08))",
+  fontSize: "var(--text-sm)",
+  color: "var(--text-secondary)",
+};
+
+const selectionLabelStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const selectionPartStyle: React.CSSProperties = {
+  color: "var(--accent-bright)",
+  fontWeight: 600,
+  fontFamily: "ui-monospace, monospace",
+};
+
+const selectionClearStyle: React.CSSProperties = {
+  flex: "0 0 auto",
+  padding: "2px var(--space-2)",
+  borderRadius: "var(--radius-pill)",
+  border: "1px solid var(--border-strong)",
+  background: "transparent",
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-xs)",
+  cursor: "pointer",
 };
 
 const skinIdStyle: React.CSSProperties = {

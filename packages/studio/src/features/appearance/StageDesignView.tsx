@@ -46,6 +46,8 @@ interface StageDesignViewProps {
   skinId: string | null;
   /** 松手提交几何 token（x/y 或 x/y/width/height），父组件负责持久化 */
   onPersistGeometry: (entries: Record<string, number>) => void;
+  /** 选中部件变化（点选/Tab 循环/Esc 取消），父组件用它过滤属性面板 */
+  onSelectionChange?: (part: string | null) => void;
 }
 
 interface SurfaceInfo {
@@ -70,7 +72,7 @@ function toClientRect(rect: { left: number; top: number; width: number; height: 
   return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
 }
 
-export function StageDesignView({ project, renderer, scene, stage, skinId, onPersistGeometry }: StageDesignViewProps) {
+export function StageDesignView({ project, renderer, scene, stage, skinId, onPersistGeometry, onSelectionChange }: StageDesignViewProps) {
   const layoutSupported = supportsLayoutParts(renderer.capabilities);
   const overlayActive = layoutSupported && skinId !== null;
 
@@ -84,8 +86,17 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [surfaceInfo, setSurfaceInfo] = useState<SurfaceInfo | null>(null);
   const [parts, setParts] = useState<PartInfo[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelectedState] = useState<string | null>(null);
   const [dragRect, setDragRect] = useState<StageRect | null>(null);
+
+  // 选中态本地更新 + 外发（父组件按选中部件过滤属性面板）
+  const setSelected = useCallback(
+    (part: string | null) => {
+      setSelectedState(part);
+      onSelectionChange?.(part);
+    },
+    [onSelectionChange],
+  );
 
   const previewProject = useMemo<ProjectData>(() => {
     if (skinId === null || Object.keys(overrides).length === 0) return project;
@@ -210,7 +221,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Tab") {
       event.preventDefault();
-      setSelected((current) => cyclePartSelection(parts.map((part) => part.name), current, event.shiftKey ? -1 : 1));
+      setSelected(cyclePartSelection(parts.map((part) => part.name), selected, event.shiftKey ? -1 : 1));
     } else if (event.key === "Escape") {
       setSelected(null);
     }

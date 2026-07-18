@@ -230,6 +230,49 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
   },
 ];
 
+// ──────────────────────────────────────────────
+// 选中部件 → 属性分组过滤（inspector 模式）
+// ──────────────────────────────────────────────
+
+/**
+ * 部件名 → 展示的分组 id 列表。choiceBox 带按钮样式组（选项区管几何，
+ * 选项按钮管配色），其余部件一对一；null（未选中）= 全部分组。
+ */
+const PART_TOKEN_GROUP_IDS: Record<string, string[]> = {
+  dialogueBox: ["dialogueBox"],
+  nameBox: ["nameBox"],
+  choiceBox: ["choiceBox", "choiceButton"],
+  hud: ["hud"],
+  menuWindow: ["menuWindow"],
+};
+
+/**
+ * 按选中部件过滤属性分组：
+ * - null → 全部分组（含「舞台」全局组）；
+ * - 已知部件 → 该部件的分组（choiceBox 连按钮样式组）；
+ * - 未知部件（第三方渲染器的自定义 data-ui-part）→ 合成一个几何分组
+ *   （x/y/width/height），拖拽落盘的 token 由此也能手动编辑。
+ */
+export function tokenGroupsForPart(part: string | null): TokenGroupDef[] {
+  if (part === null) return APPEARANCE_TOKEN_GROUPS;
+  const ids = PART_TOKEN_GROUP_IDS[part];
+  if (!ids) {
+    return [
+      {
+        id: part,
+        title: `${part}（几何）`,
+        fields: [
+          { key: `${part}.x`, label: "X", kind: "number", step: 1 },
+          { key: `${part}.y`, label: "Y", kind: "number", step: 1 },
+          { key: `${part}.width`, label: "宽", kind: "number", step: 1, min: 0 },
+          { key: `${part}.height`, label: "高", kind: "number", step: 1, min: 0 },
+        ],
+      },
+    ];
+  }
+  return APPEARANCE_TOKEN_GROUPS.filter((group) => ids.includes(group.id));
+}
+
 /** DEFAULT_UI_TOKENS（嵌套结构）→ 点号 key 的扁平默认值表。 */
 function flattenDefaultTokens(): Record<string, string | number> {
   const d = DEFAULT_UI_TOKENS;
