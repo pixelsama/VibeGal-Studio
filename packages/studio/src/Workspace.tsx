@@ -12,6 +12,7 @@ import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "./lib/ty
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
+import { AppearanceWorkspace } from "./features/appearance/AppearanceWorkspace";
 import { ProjectSettings } from "./features/project/ProjectSettings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
@@ -366,6 +367,7 @@ export function Workspace({
       { id: "ws-script", label: "脚本工作台", hint: "切换", keywords: "script graph", onSelect: () => navigateWithGuard({ type: "script-graph" }) },
       { id: "ws-assets", label: "资产工作台", hint: "切换", keywords: "assets", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "assets" }) },
       { id: "ws-project", label: "项目工作台", hint: "切换", keywords: "project settings", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "project" }) },
+      { id: "ws-appearance", label: "外观工作台", hint: "切换", keywords: "appearance design ui skin", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "appearance" }) },
     ];
     const nodeItems: CommandItem[] = (project.graph?.nodes ?? []).map((node) => ({
       id: `node-${node.id}`,
@@ -424,6 +426,7 @@ export function Workspace({
           <TabBtn active={workspace === "script"} onClick={() => navigateWithGuard({ type: "script-graph" })}>脚本</TabBtn>
           <TabBtn active={workspace === "assets"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}>资产</TabBtn>
           <TabBtn active={workspace === "project"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "project" })}>项目</TabBtn>
+          <TabBtn active={workspace === "appearance"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "appearance" })}>外观</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
@@ -504,6 +507,14 @@ export function Workspace({
             project={project}
             onSaved={handleSaved}
             onDirtyChange={setHasUnsavedChanges}
+          />
+        )}
+        {workspace === "appearance" && (
+          <AppearanceWorkspace
+            key={project.path}
+            project={project}
+            rendererId={rendererId}
+            onSaved={handleSaved}
           />
         )}
       </div>

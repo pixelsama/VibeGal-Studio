@@ -14,11 +14,13 @@ import {
   PlayerUiController,
   buildPlayerSlots,
   isPlayerShortcutTarget,
+  readFixtureUiHintMenuPage,
   runtimeErrorDetails,
   type PlayerMenuPage,
   type PlayerSlotView,
 } from "./playerUiModel";
 import { useShake } from "./useShake";
+import { useUiTokens, type ChoiceButtonTokens } from "./useUiTokens";
 
 type ConfirmAction =
   | { kind: "overwrite"; slot: PlayerSlotView }
@@ -34,7 +36,10 @@ const fallbackSettings: RuntimeSettingsRecord = {
 };
 
 export function Stage({ state, manifest, contentBase, controls, runtime }: RendererProps) {
-  const [menuPage, setMenuPage] = useState<PlayerMenuPage | null>(null);
+  // uiHint（fixture 场景宿主，Spec 17 第 4.1 节）：挂载前若存在
+  // window.__VIBEGAL_FIXTURE_UI__ = { panel }，把它当作初始 UI 状态读一次；
+  // 无该全局时初始 menuPage = null，与现状完全一致。
+  const [menuPage, setMenuPage] = useState<PlayerMenuPage | null>(() => readFixtureUiHintMenuPage());
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<PlayerNotice | null>(null);
@@ -45,6 +50,7 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideControls = state.flags.isRecording;
   const { containerStyle: shakeStyle, keyframes: shakeKeyframes } = useShake(state);
+  const uiTokens = useUiTokens(manifest);
 
   stateRef.current = state;
   const controller = useMemo(
@@ -61,6 +67,14 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
     setMenuPage(null);
     setConfirmAction(null);
   }, [hideControls]);
+
+  // uiHint：挂载时若带初始面板，补齐该面板的数据加载副作用（等价 openMenu 的数据面），
+  // 但不触碰播放控制。只跑一次；无 hint（menuPage 初始为 null）时什么都不做。
+  useEffect(() => {
+    if (menuPage === "save") void refreshSlots();
+    if (menuPage === "settings" && runtime) setSettings(runtime.settings.getSettings());
+    // 仅在挂载时执行一次，故意留空依赖
+  }, []);
 
   useEffect(() => () => {
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
@@ -363,14 +377,14 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
         background: "#000",
         cursor: hideControls ? "none" : "pointer",
         userSelect: "none",
-        fontFamily: "'Noto Serif SC', serif",
+        fontFamily: uiTokens.stageFontFamily,
         containerType: "size",
       }}
     >
       <div style={{ position: "absolute", inset: 0, ...shakeStyle }}>
         <BackgroundLayer state={state} manifest={manifest} contentBase={contentBase} />
         <SpriteLayer state={state} manifest={manifest} contentBase={contentBase} />
-        <DialogueBox state={state} />
+        <DialogueBox state={state} manifest={manifest} />
       </div>
       <Effects state={state} />
       <style>{shakeKeyframes}</style>
@@ -387,12 +401,14 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
                 setChoiceHint(`将跳转到 ${choice.to}`);
                 controls.choose(choice.to);
               }}
-              style={choiceButtonStyle}
+              style={choiceButtonStyle(uiTokens.choiceButton)}
             >
               {choice.text}
             </button>
           ))}
           {choiceHint && <div style={choiceHintStyle}>{choiceHint}</div>}
+          {/* 悬停色走 stylesheet（inline style 表达不了 :hover）；默认 hoverColor = bgColor，即现状无悬停色差 */}
+          <style>{`[data-choice-to]:not(:disabled):hover { background: ${uiTokens.choiceButton.hoverColor} !important; }`}</style>
         </div>
       )}
 
@@ -400,6 +416,7 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
         <PlayerHud
           state={state}
           busy={busy}
+          hud={uiTokens.hud}
           onOpenMenu={() => openMenu("save")}
           onQuickSave={() => void performQuickSave()}
           onQuickLoad={() => void performQuickLoad()}
@@ -542,19 +559,21 @@ const choiceContainerStyle: CSSProperties = {
   overflowY: "auto",
 };
 
-const choiceButtonStyle: CSSProperties = {
-  minHeight: 42,
-  background: "rgba(18, 19, 21, 0.88)",
-  color: "#fff",
-  border: "1px solid rgba(255, 255, 255, 0.34)",
-  borderRadius: 5,
-  padding: "10px 16px",
-  fontSize: 15,
-  cursor: "pointer",
-  fontFamily: "inherit",
-  textAlign: "center",
-  letterSpacing: 0,
-};
+function choiceButtonStyle(tokens: ChoiceButtonTokens): CSSProperties {
+  return {
+    minHeight: 42,
+    background: tokens.bgColor,
+    color: tokens.textColor,
+    border: "1px solid rgba(255, 255, 255, 0.34)",
+    borderRadius: tokens.radius,
+    padding: "10px 16px",
+    fontSize: tokens.fontSize,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    textAlign: "center",
+    letterSpacing: 0,
+  };
+}
 
 const choiceHintStyle: CSSProperties = {
   color: "rgba(255,255,255,0.75)",

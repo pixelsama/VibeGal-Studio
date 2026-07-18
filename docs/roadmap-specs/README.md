@@ -4,7 +4,6 @@
 
 当前仍在规划或开发中的 roadmap spec：
 
-- [Spec 17 — Appearance Design Module（外观设计模块）](./17-appearance-design-module.spec.md)：已记录，暂缓开发；2026-07-18 三次修订（五步分期、拖拽转正、场景扩充/fixtures/skin 规则定点），待排期。
 - [Spec 18 — Open Non-Project Directory Guidance（打开非项目目录时的项目引导）](./18-open-nonproject-directory-guidance.spec.md)：已记录，暂缓开发，等后续排期。
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
@@ -24,3 +23,4 @@
 - [Spec 13 — Default Renderer Player UX And Runtime Settings](./archive/13-default-renderer-player-ux-and-runtime-settings.spec.md)
 - [Note 15 — Gallery / Replay / Music / Endings Implementation](./archive/15-gallery-replay-music-endings-implementation-note.md)
 - [Note 16 — Asset Management / Project Settings Implementation](./archive/16-asset-management-project-settings-implementation-note.md)
+- [Spec 17 — Appearance Design Module（外观设计模块）](./archive/17-appearance-design-module.spec.md)

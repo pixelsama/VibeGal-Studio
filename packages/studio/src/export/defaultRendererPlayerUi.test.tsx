@@ -14,6 +14,7 @@ import { PlayerMenu } from "../../src-tauri/resources/default-renderer/PlayerMen
 import { RuntimeSettingsPanel } from "../../src-tauri/resources/default-renderer/RuntimeSettingsPanel";
 import { SaveLoadPanel } from "../../src-tauri/resources/default-renderer/SaveLoadPanel";
 import { Stage } from "../../src-tauri/resources/default-renderer/Stage";
+import { DEFAULT_UI_TOKENS } from "../../src-tauri/resources/default-renderer/useUiTokens";
 import {
   MANUAL_SLOT_IDS,
   PLAYER_MENU_PAGES,
@@ -38,6 +39,7 @@ describe("default renderer player UI", () => {
       <PlayerHud
         state={state}
         busy={false}
+        hud={DEFAULT_UI_TOKENS.hud}
         onOpenMenu={vi.fn()}
         onQuickSave={vi.fn()}
         onQuickLoad={vi.fn()}

@@ -75,6 +75,75 @@ pub(crate) fn open_project_for_cli(path: &str) -> Result<ProjectData, String> {
     open_project_inner(path)
 }
 
+/// 读取 content/fixtures/*.json（按文件名排序）。
+/// 目录缺失 = 空列表（不算问题）；单文件解析失败或不是对象时降级为
+/// warn 级 fixture_invalid 项目问题并跳过该文件，不阻塞项目打开。
+fn load_project_fixtures(content_root: &ContentRoot) -> (Vec<FixtureEntry>, Vec<ProjectIssue>) {
+    let fixtures_dir = content_root.path().join("fixtures");
+    if !fixtures_dir.is_dir() {
+        return (vec![], vec![]);
+    }
+    let mut files: Vec<PathBuf> = match fs::read_dir(&fixtures_dir) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file()
+                    && path.extension().and_then(|ext| ext.to_str()) == Some("json")
+            })
+            .collect(),
+        Err(error) => {
+            return (
+                vec![],
+                vec![fixture_invalid_issue(
+                    "content/fixtures",
+                    &format!("读取 fixtures 目录失败: {}", error),
+                )],
+            );
+        }
+    };
+    files.sort();
+
+    let mut fixtures = vec![];
+    let mut issues = vec![];
+    for path in files {
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let rel_path = format!("content/fixtures/{}", file_name);
+        match read_json(&path) {
+            Ok(value) if value.is_object() => {
+                let title = value
+                    .get("title")
+                    .and_then(|title| title.as_str())
+                    .map(|title| title.to_string());
+                fixtures.push(FixtureEntry {
+                    path: rel_path,
+                    title,
+                    value,
+                });
+            }
+            Ok(_) => issues.push(fixture_invalid_issue(&rel_path, "fixture 必须是 JSON 对象")),
+            Err(message) => issues.push(fixture_invalid_issue(&rel_path, &message)),
+        }
+    }
+    (fixtures, issues)
+}
+
+fn fixture_invalid_issue(file: &str, message: &str) -> ProjectIssue {
+    ProjectIssue {
+        severity: GraphIssueSeverity::Warn,
+        source: "fixture".to_string(),
+        code: "fixture_invalid".to_string(),
+        message: message.to_string(),
+        file: Some(file.to_string()),
+        json_path: None,
+        node_id: None,
+        edge_id: None,
+    }
+}
+
 pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let project_root = ProjectRoot::open(Path::new(path))?;
     let project_path = project_root.path();
@@ -114,6 +183,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         }],
     };
     let asset_report = AssetReport { asset_issues };
+    let (fixtures, fixture_issues) = load_project_fixtures(&content_root);
 
     // 全局聚合：图结构 + 节点内容 + 资产 + manifest 结构问题汇总成一个报告
     let node_issues = validate_node_contents(&graph, &nodes, &manifest);
@@ -135,6 +205,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     );
     project_issues.extend(manifest_issues);
     project_issues.extend(meta_issues);
+    project_issues.extend(fixture_issues);
     project_issues.sort_by(|a, b| {
         (
             project_issue_source_order(&a.source),
@@ -166,6 +237,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         manifest_revision,
         meta_revision,
         node_revisions: Some(node_revisions),
+        fixtures: Some(fixtures),
         graph_report: Some(graph_report),
         asset_report: Some(asset_report),
         project_report: Some(project_report),
@@ -179,13 +251,14 @@ fn project_issue_source_order(source: &str) -> u8 {
         "asset" => 2,
         "meta" => 3,
         "manifest" => 4,
-        _ => 5,
+        "fixture" => 5,
+        _ => 6,
     }
 }
-use super::super::fs::ProjectRoot;
+use super::super::fs::{read_json, ContentRoot, ProjectRoot};
 use super::super::model::{
-    AssetReport, GraphIssueSeverity, GraphReport, ProjectContent, ProjectData, ProjectIssue,
-    ProjectListItem, ProjectMeta, ProjectReport,
+    AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, ProjectContent, ProjectData,
+    ProjectIssue, ProjectListItem, ProjectMeta, ProjectReport,
 };
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_manifest_structure,
@@ -194,4 +267,4 @@ use super::super::validation::{
 use super::{legacy_chapter_layout_issues, load_project_graph_data};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};

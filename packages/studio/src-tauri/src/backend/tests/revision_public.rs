@@ -119,6 +119,7 @@ fn public_project_and_issue_json_field_names_remain_stable() {
                 "manifestRevision",
                 "metaRevision",
                 "nodeRevisions",
+                "fixtures",
                 "graphReport",
                 "assetReport",
                 "projectReport",
@@ -152,6 +153,18 @@ fn public_project_and_issue_json_field_names_remain_stable() {
             ["severity", "source", "code", "message", "file", "jsonPath", "nodeId", "edgeId",]
                 .map(str::to_string)
         )
+    );
+
+    // fixture 条目的公开 JSON 形状同样钉住：path + value 必有，title 可选。
+    let fixture_json = serde_json::to_value(FixtureEntry {
+        path: "content/fixtures/dawn.json".to_string(),
+        title: None,
+        value: serde_json::json!({ "state": {} }),
+    })
+    .unwrap();
+    assert_eq!(
+        keys(&fixture_json),
+        BTreeSet::from(["path", "value"].map(str::to_string))
     );
 
     let _ = fs::remove_dir_all(root);

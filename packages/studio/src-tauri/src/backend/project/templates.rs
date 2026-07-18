@@ -10,6 +10,7 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 - `content/nodes/*.json` are node script files. Each node file is an `Instruction[]` JSON array, not an object wrapper.
 - `content/manifest.json` defines character, background, and audio ids used by instructions.
 - `content/meta.json` stores global playback settings and the fixed stage size.
+- `content/fixtures/*.json` are custom preview scenes. Each file is one scene: a required `state` (NovelState snapshot), optional `title`, `persistent.unlock` id lists, and `uiHint.panel`. Validate against `.galstudio/schemas/fixture.json`.
 - `renderers/<id>/index.tsx` is a renderer layer entry file.
 
 ## Script Graph Rules
@@ -109,12 +110,14 @@ tsconfig.json
     nodeFile.json
     manifest.json
     meta.json
+    fixture.json
 content/
   manifest.json
   meta.json
   graph.json
   nodes/
     start.json
+  fixtures/
 renderers/
   default/
     index.tsx
@@ -176,6 +179,7 @@ Local JSON Schema snapshots are in `.galstudio/schemas/`:
 - `nodeFile.json` validates each `content/nodes/*.json` file.
 - `manifest.json` validates `content/manifest.json`.
 - `meta.json` validates `content/meta.json`.
+- `fixture.json` validates each `content/fixtures/*.json` file.
 
 These files are copied from the VibeGal-Studio product at project initialization time.
 
@@ -246,7 +250,7 @@ pub(crate) const PROJECT_REACT_DTS: &str =
 pub(crate) const PROJECT_TSCONFIG_JSON: &str =
     include_str!("../../../../templates/project-tsconfig.json");
 
-pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
+pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 5] = [
     (
         "graph.json",
         include_str!("../../../generated/contracts/graph.schema.json"),
@@ -263,10 +267,14 @@ pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 4] = [
         "meta.json",
         include_str!("../../../generated/contracts/meta.schema.json"),
     ),
+    (
+        "fixture.json",
+        include_str!("../../../generated/contracts/fixture.schema.json"),
+    ),
 ];
 
 /// 项目自描述文件全集（相对路径 → 内容）。
-const SELF_DESCRIPTION_FILES: [(&str, &str); 10] = [
+const SELF_DESCRIPTION_FILES: [(&str, &str); 11] = [
     ("AGENTS.md", PROJECT_AGENTS_MD),
     (".galstudio/README.md", PROJECT_README_MD),
     (".galstudio/renderer-contract.md", PROJECT_RENDERER_CONTRACT_MD),
@@ -277,6 +285,7 @@ const SELF_DESCRIPTION_FILES: [(&str, &str); 10] = [
     (".galstudio/schemas/nodeFile.json", PROJECT_SCHEMA_FILES[1].1),
     (".galstudio/schemas/manifest.json", PROJECT_SCHEMA_FILES[2].1),
     (".galstudio/schemas/meta.json", PROJECT_SCHEMA_FILES[3].1),
+    (".galstudio/schemas/fixture.json", PROJECT_SCHEMA_FILES[4].1),
 ];
 
 /// 初始化时写入整套自描述文件（调用方已确认不会覆盖既有文件）。

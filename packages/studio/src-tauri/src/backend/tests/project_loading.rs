@@ -540,3 +540,100 @@ fn open_project_reports_legacy_chapter_paths_without_resolving_them() {
     assert!(root.join("outside.json").exists());
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn open_project_loads_fixtures_sorted_by_file_name() {
+    let root = unique_temp_dir("fixtures-load");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    write_text(
+        &project.join("content/fixtures/b-second.json"),
+        r#"{"state":{"vars":{}}}"#,
+    );
+    write_text(
+        &project.join("content/fixtures/a-first.json"),
+        r#"{"title":"黎明重逢","state":{"vars":{}},"uiHint":{"panel":"gallery-cg"}}"#,
+    );
+    write_text(&project.join("content/fixtures/notes.txt"), "not json");
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let fixtures = opened.fixtures.expect("open_project 应返回 fixtures");
+
+    assert_eq!(fixtures.len(), 2, "只加载 *.json，按文件名排序");
+    assert_eq!(fixtures[0].path, "content/fixtures/a-first.json");
+    assert_eq!(fixtures[0].title.as_deref(), Some("黎明重逢"));
+    assert_eq!(fixtures[0].value["uiHint"]["panel"], "gallery-cg");
+    assert_eq!(fixtures[1].path, "content/fixtures/b-second.json");
+    assert_eq!(fixtures[1].title, None);
+    let report = opened.project_report.unwrap();
+    assert!(
+        !report
+            .project_issues
+            .iter()
+            .any(|issue| issue.source == "fixture"),
+        "合法 fixtures 不应产生 fixture 问题: {:?}",
+        report
+            .project_issues
+            .iter()
+            .map(|issue| &issue.code)
+            .collect::<Vec<_>>()
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn open_project_warns_and_skips_invalid_fixture_files() {
+    let root = unique_temp_dir("fixtures-invalid");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    write_text(&project.join("content/fixtures/good.json"), r#"{"state":{}}"#);
+    write_text(&project.join("content/fixtures/broken.json"), "{not json");
+    write_text(&project.join("content/fixtures/array.json"), "[]");
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let fixtures = opened.fixtures.unwrap();
+    assert_eq!(fixtures.len(), 1, "坏文件跳过、好文件保留");
+    assert_eq!(fixtures[0].path, "content/fixtures/good.json");
+
+    let report = opened.project_report.unwrap();
+    let fixture_issues: Vec<_> = report
+        .project_issues
+        .iter()
+        .filter(|issue| issue.code == "fixture_invalid")
+        .collect();
+    assert_eq!(fixture_issues.len(), 2);
+    for issue in &fixture_issues {
+        assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+        assert_eq!(issue.source, "fixture");
+    }
+    assert_eq!(
+        fixture_issues[0].file.as_deref(),
+        Some("content/fixtures/array.json")
+    );
+    assert_eq!(
+        fixture_issues[1].file.as_deref(),
+        Some("content/fixtures/broken.json")
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn open_project_returns_empty_fixtures_when_directory_is_absent() {
+    let root = unique_temp_dir("fixtures-absent");
+    let project = root.join("project");
+    write_minimal_project(&project);
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let fixtures = opened.fixtures.expect("fixtures 字段应存在");
+
+    assert!(fixtures.is_empty(), "content/fixtures 缺失时返回空列表");
+    let report = opened.project_report.unwrap();
+    assert!(
+        !report
+            .project_issues
+            .iter()
+            .any(|issue| issue.source == "fixture"),
+        "缺失 content/fixtures 不算问题"
+    );
+    let _ = fs::remove_dir_all(&root);
+}

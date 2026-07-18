@@ -66,6 +66,8 @@ Renderer-facing type artifacts: `packages/engine/src/rendererPublic.ts` is the g
 
 CLI renderer feedback loop for external Agents: `vibegal-cli renderer-check` runs static contract checks plus a real compile/typecheck through the bundled node worker (`--no-compile` skips it). `vibegal-cli renderer-snapshot <project> --out <dir>` headlessly mounts the renderer onto built-in scene fixtures (`packages/studio/src/export/snapshotScenes.ts`, served by `packages/studio/scripts/renderer-snapshot.mjs` + `src/export/snapshotHost.ts`) and writes PNG screenshots via headless Chrome (`VIBEGAL_SMOKE_BROWSER` overrides the executable). When adding exporter-side scripts, also register them in `packages/studio/scripts/prepare-web-exporter.mjs`.
 
+Appearance design module (archived spec `docs/roadmap-specs/archive/17-appearance-design-module.spec.md`): renderers optionally consume `manifest.uiSkins[].tokens` (skin id `"default"`, first-entry fallback) for appearance values; draggable parts must be fully geometry-token-driven and carry `data-ui-part`, advertised via the `layout-parts-v1` capability. Panel pages can be pre-opened by hosts through `window.__VIBEGAL_FIXTURE_UI__` (uiHint). Scene fixtures are single-sourced: built-ins in `packages/studio/src/export/snapshotScenes.ts` (shared by the Studio scene scrubber and CLI snapshot), project customs in `content/fixtures/*.json` (schema: `.galstudio/schemas/fixture.json`). The Appearance workspace edits tokens through `save_manifest` with draft + debounce + revision-queue semantics.
+
 Be conservative with user files. Initialization may add VibeGal-Studio files, but it must not silently overwrite existing files.
 
 Platform differences to keep in mind:

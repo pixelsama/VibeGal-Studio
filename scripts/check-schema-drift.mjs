@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 const generatedDir = "packages/studio/src-tauri/generated/contracts";
 const docsDir = "docs/script-graph/schemas";
-const schemaNames = ["graph", "nodeFile", "manifest", "meta"];
+const schemaNames = ["graph", "nodeFile", "manifest", "meta", "fixture"];
 const trackedFiles = [
   ...schemaNames.map((name) => `${generatedDir}/${name}.schema.json`),
   `${generatedDir}/diagnostics.json`,

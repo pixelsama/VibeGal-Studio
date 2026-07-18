@@ -4,11 +4,12 @@
  *
  * 由 CLI（Rust）以 `node renderer-snapshot.mjs --project <根> --renderer <id> --out <目录>`
  * 调用。流程：渲染层静态诊断 → 读 content 的 meta/manifest → probe 出内置快照
- * 场景 → 生成 snapshot-entry.tsx 并用 esbuild 打成浏览器 bundle → 落盘
+ * 场景并与 content/fixtures/*.json 的自定义场景合并 → 生成 snapshot-entry.tsx
+ * （内联完整场景列表）并用 esbuild 打成浏览器 bundle → 落盘
  * snapshot.html / scenes.json。Rust 侧随后用本地 HTTP 服务 + Chrome 打开
  * snapshot.html?scene=<id> 截图，浏览器宿主通过 /__vibegal_snapshot_result__ 回报。
  */
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -63,8 +64,9 @@ function snapshotStage(meta) {
 /**
  * 复用 TS 里的场景生成逻辑：snapshotScenes.ts 只有 type import，单文件
  * transform 产物自足，可以直接 dynamic import，无需解析任何依赖。
+ * 返回 probe 模块本身（buildSnapshotScenes / customSceneFromFixture 都在其中）。
  */
-async function probeSnapshotScenes(snapshotDir, manifest) {
+async function probeSnapshotScenes(snapshotDir) {
   const scenesSourcePath = path.join(studioRoot, "src/export/snapshotScenes.ts");
   const scenesSource = await readFile(scenesSourcePath, "utf8");
   const transformed = await esbuild.transform(scenesSource, {
@@ -78,11 +80,50 @@ async function probeSnapshotScenes(snapshotDir, manifest) {
   try {
     const probeUrl = pathToFileURL(probePath);
     probeUrl.searchParams.set("t", String(Date.now()));
-    const probeModule = await import(probeUrl.href);
-    return probeModule.buildSnapshotScenes(manifest);
+    return await import(probeUrl.href);
   } finally {
     await rm(probePath, { force: true });
   }
+}
+
+/**
+ * 读取项目 content/fixtures/*.json（按文件名排序），经 customSceneFromFixture
+ * 归一化为自定义场景。目录缺失 = 无自定义场景；坏文件 warn 到 stderr 并跳过，
+ * 不让整个快照失败（与 Rust loader 的 fixture_invalid 降级一致）。
+ */
+async function loadCustomFixtureScenes(projectDir, customSceneFromFixture) {
+  const fixturesDir = path.join(projectDir, "content", "fixtures");
+  let names;
+  try {
+    names = (await readdir(fixturesDir, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if (error && error.code === "ENOENT") return [];
+    throw error;
+  }
+  const scenes = [];
+  for (const name of names) {
+    const relPath = `content/fixtures/${name}`;
+    let json;
+    try {
+      json = JSON.parse(await readFile(path.join(fixturesDir, name), "utf8"));
+    } catch (error) {
+      process.stderr.write(
+        `[renderer-snapshot] 跳过无法解析的 fixture ${relPath}: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      continue;
+    }
+    try {
+      scenes.push(customSceneFromFixture(json, name.replace(/\.json$/, "")));
+    } catch (error) {
+      process.stderr.write(
+        `[renderer-snapshot] 跳过非法 fixture ${relPath}: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
+  }
+  return scenes;
 }
 
 async function main() {
@@ -113,15 +154,22 @@ async function main() {
   const snapshotDir = path.join(outDir, ".vibegal-snapshot");
   await mkdir(snapshotDir, { recursive: true });
 
-  const scenes = await probeSnapshotScenes(snapshotDir, manifest);
+  const probe = await probeSnapshotScenes(snapshotDir);
+  const builtinScenes = probe.buildSnapshotScenes(manifest);
+  const customScenes = await loadCustomFixtureScenes(projectDir, probe.customSceneFromFixture);
+  // 自定义 fixtures 排在内置场景之后（Spec 17 步骤 5：场景单源）。
+  const scenes = [...builtinScenes, ...customScenes];
 
   const rendererEntry = path.join(rendererDir, "index.tsx");
   const snapshotHostEntry = path.join(studioRoot, "src/export/snapshotHost.ts");
   const generatedEntry = path.join(snapshotDir, "snapshot-entry.tsx");
+  // 内联完整场景列表（含自定义 fixtures 的 state/persistent/uiHint/backlog），
+  // 宿主按 ?scene= 直接取用；manifest 仍单独传（runtime 的 unlock 注册表查询）。
   await writeFile(generatedEntry, [
     `import rendererManifest from ${JSON.stringify(toPosixPath(rendererEntry))};`,
     `import { startVibeGalSnapshotHost } from ${JSON.stringify(toPosixPath(snapshotHostEntry))};`,
     "startVibeGalSnapshotHost(rendererManifest, {",
+    `  scenes: ${JSON.stringify(scenes)},`,
     `  manifest: ${JSON.stringify(manifest)},`,
     `  stage: ${JSON.stringify(stage)},`,
     `  contentBase: "/content/",`,

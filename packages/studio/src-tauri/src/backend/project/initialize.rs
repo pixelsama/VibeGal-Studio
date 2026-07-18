@@ -23,6 +23,7 @@ pub(crate) fn ensure_initialization_targets_available(
         project_path.join(".galstudio/schemas/nodeFile.json"),
         project_path.join(".galstudio/schemas/manifest.json"),
         project_path.join(".galstudio/schemas/meta.json"),
+        project_path.join(".galstudio/schemas/fixture.json"),
     ] {
         ensure_can_create_file(&path)?;
     }

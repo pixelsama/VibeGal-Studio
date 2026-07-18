@@ -13,6 +13,7 @@ const docs = resolve(root, "docs/script-graph/schemas");
 const sourceFiles = [
   "src/schema.ts",
   "src/diagnostics.ts",
+  "src/fixtures.ts",
   "src/schemaExport.ts",
   "scripts/generate-contracts.ts",
   "package.json",

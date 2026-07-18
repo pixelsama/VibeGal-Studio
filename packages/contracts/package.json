@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./diagnostics": "./src/diagnostics.ts",
+    "./fixtures": "./src/fixtures.ts",
     "./schema": "./src/schema.ts",
     "./schema-export": "./src/schemaExport.ts",
     "./types": "./src/types.ts",

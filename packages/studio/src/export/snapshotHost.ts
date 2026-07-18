@@ -2,11 +2,15 @@
  * 快照宿主 —— renderer-snapshot 的浏览器侧最小运行时。
  *
  * CLI worker 把本文件与项目渲染层一起打进 bundle.js，由 snapshot.html 加载：
- * 按 URL 的 scene 参数取一个内置快照场景，用渲染层的 Component 直接渲染该
- * NovelState；就绪（图片 / 字体 / 两个 rAF）后通过 /__vibegal_snapshot_result__
- * 回传结果，CLI 据此截图。任何渲染错误也以同一通道上报并整屏显示。
+ * 按 URL 的 scene 参数从 worker 注入的完整场景列表（内置 + 项目自定义
+ * fixtures）取一个场景，用渲染层的 Component 直接渲染该 NovelState；就绪
+ * （图片 / 字体 / 两个 rAF）后通过 /__vibegal_snapshot_result__ 回传结果，
+ * CLI 据此截图。任何渲染错误也以同一通道上报并整屏显示。
  *
- * 与 webRuntimeHost 不同：这里没有播放器，场景是静态的，controls 全部 no-op。
+ * 面板类场景（Spec 17 §4.1）在挂载前注入 uiHint 全局，并把 fixture 的
+ * persistent / backlog 瘦身快照经 createInMemoryRuntimeServices 映射进
+ * runtime。与 webRuntimeHost 不同：这里没有播放器，场景是静态的，
+ * controls 全部 no-op。
  */
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -19,9 +23,11 @@ import {
   type RendererProps,
   type RuntimeControls,
 } from "@vibegal/engine";
-import { buildSnapshotScenes } from "./snapshotScenes";
+import { fixturePersistentToGlobal, type SnapshotScene } from "./snapshotScenes";
 
 export interface SnapshotHostOptions {
+  /** worker 合并后的完整场景列表（内置场景 + 项目自定义 fixtures）。 */
+  scenes: SnapshotScene[];
   manifest: Manifest;
   stage: Meta["stage"];
   contentBase: string;
@@ -129,12 +135,13 @@ async function waitForSnapshotReady(): Promise<void> {
 /**
  * 启动快照宿主：解析 scene 参数 → 校验渲染层 manifest → 挂载静态场景 → 就绪上报。
  * rendererManifest 是 unknown（来自项目渲染层），校验不过时按 manifest 错误上报。
+ * 未知 scene id 回退到第一个场景渲染，但上报仍用请求的 id（CLI 等的是它的回调）。
  */
 export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions: SnapshotHostOptions): void {
-  const scenes = buildSnapshotScenes(hostOptions.manifest);
+  const scenes = hostOptions.scenes;
   const requestedSceneId = new URLSearchParams(window.location.search).get("scene");
   const scene = scenes.find((item) => item.id === requestedSceneId) ?? scenes[0];
-  const sceneId = scene?.id ?? requestedSceneId ?? "unknown";
+  const sceneId = requestedSceneId ?? scene?.id ?? "unknown";
 
   let mountedRoot: Root | null = null;
   const fail = (error: unknown) => {
@@ -178,7 +185,17 @@ export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions:
     fail(event.reason);
   });
 
-  // 快照是静态场景：controls 全部 no-op，runtime 用内存服务顶住设置/存档类 API。
+  // uiHint（Spec 17 §4.1）：挂载前注入，渲染层在初始化期读一次；无 uiHint
+  // 的场景清除该全局，避免同页调试时读到上一场残留。
+  const fixtureUiTarget = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
+  if (scene.uiHint) {
+    fixtureUiTarget.__VIBEGAL_FIXTURE_UI__ = scene.uiHint;
+  } else {
+    delete fixtureUiTarget.__VIBEGAL_FIXTURE_UI__;
+  }
+
+  // 快照是静态场景：controls 全部 no-op；runtime 用内存服务顶住设置/存档类
+  // API，fixture 的 persistent/backlog 瘦身快照在这里映射进面板数据。
   const controls: RuntimeControls = {
     advance: () => {},
     choose: () => {},
@@ -196,6 +213,8 @@ export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions:
     runtime: createInMemoryRuntimeServices({
       getState: () => scene.state,
       manifest: hostOptions.manifest,
+      initialGlobalPersistent: fixturePersistentToGlobal(scene.persistent),
+      initialBacklog: scene.backlog,
     }),
   };
 
@@ -214,6 +233,6 @@ export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions:
   }
 
   void waitForSnapshotReady().then(() => {
-    reportSnapshotResult(scene.id, "ok");
+    reportSnapshotResult(sceneId, "ok");
   });
 }

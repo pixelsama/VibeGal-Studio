@@ -3882,7 +3882,12 @@ mod tests {
         .unwrap();
 
         assert!(output.ok, "快照应全部成功: {:?}", output.scenes);
-        assert_eq!(output.scenes.len(), 4);
+        // 场景目录会随 fixtures 扩充增长（内置 4 个 + 项目自定义），不断言具体数量。
+        assert!(
+            !output.scenes.is_empty(),
+            "快照至少应包含内置场景: {:?}",
+            output.scenes
+        );
         for scene in &output.scenes {
             assert_eq!(scene.status, "ok", "场景 {} 应成功: {:?}", scene.id, scene.error);
             let png = out_dir.join(format!("default-{}.png", scene.id));

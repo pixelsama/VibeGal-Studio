@@ -44,7 +44,7 @@ Required fields:
 Optional fields:
 
 - `description`
-- `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings. It declares `gallery-ui-v1` when it also provides default CG Gallery, replay, music room, and ending list pages.
+- `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings. It declares `gallery-ui-v1` when it also provides default CG Gallery, replay, music room, and ending list pages. It declares `layout-parts-v1` when its draggable parts are fully driven by geometry tokens and carry `data-ui-part` (see "Appearance Tokens, `data-ui-part`, and uiHint" below).
 
 VibeGal-Studio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
 
@@ -107,6 +107,31 @@ VibeGal-Studio presents renderers inside a fixed-size stage defined by `content/
 ```
 
 The Studio preview scales that stage to fit the available panel with letterboxing. Renderer components should size their root to `width: "100%"` and `height: "100%"` and treat `props.stage` as the coordinate system. Avoid `100vw` / `100vh` for renderer layout because project renderers are embedded inside Studio panels and may later be recorded or exported at the project stage size.
+
+## Appearance Tokens, `data-ui-part`, and uiHint (Optional, Spec 17)
+
+Renderers may consume appearance design tokens from `manifest.uiSkins`. This is an opt-in convention, not a UI framework: renderers that ignore it keep working, and third-party renderers may consume a subset or define their own extension keys.
+
+**Skin selection rule**: consume the uiSkin with id `"default"`. If the registry has no `"default"` entry, fall back to the first entry and emit a `console.warn`. If the registry is empty, use built-in defaults for everything.
+
+**Token keys** (flat dotted keys in `uiSkins.<id>.tokens`, values `string | number`; all keys optional, missing keys fall back to the renderer's built-in values):
+
+```text
+dialogueBox.x / .y / .width / .height      part geometry in stage coordinates (px)
+dialogueBox.bgColor / .bgOpacity / .radius / .padding / .borderColor
+dialogueBox.textColor / .fontSize / .fontFamily / .lineHeight
+nameBox.x / .y / .width / .height
+nameBox.bgColor / .textColor / .fontSize / .visible
+choiceButton.bgColor / .textColor / .hoverColor / .radius / .fontSize
+hud.textColor / .bgColor / .fontSize / .visible
+stage.fontFamily                           global font (may reference manifest.fonts families)
+```
+
+**Geometry semantics**: the origin is the stage top-left corner; `x`/`y` are the part's top-left corner, `width`/`height` its size, all in stage-coordinate px (i.e. the `content/meta.json` stage coordinate system). Numeric `lineHeight` / `padding` tokens are px.
+
+**Draggable parts (`layout-parts-v1`)**: a renderer declares the `layout-parts-v1` capability in its manifest when Studio stage dragging is supported. Each draggable part must (1) be positioned and sized entirely by its geometry tokens (absolute positioning in stage coordinates, with defaults when tokens are missing), and (2) carry `data-ui-part="<partName>"` on its root element, one-to-one with the token key prefix (`dialogueBox.x` ↔ `data-ui-part="dialogueBox"`). A part must NOT carry `data-ui-part` unless its layout is fully token-driven, otherwise drag values and visuals diverge. The bundled default renderer marks `dialogueBox` and `nameBox` this way.
+
+**uiHint channel**: hosts (Studio scene fixtures, CLI `renderer-snapshot`) may set `window.__VIBEGAL_FIXTURE_UI__ = { panel: "<id>" }` before mounting the renderer. Renderers may read it once as their initial UI state: `save` / `history` / `settings` open the corresponding panel, and `gallery-cg` / `gallery-replay` / `gallery-music` / `gallery-endings` open the Gallery page tabs. Without the global, behavior must be exactly as before. Read it defensively (`typeof window === "undefined"` guard plus structural validation).
 
 ## NovelState
 

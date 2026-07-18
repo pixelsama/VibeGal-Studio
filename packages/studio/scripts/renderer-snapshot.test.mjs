@@ -44,6 +44,13 @@ const stageSource = [
   "}",
 ].join("\n");
 
+/** 内置场景 id：4 剧情 + 7 面板（Spec 17 §4.1），顺序固定。 */
+const BUILTIN_SCENE_IDS = [
+  "dialogue", "narration", "choice", "sprites",
+  "save", "history", "settings",
+  "gallery-cg", "gallery-replay", "gallery-music", "gallery-endings",
+];
+
 function runSnapshot(project, outDir) {
   return spawnSync(process.execPath, [
     script,
@@ -63,10 +70,7 @@ test("renderer snapshot emits bundle, html and scenes metadata", async () => {
     const output = JSON.parse(result.stdout);
     assert.equal(output.ok, true);
     assert.equal(output.rendererId, "default");
-    assert.deepEqual(
-      output.scenes.map((scene) => scene.id),
-      ["dialogue", "narration", "choice", "sprites"],
-    );
+    assert.deepEqual(output.scenes.map((scene) => scene.id), BUILTIN_SCENE_IDS);
     assert.deepEqual(output.stage, { width: 1280, height: 720 });
 
     const snapshotDir = path.join(outDir, ".vibegal-snapshot");
@@ -77,6 +81,45 @@ test("renderer snapshot emits bundle, html and scenes metadata", async () => {
     const scenesJson = JSON.parse(await readFile(path.join(snapshotDir, "scenes.json"), "utf8"));
     assert.deepEqual(scenesJson.scenes, output.scenes);
     assert.deepEqual(scenesJson.stage, output.stage);
+
+    // 生成的入口内联完整场景列表（含面板场景的 uiHint），宿主按 ?scene= 直接取用
+    const entry = await readFile(path.join(snapshotDir, "snapshot-entry.tsx"), "utf8");
+    assert.ok(entry.includes("scenes: ["), "snapshot-entry.tsx 应内联 scenes 列表");
+    assert.ok(entry.includes('"panel":"gallery-cg"'), "面板场景的 uiHint 应随 scenes 内联");
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("renderer snapshot merges project fixtures after builtin scenes", async () => {
+  const project = await snapshotProject(stageSource);
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "vibegal-snapshot-output-"));
+
+  try {
+    const fixturesDir = path.join(project, "content", "fixtures");
+    await mkdir(fixturesDir, { recursive: true });
+    await writeFile(path.join(fixturesDir, "dawn-reunion.json"), JSON.stringify({
+      title: "黎明重逢",
+      state: { dialogue: { text: "自定义场景台词", typedLen: 7, fullyRevealed: true } },
+      persistent: { unlock: { cg: ["smoke_ocean"] } },
+      uiHint: { panel: "gallery-cg" },
+    }));
+    // 坏 fixture：warn 跳过，不影响整体快照
+    await writeFile(path.join(fixturesDir, "broken.json"), JSON.stringify({ title: "无状态" }));
+
+    const result = runSnapshot(project, outDir);
+    assert.equal(result.status, 0, result.stdout || result.stderr);
+    assert.match(result.stderr, /broken\.json/);
+    const output = JSON.parse(result.stdout);
+    assert.deepEqual(output.scenes.map((scene) => scene.id), [...BUILTIN_SCENE_IDS, "dawn-reunion"]);
+    assert.equal(output.scenes.at(-1).title, "黎明重逢");
+
+    // 自定义场景的 state/uiHint/persistent 完整内联进宿主入口
+    const entry = await readFile(path.join(outDir, ".vibegal-snapshot", "snapshot-entry.tsx"), "utf8");
+    assert.ok(entry.includes("自定义场景台词"), "自定义场景 state 应内联");
+    assert.ok(entry.includes('"id":"dawn-reunion"'), "自定义场景 id 应内联");
+    assert.ok(entry.includes("smoke_ocean"), "自定义场景 persistent 应内联");
   } finally {
     await rm(project, { recursive: true, force: true });
     await rm(outDir, { recursive: true, force: true });

@@ -1,9 +1,9 @@
-export type WorkspaceId = "render" | "script" | "assets" | "project";
+export type WorkspaceId = "render" | "script" | "assets" | "project" | "appearance";
 
 export type NavigationLocation =
   | { type: "project-list" }
   | { type: "settings" }
-  | { type: "workspace"; workspace: "render" | "assets" | "project" }
+  | { type: "workspace"; workspace: "render" | "assets" | "project" | "appearance" }
   | { type: "script-graph" }
   | { type: "script-node"; nodeId: string };
 

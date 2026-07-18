@@ -20,7 +20,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(project.join("AGENTS.md").is_file());
     assert!(project.join(".galstudio/README.md").is_file());
     assert!(project.join(".galstudio/renderer-contract.md").is_file());
-    for schema_name in ["graph", "nodeFile", "manifest", "meta"] {
+    for schema_name in ["graph", "nodeFile", "manifest", "meta", "fixture"] {
         let schema_path = project.join(format!(".galstudio/schemas/{schema_name}.json"));
         assert!(schema_path.is_file(), "missing schema {}", schema_name);
         assert_eq!(

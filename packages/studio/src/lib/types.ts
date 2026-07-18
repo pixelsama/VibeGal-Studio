@@ -94,7 +94,7 @@ export interface AssetReport {
 // ──────────────────────────────────────────────
 
 /** 问题来源，决定全局面板的分组 */
-export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta";
+export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta" | "fixture";
 
 export interface ProjectIssue {
   severity: GraphIssueSeverity;
@@ -110,6 +110,17 @@ export interface ProjectIssue {
 
 export interface ProjectReport {
   projectIssues: ProjectIssue[];
+}
+
+/**
+ * content/fixtures/*.json 的一个自定义场景 fixture（Spec 17 步骤 5）。
+ * value 是文件原始 JSON 对象；结构校验见 .galstudio/schemas/fixture.json。
+ */
+export interface FixtureEntry {
+  /** 相对项目根的路径，如 "content/fixtures/dawn-reunion.json" */
+  path: string;
+  title?: string;
+  value: unknown;
 }
 
 export interface GraphIssueFocusRequest {
@@ -196,6 +207,8 @@ export interface ProjectData {
   /** content/meta.json 的 revision，用于项目全局设置写入冲突检测 */
   metaRevision?: FileRevision;
   nodeRevisions?: Record<string, FileRevision | null>;
+  /** content/fixtures/*.json 的自定义场景（按文件名排序）；无该目录时为空数组 */
+  fixtures?: FixtureEntry[];
   /** 图结构一致性报告；问题不阻断项目加载 */
   graphReport?: GraphReport;
   /** 资产一致性报告；问题不阻断项目加载 */

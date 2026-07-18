@@ -1,0 +1,72 @@
+{
+  "title": "黎明重逢",
+  "state": {
+    "vars": {
+      "affection": 3
+    },
+    "background": "ocean_dawn",
+    "backgroundTrans": "fade",
+    "backgroundMs": 1000,
+    "sprites": [
+      {
+        "id": "protagonist",
+        "pos": "center",
+        "expr": "default",
+        "changeId": 1,
+        "justEntered": false,
+        "prevExpr": null,
+        "prevPos": null,
+        "trans": "fade",
+        "leaving": false
+      }
+    ],
+    "speaker": {
+      "id": "protagonist",
+      "name": "野生舰娘",
+      "color": "#9fc8e3",
+      "expr": "default"
+    },
+    "dialogue": {
+      "text": "……你真的来了。黎明的海，比梦里还要安静。",
+      "typedLen": 21,
+      "fullyRevealed": true
+    },
+    "narration": null,
+    "choice": null,
+    "effects": [],
+    "transitions": [],
+    "audio": {
+      "bgm": {
+        "id": "bgm_main",
+        "fade": 1500,
+        "loop": true
+      },
+      "sfx": [],
+      "voice": null
+    },
+    "flags": {
+      "isWaiting": false,
+      "isAutoPlay": false,
+      "skipMode": "off",
+      "isRecording": false,
+      "chapterIndex": 0,
+      "progress": {
+        "current": 3,
+        "total": 10
+      }
+    },
+    "currentCueMs": null
+  },
+  "persistent": {
+    "unlock": {
+      "cg": [
+        "smoke_ocean"
+      ],
+      "music": [
+        "bgm_main"
+      ],
+      "replay": [],
+      "endings": []
+    }
+  }
+}

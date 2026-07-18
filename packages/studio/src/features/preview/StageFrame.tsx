@@ -41,7 +41,10 @@ export function StageFrame({ stage, children }: StageFrameProps) {
   return (
     <div ref={containerRef} style={outerStyle}>
       <div style={{ width: stage.width * scale, height: stage.height * scale, ...scaledSlotStyle }}>
+        {/* data-stage-surface：外观面板拖拽 overlay 的舞台锚点（Spec 17 §7）。
+            这层带 transform: scale，getBoundingClientRect 即缩放后的舞台视觉盒。 */}
         <div
+          data-stage-surface
           style={{
             width: stage.width,
             height: stage.height,

@@ -145,6 +145,19 @@ pub struct NodeEntry {
     pub data: Option<serde_json::Value>,
 }
 
+/// content/fixtures/*.json 的一个自定义场景 fixture（Spec 17 步骤 5）。
+/// loader 只保证单文件「是 JSON 对象」并提取 title；完整结构校验由
+/// fixture.schema.json（外部 Agent 自校验）与 snapshot worker 的形状归一化承担。
+#[derive(Serialize, Clone)]
+pub struct FixtureEntry {
+    /// 相对项目根的路径，如 "content/fixtures/dawn-reunion.json"
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// 文件原始 JSON（对象），未经 schema 投影
+    pub value: serde_json::Value,
+}
+
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GraphIssueSeverity {
     #[serde(rename = "error")]
@@ -240,6 +253,8 @@ pub struct ProjectData {
     pub meta_revision: Option<FileRevision>,
     #[serde(rename = "nodeRevisions", skip_serializing_if = "Option::is_none")]
     pub node_revisions: Option<HashMap<String, Option<FileRevision>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixtures: Option<Vec<FixtureEntry>>,
     #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]
     pub graph_report: Option<GraphReport>,
     #[serde(rename = "assetReport", skip_serializing_if = "Option::is_none")]

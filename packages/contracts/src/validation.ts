@@ -6,10 +6,11 @@ import {
   type DiagnosticCode,
   type DiagnosticSeverity,
   type DiagnosticSource,
+  type ContractDocumentName,
   type ContractStructuralPolicy,
 } from "./diagnostics";
 import { InstructionSchema } from "./schema";
-import { SCHEMAS, type SchemaName } from "./schemaExport";
+import { SCHEMAS } from "./schemaExport";
 
 export interface ContractInputIssue {
   code: DiagnosticCode;
@@ -22,7 +23,7 @@ export interface ContractInputIssue {
 const MAX_CONTRACT_ISSUES = 64;
 
 export function validateContractInput(
-  schemaName: SchemaName,
+  schemaName: ContractDocumentName,
   input: unknown,
 ): ContractInputIssue[] {
   if (schemaName === "nodeFile") return validateNodeFile(input);
@@ -84,7 +85,7 @@ function validateNodeFile(input: unknown): ContractInputIssue[] {
 }
 
 function structuralCode(
-  schemaName: Exclude<SchemaName, "nodeFile">,
+  schemaName: Exclude<ContractDocumentName, "nodeFile">,
   input: unknown,
   jsonPath: string,
 ): DiagnosticCode {

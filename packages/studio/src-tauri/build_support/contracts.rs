@@ -1,17 +1,19 @@
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
-pub const CONTRACT_ARTIFACTS: [&str; 5] = [
+pub const CONTRACT_ARTIFACTS: [&str; 6] = [
     "nodeFile.schema.json",
     "graph.schema.json",
     "manifest.schema.json",
     "meta.schema.json",
+    "fixture.schema.json",
     "diagnostics.json",
 ];
 
-pub const CONTRACT_SOURCES: [&str; 5] = [
+pub const CONTRACT_SOURCES: [&str; 6] = [
     "src/schema.ts",
     "src/diagnostics.ts",
+    "src/fixtures.ts",
     "src/schemaExport.ts",
     "scripts/generate-contracts.ts",
     "package.json",

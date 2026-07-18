@@ -88,7 +88,7 @@ for (const md of walkMarkdown(docsDir)) {
 }
 
 assertExists("docs/script-graph/archive/README.md");
-for (const schemaName of ["graph.json", "nodeFile.json", "manifest.json", "meta.json"]) {
+for (const schemaName of ["graph.json", "nodeFile.json", "manifest.json", "meta.json", "fixture.json"]) {
   assertExists(path.join("docs/script-graph/schemas", schemaName));
 }
 

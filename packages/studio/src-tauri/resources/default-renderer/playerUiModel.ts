@@ -26,6 +26,43 @@ export const PLAYER_MENU_PAGES = [
 export type PlayerMenuPage = (typeof PLAYER_MENU_PAGES)[number]["id"];
 export type PlayerSlotKind = "quick" | "auto" | "manual";
 
+/**
+ * uiHint 面板 id（Spec 17 第 4.1 节）：fixture 宿主在挂载渲染层前设置
+ * `window.__VIBEGAL_FIXTURE_UI__ = { panel: "<id>" }`，渲染层把它当作初始 UI 状态。
+ * gallery-* 四个 id 映射到对应的 Gallery 菜单页。
+ */
+export type FixtureUiPanelId =
+  | "save"
+  | "history"
+  | "settings"
+  | "gallery-cg"
+  | "gallery-replay"
+  | "gallery-music"
+  | "gallery-endings";
+
+const FIXTURE_UI_PANEL_PAGES: Record<FixtureUiPanelId, PlayerMenuPage> = {
+  save: "save",
+  history: "history",
+  settings: "settings",
+  "gallery-cg": "gallery",
+  "gallery-replay": "replay",
+  "gallery-music": "music",
+  "gallery-endings": "endings",
+};
+
+/**
+ * 读取一次 uiHint（仅在挂载时调用）：无该全局、结构非法或 panel 未知时返回 null，
+ * 此时行为与现状完全一致。SSR / 非浏览器环境下安全返回 null。
+ */
+export function readFixtureUiHintMenuPage(): PlayerMenuPage | null {
+  if (typeof window === "undefined") return null;
+  const hint = (window as { __VIBEGAL_FIXTURE_UI__?: unknown }).__VIBEGAL_FIXTURE_UI__;
+  if (!hint || typeof hint !== "object") return null;
+  const panel = (hint as { panel?: unknown }).panel;
+  if (typeof panel !== "string") return null;
+  return (FIXTURE_UI_PANEL_PAGES as Record<string, PlayerMenuPage>)[panel] ?? null;
+}
+
 export interface PlayerSlotView {
   slotId: string;
   kind: PlayerSlotKind;
