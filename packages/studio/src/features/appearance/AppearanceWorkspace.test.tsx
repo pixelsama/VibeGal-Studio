@@ -95,6 +95,18 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("grid-column:1;grid-row:1;min-width:0;min-height:0;height:100%");
   });
 
+  it("宫格卡片可点击：每个场景渲染为带 data-scene-id 的按钮，供点击跳转单场景", () => {
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace project={makeProject()} rendererId="default" onSaved={() => {}} />,
+    );
+
+    // 11 个内置场景各一张可点卡片（button 保证键盘可达，data-scene-id 标识目标场景）
+    const cards = html.match(/<button type="button" class="gs-scene-card" data-scene-id="[^"]+"/g) ?? [];
+    expect(cards.length).toBe(11);
+    expect(html).toContain('data-scene-id="dialogue"');
+    expect(html).toContain('data-scene-id="gallery-endings"');
+  });
+
   it("分组渲染：有 default skin 时显示七组属性与字体 datalist 候选", () => {
     const project = makeProject({
       default: { name: "默认外观", assets: {}, tokens: { "dialogueBox.x": 120 } },

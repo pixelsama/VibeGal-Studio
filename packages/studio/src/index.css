@@ -307,6 +307,29 @@ button:focus-visible {
   color: var(--accent-bright);
 }
 
+/* ── 外观宫格场景卡片：整卡可点，点击跳转单场景设计面（AppearanceWorkspace） ── */
+.gs-scene-card {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+/* hover/focus 高亮用外发光环（缩略图边框色是内联样式，外部 CSS 覆盖不了） */
+.gs-scene-card > div {
+  transition: box-shadow 120ms ease;
+}
+.gs-scene-card:hover > div,
+.gs-scene-card:focus-visible > div {
+  box-shadow: 0 0 0 2px var(--accent-bright);
+}
+
 /* ── 滚动条：细化并跟随主题 token ─────────────────────────────────── */
 * {
   scrollbar-width: thin;

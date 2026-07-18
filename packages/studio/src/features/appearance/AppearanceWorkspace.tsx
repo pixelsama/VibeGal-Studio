@@ -29,6 +29,7 @@ import { EmptyState } from "../common/EmptyState";
 import { Button } from "../common/Button";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 import { SceneFixtureView, fixtureScenesForPreview, setFixtureUiHintGlobal } from "../preview/SceneFixtureView";
+import type { FixtureScene } from "../../export/snapshotScenes";
 import {
   mergeTokenOverrides,
   readSkinTokens,
@@ -222,6 +223,15 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
     setFixtureUiHintGlobal(activeScene?.uiHint);
     setViewMode("single");
   };
+  // 宫格卡片点击直达对应场景的单场景设计面。uiHint 必须先于挂载写入目标
+  // 场景的 hint（与 Preview 同一时序约定）——不能复用 showSingle，它写的
+  // 是旧 activeScene 的 hint（setSceneId 尚未生效）。
+  const openSceneInDesign = (scene: FixtureScene) => {
+    setFixtureUiHintGlobal(scene.uiHint);
+    setSceneId(scene.id);
+    setSelectedPart(null);
+    setViewMode("single");
+  };
   const selectScene = (id: string) => {
     setFixtureUiHintGlobal(scenes.find((scene) => scene.id === id)?.uiHint);
     setSelectedPart(null);
@@ -342,10 +352,20 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
               <div style={gridStyle}>
                 {scenes.map((scene) => (
                   <figure key={scene.id} style={gridCellStyle}>
-                    <div style={{ ...gridStageBoxStyle, aspectRatio: `${stage.width} / ${stage.height}` }}>
-                      <SceneFixtureView project={displayProject} renderer={renderer} scene={scene} />
-                    </div>
-                    <figcaption style={gridCaptionStyle}>{scene.title}</figcaption>
+                    {/* 整卡可点（缩略图 + 标题），button 保证键盘可达；
+                        hover/focus 高亮见 index.css 的 .gs-scene-card */}
+                    <button
+                      type="button"
+                      className="gs-scene-card"
+                      data-scene-id={scene.id}
+                      title={`在单场景中设计「${scene.title}」`}
+                      onClick={() => openSceneInDesign(scene)}
+                    >
+                      <div style={{ ...gridStageBoxStyle, aspectRatio: `${stage.width} / ${stage.height}` }}>
+                        <SceneFixtureView project={displayProject} renderer={renderer} scene={scene} />
+                      </div>
+                      <span style={gridCaptionStyle}>{scene.title}</span>
+                    </button>
                   </figure>
                 ))}
               </div>
@@ -459,6 +479,8 @@ const gridStageBoxStyle: React.CSSProperties = {
 };
 
 const gridCaptionStyle: React.CSSProperties = {
+  // 卡片标题渲染为 button 内的 span（figcaption 不能嵌在交互元素里），需显式块级
+  display: "block",
   marginTop: "var(--space-1)",
   fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
