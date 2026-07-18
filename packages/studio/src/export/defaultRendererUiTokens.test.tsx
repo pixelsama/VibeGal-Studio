@@ -117,10 +117,29 @@ describe("resolveUiTokens", () => {
     expect(tokens.dialogueBox.y).toBe(DEFAULT_UI_TOKENS.dialogueBox.y);
     expect(tokens.nameBox.visible).toBe(false);
   });
+
+  it("resolvesNullableGeometryTokensToNullWhenMissing", () => {
+    const tokens = resolveUiTokens(baseManifest());
+    expect(tokens.hud.x).toBeNull();
+    expect(tokens.hud.y).toBeNull();
+    expect(tokens.choiceBox.height).toBeNull();
+    expect(tokens.nameBox.bgColor).toBeNull();
+
+    const overridden = resolveUiTokens(manifestWithTokens({
+      "hud.x": 620,
+      "hud.y": 640,
+      "choiceBox.height": 300,
+      "nameBox.bgColor": "#112233",
+    }));
+    expect(overridden.hud.x).toBe(620);
+    expect(overridden.hud.y).toBe(640);
+    expect(overridden.choiceBox.height).toBe(300);
+    expect(overridden.nameBox.bgColor).toBe("#112233");
+  });
 });
 
 describe("default renderer ui tokens rendering", () => {
-  it("rendersTheDialogueBoxWithTheLegacyHardcodedGeometryWhenNoTokensExist", () => {
+  it("rendersTheDialogueBoxWithTheBuiltinGeometryAndFrostedDesignWhenNoTokensExist", () => {
     const html = renderToStaticMarkup(<DialogueBox state={dialogueState()} manifest={baseManifest()} />);
 
     expect(html).toContain('data-ui-part="dialogueBox"');
@@ -128,32 +147,35 @@ describe("default renderer ui tokens rendering", () => {
     expect(html).toContain("top:497px");
     expect(html).toContain("width:1125.84px");
     expect(html).toContain("height:175px");
-    expect(html).toContain("border-radius:6px");
+    expect(html).toContain("border-radius:18px");
     expect(html).toContain("padding:24px 32px 28px");
-    expect(html).toContain("color:#eef2f7");
-    expect(html).toContain("font-size:26px");
-    expect(html).toContain("line-height:44.2px");
-    expect(html).toContain("background:linear-gradient(to top, rgba(10,16,30,0.86), rgba(10,16,30,0.7))");
-    expect(html).toContain("border:1px solid #ff7eb655");
-    expect(html).toContain("border-top:2px solid #ff7eb6");
+    expect(html).toContain("color:#3a3f55");
+    expect(html).toContain("font-size:23px");
+    expect(html).toContain("line-height:41.4px");
+    // 内置磨砂白 + 发丝白边 + 顶边渐变条 + 继续指示
+    expect(html).toContain("background:rgba(255, 255, 255, 0.86)");
+    expect(html).toContain("border:1px solid rgba(255, 255, 255, 0.65)");
+    expect(html).toContain("linear-gradient(90deg, #ff6f9f, #5cb8e6)");
+    expect(html).toContain("data-continue-indicator");
   });
 
-  it("rendersTheNameBoxWithLegacyGeometryAndTheSpeakerColor", () => {
+  it("rendersTheNameBoxPillWithTheSpeakerColorByDefault", () => {
     const html = renderToStaticMarkup(<DialogueBox state={dialogueState()} manifest={baseManifest()} />);
 
     expect(html).toContain('data-ui-part="nameBox"');
-    expect(html).toContain("left:102.08px");
-    expect(html).toContain("top:481px");
-    expect(html).toContain("background:rgba(8,12,22,0.95)");
-    expect(html).toContain("color:#ff7eb6");
-    expect(html).toContain("font-size:20px");
+    expect(html).toContain("left:109.08px");
+    expect(html).toContain("top:479px");
+    expect(html).toContain("border-radius:999px");
+    // bgColor 缺省 = 跟随说话人颜色；文字色默认白
+    expect(html).toContain("background:#ff7eb6");
+    expect(html).toContain("color:#ffffff");
+    expect(html).toContain("font-size:17px");
   });
 
-  it("keepsTheNarrationGradientAndOmitsTheNameBoxWithoutSpeaker", () => {
+  it("keepsTheSameFrostedBoxForNarrationAndOmitsTheNameBoxWithoutSpeaker", () => {
     const html = renderToStaticMarkup(<DialogueBox state={narrationState()} manifest={baseManifest()} />);
 
-    expect(html).toContain("background:linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.55))");
-    expect(html).toContain("border:1px solid rgba(255,255,255,0.12)");
+    expect(html).toContain("background:rgba(255, 255, 255, 0.86)");
     expect(html).not.toContain('data-ui-part="nameBox"');
   });
 
@@ -193,20 +215,46 @@ describe("default renderer ui tokens rendering", () => {
     expect(html).toContain("background:color-mix(in srgb, #112233 50%, transparent)");
   });
 
-  it("rendersChoiceButtonsWithLegacyStylesByDefaultAndOverridesThemWithTokens", () => {
+  it("rendersTheChoiceBoxPartWithBuiltinGeometryAndOverridesItWithTokens", () => {
     const state = createInitialState();
     state.choice = { choices: [{ text: "去天台", to: "roof" }] };
 
     const legacy = renderStage(state, baseManifest());
-    expect(legacy).toContain("background:rgba(18, 19, 21, 0.88)");
-    expect(legacy).toContain("border-radius:5px");
-    expect(legacy).toContain("font-size:15px");
+    expect(legacy).toContain('data-ui-part="choiceBox"');
+    expect(legacy).toContain("left:400px");
+    expect(legacy).toContain("top:170px");
+    expect(legacy).toContain("width:480px");
+    expect(legacy).toContain("max-height:42%");
+
+    const themed = renderStage(state, manifestWithTokens({
+      "choiceBox.x": 100,
+      "choiceBox.y": 200,
+      "choiceBox.width": 560,
+      "choiceBox.height": 300,
+    }));
+    expect(themed).toContain("left:100px");
+    expect(themed).toContain("top:200px");
+    expect(themed).toContain("width:560px");
+    expect(themed).toContain("max-height:300px");
+  });
+
+  it("rendersChoiceButtonsWithBuiltinStylesByDefaultAndOverridesThemWithTokens", () => {
+    const state = createInitialState();
+    state.choice = { choices: [{ text: "去天台", to: "roof" }] };
+
+    const legacy = renderStage(state, baseManifest());
+    expect(legacy).toContain("background:rgba(255, 255, 255, 0.9)");
+    expect(legacy).toContain("border-radius:14px");
+    expect(legacy).toContain("font-size:16px");
     expect(legacy).toContain("[data-choice-to]:not(:disabled):hover");
+    // 默认悬停：樱粉底 + 白字
+    expect(legacy).toContain("#ff6f9f");
 
     const themed = renderStage(state, manifestWithTokens({
       "choiceButton.bgColor": "#101010",
       "choiceButton.textColor": "#eeeeee",
       "choiceButton.hoverColor": "#ff00ff",
+      "choiceButton.hoverTextColor": "#00ff00",
       "choiceButton.radius": 9,
       "choiceButton.fontSize": 18,
     }));
@@ -215,13 +263,21 @@ describe("default renderer ui tokens rendering", () => {
     expect(themed).toContain("border-radius:9px");
     expect(themed).toContain("font-size:18px");
     expect(themed).toContain("#ff00ff");
+    expect(themed).toContain("#00ff00");
   });
 
-  it("rendersTheHudWithLegacyStylesByDefaultAndHidesItWhenHudVisibleIsZero", () => {
+  it("rendersTheHudPartAnchoredTopRightByDefaultAndReposItWithTokens", () => {
     const legacy = renderStage(createInitialState(), baseManifest());
+    expect(legacy).toContain('data-ui-part="hud"');
     expect(legacy).toContain('data-player-action="menu"');
-    expect(legacy).toContain("background:rgba(14, 15, 17, 0.78)");
+    expect(legacy).toContain("right:16px");
+    expect(legacy).toContain("top:14px");
+    expect(legacy).toContain("background:rgba(18, 20, 30, 0.45)");
     expect(legacy).toContain("font-size:12px");
+
+    const moved = renderStage(createInitialState(), manifestWithTokens({ "hud.x": 620, "hud.y": 640 }));
+    expect(moved).toContain("left:620px");
+    expect(moved).toContain("top:640px");
 
     const hidden = renderStage(createInitialState(), manifestWithTokens({ "hud.visible": 0 }));
     expect(hidden).not.toContain("data-player-action");
@@ -236,10 +292,36 @@ describe("default renderer ui tokens rendering", () => {
     expect(themed).toContain("font-size:14px");
   });
 
+  it("rendersTheMenuWindowPartWithBuiltinGeometryAndOverridesItWithTokens", () => {
+    const globalScope = globalThis as { window?: unknown };
+    globalScope.window = { __VIBEGAL_FIXTURE_UI__: { panel: "save" } };
+    try {
+      const legacy = renderStage(createInitialState(), baseManifest());
+      expect(legacy).toContain('data-ui-part="menuWindow"');
+      expect(legacy).toContain("left:110px");
+      expect(legacy).toContain("top:40px");
+      expect(legacy).toContain("width:1060px");
+      expect(legacy).toContain("height:640px");
+
+      const themed = renderStage(createInitialState(), manifestWithTokens({
+        "menuWindow.x": 60,
+        "menuWindow.y": 24,
+        "menuWindow.width": 1160,
+        "menuWindow.height": 672,
+      }));
+      expect(themed).toContain("left:60px");
+      expect(themed).toContain("top:24px");
+      expect(themed).toContain("width:1160px");
+      expect(themed).toContain("height:672px");
+    } finally {
+      delete globalScope.window;
+    }
+  });
+
   it("appliesStageFontFamilyToTheStageRoot", () => {
     const legacy = renderStage(createInitialState(), baseManifest());
     // SSR 会把样式里的单引号转义为 &#x27;
-    expect(legacy).toContain("font-family:&#x27;Noto Serif SC&#x27;, serif");
+    expect(legacy).toContain("font-family:&#x27;Noto Sans SC&#x27;");
 
     const themed = renderStage(createInitialState(), manifestWithTokens({ "stage.fontFamily": "Test Sans Token" }));
     expect(themed).toContain("font-family:Test Sans Token");

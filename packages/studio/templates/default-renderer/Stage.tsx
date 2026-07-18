@@ -20,7 +20,8 @@ import {
   type PlayerSlotView,
 } from "./playerUiModel";
 import { useShake } from "./useShake";
-import { useUiTokens, type ChoiceButtonTokens } from "./useUiTokens";
+import { useUiTokens, type ChoiceBoxTokens, type ChoiceButtonTokens } from "./useUiTokens";
+import { palette } from "./uiTheme";
 
 type ConfirmAction =
   | { kind: "overwrite"; slot: PlayerSlotView }
@@ -390,7 +391,11 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
       <style>{shakeKeyframes}</style>
 
       {state.choice && (
-        <div onClick={(event) => event.stopPropagation()} style={choiceContainerStyle}>
+        <div
+          data-ui-part="choiceBox"
+          onClick={(event) => event.stopPropagation()}
+          style={choiceContainerStyle(uiTokens.choiceBox)}
+        >
           {state.choice.choices.map((choice) => (
             <button
               key={`${choice.text}:${choice.to}`}
@@ -407,8 +412,17 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
             </button>
           ))}
           {choiceHint && <div style={choiceHintStyle}>{choiceHint}</div>}
-          {/* 悬停色走 stylesheet（inline style 表达不了 :hover）；默认 hoverColor = bgColor，即现状无悬停色差 */}
-          <style>{`[data-choice-to]:not(:disabled):hover { background: ${uiTokens.choiceButton.hoverColor} !important; }`}</style>
+          {/* 悬停与入场动画走 stylesheet（inline style 表达不了 :hover / keyframes） */}
+          <style>{`
+            @keyframes vnChoiceIn { from { opacity: 0; transform: translateY(14px) } }
+            [data-choice-to]:not(:disabled):hover {
+              background: ${uiTokens.choiceButton.hoverColor} !important;
+              color: ${uiTokens.choiceButton.hoverTextColor} !important;
+              border-color: transparent !important;
+              transform: translateY(-1px);
+              box-shadow: 0 12px 28px rgba(24, 28, 48, 0.24) !important;
+            }
+          `}</style>
         </div>
       )}
 
@@ -444,6 +458,7 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
           page={menuPage}
           busy={busy}
           notice={notice}
+          window={uiTokens.menuWindow}
           onPageChange={(page) => openMenu(page)}
           onClose={closeMenu}
         >
@@ -545,63 +560,83 @@ function confirmationCopy(action: ConfirmAction): {
   }
 }
 
-const choiceContainerStyle: CSSProperties = {
-  position: "absolute",
-  left: "50%",
-  top: "16%",
-  transform: "translateX(-50%)",
-  zIndex: 70,
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  width: "min(540px, calc(100% - 48px))",
-  maxHeight: "38%",
-  overflowY: "auto",
-};
+function choiceContainerStyle(box: ChoiceBoxTokens): CSSProperties {
+  return {
+    position: "absolute",
+    left: box.x,
+    top: box.y,
+    width: box.width,
+    // 几何 token 语义 = 部件边框盒（与 Studio 拖拽 overlay 的选框一致）
+    boxSizing: "border-box",
+    // height token 缺省 = 自动（约 42% 舞台高限高，超出滚动）
+    maxHeight: box.height ?? "42%",
+    zIndex: 70,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    overflowY: "auto",
+    animation: "vnChoiceIn 0.3s ease both",
+  };
+}
 
 function choiceButtonStyle(tokens: ChoiceButtonTokens): CSSProperties {
   return {
-    minHeight: 42,
+    minHeight: 48,
     background: tokens.bgColor,
     color: tokens.textColor,
-    border: "1px solid rgba(255, 255, 255, 0.34)",
+    border: "1px solid rgba(255, 255, 255, 0.55)",
     borderRadius: tokens.radius,
-    padding: "10px 16px",
+    padding: "12px 18px",
     fontSize: tokens.fontSize,
+    fontWeight: 600,
     cursor: "pointer",
     fontFamily: "inherit",
     textAlign: "center",
-    letterSpacing: 0,
+    letterSpacing: "0.5px",
+    boxShadow: "0 8px 24px rgba(24, 28, 48, 0.18)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    transition: "transform 0.15s ease, box-shadow 0.15s ease",
   };
 }
 
 const choiceHintStyle: CSSProperties = {
-  color: "rgba(255,255,255,0.75)",
+  alignSelf: "center",
+  padding: "5px 12px",
+  borderRadius: 999,
+  background: "rgba(20, 22, 32, 0.72)",
+  color: "rgba(255, 255, 255, 0.85)",
   fontSize: 11,
   textAlign: "center",
-  textShadow: "0 1px 2px rgba(0,0,0,0.8)",
 };
 
 function stageStatusStyle(tone: PlayerNotice["tone"] | undefined): CSSProperties {
-  const border = tone === "error" ? "#e58a8a" : tone === "warning" ? "#e3bc70" : "#70d2bf";
+  const border =
+    tone === "error" ? "#ff8a80"
+    : tone === "warning" ? palette.gold
+    : tone === "success" ? palette.mint
+    : palette.sky;
   return {
     position: "absolute",
-    top: 58,
+    top: 60,
     left: 16,
     zIndex: 90,
     maxWidth: "min(560px, calc(100% - 32px))",
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: "8px 11px",
+    padding: "9px 16px",
     border: `1px solid ${border}`,
-    borderRadius: 4,
-    background: "rgba(17, 18, 20, 0.9)",
+    borderRadius: 999,
+    background: "rgba(20, 22, 32, 0.8)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
     color: "#fff",
     font: "12px/1.4 system-ui, sans-serif",
     cursor: "default",
   };
 }
 
-const stageCodeStyle: CSSProperties = { padding: "2px 4px", borderRadius: 2, background: "rgba(255,255,255,0.1)", fontSize: 10 };
-const progressStyle: CSSProperties = { position: "absolute", left: 14, bottom: 10, zIndex: 65, color: "rgba(255,255,255,0.42)", font: "11px/1 monospace", pointerEvents: "none" };
+const stageCodeStyle: CSSProperties = { padding: "2px 5px", borderRadius: 4, background: "rgba(255, 255, 255, 0.14)", fontSize: 10 };
+const progressStyle: CSSProperties = { position: "absolute", left: 14, bottom: 10, zIndex: 65, color: "rgba(255, 255, 255, 0.5)", font: "11px/1 monospace", pointerEvents: "none" };

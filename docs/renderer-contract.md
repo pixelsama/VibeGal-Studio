@@ -122,14 +122,17 @@ dialogueBox.bgColor / .bgOpacity / .radius / .padding / .borderColor
 dialogueBox.textColor / .fontSize / .fontFamily / .lineHeight
 nameBox.x / .y / .width / .height
 nameBox.bgColor / .textColor / .fontSize / .visible
-choiceButton.bgColor / .textColor / .hoverColor / .radius / .fontSize
+choiceBox.x / .y / .width / .height        choice list container (.height = max-height)
+choiceButton.bgColor / .textColor / .hoverColor / .hoverTextColor / .radius / .fontSize
+hud.x / .y                                 null/missing = built-in top-right anchoring
 hud.textColor / .bgColor / .fontSize / .visible
+menuWindow.x / .y / .width / .height       player menu window (save/history/gallery/... pages)
 stage.fontFamily                           global font (may reference manifest.fonts families)
 ```
 
 **Geometry semantics**: the origin is the stage top-left corner; `x`/`y` are the part's top-left corner, `width`/`height` its size, all in stage-coordinate px (i.e. the `content/meta.json` stage coordinate system). Numeric `lineHeight` / `padding` tokens are px.
 
-**Draggable parts (`layout-parts-v1`)**: a renderer declares the `layout-parts-v1` capability in its manifest when Studio stage dragging is supported. Each draggable part must (1) be positioned and sized entirely by its geometry tokens (absolute positioning in stage coordinates, with defaults when tokens are missing), and (2) carry `data-ui-part="<partName>"` on its root element, one-to-one with the token key prefix (`dialogueBox.x` ↔ `data-ui-part="dialogueBox"`). A part must NOT carry `data-ui-part` unless its layout is fully token-driven, otherwise drag values and visuals diverge. The bundled default renderer marks `dialogueBox` and `nameBox` this way.
+**Draggable parts (`layout-parts-v1`)**: a renderer declares the `layout-parts-v1` capability in its manifest when Studio stage dragging is supported. Each draggable part must (1) be positioned and sized entirely by its geometry tokens (absolute positioning in stage coordinates, with defaults when tokens are missing), and (2) carry `data-ui-part="<partName>"` on its root element, one-to-one with the token key prefix (`dialogueBox.x` ↔ `data-ui-part="dialogueBox"`). A part must NOT carry `data-ui-part` unless its layout is fully token-driven, otherwise drag values and visuals diverge. The bundled default renderer marks `dialogueBox`, `nameBox`, `choiceBox`, `hud`, and `menuWindow` this way (dragging `menuWindow` repositions every player-menu page at once; `hud.x`/`.y` stay unset until the first drag, which switches the HUD from its built-in top-right anchor to explicit coordinates).
 
 **uiHint channel**: hosts (Studio scene fixtures, CLI `renderer-snapshot`) may set `window.__VIBEGAL_FIXTURE_UI__ = { panel: "<id>" }` before mounting the renderer. Renderers may read it once as their initial UI state: `save` / `history` / `settings` open the corresponding panel, and `gallery-cg` / `gallery-replay` / `gallery-music` / `gallery-endings` open the Gallery page tabs. Without the global, behavior must be exactly as before. Read it defensively (`typeof window === "undefined"` guard plus structural validation).
 

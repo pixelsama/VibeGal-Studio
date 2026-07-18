@@ -173,10 +173,20 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
       { key: "nameBox.y", label: "Y", kind: "number", step: 1 },
       { key: "nameBox.width", label: "宽", kind: "number", step: 1, min: 0, nullable: true },
       { key: "nameBox.height", label: "高", kind: "number", step: 1, min: 0, nullable: true },
-      { key: "nameBox.bgColor", label: "背景色", kind: "color" },
-      { key: "nameBox.textColor", label: "文字色", kind: "color", nullable: true },
+      { key: "nameBox.bgColor", label: "背景色", kind: "color", nullable: true },
+      { key: "nameBox.textColor", label: "文字色", kind: "color" },
       { key: "nameBox.fontSize", label: "字号", kind: "number", step: 1, min: 1 },
       { key: "nameBox.visible", label: "显示", kind: "checkbox" },
+    ],
+  },
+  {
+    id: "choiceBox",
+    title: "选项区",
+    fields: [
+      { key: "choiceBox.x", label: "X", kind: "number", step: 1 },
+      { key: "choiceBox.y", label: "Y", kind: "number", step: 1 },
+      { key: "choiceBox.width", label: "宽", kind: "number", step: 1, min: 0 },
+      { key: "choiceBox.height", label: "限高", kind: "number", step: 1, min: 0, nullable: true },
     ],
   },
   {
@@ -186,6 +196,7 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
       { key: "choiceButton.bgColor", label: "背景色", kind: "color" },
       { key: "choiceButton.textColor", label: "文字色", kind: "color" },
       { key: "choiceButton.hoverColor", label: "悬停色", kind: "color" },
+      { key: "choiceButton.hoverTextColor", label: "悬停文字色", kind: "color" },
       { key: "choiceButton.radius", label: "圆角", kind: "number", step: 1, min: 0 },
       { key: "choiceButton.fontSize", label: "字号", kind: "number", step: 1, min: 1 },
     ],
@@ -194,10 +205,22 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
     id: "hud",
     title: "HUD",
     fields: [
+      { key: "hud.x", label: "X", kind: "number", step: 1, nullable: true },
+      { key: "hud.y", label: "Y", kind: "number", step: 1, nullable: true },
       { key: "hud.textColor", label: "文字色", kind: "color" },
-      { key: "hud.bgColor", label: "背景色", kind: "color" },
+      { key: "hud.bgColor", label: "底色", kind: "color" },
       { key: "hud.fontSize", label: "字号", kind: "number", step: 1, min: 1 },
       { key: "hud.visible", label: "显示", kind: "checkbox" },
+    ],
+  },
+  {
+    id: "menuWindow",
+    title: "菜单窗口",
+    fields: [
+      { key: "menuWindow.x", label: "X", kind: "number", step: 1 },
+      { key: "menuWindow.y", label: "Y", kind: "number", step: 1 },
+      { key: "menuWindow.width", label: "宽", kind: "number", step: 1, min: 0 },
+      { key: "menuWindow.height", label: "高", kind: "number", step: 1, min: 0 },
     ],
   },
   {
@@ -223,16 +246,24 @@ function flattenDefaultTokens(): Record<string, string | number> {
     "dialogueBox.lineHeight": d.dialogueBox.lineHeight,
     "nameBox.x": d.nameBox.x,
     "nameBox.y": d.nameBox.y,
-    "nameBox.bgColor": d.nameBox.bgColor,
+    "nameBox.textColor": d.nameBox.textColor,
     "nameBox.fontSize": d.nameBox.fontSize,
+    "choiceBox.x": d.choiceBox.x,
+    "choiceBox.y": d.choiceBox.y,
+    "choiceBox.width": d.choiceBox.width,
     "choiceButton.bgColor": d.choiceButton.bgColor,
     "choiceButton.textColor": d.choiceButton.textColor,
     "choiceButton.hoverColor": d.choiceButton.hoverColor,
+    "choiceButton.hoverTextColor": d.choiceButton.hoverTextColor,
     "choiceButton.radius": d.choiceButton.radius,
     "choiceButton.fontSize": d.choiceButton.fontSize,
     "hud.textColor": d.hud.textColor,
     "hud.bgColor": d.hud.bgColor,
     "hud.fontSize": d.hud.fontSize,
+    "menuWindow.x": d.menuWindow.x,
+    "menuWindow.y": d.menuWindow.y,
+    "menuWindow.width": d.menuWindow.width,
+    "menuWindow.height": d.menuWindow.height,
     "stage.fontFamily": d.stageFontFamily,
   };
 }
@@ -241,12 +272,15 @@ const TOKEN_DEFAULT_VALUES = flattenDefaultTokens();
 
 /** null 语义键的默认行为说明（placeholder 用；协议见 spec 第 4 节）。 */
 const NULL_DEFAULT_HINTS: Record<string, string> = {
-  "dialogueBox.bgColor": "内置渐变",
+  "dialogueBox.bgColor": "内置磨砂白",
   "dialogueBox.bgOpacity": "仅配背景色生效",
-  "dialogueBox.borderColor": "跟随说话人颜色",
+  "dialogueBox.borderColor": "发丝白边",
   "nameBox.width": "auto（随内容）",
   "nameBox.height": "auto（随内容）",
-  "nameBox.textColor": "跟随说话人颜色",
+  "nameBox.bgColor": "跟随说话人颜色",
+  "choiceBox.height": "自动（约 42% 舞台高）",
+  "hud.x": "右上锚定（右缘 16px）",
+  "hud.y": "顶部 14px",
 };
 
 /** 输入框 placeholder：显示该 token 的默认值（null 语义键显示行为说明）。 */

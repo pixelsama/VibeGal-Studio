@@ -1,6 +1,16 @@
 import type { CSSProperties } from "react";
 import { resolveAsset, type Manifest } from "@vibegal/engine";
 import type { PlayerSlotView } from "./playerUiModel";
+import {
+  cardStyle,
+  itemMetaStyle,
+  palette,
+  primaryPillButton,
+  secondaryPillButton,
+  smallDangerPillButton,
+  smallPrimaryPillButton,
+  smallSecondaryPillButton,
+} from "./uiTheme";
 
 interface SaveLoadPanelProps {
   slots: PlayerSlotView[];
@@ -28,10 +38,10 @@ export function SaveLoadPanel({
   return (
     <div data-save-panel style={panelStyle}>
       <div style={toolbarStyle}>
-        <button type="button" data-player-action="menu-quick-save" disabled={busy} onClick={onQuickSave} style={primaryButtonStyle}>
+        <button type="button" data-player-action="menu-quick-save" disabled={busy} onClick={onQuickSave} style={primaryPillButton}>
           快速存档
         </button>
-        <button type="button" data-player-action="menu-quick-load" disabled={busy} onClick={onQuickLoad} style={secondaryButtonStyle}>
+        <button type="button" data-player-action="menu-quick-load" disabled={busy} onClick={onQuickLoad} style={secondaryPillButton}>
           快速读档
         </button>
       </div>
@@ -78,13 +88,13 @@ function SlotCard({
   const position = slot.summary?.position;
 
   return (
-    <article data-player-slot={slot.slotId} style={cardStyle}>
+    <article data-player-slot={slot.slotId} style={slotCardStyle}>
       <div
         aria-hidden="true"
         style={{
           ...previewStyle,
           backgroundImage: backgroundUrl
-            ? `linear-gradient(rgba(0,0,0,0.08), rgba(0,0,0,0.35)), url(${JSON.stringify(backgroundUrl)})`
+            ? `linear-gradient(rgba(0,0,0,0.04), rgba(0,0,0,0.22)), url(${JSON.stringify(backgroundUrl)})`
             : undefined,
         }}
       >
@@ -94,7 +104,7 @@ function SlotCard({
       <div style={contentStyle}>
         <div style={titleRowStyle}>
           <strong style={slotTitleStyle}>{slot.label}</strong>
-          <span style={kindStyle(slot.kind)}>{slot.kind === "manual" ? "MANUAL" : slot.kind.toUpperCase()}</span>
+          <span style={kindBadgeStyle(slot.kind)}>{slot.kind === "manual" ? "MANUAL" : slot.kind.toUpperCase()}</span>
         </div>
         {slot.empty ? (
           <p style={emptyTextStyle}>空槽位</p>
@@ -107,17 +117,17 @@ function SlotCard({
         )}
         <div style={actionsStyle}>
           {slot.canLoad && (
-            <button type="button" data-slot-action="load" disabled={busy} onClick={() => onLoad(slot)} style={smallPrimaryStyle}>
+            <button type="button" data-slot-action="load" disabled={busy} onClick={() => onLoad(slot)} style={smallPrimaryPillButton}>
               读取
             </button>
           )}
           {slot.canSave && (
-            <button type="button" data-slot-action="save" disabled={busy} onClick={() => onSave(slot)} style={smallSecondaryStyle}>
+            <button type="button" data-slot-action="save" disabled={busy} onClick={() => onSave(slot)} style={smallSecondaryPillButton}>
               {slot.empty ? "保存" : "覆盖"}
             </button>
           )}
           {slot.canDelete && (
-            <button type="button" data-slot-action="delete" disabled={busy} onClick={() => onDelete(slot)} style={smallDangerStyle}>
+            <button type="button" data-slot-action="delete" disabled={busy} onClick={() => onDelete(slot)} style={smallDangerPillButton}>
               删除
             </button>
           )}
@@ -136,51 +146,50 @@ function formatDate(value: string | undefined): string {
 
 const panelStyle: CSSProperties = { containerType: "inline-size" };
 const toolbarStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 };
-const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 };
-const cardStyle: CSSProperties = {
+const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 };
+const slotCardStyle: CSSProperties = {
+  ...cardStyle,
   minWidth: 0,
   minHeight: 168,
   display: "grid",
   gridTemplateColumns: "112px minmax(0, 1fr)",
   overflow: "hidden",
-  border: "1px solid rgba(255, 255, 255, 0.15)",
-  borderRadius: 6,
-  background: "rgba(255, 255, 255, 0.035)",
 };
 const previewStyle: CSSProperties = {
   minHeight: 168,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  backgroundColor: "#101113",
+  backgroundColor: palette.cardDeep,
   backgroundSize: "cover",
   backgroundPosition: "center",
 };
-const emptyPreviewStyle: CSSProperties = { color: "rgba(255, 255, 255, 0.25)", font: "600 11px/1 monospace" };
-const contentStyle: CSSProperties = { minWidth: 0, display: "flex", flexDirection: "column", padding: 10 };
+const emptyPreviewStyle: CSSProperties = { color: palette.inkFaint, font: "600 11px/1 monospace" };
+const contentStyle: CSSProperties = { minWidth: 0, display: "flex", flexDirection: "column", padding: 12 };
 const titleRowStyle: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 };
-const slotTitleStyle: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 };
-const emptyTextStyle: CSSProperties = { margin: "15px 0 auto", color: "rgba(255, 255, 255, 0.4)", fontSize: 12 };
-const metaStyle: CSSProperties = { margin: "7px 0 0", color: "rgba(255, 255, 255, 0.46)", fontSize: 10 };
-const positionStyle: CSSProperties = { margin: "5px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#e2c077", font: "11px/1.3 monospace" };
-const previewTextStyle: CSSProperties = { margin: "6px 0 auto", display: "-webkit-box", overflow: "hidden", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", color: "rgba(255, 255, 255, 0.78)", fontSize: 12, lineHeight: 1.45 };
-const actionsStyle: CSSProperties = { minHeight: 29, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 5, marginTop: 9 };
+const slotTitleStyle: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: palette.ink, fontSize: 13 };
+const emptyTextStyle: CSSProperties = { margin: "15px 0 auto", color: palette.inkFaint, fontSize: 12 };
+const metaStyle: CSSProperties = { margin: "7px 0 0", color: palette.inkFaint, fontSize: 10 };
+const positionStyle: CSSProperties = { ...itemMetaStyle, margin: "5px 0 0", display: "block", color: "#c78f2b", font: "11px/1.3 monospace" };
+const previewTextStyle: CSSProperties = { margin: "6px 0 auto", display: "-webkit-box", overflow: "hidden", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", color: palette.inkSoft, fontSize: 12, lineHeight: 1.45 };
+const actionsStyle: CSSProperties = { minHeight: 29, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 6, marginTop: 9 };
 
-function kindStyle(kind: PlayerSlotView["kind"]): CSSProperties {
+function kindBadgeStyle(kind: PlayerSlotView["kind"]): CSSProperties {
+  const colors =
+    kind === "auto"
+      ? { background: "rgba(240, 179, 82, 0.16)", color: "#c78f2b" }
+      : kind === "quick"
+        ? { background: "rgba(92, 184, 230, 0.16)", color: "#3d9bc7" }
+        : { background: "rgba(58, 63, 85, 0.08)", color: palette.inkSoft };
   return {
     flex: "0 0 auto",
-    color: kind === "auto" ? "#e3bc70" : kind === "quick" ? "#74d8c5" : "rgba(255, 255, 255, 0.45)",
-    font: "600 9px/1 monospace",
+    padding: "3px 7px",
+    borderRadius: 999,
+    font: "700 9px/1 ui-monospace, monospace",
+    letterSpacing: "0.5px",
+    ...colors,
   };
 }
-
-const baseButtonStyle: CSSProperties = { minHeight: 34, borderRadius: 4, padding: "7px 13px", color: "#fff", font: "600 12px/1 system-ui, sans-serif", cursor: "pointer" };
-const primaryButtonStyle: CSSProperties = { ...baseButtonStyle, border: "1px solid #74d8c5", background: "#246d62" };
-const secondaryButtonStyle: CSSProperties = { ...baseButtonStyle, border: "1px solid rgba(255, 255, 255, 0.25)", background: "transparent" };
-const smallBaseStyle: CSSProperties = { minHeight: 27, borderRadius: 3, padding: "5px 8px", color: "#fff", font: "600 10px/1 system-ui, sans-serif", cursor: "pointer" };
-const smallPrimaryStyle: CSSProperties = { ...smallBaseStyle, border: "1px solid #6fcab9", background: "rgba(35, 108, 96, 0.9)" };
-const smallSecondaryStyle: CSSProperties = { ...smallBaseStyle, border: "1px solid rgba(255, 255, 255, 0.23)", background: "transparent" };
-const smallDangerStyle: CSSProperties = { ...smallBaseStyle, border: "1px solid rgba(226, 128, 128, 0.72)", background: "rgba(116, 54, 54, 0.55)" };
 
 const responsiveCss = `
 @container (max-width: 940px) {

@@ -14,7 +14,7 @@ const defaultRenderer: RendererManifest = {
   name: "默认渲染层",
   contractVersion: 1,
   capabilities: ["player-ui-v1", "gallery-ui-v1", "layout-parts-v1"],
-  description: "衬线对话框 + 中央立绘 + 渐变背景的默认实现",
+  description: "现代扁平二次元风：磨砂白对话框 + 樱粉点缀 + 全套玩家面板的默认实现",
   Component: Stage,
 };
 

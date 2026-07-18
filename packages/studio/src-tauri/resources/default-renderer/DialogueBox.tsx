@@ -2,13 +2,17 @@
  * DialogueBox —— 对话框 + 名字框 + 旁白。
  * 打字机文本已经在 NovelState 里算好了（typedLen），这里只负责把切片显示出来。
  *
+ * 设计语言（现代扁平二次元）：磨砂白 + backdrop 模糊的大圆角对话框，
+ * 顶边一条樱粉→天蓝渐变装饰条；名字框是压在对话框顶边的胶囊，
+ * 底色跟随说话人颜色；文本全部显示后右下角出现樱粉 ▼ 继续指示。
+ *
  * 几何与配色由 useUiTokens 驱动（Spec 17 token 协议）：dialogueBox 与 nameBox
- * 是舞台坐标系内绝对定位的可拖拽部件（data-ui-part），token 缺失时回退默认值，
- * 默认值即改造前的硬编码视觉（像素级不变）。
+ * 是舞台坐标系内绝对定位的可拖拽部件（data-ui-part），token 缺失时回退默认值。
  */
 import { memo } from "react";
 import type { Manifest, NovelState } from "@vibegal/engine";
 import { useUiTokens } from "./useUiTokens";
+import { palette } from "./uiTheme";
 
 interface Props {
   state: NovelState;
@@ -26,16 +30,14 @@ function DialogueBoxImpl({ state, manifest }: Props) {
   const box = tokens.dialogueBox;
   const name = tokens.nameBox;
 
-  // bgColor 缺失时保留内置的对白/旁白双渐变；bgOpacity 仅在与 bgColor 搭配时生效。
+  // bgColor 缺失 = 内置磨砂白（配合 backdrop 模糊）；bgOpacity 仅在与 bgColor 搭配时生效。
   const background = box.bgColor == null
-    ? isNarration
-      ? "linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.55))"
-      : "linear-gradient(to top, rgba(10,16,30,0.86), rgba(10,16,30,0.7))"
+    ? palette.frost
     : box.bgOpacity == null
       ? box.bgColor
       : `color-mix(in srgb, ${box.bgColor} ${Math.round(box.bgOpacity * 100)}%, transparent)`;
-  // borderColor 缺失时保留「跟随说话人颜色」的现状。
-  const borderColor = box.borderColor ?? (speaker ? `${speaker.color}55` : "rgba(255,255,255,0.12)");
+  // borderColor 缺失 = 内置发丝白边（让白盒在暗场景上依然有清晰的轮廓）。
+  const borderColor = box.borderColor ?? "rgba(255, 255, 255, 0.65)";
 
   return (
     <>
@@ -52,19 +54,33 @@ function DialogueBoxImpl({ state, manifest }: Props) {
           zIndex: 20,
           background,
           border: `1px solid ${borderColor}`,
-          borderTop: speaker ? `2px solid ${speaker.color}` : `1px solid ${borderColor}`,
           borderRadius: box.radius,
           padding: box.padding,
-          backdropFilter: "blur(6px)",
+          backdropFilter: "blur(16px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(16px) saturate(1.5)",
           color: box.textColor,
           fontFamily: box.fontFamily,
           fontSize: box.fontSize,
           lineHeight: `${box.lineHeight}px`,
-          letterSpacing: "0.5px",
-          boxShadow: "0 -10px 40px rgba(0,0,0,0.5)",
+          letterSpacing: "0.4px",
+          boxShadow: "0 16px 48px rgba(24, 28, 48, 0.28)",
+          // 裁住顶部渐变装饰条的圆角
+          overflow: "hidden",
         }}
       >
-        <p style={{ margin: 0, whiteSpace: "pre-wrap", minHeight: "1.7em", opacity: isNarration ? 0.9 : 1 }}>
+        {/* 顶边渐变装饰条（纯装饰，樱粉 → 天蓝） */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 4,
+            background: `linear-gradient(90deg, ${palette.accent}, ${palette.sky})`,
+          }}
+        />
+        <p style={{ margin: 0, whiteSpace: "pre-wrap", minHeight: "1.8em", opacity: isNarration ? 0.85 : 1 }}>
           {text}
           <span
             style={{
@@ -76,7 +92,27 @@ function DialogueBoxImpl({ state, manifest }: Props) {
             }}
           />
         </p>
-        <style>{`@keyframes caret { 50% { border-color: transparent } }`}</style>
+        {visible.fullyRevealed && (
+          <span
+            aria-hidden="true"
+            data-continue-indicator
+            style={{
+              position: "absolute",
+              right: 22,
+              bottom: 12,
+              color: palette.accent,
+              fontSize: 14,
+              lineHeight: 1,
+              animation: "vnContinue 1s ease-in-out infinite",
+            }}
+          >
+            ▼
+          </span>
+        )}
+        <style>{`
+          @keyframes caret { 50% { border-color: transparent } }
+          @keyframes vnContinue { 50% { transform: translateY(3px); opacity: 0.55 } }
+        `}</style>
       </div>
       {speaker && name.visible && (
         <div
@@ -89,17 +125,17 @@ function DialogueBoxImpl({ state, manifest }: Props) {
             height: name.height ?? undefined,
             boxSizing: "border-box",
             zIndex: 21,
-            background: name.bgColor,
-            border: `1px solid ${speaker.color}66`,
-            borderRadius: 4,
-            padding: "4px 16px",
-            color: name.textColor ?? speaker.color,
+            background: name.bgColor ?? speaker.color,
+            border: "2px solid rgba(255, 255, 255, 0.8)",
+            borderRadius: 999,
+            padding: "6px 18px",
+            color: name.textColor,
             fontSize: name.fontSize,
-            // 旧结构里名字框继承对话框的字体与 line-height 1.7，移出后显式保持
             fontFamily: box.fontFamily,
-            lineHeight: 1.7,
-            fontWeight: 600,
+            lineHeight: 1.5,
+            fontWeight: 700,
             letterSpacing: "1px",
+            boxShadow: "0 6px 18px rgba(24, 28, 48, 0.25)",
           }}
         >
           {speaker.name}

@@ -82,7 +82,7 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("海平线上的第一缕光");
   });
 
-  it("分组渲染：有 default skin 时显示五组属性与字体 datalist 候选", () => {
+  it("分组渲染：有 default skin 时显示七组属性与字体 datalist 候选", () => {
     const project = makeProject({
       default: { name: "默认外观", assets: {}, tokens: { "dialogueBox.x": 120 } },
     });
@@ -91,12 +91,12 @@ describe("AppearanceWorkspace", () => {
     );
 
     expect(html).toContain("编辑皮肤");
-    for (const group of ["对话框", "名字框", "选项按钮", "HUD", "舞台"]) {
+    for (const group of ["对话框", "名字框", "选项区", "选项按钮", "HUD", "菜单窗口", "舞台"]) {
       expect(html).toContain(group);
     }
     // raw token 值进输入框，默认值进 placeholder
     expect(html).toContain('value="120"');
-    expect(html).toContain("默认：6"); // dialogueBox.radius
+    expect(html).toContain("默认：18"); // dialogueBox.radius
     // 字体候选来自 manifest.fonts
     expect(html).toContain("Test Serif");
   });

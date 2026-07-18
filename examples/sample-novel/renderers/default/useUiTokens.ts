@@ -3,86 +3,110 @@
  *
  * 渲染层从 manifest.uiSkins 读取外观 token，把扁平的点号 key
  * （如 "dialogueBox.x"）解析成带默认值的结构化对象。所有 key 可选，
- * 缺失时回退到 DEFAULT_UI_TOKENS —— 即改造前的硬编码视觉（像素级不变）。
+ * 缺失时回退到 DEFAULT_UI_TOKENS —— 即内置的现代扁平二次元设计
+ * （磨砂白 + 樱粉点缀，见 uiTheme.ts）。
  *
  * skin 选择规则（已定点）：取 id 为 "default" 的 uiSkin；注册表没有
  * "default" 时回退到第一个条目并 console.warn 提示；两者都没有 → 全默认。
  *
  * 几何语义：舞台左上角原点，x/y = 部件左上角，单位 = 舞台坐标 px
- * （默认值按 1280×720 舞台换算自原硬编码布局）。
+ * （默认值按 1280×720 舞台标定）。可拖拽部件（data-ui-part）：
+ * dialogueBox / nameBox / choiceBox / hud / menuWindow。
  */
 import { useMemo } from "react";
 import type { Manifest } from "@vibegal/engine";
+import { palette, SANS_FONT } from "./uiTheme";
 
 export interface DialogueBoxTokens {
   x: number;
   y: number;
   width: number;
   height: number;
-  /** null = 内置对白/旁白双渐变（现状）；设置后替换为纯色（或配合 bgOpacity） */
+  /** null = 内置磨砂白背景（含 backdrop 模糊）；设置后替换为纯色（或配合 bgOpacity） */
   bgColor: string | null;
   /** 0..1，仅在与 bgColor 搭配时生效（color-mix） */
   bgOpacity: number | null;
   radius: number;
   /** CSS padding；数值 token 按 px 处理 */
   padding: string;
-  /** null = 跟随说话人颜色（现状） */
+  /** null = 内置发丝白边 */
   borderColor: string | null;
   textColor: string;
   fontSize: number;
   fontFamily: string;
-  /** px（现状 26px × 1.7 = 44.2px） */
+  /** px（默认 23px × 1.8 = 41.4px） */
   lineHeight: number;
 }
 
 export interface NameBoxTokens {
   x: number;
   y: number;
-  /** null = auto（现状：随名字内容撑开）；拖拽缩放后写回具体 px */
+  /** null = auto（随名字内容撑开）；拖拽缩放后写回具体 px */
   width: number | null;
   height: number | null;
-  bgColor: string;
-  /** null = 跟随说话人颜色（现状） */
-  textColor: string | null;
+  /** null = 跟随说话人颜色 */
+  bgColor: string | null;
+  textColor: string;
   fontSize: number;
   visible: boolean;
+}
+
+export interface ChoiceBoxTokens {
+  x: number;
+  y: number;
+  width: number;
+  /** null = 自动（约 42% 舞台高的 maxHeight）；设置后按 px 限高 */
+  height: number | null;
 }
 
 export interface ChoiceButtonTokens {
   bgColor: string;
   textColor: string;
-  /** 现状无悬停变色，默认值 = bgColor（悬停无色差） */
   hoverColor: string;
+  hoverTextColor: string;
   radius: number;
   fontSize: number;
 }
 
 export interface HudTokens {
+  /** null = 内置右上锚定（右缘 16px）；拖拽后写回具体舞台 x */
+  x: number | null;
+  /** null = 内置顶部 14px；拖拽后写回具体舞台 y */
+  y: number | null;
   textColor: string;
-  /** 作用于未激活按钮底色；激活态（自动/跳过 ON）保留内置青色反馈 */
+  /** 作用于整条胶囊底色；激活态（自动/跳过 ON）保留内置樱粉反馈 */
   bgColor: string;
   fontSize: number;
   visible: boolean;
 }
 
+export interface MenuWindowTokens {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface UiTokens {
   dialogueBox: DialogueBoxTokens;
   nameBox: NameBoxTokens;
+  choiceBox: ChoiceBoxTokens;
   choiceButton: ChoiceButtonTokens;
   hud: HudTokens;
+  menuWindow: MenuWindowTokens;
   stageFontFamily: string;
 }
 
 /**
- * 默认值表 = 改造前硬编码视觉（1280×720 舞台坐标换算）：
- * - 对话框：原 wrapper 左右 padding 64 → 内容盒 1152；内盒 width min(1100px, 92%)
- *   → 0.92×1152 = 1059.84（内容盒），+padding 64 +border 2 → 边框盒宽 1125.84；
- *   flex 居中 → x = 64 + (1152-1125.84)/2 = 77.08；底边距 48 → 边框盒底边 y=672；
- *   minHeight 120 + padding 24+28 + border(top 2 + bottom 1) → height=175 → y=497。
- *   （部件几何按 border-box 计，组件已设 boxSizing。数值经 headless Chromium 实测核对。）
- * - 名字框：原相对对话框 padding 盒 left:24/top:-18 → 舞台 x=102.08/y=481；
- *   宽高随内容（auto）。
- * - lineHeight：26px × 1.7 = 44.2px。
+ * 默认值表 = 内置设计（1280×720 舞台坐标标定）：
+ * - 对话框：底边距 48 的宽条（x=77.08 / y=497 / 1125.84×175），磨砂白 + 顶部
+ *   樱粉→天蓝渐变条 + 右下角继续指示。
+ * - 名字框：胶囊，压在对话框顶边左侧（x=对话框内缩 32，y=顶边上移 18），
+ *   底色跟随说话人颜色。
+ * - 选项区：舞台上中部 480px 宽竖列（y=170），按钮是磨砂白胶囊。
+ * - HUD：右上角胶囊条（右缘 16 / 顶 14）；x/y token 缺省 = 锚定模式。
+ * - 菜单窗口：1060×640，居中偏上（110, 40）。
+ * - lineHeight：23px × 1.8 = 41.4px。
  */
 export const DEFAULT_UI_TOKENS: UiTokens = {
   dialogueBox: {
@@ -92,38 +116,53 @@ export const DEFAULT_UI_TOKENS: UiTokens = {
     height: 175,
     bgColor: null,
     bgOpacity: null,
-    radius: 6,
+    radius: 18,
     padding: "24px 32px 28px",
     borderColor: null,
-    textColor: "#eef2f7",
-    fontSize: 26,
-    fontFamily: "'Noto Serif SC', 'Source Han Serif SC', serif",
-    lineHeight: 44.2,
+    textColor: palette.ink,
+    fontSize: 23,
+    fontFamily: SANS_FONT,
+    lineHeight: 41.4,
   },
   nameBox: {
-    x: 102.08,
-    y: 481,
+    x: 109.08,
+    y: 479,
     width: null,
     height: null,
-    bgColor: "rgba(8,12,22,0.95)",
-    textColor: null,
-    fontSize: 20,
+    bgColor: null,
+    textColor: "#ffffff",
+    fontSize: 17,
     visible: true,
   },
+  choiceBox: {
+    x: 400,
+    y: 170,
+    width: 480,
+    height: null,
+  },
   choiceButton: {
-    bgColor: "rgba(18, 19, 21, 0.88)",
-    textColor: "#fff",
-    hoverColor: "rgba(18, 19, 21, 0.88)",
-    radius: 5,
-    fontSize: 15,
+    bgColor: "rgba(255, 255, 255, 0.9)",
+    textColor: palette.ink,
+    hoverColor: palette.accent,
+    hoverTextColor: "#ffffff",
+    radius: 14,
+    fontSize: 16,
   },
   hud: {
-    textColor: "#fff",
-    bgColor: "rgba(14, 15, 17, 0.78)",
+    x: null,
+    y: null,
+    textColor: "#ffffff",
+    bgColor: "rgba(18, 20, 30, 0.45)",
     fontSize: 12,
     visible: true,
   },
-  stageFontFamily: "'Noto Serif SC', serif",
+  menuWindow: {
+    x: 110,
+    y: 40,
+    width: 1060,
+    height: 640,
+  },
+  stageFontFamily: SANS_FONT,
 };
 
 type TokenMap = Record<string, string | number>;
@@ -210,24 +249,39 @@ export function resolveUiTokens(manifest: Manifest): UiTokens {
       y: tokenNumber(tokens, "nameBox.y", defaults.nameBox.y),
       width: tokenNumberOrNull(tokens, "nameBox.width"),
       height: tokenNumberOrNull(tokens, "nameBox.height"),
-      bgColor: tokenString(tokens, "nameBox.bgColor", defaults.nameBox.bgColor),
-      textColor: tokenStringOrNull(tokens, "nameBox.textColor"),
+      bgColor: tokenStringOrNull(tokens, "nameBox.bgColor"),
+      textColor: tokenString(tokens, "nameBox.textColor", defaults.nameBox.textColor),
       fontSize: tokenNumber(tokens, "nameBox.fontSize", defaults.nameBox.fontSize),
       visible: tokenVisible(tokens, "nameBox.visible", defaults.nameBox.visible),
+    },
+    choiceBox: {
+      x: tokenNumber(tokens, "choiceBox.x", defaults.choiceBox.x),
+      y: tokenNumber(tokens, "choiceBox.y", defaults.choiceBox.y),
+      width: tokenNumber(tokens, "choiceBox.width", defaults.choiceBox.width),
+      height: tokenNumberOrNull(tokens, "choiceBox.height"),
     },
     choiceButton: {
       bgColor: choiceBgColor,
       textColor: tokenString(tokens, "choiceButton.textColor", defaults.choiceButton.textColor),
-      // 未单独设置 hoverColor 时跟随 bgColor（现状无悬停色差）
-      hoverColor: tokenString(tokens, "choiceButton.hoverColor", choiceBgColor),
+      hoverColor: tokenString(tokens, "choiceButton.hoverColor", defaults.choiceButton.hoverColor),
+      // 未单独设置 hoverTextColor 时跟随默认（悬停白字）
+      hoverTextColor: tokenString(tokens, "choiceButton.hoverTextColor", defaults.choiceButton.hoverTextColor),
       radius: tokenNumber(tokens, "choiceButton.radius", defaults.choiceButton.radius),
       fontSize: tokenNumber(tokens, "choiceButton.fontSize", defaults.choiceButton.fontSize),
     },
     hud: {
+      x: tokenNumberOrNull(tokens, "hud.x"),
+      y: tokenNumberOrNull(tokens, "hud.y"),
       textColor: tokenString(tokens, "hud.textColor", defaults.hud.textColor),
       bgColor: tokenString(tokens, "hud.bgColor", defaults.hud.bgColor),
       fontSize: tokenNumber(tokens, "hud.fontSize", defaults.hud.fontSize),
       visible: tokenVisible(tokens, "hud.visible", defaults.hud.visible),
+    },
+    menuWindow: {
+      x: tokenNumber(tokens, "menuWindow.x", defaults.menuWindow.x),
+      y: tokenNumber(tokens, "menuWindow.y", defaults.menuWindow.y),
+      width: tokenNumber(tokens, "menuWindow.width", defaults.menuWindow.width),
+      height: tokenNumber(tokens, "menuWindow.height", defaults.menuWindow.height),
     },
     stageFontFamily: tokenString(tokens, "stage.fontFamily", defaults.stageFontFamily),
   };

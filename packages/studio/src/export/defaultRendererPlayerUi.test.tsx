@@ -158,6 +158,7 @@ describe("default renderer player UI", () => {
         page="history"
         busy={false}
         notice={null}
+        window={DEFAULT_UI_TOKENS.menuWindow}
         onPageChange={vi.fn()}
         onClose={vi.fn()}
       >

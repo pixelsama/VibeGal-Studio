@@ -1,5 +1,15 @@
 import { useState, type CSSProperties } from "react";
 import { resolveAsset, type GalleryService, type Manifest } from "@vibegal/engine";
+import {
+  cardStyle,
+  emptyStateStyle,
+  emptyTitleStyle,
+  itemMetaStyle,
+  itemTitleStyle,
+  palette,
+  primaryPillButton,
+  secondaryPillButton,
+} from "./uiTheme";
 
 interface GalleryPanelProps {
   manifest: Manifest;
@@ -101,7 +111,7 @@ export function ReplayPanel({ manifest, gallery, busy, onStartReplay }: ReplayPa
               <strong style={itemTitleStyle}>{unlocked ? entry.title ?? id : "未解锁回想"}</strong>
               <code style={itemMetaStyle}>{entry.nodeId}</code>
             </div>
-            <button type="button" data-replay-action="start" disabled={busy || !unlocked} onClick={() => onStartReplay(id)} style={primaryButtonStyle}>
+            <button type="button" data-replay-action="start" disabled={busy || !unlocked} onClick={() => onStartReplay(id)} style={primaryPillButton}>
               开始回想
             </button>
           </article>
@@ -118,7 +128,7 @@ export function MusicRoomPanel({ manifest, gallery, busy, onPlayMusic, onStopMus
   return (
     <div style={panelStyle}>
       <div style={toolbarStyle}>
-        <button type="button" data-music-action="stop" disabled={busy} onClick={onStopMusic} style={secondaryButtonStyle}>
+        <button type="button" data-music-action="stop" disabled={busy} onClick={onStopMusic} style={secondaryPillButton}>
           停止音乐
         </button>
       </div>
@@ -132,7 +142,7 @@ export function MusicRoomPanel({ manifest, gallery, busy, onPlayMusic, onStopMus
                 <strong style={itemTitleStyle}>{unlocked ? entry.title ?? id : "未解锁音乐"}</strong>
                 <code style={itemMetaStyle}>{unlocked ? asset ?? entry.audioId : id}</code>
               </div>
-              <button type="button" data-music-action="play" disabled={busy || !unlocked} onClick={() => onPlayMusic(entry.audioId)} style={primaryButtonStyle}>
+              <button type="button" data-music-action="play" disabled={busy || !unlocked} onClick={() => onPlayMusic(entry.audioId)} style={primaryPillButton}>
                 播放
               </button>
             </article>
@@ -167,7 +177,7 @@ export function EndingsPanel({ manifest, gallery }: EndingsPanelProps) {
 
 function EmptyState({ title }: { title: string }) {
   return (
-    <div role="status" style={emptyStyle}>
+    <div role="status" style={emptyStateStyle}>
       <strong style={emptyTitleStyle}>{title}</strong>
     </div>
   );
@@ -194,30 +204,26 @@ function assetName(asset: unknown): string | null {
 
 const panelStyle: CSSProperties = { position: "relative", minHeight: "100%", containerType: "inline-size" };
 const toolbarStyle: CSSProperties = { display: "flex", justifyContent: "flex-end", marginBottom: 12 };
-const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 };
-const listStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
+const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 };
+const listStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 10 };
 const rowCopyStyle: CSSProperties = { minWidth: 0, display: "flex", flexDirection: "column", gap: 5 };
-const itemTitleStyle: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff", fontSize: 13 };
-const itemMetaStyle: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(255,255,255,0.42)", font: "10px/1.3 monospace" };
-const emptyStyle: CSSProperties = { minHeight: 260, display: "grid", placeItems: "center", color: "rgba(255,255,255,0.6)" };
-const emptyTitleStyle: CSSProperties = { color: "#fff", fontSize: 17 };
-const lockedStyle: CSSProperties = { color: "rgba(255,255,255,0.32)", font: "700 12px/1 monospace" };
+const lockedStyle: CSSProperties = { color: palette.inkFaint, font: "700 12px/1 ui-monospace, monospace" };
 const thumbImageStyle: CSSProperties = { width: "100%", height: "100%", objectFit: "cover" };
 
 function galleryCardStyle(unlocked: boolean): CSSProperties {
   return {
+    ...cardStyle,
     minWidth: 0,
     minHeight: 172,
     display: "grid",
     gridTemplateRows: "112px auto auto",
     gap: 7,
-    padding: 9,
-    border: unlocked ? "1px solid rgba(116, 216, 197, 0.45)" : "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 6,
-    background: unlocked ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.025)",
-    color: "#fff",
+    padding: 10,
+    color: palette.ink,
     textAlign: "left",
     cursor: unlocked ? "pointer" : "default",
+    opacity: unlocked ? 1 : 0.72,
+    fontFamily: "inherit",
   };
 }
 
@@ -227,8 +233,8 @@ function thumbStyle(src: string): CSSProperties {
     overflow: "hidden",
     display: "grid",
     placeItems: "center",
-    borderRadius: 4,
-    backgroundColor: "#101113",
+    borderRadius: 10,
+    backgroundColor: palette.cardDeep,
     backgroundImage: src ? `url(${JSON.stringify(src)})` : undefined,
     backgroundSize: "cover",
     backgroundPosition: "center",
@@ -237,29 +243,25 @@ function thumbStyle(src: string): CSSProperties {
 
 function rowStyle(unlocked: boolean): CSSProperties {
   return {
+    ...cardStyle,
     minHeight: 58,
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
     gap: 12,
-    padding: "12px 14px",
-    border: unlocked ? "1px solid rgba(116, 216, 197, 0.34)" : "1px solid rgba(255,255,255,0.11)",
-    borderRadius: 5,
-    background: unlocked ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
+    padding: "13px 16px",
+    opacity: unlocked ? 1 : 0.72,
   };
 }
 
-const baseButtonStyle: CSSProperties = { minHeight: 32, borderRadius: 4, padding: "7px 11px", color: "#fff", font: "600 11px/1 system-ui, sans-serif", cursor: "pointer" };
-const primaryButtonStyle: CSSProperties = { ...baseButtonStyle, border: "1px solid #73d3c1", background: "#246d62" };
-const secondaryButtonStyle: CSSProperties = { ...baseButtonStyle, border: "1px solid rgba(255,255,255,0.24)", background: "transparent" };
-
 function badgeStyle(unlocked: boolean): CSSProperties {
   return {
-    padding: "5px 8px",
-    borderRadius: 3,
-    color: unlocked ? "#d8fff8" : "rgba(255,255,255,0.36)",
-    background: unlocked ? "rgba(35,108,96,0.55)" : "rgba(255,255,255,0.06)",
-    font: "700 10px/1 monospace",
+    padding: "5px 9px",
+    borderRadius: 999,
+    color: unlocked ? palette.accent : palette.inkFaint,
+    background: unlocked ? palette.accentSoft : "rgba(58, 63, 85, 0.08)",
+    font: "700 10px/1 ui-monospace, monospace",
+    letterSpacing: "0.5px",
   };
 }
 
@@ -269,7 +271,10 @@ const previewOverlayStyle: CSSProperties = {
   zIndex: 10,
   display: "grid",
   placeItems: "center",
-  background: "#000",
+  background: "rgba(10, 12, 20, 0.9)",
+  backdropFilter: "blur(8px)",
+  WebkitBackdropFilter: "blur(8px)",
+  borderRadius: 14,
 };
 const previewImageStyle: CSSProperties = { width: "100%", height: "100%", objectFit: "contain" };
 const previewCloseStyle: CSSProperties = {
@@ -277,11 +282,12 @@ const previewCloseStyle: CSSProperties = {
   top: 14,
   right: 14,
   minHeight: 34,
-  padding: "7px 13px",
-  border: "1px solid rgba(255,255,255,0.42)",
-  borderRadius: 4,
-  background: "rgba(0,0,0,0.72)",
+  padding: "8px 16px",
+  border: "1px solid rgba(255, 255, 255, 0.35)",
+  borderRadius: 999,
+  background: "rgba(255, 255, 255, 0.12)",
   color: "#fff",
+  font: "600 12px/1 system-ui, sans-serif",
   cursor: "pointer",
 };
 

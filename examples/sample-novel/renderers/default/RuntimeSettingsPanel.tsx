@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import type { RuntimeSettingsRecord } from "@vibegal/engine";
+import { cardStyle, palette, primaryPillButton } from "./uiTheme";
 
 type EffectiveSettings = RuntimeSettingsRecord & {
   textSpeedCps: number;
@@ -52,7 +53,7 @@ export function RuntimeSettingsPanel({
         <SettingRange id="setting-auto-delay" label="自动播放间隔" value={draft.autoAdvanceMs} min={0} max={Math.max(5_000, draft.autoAdvanceMs)} step={100} format={(value) => `${value} ms`} disabled={busy} onChange={(value) => setDraft((current: EffectiveSettings) => ({ ...current, autoAdvanceMs: value }))} />
       </div>
       <div style={footerStyle}>
-        <button type="submit" data-settings-action="save" disabled={busy} style={saveButtonStyle}>
+        <button type="submit" data-settings-action="save" disabled={busy} style={primaryPillButton}>
           应用设置
         </button>
       </div>
@@ -114,10 +115,9 @@ function effective(settings: RuntimeSettingsRecord): EffectiveSettings {
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const formStyle: CSSProperties = { minHeight: "100%", display: "flex", flexDirection: "column", gap: 22 };
 const settingsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 };
-const settingStyle: CSSProperties = { minWidth: 0, padding: "14px 15px", borderBottom: "1px solid rgba(255, 255, 255, 0.13)" };
+const settingStyle: CSSProperties = { ...cardStyle, minWidth: 0, padding: "14px 16px" };
 const labelRowStyle: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 };
-const labelStyle: CSSProperties = { color: "rgba(255, 255, 255, 0.84)", fontSize: 13, fontWeight: 650 };
-const valueStyle: CSSProperties = { color: "#e5c27a", font: "600 12px/1 monospace" };
-const rangeStyle: CSSProperties = { width: "100%", accentColor: "#6dcdbc", cursor: "pointer" };
+const labelStyle: CSSProperties = { color: palette.ink, fontSize: 13, fontWeight: 600 };
+const valueStyle: CSSProperties = { color: palette.accent, font: "600 12px/1 ui-monospace, monospace" };
+const rangeStyle: CSSProperties = { width: "100%", accentColor: palette.accent, cursor: "pointer" };
 const footerStyle: CSSProperties = { display: "flex", justifyContent: "flex-end", marginTop: "auto" };
-const saveButtonStyle: CSSProperties = { minHeight: 38, padding: "8px 17px", border: "1px solid #71d2c0", borderRadius: 4, background: "#246d62", color: "#fff", font: "600 13px/1 system-ui, sans-serif", cursor: "pointer" };

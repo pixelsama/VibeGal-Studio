@@ -1,5 +1,13 @@
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { PLAYER_MENU_PAGES, type PlayerMenuPage } from "./playerUiModel";
+import type { MenuWindowTokens } from "./useUiTokens";
+import {
+  dangerPillButton,
+  palette,
+  primaryPillButton,
+  secondaryPillButton,
+  solidDangerPillButton,
+} from "./uiTheme";
 
 export interface PlayerNotice {
   tone: "success" | "warning" | "error";
@@ -11,13 +19,16 @@ interface PlayerMenuProps {
   page: PlayerMenuPage;
   busy: boolean;
   notice: PlayerNotice | null;
+  /** 菜单窗口几何（data-ui-part="menuWindow" 的可拖拽部件，Spec 17） */
+  window: MenuWindowTokens;
   onPageChange: (page: PlayerMenuPage) => void;
   onClose: () => void;
   children: ReactNode;
 }
 
-export function PlayerMenu({ page, busy, notice, onPageChange, onClose, children }: PlayerMenuProps) {
+export function PlayerMenu({ page, busy, notice, window, onPageChange, onClose, children }: PlayerMenuProps) {
   const stop = (event: MouseEvent) => event.stopPropagation();
+  const pageTitle = PLAYER_MENU_PAGES.find((item) => item.id === page)?.label ?? page;
   return (
     <div
       data-vibegal-modal="true"
@@ -28,9 +39,11 @@ export function PlayerMenu({ page, busy, notice, onPageChange, onClose, children
       onClick={stop}
       style={overlayStyle}
     >
-      <section style={menuStyle}>
-        <header style={headerStyle}>
-          <nav aria-label="玩家菜单页面" style={tabsStyle}>
+      <section data-ui-part="menuWindow" style={menuStyle(window)}>
+        {/* 左侧导航栏：纵向胶囊条目，激活 = 白底樱粉 */}
+        <aside style={sidebarStyle}>
+          <div style={sidebarBrandStyle}>MENU</div>
+          <nav aria-label="玩家菜单页面" style={navStyle}>
             {PLAYER_MENU_PAGES.map((item) => (
               <button
                 key={item.id}
@@ -39,34 +52,40 @@ export function PlayerMenu({ page, busy, notice, onPageChange, onClose, children
                 aria-current={page === item.id ? "page" : undefined}
                 disabled={busy}
                 onClick={() => onPageChange(item.id)}
-                style={tabStyle(page === item.id)}
+                style={navItemStyle(page === item.id)}
               >
                 {item.label}
               </button>
             ))}
           </nav>
-          <button
-            type="button"
-            aria-label="关闭玩家菜单"
-            title="关闭"
-            disabled={busy}
-            onClick={onClose}
-            style={closeButtonStyle}
-          >
-            ×
-          </button>
-        </header>
+        </aside>
 
-        {notice && (
-          <div role={notice.tone === "error" ? "alert" : "status"} style={noticeStyle(notice.tone)}>
-            {notice.code && <code style={codeStyle}>{notice.code}</code>}
-            <span>{notice.message}</span>
-          </div>
-        )}
+        {/* 右侧内容区：标题栏 + 通知条 + 面板体 */}
+        <div style={contentStyle}>
+          <header style={headerStyle}>
+            <h2 style={pageTitleStyle}>{pageTitle}</h2>
+            <button
+              type="button"
+              aria-label="关闭玩家菜单"
+              title="关闭"
+              disabled={busy}
+              onClick={onClose}
+              style={closeButtonStyle}
+            >
+              ×
+            </button>
+          </header>
 
-        <div style={bodyStyle}>{children}</div>
+          {notice && (
+            <div role={notice.tone === "error" ? "alert" : "status"} style={noticeStyle(notice.tone)}>
+              {notice.code && <code style={codeStyle}>{notice.code}</code>}
+              <span>{notice.message}</span>
+            </div>
+          )}
+
+          <div style={bodyStyle}>{children}</div>
+        </div>
       </section>
-      <style>{responsiveCss}</style>
     </div>
   );
 }
@@ -101,10 +120,17 @@ export function ConfirmDialog({
         <h2 style={confirmTitleStyle}>{title}</h2>
         <p style={confirmMessageStyle}>{message}</p>
         <div style={confirmActionsStyle}>
-          <button type="button" disabled={busy} onClick={onCancel} style={secondaryButtonStyle}>
+          <button type="button" disabled={busy} onClick={onCancel} style={secondaryPillButton}>
             取消
           </button>
-          <button type="button" data-confirm-action="confirm" autoFocus disabled={busy} onClick={onConfirm} style={commandButtonStyle(destructive)}>
+          <button
+            type="button"
+            data-confirm-action="confirm"
+            autoFocus
+            disabled={busy}
+            onClick={onConfirm}
+            style={destructive ? solidDangerPillButton : primaryPillButton}
+          >
             {confirmLabel}
           </button>
         </div>
@@ -118,12 +144,13 @@ export function SystemPanel({ busy, onReturn, onRestart }: { busy: boolean; onRe
     <div style={systemStyle}>
       <div>
         <h2 style={sectionTitleStyle}>系统</h2>
+        <p style={systemHintStyle}>返回当前剧情，或从头开始整个故事。</p>
       </div>
       <div style={systemActionsStyle}>
-        <button type="button" disabled={busy} onClick={onReturn} style={primaryButtonStyle}>
+        <button type="button" disabled={busy} onClick={onReturn} style={primaryPillButton}>
           返回游戏
         </button>
-        <button type="button" disabled={busy} onClick={onRestart} style={dangerButtonStyle}>
+        <button type="button" disabled={busy} onClick={onRestart} style={dangerPillButton}>
           重新开始
         </button>
       </div>
@@ -135,106 +162,145 @@ const overlayStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
   zIndex: 100,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 24,
-  boxSizing: "border-box",
-  background: "rgba(0, 0, 0, 0.72)",
+  background: "rgba(16, 18, 28, 0.45)",
+  backdropFilter: "blur(6px)",
+  WebkitBackdropFilter: "blur(6px)",
   cursor: "default",
-  containerType: "size",
 };
 
-const menuStyle: CSSProperties = {
-  width: "min(1080px, 100%)",
-  height: "min(640px, 100%)",
-  minHeight: 0,
-  display: "grid",
-  gridTemplateRows: "auto auto minmax(0, 1fr)",
-  overflow: "hidden",
-  border: "1px solid rgba(255, 255, 255, 0.22)",
-  borderRadius: 6,
-  background: "rgba(20, 21, 23, 0.97)",
-  color: "#f4f4f2",
-  boxShadow: "0 22px 70px rgba(0, 0, 0, 0.55)",
-  fontFamily: "system-ui, sans-serif",
-  letterSpacing: 0,
-};
-
-const headerStyle: CSSProperties = {
-  minHeight: 54,
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "0 12px",
-  borderBottom: "1px solid rgba(255, 255, 255, 0.13)",
-};
-
-const tabsStyle: CSSProperties = {
-  minWidth: 0,
-  display: "flex",
-  alignItems: "stretch",
-  overflowX: "auto",
-};
-
-function tabStyle(active: boolean): CSSProperties {
+function menuStyle(window: MenuWindowTokens): CSSProperties {
   return {
-    minWidth: 116,
-    padding: "0 16px",
+    position: "absolute",
+    left: window.x,
+    top: window.y,
+    width: window.width,
+    height: window.height,
+    // 几何 token 语义 = 部件边框盒（与 Studio 拖拽 overlay 的选框一致）
+    boxSizing: "border-box",
+    minHeight: 0,
+    display: "grid",
+    gridTemplateColumns: "184px minmax(0, 1fr)",
+    overflow: "hidden",
+    border: "1px solid rgba(255, 255, 255, 0.6)",
+    borderRadius: 20,
+    background: palette.panelWhite,
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    color: palette.ink,
+    boxShadow: "0 24px 80px rgba(12, 15, 28, 0.45)",
+    fontFamily: "inherit",
+  };
+}
+
+const sidebarStyle: CSSProperties = {
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  padding: "18px 12px",
+  background: palette.card,
+  borderRight: `1px solid ${palette.hairline}`,
+};
+
+const sidebarBrandStyle: CSSProperties = {
+  padding: "0 10px 10px",
+  color: palette.inkFaint,
+  font: "700 11px/1 ui-monospace, monospace",
+  letterSpacing: "3px",
+};
+
+const navStyle: CSSProperties = {
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  overflowY: "auto",
+};
+
+function navItemStyle(active: boolean): CSSProperties {
+  return {
+    display: "block",
+    width: "100%",
+    padding: "10px 12px",
     border: 0,
-    borderBottom: active ? "3px solid #76d8c7" : "3px solid transparent",
-    background: active ? "rgba(118, 216, 199, 0.1)" : "transparent",
-    color: active ? "#d9fff8" : "rgba(255, 255, 255, 0.68)",
-    font: "600 14px/1 system-ui, sans-serif",
-    letterSpacing: 0,
+    borderRadius: 12,
+    background: active ? "#fff" : "transparent",
+    boxShadow: active ? "0 2px 10px rgba(24, 28, 48, 0.08)" : "none",
+    color: active ? palette.accent : palette.inkSoft,
+    fontWeight: active ? 700 : 500,
+    fontSize: 13,
+    fontFamily: "inherit",
+    textAlign: "left",
     cursor: "pointer",
     whiteSpace: "nowrap",
   };
 }
 
+const contentStyle: CSSProperties = {
+  minWidth: 0,
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
+};
+
+const headerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "16px 22px 12px",
+  borderBottom: `1px solid ${palette.hairline}`,
+};
+
+const pageTitleStyle: CSSProperties = {
+  margin: 0,
+  color: palette.ink,
+  fontSize: 18,
+  fontWeight: 700,
+  letterSpacing: "0.5px",
+};
+
 const closeButtonStyle: CSSProperties = {
-  width: 42,
-  height: 42,
-  alignSelf: "center",
-  flex: "0 0 42px",
-  border: "1px solid rgba(255, 255, 255, 0.18)",
-  borderRadius: 4,
-  background: "transparent",
-  color: "#fff",
-  font: "300 28px/1 system-ui, sans-serif",
+  width: 34,
+  height: 34,
+  flex: "0 0 34px",
+  border: `1px solid ${palette.hairline}`,
+  borderRadius: 999,
+  background: palette.card,
+  color: palette.ink,
+  font: "300 20px/1 system-ui, sans-serif",
   cursor: "pointer",
 };
 
 const bodyStyle: CSSProperties = {
   minHeight: 0,
   overflow: "auto",
-  padding: 18,
+  padding: 20,
   overscrollBehavior: "contain",
 };
 
 function noticeStyle(tone: PlayerNotice["tone"]): CSSProperties {
   const colors = tone === "error"
-    ? { border: "#e58282", background: "rgba(123, 37, 37, 0.32)" }
+    ? { border: "#f3b9b5", background: "#fdecec" }
     : tone === "warning"
-      ? { border: "#e2b764", background: "rgba(112, 77, 20, 0.28)" }
-      : { border: "#6ecab8", background: "rgba(28, 98, 86, 0.27)" };
+      ? { border: "#f0d9a8", background: "#fdf3e0" }
+      : { border: "#a9e5cf", background: "#e2f7ef" };
   return {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "9px 18px",
+    padding: "9px 22px",
     borderBottom: `1px solid ${colors.border}`,
     background: colors.background,
-    color: "#fff",
+    color: palette.ink,
     fontSize: 13,
   };
 }
 
 const codeStyle: CSSProperties = {
   padding: "2px 5px",
-  borderRadius: 3,
-  background: "rgba(0, 0, 0, 0.28)",
+  borderRadius: 4,
+  background: "rgba(58, 63, 85, 0.08)",
   fontSize: 11,
   whiteSpace: "nowrap",
 };
@@ -247,53 +313,24 @@ const confirmOverlayStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: 24,
-  background: "rgba(0, 0, 0, 0.68)",
+  background: "rgba(16, 18, 28, 0.5)",
+  backdropFilter: "blur(4px)",
+  WebkitBackdropFilter: "blur(4px)",
 };
 
 const confirmStyle: CSSProperties = {
   width: "min(440px, 100%)",
-  border: "1px solid rgba(255, 255, 255, 0.26)",
-  borderRadius: 6,
-  padding: 22,
-  background: "#202123",
-  color: "#fff",
-  boxShadow: "0 18px 60px rgba(0, 0, 0, 0.6)",
+  border: "1px solid rgba(255, 255, 255, 0.6)",
+  borderRadius: 18,
+  padding: 24,
+  background: palette.panelWhite,
+  color: palette.ink,
+  boxShadow: "0 18px 60px rgba(12, 15, 28, 0.4)",
 };
 
-const confirmTitleStyle: CSSProperties = { margin: 0, fontSize: 20, lineHeight: 1.3, letterSpacing: 0 };
-const confirmMessageStyle: CSSProperties = { margin: "12px 0 20px", color: "rgba(255, 255, 255, 0.72)", fontSize: 14, lineHeight: 1.6 };
+const confirmTitleStyle: CSSProperties = { margin: 0, fontSize: 19, lineHeight: 1.3 };
+const confirmMessageStyle: CSSProperties = { margin: "12px 0 20px", color: palette.inkSoft, fontSize: 14, lineHeight: 1.6 };
 const confirmActionsStyle: CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 10 };
-
-const baseCommandStyle: CSSProperties = {
-  minHeight: 38,
-  borderRadius: 4,
-  padding: "8px 16px",
-  color: "#fff",
-  font: "600 13px/1 system-ui, sans-serif",
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle: CSSProperties = {
-  ...baseCommandStyle,
-  border: "1px solid rgba(255, 255, 255, 0.24)",
-  background: "transparent",
-};
-
-function commandButtonStyle(destructive: boolean): CSSProperties {
-  return destructive ? dangerButtonStyle : primaryButtonStyle;
-}
-
-const primaryButtonStyle: CSSProperties = {
-  ...baseCommandStyle,
-  border: "1px solid #77d7c5",
-  background: "#236f63",
-};
-
-const dangerButtonStyle: CSSProperties = {
-  ...baseCommandStyle,
-  border: "1px solid #e58c8c",
-  background: "#783b3b",
-};
 
 const systemStyle: CSSProperties = {
   minHeight: "100%",
@@ -303,15 +340,5 @@ const systemStyle: CSSProperties = {
   gap: 32,
 };
 const systemActionsStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 10 };
-const sectionTitleStyle: CSSProperties = { margin: 0, fontSize: 20, letterSpacing: 0 };
-
-const responsiveCss = `
-@container (max-height: 600px) {
-  [data-player-menu] { padding: 12px !important; }
-  [data-player-menu] > section { height: 100% !important; }
-}
-@container (max-width: 760px) {
-  [data-player-menu] { padding: 10px !important; }
-  [data-player-menu] [data-menu-page] { min-width: 96px !important; padding: 0 10px !important; }
-}
-`;
+const sectionTitleStyle: CSSProperties = { margin: 0, color: palette.ink, fontSize: 20 };
+const systemHintStyle: CSSProperties = { margin: "10px 0 0", color: palette.inkSoft, fontSize: 13 };
