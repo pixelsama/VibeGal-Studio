@@ -375,6 +375,9 @@ const rootStyle: React.CSSProperties = {
   display: "grid",
   // 检查器模式：画布（预览）为主居左，属性面板居右（设计工具惯例）
   gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
+  // 行轨道必须封顶在容器高度：隐式 auto 行会被宫格内容撑得比视口高，
+  // 再被下面的 overflow:hidden 裁掉，导致宫格永远滚不动（底部场景被切掉）。
+  gridTemplateRows: "minmax(0, 1fr)",
   width: "100%",
   height: "100%",
   minWidth: 0,
@@ -397,6 +400,10 @@ const previewColumnStyle: React.CSSProperties = {
   gridColumn: 1,
   gridRow: 1,
   minWidth: 0,
+  // grid item 默认 min-height:auto 会按宫格内容撑开自身，必须显式归零，
+  // 下面的 flex:1（previewMount）→ height:100% + overflow:auto（gridScroll）
+  // 高度链才有界，长场景列表才能在列内滚动。
+  minHeight: 0,
   height: "100%",
   display: "flex",
   flexDirection: "column",

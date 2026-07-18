@@ -82,6 +82,19 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("海平线上的第一缕光");
   });
 
+  it("布局回归：宫格高度链有界，长场景列表可以在列内滚动", () => {
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace project={makeProject()} rendererId="default" onSaved={() => {}} />,
+    );
+
+    // 根网格行轨道必须封顶在容器高度：隐式 auto 行会被宫格内容撑得比视口高，
+    // 再被根 overflow:hidden 裁掉，内部 overflow:auto 永远等不到滚动条。
+    expect(html).toContain("grid-template-rows:minmax(0, 1fr)");
+    // 预览列是 grid item，默认 min-height:auto 会按内容撑开，必须显式归零，
+    // 下方的 flex:1 + min-height:0 + overflow:auto 链才能生效。
+    expect(html).toContain("grid-column:1;grid-row:1;min-width:0;min-height:0;height:100%");
+  });
+
   it("分组渲染：有 default skin 时显示七组属性与字体 datalist 候选", () => {
     const project = makeProject({
       default: { name: "默认外观", assets: {}, tokens: { "dialogueBox.x": 120 } },
