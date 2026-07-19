@@ -149,6 +149,50 @@ fn read_window_metadata(root: &Path) -> (String, f64, f64) {
     (title, width, height)
 }
 
+/// smoke 模式下（仅 macOS）安装最小原生崩溃处理器：播放器若在原生层
+/// 崩溃（SIGSEGV/SIGBUS/SIGABRT/SIGTRAP），先把 `backtrace_symbols_fd`
+/// 符号化堆栈写进 stderr（CLI smoke 会把 stderr 尾部带进
+/// `smoke_desktop_incomplete` 错误），再以原信号重新退出以保留真实退出
+/// 状态。只使用 libSystem 自带的 extern 符号，不引入新依赖；处理器内部
+/// 只调用 `write`/`backtrace_symbols_fd` 等异步信号安全（或实践中安全）
+/// 的函数。
+#[cfg(target_os = "macos")]
+fn install_smoke_crash_handler() {
+    use std::os::raw::{c_int, c_void};
+
+    const SIGABRT: c_int = 6;
+    const SIGTRAP: c_int = 5;
+    const SIGBUS: c_int = 10;
+    const SIGSEGV: c_int = 11;
+
+    extern "C" {
+        fn signal(signum: c_int, handler: usize) -> usize;
+        fn raise(signum: c_int) -> c_int;
+        fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
+        fn backtrace(buffer: *mut *mut c_void, size: c_int) -> c_int;
+        fn backtrace_symbols_fd(buffer: *const *mut c_void, size: c_int, fd: c_int);
+    }
+
+    extern "C" fn crash_handler(sig: c_int) {
+        unsafe {
+            let banner = b"\n[vibegal-player-smoke] native crash, backtrace:\n";
+            write(2, banner.as_ptr() as *const c_void, banner.len());
+            let mut frames: [*mut c_void; 64] = [std::ptr::null_mut(); 64];
+            let count = backtrace(frames.as_mut_ptr(), frames.len() as c_int);
+            backtrace_symbols_fd(frames.as_ptr(), count, 2);
+            signal(sig, 0); // SIG_DFL
+            raise(sig);
+        }
+    }
+
+    unsafe {
+        signal(SIGSEGV, crash_handler as usize);
+        signal(SIGBUS, crash_handler as usize);
+        signal(SIGABRT, crash_handler as usize);
+        signal(SIGTRAP, crash_handler as usize);
+    }
+}
+
 fn main() {
     let root = game_root().unwrap_or_else(|error| {
         eprintln!("{error}");
@@ -159,6 +203,10 @@ fn main() {
         std::process::exit(70);
     }
     let smoke = std::env::var_os("VIBEGAL_DESKTOP_SMOKE").is_some();
+    #[cfg(target_os = "macos")]
+    if smoke {
+        install_smoke_crash_handler();
+    }
     let protocol_root = root.clone();
     let (title, width, height) = read_window_metadata(&root);
 

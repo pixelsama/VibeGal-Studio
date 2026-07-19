@@ -324,8 +324,10 @@ jobs:
                   print(f"  {name} + {frame.get('imageOffset')} {frame.get('symbol', '')}")
           PY
           fi
+          echo "== system DiagnosticReports =="
+          ls -lt /Library/Logs/DiagnosticReports 2>/dev/null | head -8 || true
           echo "== unified log (last 10m, crash-related) =="
-          log show --last 10m --style compact --predicate 'subsystem == "com.apple.WebKit" OR processImagePath CONTAINS[c] "Desktop With Spaces" OR senderImagePath CONTAINS[c] "Desktop With Spaces"' 2>/dev/null | tail -80 || true
+          log show --last 10m --style compact --predicate 'subsystem == "com.apple.WebKit" OR process == "ReportCrash" OR processImagePath CONTAINS[c] "Desktop With Spaces" OR senderImagePath CONTAINS[c] "Desktop With Spaces"' 2>/dev/null | tail -120 || true
 
       - name: Build and smoke with installed CLI (Windows)
         if: runner.os == 'Windows'
