@@ -3988,7 +3988,14 @@ fn smoke_browser_executable() -> Option<String> {
         }
     }
     candidates.into_iter().find(|candidate| {
-        browser_candidate_works(candidate)
+        let path = Path::new(candidate);
+        if path.is_absolute() {
+            // 绝对路径候选只检查文件存在：Windows 受管会话（session 0）
+            // 里 chrome/msedge --version 进程会永远挂起，不能用来探测。
+            path.is_file()
+        } else {
+            browser_candidate_works(candidate)
+        }
     })
 }
 

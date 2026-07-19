@@ -296,13 +296,34 @@ jobs:
       - name: Collect macOS player crash reports on failure
         if: failure() && runner.os == 'macOS'
         run: |
+          # ReportCrash writes the .ips asynchronously; give it time to finish.
+          sleep 12
           echo "== newest DiagnosticReports =="
           ls -lt "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | head -8 || true
-          for report in $(ls -t "$HOME/Library/Logs/DiagnosticReports/"*.ips 2>/dev/null | head -2); do
-            echo "== $report =="
-            head -c 8000 "$report" || true
-            echo
-          done
+          LATEST=$(ls -t "$HOME/Library/Logs/DiagnosticReports/"*.ips 2>/dev/null | head -1)
+          echo "latest crash report: ${LATEST:-<none>}"
+          if [ -n "$LATEST" ]; then
+            python3 - "$LATEST" <<'PY'
+          import json, sys
+          lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().splitlines()
+          body = json.loads(lines[1])
+          print("=== exception ===")
+          print(json.dumps(body.get("exception", {}), indent=2))
+          print("=== termination ===")
+          print(json.dumps(body.get("termination", {}), indent=2))
+          images = body.get("usedImages", [])
+          ft = body.get("faultingThread", 0)
+          threads = body.get("threads", [])
+          print(f"=== faulting thread {ft} (of {len(threads)}) ===")
+          if ft < len(threads):
+              t = threads[ft]
+              print("queue:", t.get("queue"), "name:", t.get("name"))
+              for frame in t.get("frames", [])[:40]:
+                  idx = frame.get("imageIndex", -1)
+                  name = images[idx].get("name", "?") if 0 <= idx < len(images) else "?"
+                  print(f"  {name} + {frame.get('imageOffset')} {frame.get('symbol', '')}")
+          PY
+          fi
           echo "== unified log (last 10m, crash-related) =="
           log show --last 10m --style compact --predicate 'subsystem == "com.apple.WebKit" OR processImagePath CONTAINS[c] "Desktop With Spaces" OR senderImagePath CONTAINS[c] "Desktop With Spaces"' 2>/dev/null | tail -80 || true
 
