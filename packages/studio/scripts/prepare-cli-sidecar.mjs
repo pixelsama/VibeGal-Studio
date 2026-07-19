@@ -38,4 +38,17 @@ copyFileSync(source, destination);
 chmodSync(destination, 0o755);
 
 console.log(`Prepared VibeGal-Studio CLI sidecar: ${destination}`);
+
+const playerExecutableName = isWindows ? "vibegal-player-tauri.exe" : "vibegal-player-tauri";
+const playerSource = path.join(srcTauriRoot, "target", "release", playerExecutableName);
+const playerDestinationDir = path.join(srcTauriRoot, "resources", "player");
+const playerDestination = path.join(playerDestinationDir, playerExecutableName);
+if (!existsSync(playerSource)) {
+  throw new Error(`Cannot bundle the lightweight Tauri player because the release binary is missing: ${playerSource}`);
+}
+mkdirSync(playerDestinationDir, { recursive: true });
+copyFileSync(playerSource, playerDestination);
+chmodSync(playerDestination, 0o755);
+console.log(`Prepared reusable VibeGal Tauri player: ${playerDestination}`);
+
 prepareWebExporter();

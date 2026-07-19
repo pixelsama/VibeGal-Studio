@@ -60,7 +60,13 @@ vibegal-cli validate <project-path> --format json
 vibegal-cli renderer-check <project-path> --renderer default --format json
 vibegal-cli build <project-path> --target web --out dist-game --format json
 vibegal-cli smoke dist-game --target web --format json
+vibegal-cli build <project-path> --target desktop --out dist-desktop --format json
+vibegal-cli build <project-path> --target desktop --runtime tauri --out dist-light --format json
+vibegal-cli smoke dist-desktop --target desktop --runtime electron --format json
 ```
+
+Desktop builds default to Electron compatible mode (fixed Chromium). Pass
+`--runtime tauri` for the smaller system-WebView lightweight mode.
 
 ## Renderer Contract
 

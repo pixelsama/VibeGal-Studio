@@ -31,6 +31,9 @@
 - `validate` 必须能从任意 cwd、无 Node 的 PATH 和无源码 checkout 环境运行。
 - Windows 上 `pnpm smoke:release` 检测到已安装的 MSVC Rust 工具链（`*-pc-windows-msvc`）时会自动通过 `RUSTUP_TOOLCHAIN` 切换；这避开了默认 windows-gnu 工具链缺 `dlltool.exe` 时依赖编译失败的问题。未安装 MSVC 工具链的环境保持默认行为。
 - 安装包内 CLI 的 Web `build` / `smoke` 必须使用 bundled exporter；当前 build 仍要求系统 Node 或 `VIBEGAL_NODE`。
+- 桌面游戏构建同时提供两种后端目标：默认 `--runtime electron`（兼容模式，固定 Chromium）与可选 `--runtime tauri`（轻量模式，系统 WebView）；两者必须复用同一份 Web 产物。
+- Electron 固定运行时首次构建时按需下载并校验，之后复用 VibeGal 本地缓存；Tauri 轻量 Player 随 Studio 预编译分发，单个游戏不得再次编译 Rust。
+- 桌面产物当前是可直接运行并可自行压缩分发的 portable 目录；签名、公证和商店安装器仍属于独立发布阶段。
 - `renderer-check`（真实编译/类型检查）与 `renderer-snapshot`（无头截图）同样走 bundled exporter 里的 node worker（`build-web-export.mjs` / `renderer-snapshot.mjs` + 共享模块 `renderer-worker-shared.mjs`），新增 exporter 侧脚本必须同步 `packages/studio/scripts/prepare-web-exporter.mjs` 的拷贝清单。
 - CI 在 macOS/Windows bundle 后把安装物复制到独立、无 checkout 的 job，并使用含空格路径完成 validate/build/browser smoke。
 

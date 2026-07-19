@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 26] = [
+const COMMAND_NAMES: [&str; 27] = [
     "list_projects",
     "open_project",
     "create_project",
@@ -29,6 +29,7 @@ const COMMAND_NAMES: [&str; 26] = [
     "save_manifest",
     "load_app_settings",
     "save_app_settings",
+    "build_desktop_game",
     "cli_tool_status",
     "install_cli_tool",
     "uninstall_cli_tool",
@@ -48,7 +49,7 @@ const REQUIRED_DOMAIN_MODULES: [&str; 9] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 26] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 27] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("create_project", &["parentDir", "name"]),
@@ -96,6 +97,7 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 26] = [
     ),
     ("load_app_settings", &[]),
     ("save_app_settings", &["settings"]),
+    ("build_desktop_game", &["request"]),
     ("cli_tool_status", &[]),
     ("install_cli_tool", &[]),
     ("uninstall_cli_tool", &[]),
@@ -357,7 +359,9 @@ fn registered_command_names(source: &str) -> BTreeSet<String> {
 fn function_name(line: &str) -> Option<&str> {
     let after_fn = line
         .strip_prefix("fn ")
-        .or_else(|| line.strip_prefix("pub(crate) fn "))?;
+        .or_else(|| line.strip_prefix("async fn "))
+        .or_else(|| line.strip_prefix("pub(crate) fn "))
+        .or_else(|| line.strip_prefix("pub(crate) async fn "))?;
     after_fn.split(['(', '<']).next()
 }
 

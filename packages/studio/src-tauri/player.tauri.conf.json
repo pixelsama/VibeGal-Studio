@@ -1,0 +1,29 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "VibeGal Player",
+  "version": "0.0.0",
+  "identifier": "com.vibegal.player",
+  "build": {
+    "frontendDist": "player-placeholder"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VibeGal Player",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 540,
+        "visible": false,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' vibegal: http://vibegal.localhost data: blob: https:; media-src 'self' vibegal: http://vibegal.localhost data: blob: https:; connect-src 'self' vibegal: http://vibegal.localhost; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

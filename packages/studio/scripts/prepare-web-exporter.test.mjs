@@ -22,6 +22,21 @@ test("Tauri bundles the standalone exporter without flattening its directories",
     "directory resources must not use a glob because Tauri flattens mapped glob results",
   );
   assert.equal(config.bundle.resources["resources/exporter/**/*"], undefined);
+  assert.equal(
+    config.bundle.resources["resources/player/"],
+    "player/",
+    "the precompiled lightweight player must be available to the bundled CLI",
+  );
+});
+
+test("lightweight player starts with one hidden bootstrap window", async () => {
+  const config = JSON.parse(await readFile(
+    path.join(studioRoot, "src-tauri/player.tauri.conf.json"),
+    "utf8",
+  ));
+  assert.equal(config.app.windows.length, 1);
+  assert.equal(config.app.windows[0].label, "main");
+  assert.equal(config.app.windows[0].visible, false);
 });
 
 test("prepared web exporter runs outside the repository layout", async () => {
@@ -45,10 +60,14 @@ test("prepared web exporter runs outside the repository layout", async () => {
 
     // renderer-snapshot 依赖的共享模块与宿主文件也必须随 exporter 一起分发。
     for (const relative of [
+      "packages/studio/scripts/build-desktop-export.mjs",
       "packages/studio/scripts/renderer-worker-shared.mjs",
       "packages/studio/scripts/renderer-snapshot.mjs",
       "packages/studio/src/export/snapshotScenes.ts",
       "packages/studio/src/export/snapshotHost.ts",
+      "packages/studio/node_modules/@electron/get/package.json",
+      "packages/studio/node_modules/adm-zip/package.json",
+      "packages/studio/node_modules/undici/package.json",
     ]) {
       await access(path.join(outDir, relative));
     }

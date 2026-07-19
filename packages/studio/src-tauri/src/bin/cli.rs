@@ -18,10 +18,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
-#[command(name = "vibegal-cli", about = "VibeGal-Studio 项目校验命令行")]
+#[command(name = "vibegal-cli", about = "VibeGal-Studio 项目构建与校验命令行")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -41,9 +41,12 @@ enum Commands {
     Build {
         /// 项目根目录路径
         path: String,
-        /// 导出目标。V1 仅支持 web。
+        /// 导出目标：web 或 desktop。
         #[arg(long, value_enum)]
         target: BuildTarget,
+        /// 桌面运行壳：electron（兼容模式，默认）或 tauri（轻量模式）。
+        #[arg(long, value_enum)]
+        runtime: Option<DesktopRuntime>,
         /// 输出目录
         #[arg(long = "out")]
         out_dir: PathBuf,
@@ -95,9 +98,12 @@ enum Commands {
     Smoke {
         /// 导出目录路径
         dist_dir: PathBuf,
-        /// smoke 目标。V1.1 仅支持 web。
+        /// smoke 目标：web 或 desktop。
         #[arg(long, value_enum)]
         target: BuildTarget,
+        /// 桌面运行壳；desktop 默认 electron。
+        #[arg(long, value_enum)]
+        runtime: Option<DesktopRuntime>,
         /// 输出格式：text（默认，人类可读）或 json（结构化）
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
@@ -113,12 +119,37 @@ enum OutputFormat {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum BuildTarget {
     Web,
+    Desktop,
 }
 
 impl BuildTarget {
     fn as_str(self) -> &'static str {
         match self {
             BuildTarget::Web => "web",
+            BuildTarget::Desktop => "desktop",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum DesktopRuntime {
+    Electron,
+    Tauri,
+}
+
+impl DesktopRuntime {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Electron => "electron",
+            Self::Tauri => "tauri",
+        }
+    }
+
+    fn mode(self) -> &'static str {
+        match self {
+            Self::Electron => "compatible",
+            Self::Tauri => "lightweight",
         }
     }
 }
@@ -136,10 +167,11 @@ struct ValidateOutput {
     asset_issues: Vec<app_lib::GraphIssue>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct BuildOptions {
     project_path: String,
     target: BuildTarget,
+    desktop_runtime: Option<DesktopRuntime>,
     out_dir: PathBuf,
     renderer_id: Option<String>,
     strict: bool,
@@ -221,7 +253,26 @@ struct BuildOutput {
     out_dir: String,
     #[serde(rename = "rendererId")]
     renderer_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    executable: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    artifacts: Vec<String>,
     warnings: Vec<app_lib::ProjectIssue>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DesktopWorkerOutput {
+    ok: bool,
+    runtime: String,
+    mode: String,
+    #[serde(rename = "outDir")]
+    out_dir: String,
+    executable: String,
+    artifacts: Vec<String>,
 }
 
 #[derive(Serialize, Debug)]
@@ -285,6 +336,10 @@ struct SmokeOutput {
     dist_dir: String,
     #[serde(rename = "basePath")]
     base_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
     checks: Vec<String>,
 }
 
@@ -505,6 +560,24 @@ fn build_error(
     }
 }
 
+fn selected_desktop_runtime(
+    target: BuildTarget,
+    runtime: Option<DesktopRuntime>,
+) -> Result<Option<DesktopRuntime>, BuildError> {
+    match (target, runtime) {
+        (BuildTarget::Web, None) => Ok(None),
+        (BuildTarget::Web, Some(_)) => Err(build_error(
+            "desktop_runtime_not_applicable",
+            "--runtime 仅用于 --target desktop",
+            "desktop",
+            None,
+            None,
+            vec![],
+        )),
+        (BuildTarget::Desktop, runtime) => Ok(Some(runtime.unwrap_or(DesktopRuntime::Electron))),
+    }
+}
+
 fn project_issue_is_error(issue: &app_lib::ProjectIssue) -> bool {
     issue.severity == app_lib::GraphIssueSeverity::Error
 }
@@ -528,41 +601,86 @@ fn ensure_export_out_dir_safe(project_root: &Path, out_dir: &Path) -> Result<(),
             vec![],
         )
     })?;
-    let out_abs = if out_dir.exists() {
-        out_dir.canonicalize().map_err(|e| {
-            build_error(
-                "build_path_error",
-                format!("无法定位输出目录 {}: {}", out_dir.display(), e),
-                "prepare",
-                None,
-                None,
-                vec![],
-            )
-        })?
+    let requested_out = if out_dir.is_absolute() {
+        out_dir.to_path_buf()
     } else {
-        let parent = out_dir.parent().unwrap_or_else(|| Path::new("."));
-        let parent = parent.canonicalize().map_err(|e| {
+        std::env::current_dir()
+            .map_err(|e| {
+                build_error(
+                    "build_path_error",
+                    format!("无法定位当前目录: {e}"),
+                    "prepare",
+                    None,
+                    None,
+                    vec![],
+                )
+            })?
+            .join(out_dir)
+    };
+    let mut existing_ancestor = requested_out.as_path();
+    while !existing_ancestor.exists() {
+        existing_ancestor = existing_ancestor.parent().ok_or_else(|| {
             build_error(
                 "build_path_error",
-                format!("无法定位输出目录父目录 {}: {}", parent.display(), e),
+                format!("无法定位输出目录的已有父目录: {}", out_dir.display()),
                 "prepare",
                 None,
                 None,
                 vec![],
             )
         })?;
-        parent.join(out_dir.file_name().unwrap_or_default())
+    }
+    let canonical_ancestor = existing_ancestor.canonicalize().map_err(|e| {
+        build_error(
+            "build_path_error",
+            format!(
+                "无法定位输出目录父目录 {}: {}",
+                existing_ancestor.display(),
+                e
+            ),
+            "prepare",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    let suffix = requested_out.strip_prefix(existing_ancestor).map_err(|e| {
+        build_error(
+            "build_path_error",
+            format!("无法解析输出目录 {}: {}", out_dir.display(), e),
+            "prepare",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    let out_abs = if suffix.as_os_str().is_empty() {
+        canonical_ancestor
+    } else {
+        canonical_ancestor.join(suffix)
     };
 
-    if out_abs == project_root {
+    if out_abs.parent().is_none() || out_abs == project_root || project_root.starts_with(&out_abs) {
         return Err(build_error(
             "build_path_error",
-            "输出目录不能是项目根目录",
+            "输出目录不能是文件系统根目录、项目根目录或项目根目录的上级目录",
             "prepare",
             None,
             None,
             vec![],
         ));
+    }
+    for protected in ["content", "renderers", ".galstudio"] {
+        if out_abs.starts_with(project_root.join(protected)) {
+            return Err(build_error(
+                "build_path_error",
+                format!("输出目录不能位于项目源目录 {protected}/ 内"),
+                "prepare",
+                None,
+                None,
+                vec![],
+            ));
+        }
     }
     Ok(())
 }
@@ -782,7 +900,11 @@ fn write_json_file_and_hash(path: &Path, value: &serde_json::Value) -> Result<St
 }
 
 const EXPORT_WORKER_RELATIVE_PATH: &str = "exporter/packages/studio/scripts/build-web-export.mjs";
-const SNAPSHOT_WORKER_RELATIVE_PATH: &str = "exporter/packages/studio/scripts/renderer-snapshot.mjs";
+const SNAPSHOT_WORKER_RELATIVE_PATH: &str =
+    "exporter/packages/studio/scripts/renderer-snapshot.mjs";
+const DESKTOP_WORKER_RELATIVE_PATH: &str =
+    "exporter/packages/studio/scripts/build-desktop-export.mjs";
+const ELECTRON_RUNTIME_VERSION: &str = "43.1.1";
 
 fn worker_path_candidates(executable: Option<&Path>, relative_path: &str) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
@@ -797,7 +919,11 @@ fn worker_path_candidates(executable: Option<&Path>, relative_path: &str) -> Vec
     candidates
 }
 
-fn resolve_worker_path(env_var: &str, relative_path: &str, debug_relative: &str) -> Result<PathBuf, String> {
+fn resolve_worker_path(
+    env_var: &str,
+    relative_path: &str,
+    debug_relative: &str,
+) -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var(env_var) {
         let path = PathBuf::from(path);
         return path
@@ -806,7 +932,8 @@ fn resolve_worker_path(env_var: &str, relative_path: &str, debug_relative: &str)
             .ok_or_else(|| format!("{env_var} 指向的导出器不存在"));
     }
 
-    let mut candidates = worker_path_candidates(std::env::current_exe().ok().as_deref(), relative_path);
+    let mut candidates =
+        worker_path_candidates(std::env::current_exe().ok().as_deref(), relative_path);
     if cfg!(debug_assertions) {
         candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(debug_relative));
     }
@@ -840,6 +967,66 @@ fn snapshot_worker_path() -> Result<PathBuf, String> {
         SNAPSHOT_WORKER_RELATIVE_PATH,
         "../scripts/renderer-snapshot.mjs",
     )
+}
+
+fn desktop_worker_path() -> Result<PathBuf, String> {
+    resolve_worker_path(
+        "VIBEGAL_DESKTOP_WORKER",
+        DESKTOP_WORKER_RELATIVE_PATH,
+        "../scripts/build-desktop-export.mjs",
+    )
+}
+
+fn tauri_player_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "vibegal-player-tauri.exe"
+    } else {
+        "vibegal-player-tauri"
+    }
+}
+
+fn tauri_player_path() -> Result<PathBuf, String> {
+    if let Ok(path) = std::env::var("VIBEGAL_TAURI_PLAYER") {
+        let path = PathBuf::from(path);
+        return path
+            .is_file()
+            .then_some(path)
+            .ok_or_else(|| "VIBEGAL_TAURI_PLAYER 指向的轻量 Player 不存在".to_string());
+    }
+    let name = tauri_player_executable_name();
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(parent) = executable.parent() {
+            candidates.push(parent.join(name));
+            candidates.push(parent.join("player").join(name));
+            candidates.push(parent.join("resources/player").join(name));
+            if let Some(parent_parent) = parent.parent() {
+                candidates.push(parent_parent.join("Resources/player").join(name));
+                candidates.push(parent_parent.join("resources/player").join(name));
+            }
+        }
+    }
+    if cfg!(debug_assertions) {
+        candidates.push(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/debug")
+                .join(name),
+        );
+    }
+    candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "找不到随 CLI 分发的 Tauri 轻量 Player。检查路径：{}",
+                candidates
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
 }
 
 fn node_executable() -> String {
@@ -955,6 +1142,110 @@ fn run_build_worker(options: &BuildOptions, renderer_id: &str) -> Result<(), Bui
         "worker",
         None,
         Some(renderer_id.to_string()),
+        vec![],
+    ))
+}
+
+fn parse_desktop_worker_error(stderr: &str) -> Option<BuildError> {
+    let start = stderr.find('{')?;
+    let worker: WorkerBuildError = serde_json::from_str(&stderr[start..]).ok()?;
+    Some(BuildError {
+        ok: false,
+        code: worker.code,
+        message: worker.message,
+        step: worker.step,
+        file: worker.file,
+        renderer_id: worker.renderer_id,
+        line: worker.line,
+        column: worker.column,
+        diagnostics: worker.diagnostics,
+        issues: vec![],
+    })
+}
+
+fn run_desktop_worker(
+    runtime: DesktopRuntime,
+    web_dist: &Path,
+    out_dir: &Path,
+    product_name: &str,
+) -> Result<DesktopWorkerOutput, BuildError> {
+    let worker = desktop_worker_path().map_err(|message| {
+        build_error(
+            "desktop_worker_unavailable",
+            message,
+            "desktop",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    let mut command = Command::new(node_executable());
+    command
+        .arg(worker)
+        .arg("--runtime")
+        .arg(runtime.as_str())
+        .arg("--web-dist")
+        .arg(web_dist)
+        .arg("--out")
+        .arg(out_dir)
+        .arg("--product-name")
+        .arg(product_name);
+    match runtime {
+        DesktopRuntime::Electron => {
+            command
+                .arg("--electron-version")
+                .arg(ELECTRON_RUNTIME_VERSION);
+            if let Ok(path) = std::env::var("VIBEGAL_ELECTRON_DIST") {
+                command.arg("--electron-dist").arg(path);
+            }
+        }
+        DesktopRuntime::Tauri => {
+            let player = tauri_player_path().map_err(|message| {
+                build_error(
+                    "desktop_tauri_player_unavailable",
+                    message,
+                    "desktop",
+                    None,
+                    None,
+                    vec![],
+                )
+            })?;
+            command.arg("--tauri-player").arg(player);
+        }
+    }
+    let output = command.output().map_err(|error| {
+        build_error(
+            "desktop_worker_failed",
+            format!("无法启动桌面 build worker: {error}"),
+            "desktop",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return serde_json::from_str(stdout.trim()).map_err(|error| {
+            build_error(
+                "desktop_worker_invalid_output",
+                format!("桌面 build worker 返回了无效 JSON: {error}"),
+                "desktop",
+                None,
+                None,
+                vec![],
+            )
+        });
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if let Some(error) = parse_desktop_worker_error(&stderr) {
+        return Err(error);
+    }
+    Err(build_error(
+        "desktop_worker_failed",
+        stderr.trim().to_string(),
+        "desktop",
+        None,
+        None,
         vec![],
     ))
 }
@@ -1183,7 +1474,12 @@ fn renderer_compile_diagnostics(
         "renderer_compile_failed",
         renderer_id,
         "compile",
-        format!("worker={} status={} stderr={}", worker.display(), output.status, stderr.trim()),
+        format!(
+            "worker={} status={} stderr={}",
+            worker.display(),
+            output.status,
+            stderr.trim()
+        ),
         None,
         None,
         None,
@@ -1345,7 +1641,9 @@ fn renderer_check_project(
         )),
     }
 
-    if !diagnostics.iter().any(|d| d.severity == RendererDiagnosticSeverity::Error)
+    if !diagnostics
+        .iter()
+        .any(|d| d.severity == RendererDiagnosticSeverity::Error)
         && options.compile
     {
         match renderer_compile_diagnostics(&options.project_path, &renderer_id) {
@@ -1538,11 +1836,18 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
         .get("title")
         .and_then(|value| value.as_str())
         .unwrap_or(&project.meta.name);
+    let stage = project
+        .content
+        .meta
+        .get("stage")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({ "width": 1280, "height": 720 }));
     let built_at = built_at_iso();
     let game_manifest = serde_json::json!({
         "schemaVersion": 1,
         "projectId": project.meta.name,
         "title": title,
+        "stage": stage,
         "rendererId": renderer_id.clone(),
         "rendererContractVersion": 1,
         "contractVersion": 1,
@@ -1609,8 +1914,108 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
         target: options.target.as_str().to_string(),
         out_dir: options.out_dir.to_string_lossy().to_string(),
         renderer_id,
+        runtime: None,
+        mode: None,
+        executable: None,
+        artifacts: vec![],
         warnings: issues,
     })
+}
+
+fn build_desktop_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
+    let runtime = selected_desktop_runtime(options.target, options.desktop_runtime)?
+        .expect("desktop target always resolves a runtime");
+    if options.base_path != "./" {
+        return Err(build_error(
+            "desktop_base_path_unsupported",
+            "桌面构建使用固定相对 base path；请移除 --base-path 或传入 ./",
+            "desktop",
+            None,
+            None,
+            vec![],
+        ));
+    }
+    ensure_export_out_dir_safe(Path::new(&options.project_path), &options.out_dir)?;
+
+    let staging = std::env::temp_dir().join(format!(
+        "vibegal-desktop-build-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let web_dist = staging.join("web");
+    fs::create_dir_all(&staging).map_err(|error| {
+        build_error(
+            "desktop_staging_failed",
+            format!("创建桌面构建临时目录失败: {error}"),
+            "desktop",
+            None,
+            None,
+            vec![],
+        )
+    })?;
+
+    let result = (|| {
+        let mut web_options = options.clone();
+        web_options.target = BuildTarget::Web;
+        web_options.desktop_runtime = None;
+        web_options.out_dir = web_dist.clone();
+        web_options.base_path = "./".to_string();
+        let web_output = build_web_project(web_options)?;
+        let manifest_text =
+            fs::read_to_string(web_dist.join("game.manifest.json")).map_err(|error| {
+                build_error(
+                    "desktop_manifest_read_failed",
+                    format!("读取 Web build manifest 失败: {error}"),
+                    "desktop",
+                    Some("game.manifest.json".to_string()),
+                    None,
+                    vec![],
+                )
+            })?;
+        let manifest: serde_json::Value =
+            serde_json::from_str(&manifest_text).map_err(|error| {
+                build_error(
+                    "desktop_manifest_read_failed",
+                    format!("解析 Web build manifest 失败: {error}"),
+                    "desktop",
+                    Some("game.manifest.json".to_string()),
+                    None,
+                    vec![],
+                )
+            })?;
+        let product_name = manifest
+            .get("title")
+            .and_then(serde_json::Value::as_str)
+            .filter(|title| !title.trim().is_empty())
+            .unwrap_or("VibeGal Game");
+        let packaged = run_desktop_worker(runtime, &web_dist, &options.out_dir, product_name)?;
+        if !packaged.ok || packaged.runtime != runtime.as_str() || packaged.mode != runtime.mode() {
+            return Err(build_error(
+                "desktop_worker_invalid_output",
+                "桌面 build worker 返回的 runtime/mode 与请求不一致",
+                "desktop",
+                None,
+                None,
+                vec![],
+            ));
+        }
+        Ok(BuildOutput {
+            ok: true,
+            target: BuildTarget::Desktop.as_str().to_string(),
+            out_dir: packaged.out_dir,
+            renderer_id: web_output.renderer_id,
+            runtime: Some(packaged.runtime),
+            mode: Some(packaged.mode),
+            executable: Some(packaged.executable),
+            artifacts: packaged.artifacts,
+            warnings: web_output.warnings,
+        })
+    })();
+    let _ = fs::remove_dir_all(&staging);
+    result
 }
 
 fn print_build_json<T: Serialize>(output: &T) {
@@ -1638,14 +2043,29 @@ fn print_build_error_text(error: &BuildError) {
 }
 
 fn run_build(options: BuildOptions, format: OutputFormat) -> i32 {
-    match build_web_project(options) {
+    let target = options.target;
+    let result = match target {
+        BuildTarget::Web => selected_desktop_runtime(target, options.desktop_runtime)
+            .and_then(|_| build_web_project(options)),
+        BuildTarget::Desktop => build_desktop_project(options),
+    };
+    match result {
         Ok(output) => {
             match format {
                 OutputFormat::Json => print_build_json(&output),
-                OutputFormat::Text => println!(
-                    "✓ Web build 完成: {} (renderer={})",
-                    output.out_dir, output.renderer_id
-                ),
+                OutputFormat::Text => {
+                    if let Some(runtime) = &output.runtime {
+                        println!(
+                            "✓ Desktop build 完成: {} (runtime={}, renderer={})",
+                            output.out_dir, runtime, output.renderer_id
+                        );
+                    } else {
+                        println!(
+                            "✓ Web build 完成: {} (renderer={})",
+                            output.out_dir, output.renderer_id
+                        );
+                    }
+                }
             }
             0
         }
@@ -1682,8 +2102,7 @@ fn run_renderer_check(options: RendererCheckOptions, format: OutputFormat) -> i3
                             diagnostic.step
                         );
                         if let Some(file) = &diagnostic.file {
-                            if let (Some(line), Some(column)) =
-                                (diagnostic.line, diagnostic.column)
+                            if let (Some(line), Some(column)) = (diagnostic.line, diagnostic.column)
                             {
                                 eprintln!("file: {file}:{line}:{column}");
                             } else {
@@ -1990,9 +2409,10 @@ fn classify_snapshot_scene(
     }
     match report {
         Some(SnapshotPageReport { status, .. }) if status == "ok" => result("ok", None),
-        Some(SnapshotPageReport { error, .. }) => {
-            result("error", Some(error.unwrap_or_else(|| "页面渲染失败".to_string())))
-        }
+        Some(SnapshotPageReport { error, .. }) => result(
+            "error",
+            Some(error.unwrap_or_else(|| "页面渲染失败".to_string())),
+        ),
         None => result(
             "warning",
             Some("未收到页面状态回调（截图已生成，请人工确认）".to_string()),
@@ -2098,7 +2518,12 @@ fn renderer_snapshot_project(
                         let content_root = content_root.clone();
                         let reports = Arc::clone(&reports);
                         std::thread::spawn(move || {
-                            serve_snapshot_connection(stream, &snapshot_root, &content_root, &reports);
+                            serve_snapshot_connection(
+                                stream,
+                                &snapshot_root,
+                                &content_root,
+                                &reports,
+                            );
                         });
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -2838,6 +3263,8 @@ fn smoke_web_dist(dist_dir: &Path) -> Result<SmokeOutput, SmokeError> {
         target: "web".to_string(),
         dist_dir: dist_dir.to_string_lossy().to_string(),
         base_path,
+        runtime: None,
+        mode: None,
         checks: vec![
             "index".to_string(),
             "gameManifest".to_string(),
@@ -2849,25 +3276,245 @@ fn smoke_web_dist(dist_dir: &Path) -> Result<SmokeOutput, SmokeError> {
     })
 }
 
-fn run_smoke(dist_dir: PathBuf, target: BuildTarget, format: OutputFormat) -> i32 {
+fn desktop_artifact_path(root: &Path, relative: &str, label: &str) -> Result<PathBuf, SmokeError> {
+    let relative_path = Path::new(relative);
+    if relative_path.is_absolute()
+        || relative_path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(smoke_error(
+            "smoke_desktop_manifest_path_unsafe",
+            format!("desktop manifest 中的 {label} 路径不安全: {relative}"),
+            "desktop",
+            Some("desktop.manifest.json"),
+        ));
+    }
+    Ok(root.join(relative_path))
+}
+
+fn run_desktop_shell_smoke(executable: &Path) -> Result<serde_json::Value, SmokeError> {
+    let mut command = Command::new(executable);
+    command
+        .env("VIBEGAL_DESKTOP_SMOKE", "1")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().map_err(|error| {
+        smoke_error(
+            "smoke_desktop_launch_failed",
+            format!("启动桌面 Player 失败: {error}"),
+            "desktopBehavior",
+            None,
+        )
+    })?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let output = child.wait_with_output().ok();
+                let stderr = output
+                    .as_ref()
+                    .map(|output| String::from_utf8_lossy(&output.stderr).trim().to_string())
+                    .unwrap_or_default();
+                return Err(smoke_error(
+                    "smoke_desktop_timeout",
+                    if stderr.is_empty() {
+                        "桌面 Player smoke 30 秒内未完成".to_string()
+                    } else {
+                        format!("桌面 Player smoke 30 秒内未完成。{stderr}")
+                    },
+                    "desktopBehavior",
+                    None,
+                ));
+            }
+            Err(error) => {
+                return Err(smoke_error(
+                    "smoke_desktop_failed",
+                    format!("等待桌面 Player smoke 失败: {error}"),
+                    "desktopBehavior",
+                    None,
+                ));
+            }
+        }
+    }
+    let output = child.wait_with_output().map_err(|error| {
+        smoke_error(
+            "smoke_desktop_failed",
+            format!("读取桌面 Player smoke 输出失败: {error}"),
+            "desktopBehavior",
+            None,
+        )
+    })?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let marker = "VIBEGAL_DESKTOP_SMOKE_RESULT=";
+    let result = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix(marker))
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        .ok_or_else(|| {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            smoke_error(
+                "smoke_desktop_incomplete",
+                format!("桌面 Player 未返回 smoke 结果。{}", stderr.trim()),
+                "desktopBehavior",
+                None,
+            )
+        })?;
+    if result.get("status").and_then(serde_json::Value::as_str) != Some("passed") {
+        return Err(smoke_error(
+            "smoke_desktop_behavior_failed",
+            format!(
+                "桌面 Player 行为 smoke 未通过。{}",
+                result
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("未提供错误")
+            ),
+            "desktopBehavior",
+            None,
+        ));
+    }
+    Ok(result)
+}
+
+fn smoke_desktop_dist(dist_dir: &Path, runtime: DesktopRuntime) -> Result<SmokeOutput, SmokeError> {
+    let manifest_path = dist_dir.join("desktop.manifest.json");
+    let manifest_text = fs::read_to_string(&manifest_path).map_err(|error| {
+        smoke_error(
+            "smoke_missing_desktop_manifest",
+            format!("读取 desktop.manifest.json 失败: {error}"),
+            "desktop",
+            Some("desktop.manifest.json"),
+        )
+    })?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text).map_err(|error| {
+        smoke_error(
+            "smoke_invalid_desktop_manifest",
+            format!("解析 desktop.manifest.json 失败: {error}"),
+            "desktop",
+            Some("desktop.manifest.json"),
+        )
+    })?;
+    let actual_runtime = manifest
+        .get("runtime")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if actual_runtime != runtime.as_str() {
+        return Err(smoke_error(
+            "smoke_desktop_runtime_mismatch",
+            format!(
+                "桌面产物 runtime 不匹配: expected={}, actual={actual_runtime}",
+                runtime.as_str()
+            ),
+            "desktop",
+            Some("desktop.manifest.json"),
+        ));
+    }
+    let web_relative = manifest
+        .get("webDist")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            smoke_error(
+                "smoke_invalid_desktop_manifest",
+                "desktop manifest 缺少 webDist",
+                "desktop",
+                Some("desktop.manifest.json"),
+            )
+        })?;
+    let executable_relative = manifest
+        .get("executable")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            smoke_error(
+                "smoke_invalid_desktop_manifest",
+                "desktop manifest 缺少 executable",
+                "desktop",
+                Some("desktop.manifest.json"),
+            )
+        })?;
+    let web_dist = desktop_artifact_path(dist_dir, web_relative, "webDist")?;
+    let executable = desktop_artifact_path(dist_dir, executable_relative, "executable")?;
+    if !executable.is_file() {
+        return Err(smoke_error(
+            "smoke_missing_desktop_executable",
+            format!("桌面 Player 不存在: {}", executable.display()),
+            "desktop",
+            Some(executable_relative),
+        ));
+    }
+    let web = smoke_web_dist(&web_dist)?;
+    let _behavior = run_desktop_shell_smoke(&executable)?;
+    Ok(SmokeOutput {
+        ok: true,
+        target: "desktop".to_string(),
+        dist_dir: dist_dir.to_string_lossy().to_string(),
+        base_path: web.base_path,
+        runtime: Some(runtime.as_str().to_string()),
+        mode: Some(runtime.mode().to_string()),
+        checks: vec![
+            "desktopManifest".to_string(),
+            "desktopExecutable".to_string(),
+            "webPayload".to_string(),
+            "desktopBehavior".to_string(),
+            "advance".to_string(),
+            "saveRoundTrip".to_string(),
+            "mediaLoad".to_string(),
+        ],
+    })
+}
+
+fn run_smoke(
+    dist_dir: PathBuf,
+    target: BuildTarget,
+    runtime: Option<DesktopRuntime>,
+    format: OutputFormat,
+) -> i32 {
     let result = match target {
-        BuildTarget::Web => smoke_web_dist(&dist_dir).and_then(|mut output| {
-            smoke_web_behavior(&dist_dir)?;
-            output.checks.push("browserBehavior".to_string());
-            output.checks.push("advance".to_string());
-            output.checks.push("saveRoundTrip".to_string());
-            output.checks.push("mediaLoad".to_string());
-            Ok(output)
-        }),
+        BuildTarget::Web => {
+            if runtime.is_some() {
+                Err(smoke_error(
+                    "desktop_runtime_not_applicable",
+                    "--runtime 仅用于 --target desktop",
+                    "desktop",
+                    None,
+                ))
+            } else {
+                smoke_web_dist(&dist_dir).and_then(|mut output| {
+                    smoke_web_behavior(&dist_dir)?;
+                    output.checks.push("browserBehavior".to_string());
+                    output.checks.push("advance".to_string());
+                    output.checks.push("saveRoundTrip".to_string());
+                    output.checks.push("mediaLoad".to_string());
+                    Ok(output)
+                })
+            }
+        }
+        BuildTarget::Desktop => {
+            smoke_desktop_dist(&dist_dir, runtime.unwrap_or(DesktopRuntime::Electron))
+        }
     };
     match result {
         Ok(output) => {
             match format {
                 OutputFormat::Json => print_build_json(&output),
-                OutputFormat::Text => println!(
-                    "✓ Web smoke 通过: {} (basePath={})",
-                    output.dist_dir, output.base_path
-                ),
+                OutputFormat::Text => {
+                    if let Some(runtime) = &output.runtime {
+                        println!(
+                            "✓ Desktop smoke 通过: {} (runtime={runtime})",
+                            output.dist_dir
+                        );
+                    } else {
+                        println!(
+                            "✓ Web smoke 通过: {} (basePath={})",
+                            output.dist_dir, output.base_path
+                        );
+                    }
+                }
             }
             0
         }
@@ -2890,6 +3537,7 @@ fn main() {
         Commands::Build {
             path,
             target,
+            runtime,
             out_dir,
             renderer,
             strict,
@@ -2900,6 +3548,7 @@ fn main() {
             BuildOptions {
                 project_path: path,
                 target,
+                desktop_runtime: runtime,
                 out_dir,
                 renderer_id: renderer,
                 strict,
@@ -2924,8 +3573,9 @@ fn main() {
         Commands::Smoke {
             dist_dir,
             target,
+            runtime,
             format,
-        } => run_smoke(dist_dir, target, format),
+        } => run_smoke(dist_dir, target, runtime, format),
         Commands::RendererSnapshot {
             path,
             renderer,
@@ -3046,12 +3696,86 @@ mod tests {
         BuildOptions {
             project_path: project.to_string_lossy().to_string(),
             target: BuildTarget::Web,
+            desktop_runtime: None,
             out_dir: out_dir.to_path_buf(),
             renderer_id: None,
             strict: false,
             allow_warnings: false,
             base_path: "./".to_string(),
         }
+    }
+
+    #[test]
+    fn cli_allows_agents_to_select_each_desktop_runtime() {
+        for (value, expected) in [
+            ("electron", DesktopRuntime::Electron),
+            ("tauri", DesktopRuntime::Tauri),
+        ] {
+            let cli = Cli::try_parse_from([
+                "vibegal-cli",
+                "build",
+                "project",
+                "--target",
+                "desktop",
+                "--runtime",
+                value,
+                "--out",
+                "dist-game",
+                "--format",
+                "json",
+            ])
+            .expect("desktop build syntax should parse");
+            let Commands::Build {
+                target, runtime, ..
+            } = cli.command
+            else {
+                panic!("expected build command");
+            };
+            assert_eq!(target, BuildTarget::Desktop);
+            assert_eq!(runtime, Some(expected));
+        }
+    }
+
+    #[test]
+    fn desktop_build_defaults_to_compatible_electron_runtime() {
+        assert_eq!(
+            selected_desktop_runtime(BuildTarget::Desktop, None).unwrap(),
+            Some(DesktopRuntime::Electron)
+        );
+        assert_eq!(
+            selected_desktop_runtime(BuildTarget::Web, None).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn web_build_rejects_a_desktop_runtime_flag() {
+        let error = selected_desktop_runtime(BuildTarget::Web, Some(DesktopRuntime::Tauri))
+            .expect_err("web build should reject desktop-only runtime selection");
+        assert_eq!(error.code, "desktop_runtime_not_applicable");
+        assert_eq!(error.step, "desktop");
+    }
+
+    #[test]
+    fn export_path_safety_rejects_project_ancestors_and_source_directories() {
+        let outer = unique_temp_dir("cli-build-path-safety");
+        let project = outer.join("project");
+        make_project(&project, None);
+
+        for unsafe_out in [
+            outer.clone(),
+            project.join("content/export"),
+            project.join("renderers/export"),
+        ] {
+            let error = ensure_export_out_dir_safe(&project, &unsafe_out)
+                .expect_err("build output must never erase a project ancestor or source directory");
+            assert_eq!(error.code, "build_path_error");
+        }
+        ensure_export_out_dir_safe(&project, &project.join("dist-game"))
+            .expect("a conventional output directory in the project root is safe");
+        ensure_export_out_dir_safe(&project, &outer.join("release"))
+            .expect("a sibling output directory is safe");
+        let _ = std::fs::remove_dir_all(&outer);
     }
 
     fn renderer_check_options(
@@ -3662,6 +4386,76 @@ mod tests {
     }
 
     #[test]
+    fn build_desktop_packages_electron_and_tauri_from_the_same_web_contract() {
+        let dir = unique_temp_dir("cli-build-desktop-runtimes");
+        make_exportable_project(&dir);
+        let electron_dist = dir.join("fake-electron");
+        let electron_executable = if cfg!(windows) {
+            "electron.exe"
+        } else {
+            "electron"
+        };
+        write_text(&electron_dist.join(electron_executable), "fake electron");
+        write_text(
+            &electron_dist.join("resources/default_app.asar"),
+            "fake default app",
+        );
+        let tauri_player = dir.join(tauri_player_executable_name());
+        write_text(&tauri_player, "fake tauri player");
+
+        std::env::set_var("VIBEGAL_ELECTRON_DIST", &electron_dist);
+        std::env::set_var("VIBEGAL_TAURI_PLAYER", &tauri_player);
+        for runtime in [DesktopRuntime::Electron, DesktopRuntime::Tauri] {
+            let out_dir = dir.join(format!("desktop-{}", runtime.as_str()));
+            let mut options = build_options(&dir, &out_dir);
+            options.target = BuildTarget::Desktop;
+            options.desktop_runtime = Some(runtime);
+
+            let output = build_desktop_project(options).expect("desktop build should succeed");
+
+            assert_eq!(output.target, "desktop");
+            assert_eq!(output.runtime.as_deref(), Some(runtime.as_str()));
+            assert_eq!(output.mode.as_deref(), Some(runtime.mode()));
+            assert!(output
+                .executable
+                .as_deref()
+                .is_some_and(|file| out_dir.join(file).is_file()));
+            let desktop_manifest: serde_json::Value = serde_json::from_str(
+                &std::fs::read_to_string(out_dir.join("desktop.manifest.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(desktop_manifest["runtime"], runtime.as_str());
+            let web_dist = desktop_manifest["webDist"].as_str().unwrap();
+            assert!(out_dir.join(web_dist).join("game.manifest.json").is_file());
+            assert!(out_dir.join(web_dist).join("runtime/bundle.js").is_file());
+        }
+        std::env::remove_var("VIBEGAL_ELECTRON_DIST");
+        std::env::remove_var("VIBEGAL_TAURI_PLAYER");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn web_manifest_carries_the_fixed_stage_for_desktop_window_sizing() {
+        let dir = unique_temp_dir("cli-build-stage-manifest");
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("content/meta.json"),
+            r#"{"title":"T","typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500,"stage":{"width":1440,"height":810}}"#,
+        );
+        let out_dir = dir.join("dist-game");
+
+        build_web_project(build_options(&dir, &out_dir)).expect("build should succeed");
+
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(out_dir.join("game.manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["stage"]["width"], 1440);
+        assert_eq!(manifest["stage"]["height"], 810);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn build_web_reports_renderer_compile_error() {
         let dir = std::env::temp_dir().join(format!(
             "vibegal-cli-build-renderer-error-{}",
@@ -3832,9 +4626,8 @@ mod tests {
 
     #[test]
     fn snapshot_page_callback_parses_scene_status_and_message() {
-        let parsed = parse_snapshot_page_callback(
-            "/__vibegal_snapshot_result__?scene=dialogue&status=ok",
-        );
+        let parsed =
+            parse_snapshot_page_callback("/__vibegal_snapshot_result__?scene=dialogue&status=ok");
         assert_eq!(
             parsed.map(|(scene, report)| (scene, report.status, report.error)),
             Some(("dialogue".to_string(), "ok".to_string(), None))
@@ -3889,7 +4682,11 @@ mod tests {
             output.scenes
         );
         for scene in &output.scenes {
-            assert_eq!(scene.status, "ok", "场景 {} 应成功: {:?}", scene.id, scene.error);
+            assert_eq!(
+                scene.status, "ok",
+                "场景 {} 应成功: {:?}",
+                scene.id, scene.error
+            );
             let png = out_dir.join(format!("default-{}.png", scene.id));
             assert!(png.is_file(), "缺少截图 {}", png.display());
             assert!(
@@ -4126,7 +4923,8 @@ mod tests {
             "/Applications/VibeGal-Studio.app/Contents/MacOS/resources/exporter/packages/studio/scripts/build-web-export.mjs"
         )));
 
-        let snapshot_candidates = worker_path_candidates(Some(executable), SNAPSHOT_WORKER_RELATIVE_PATH);
+        let snapshot_candidates =
+            worker_path_candidates(Some(executable), SNAPSHOT_WORKER_RELATIVE_PATH);
         assert!(snapshot_candidates.contains(&PathBuf::from(
             "/Applications/VibeGal-Studio.app/Contents/Resources/exporter/packages/studio/scripts/renderer-snapshot.mjs"
         )));

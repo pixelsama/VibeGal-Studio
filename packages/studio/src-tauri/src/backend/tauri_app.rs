@@ -40,6 +40,7 @@ pub(crate) fn run() {
             super::commands::save_manifest,
             super::commands::load_app_settings,
             super::commands::save_app_settings,
+            super::commands::build_desktop_game,
             super::commands::cli_tool_status,
             super::commands::install_cli_tool,
             super::commands::uninstall_cli_tool,

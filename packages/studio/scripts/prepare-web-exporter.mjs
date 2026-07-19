@@ -52,6 +52,7 @@ export function prepareWebExporter(outDir = parseOutArg(process.argv.slice(2))) 
   const copies = [
     [path.join(studioRoot, "package.json"), "packages/studio/package.json"],
     [path.join(scriptDir, "build-web-export.mjs"), "packages/studio/scripts/build-web-export.mjs"],
+    [path.join(scriptDir, "build-desktop-export.mjs"), "packages/studio/scripts/build-desktop-export.mjs"],
     [path.join(scriptDir, "renderer-worker-shared.mjs"), "packages/studio/scripts/renderer-worker-shared.mjs"],
     [path.join(scriptDir, "renderer-snapshot.mjs"), "packages/studio/scripts/renderer-snapshot.mjs"],
     [path.join(studioRoot, "src/export/webRuntimeHost.ts"), "packages/studio/src/export/webRuntimeHost.ts"],
@@ -89,9 +90,13 @@ export function prepareWebExporter(outDir = parseOutArg(process.argv.slice(2))) 
     "@types/react",
     "@types/react-dom",
     "zod",
+    "@electron/get",
+    "adm-zip",
   ]) {
     copyPackage(dependency);
   }
+  const electronGetPackage = packageRoot("@electron/get", requireFromStudio);
+  copyPackage("undici", createRequire(electronGetPackage.manifestPath));
   const esbuildPackage = packageRoot("esbuild", requireFromStudio);
   copyPackage(platformEsbuildPackage(), createRequire(esbuildPackage.manifestPath));
 

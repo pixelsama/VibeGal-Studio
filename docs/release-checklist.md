@@ -21,6 +21,9 @@
   - [ ] `vibegal-cli validate examples/broken-projects/missing-node-file --format json` 出口码 2
   - [ ] 安装包内 CLI 在无源码 checkout、无 Node 的 PATH、含空格项目路径下 validate 成功
   - [ ] 安装包内 CLI 使用 packaged exporter 完成 Web build 与 browser smoke
+  - [ ] `vibegal-cli build examples/sample-novel --target desktop --runtime electron --out <dir> --format json` 产出兼容模式目录
+  - [ ] `vibegal-cli build examples/sample-novel --target desktop --runtime tauri --out <dir> --format json` 产出轻量模式目录
+  - [ ] 两种桌面模式的 `desktop.manifest.json` 指向内容等价的 Web payload
 - [ ] 打开 `examples/sample-novel`，主工作区可切换 Render / Script / Assets
 - [ ] 记录一次热重载/外部改文件验收（有脚本：`docs/script-graph/14-release-readiness.spec.md` 的 Smoke 模板）
 

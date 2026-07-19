@@ -1,38 +1,44 @@
-# Desktop Tauri Wrapper Prep
+# Desktop Game Build Runtimes
 
-Spec 11 prepares the release shape for a future desktop game wrapper. The wrapper should reuse the Web export payload instead of introducing a separate game runtime.
+Desktop game export is implemented as two reusable shells around the same validated Web build. A project is never compiled as a new Rust or Electron application.
 
-## Goal
+## Modes
 
-- Package a completed Web export directory inside a minimal Tauri shell.
-- Load `index.html`, `runtime/bundle.js`, `game.manifest.json`, `asset.manifest.json`, and `content/` from the packaged resources.
-- Preserve the renderer contract, content graph contract, base path metadata, and persistence behavior used by Web export.
-- Keep export smoke checks as the release gate before wrapping.
+- `electron` — compatible mode and the default. It packages a fixed Electron/Chromium runtime, so released games keep the same browser engine. The first build downloads the pinned runtime; later builds reuse the local cache.
+- `tauri` — lightweight mode. It packages the precompiled VibeGal Tauri player and uses the operating system WebView. The game directory is smaller, but WebView updates are controlled by the operating system.
 
-## Prototype Shape
+Both modes copy the exact same Web payload: `index.html`, `runtime/`, `game.manifest.json`, `asset.manifest.json`, and `content/`. Shell selection does not rebuild the renderer or change project data.
 
-The first wrapper prototype should be intentionally small:
+## Agent and CLI Contract
 
-- Input: a validated Web export directory.
-- Shell: one Tauri window pointed at the packaged game host.
-- Resources: copy the Web export directory without rewriting content or renderer files.
-- Storage: use the same runtime storage contract as Web export; desktop-specific durable storage can be mapped later behind that contract.
-- Diagnostics: surface build and renderer diagnostics from the existing CLI/export model. Do not create a second renderer diagnostic schema.
+Compatible mode is the default:
 
-## Build Flow
+```text
+vibegal-cli build <project> --target desktop --out <dir> --format json
+```
 
-1. Run `vibegal-cli build <project-path> --target web --out <dist-dir>`.
-2. Run `vibegal-cli smoke <dist-dir> --target web --format json`.
-3. Copy the smoke-passing directory into the wrapper resource folder.
-4. Build the wrapper with Tauri.
+Agents can select either mode explicitly:
 
-## Non-goals
+```text
+vibegal-cli build <project> --target desktop --runtime electron --out <dir> --format json
+vibegal-cli build <project> --target desktop --runtime tauri --out <dir> --format json
+```
 
-- No code signing.
-- No notarization.
-- No app store packaging.
-- No DRM or asset encryption.
-- No differential patching.
-- No cloud save integration.
-- No mobile target.
-- No renderer third-party dependency support.
+Desktop smoke uses the selected shell instead of a generic browser:
+
+```text
+vibegal-cli smoke <dir> --target desktop --runtime electron --format json
+vibegal-cli smoke <dir> --target desktop --runtime tauri --format json
+```
+
+Successful build JSON includes `target`, `runtime`, `mode`, `outDir`, `executable`, `artifacts`, `rendererId`, and validation warnings. `desktop.manifest.json` records the shell and the relative Web payload path. Errors remain machine-readable and use non-zero exit codes.
+
+## Runtime Distribution
+
+- Electron is pinned in the CLI and downloaded through `@electron/get`; its archive is checksum-verified by the downloader and extracted into the VibeGal runtime cache. `VIBEGAL_ELECTRON_DIST` can point tests or controlled builds at an existing runtime directory.
+- The Tauri player is compiled once with Studio and bundled under `player/`. Individual games only copy that binary plus the Web payload. `VIBEGAL_TAURI_PLAYER` can override it for development and CI.
+- Both Web and desktop build workers are included in Studio's standalone exporter resource. Builds currently require system Node.js or `VIBEGAL_NODE`, matching the existing Web build contract.
+
+## Output and Non-goals
+
+The current output is a portable desktop game directory that can be launched directly and then archived for distribution. Code signing, notarization, store submission, DRM, differential patching, and cloud saves remain separate release concerns.

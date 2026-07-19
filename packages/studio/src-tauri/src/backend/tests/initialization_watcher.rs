@@ -70,6 +70,8 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(agent_instructions.contains("Instruction[]"));
     assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
     assert!(agent_instructions.contains("vibegal-cli validate . --format json"));
+    assert!(agent_instructions.contains("build . --target desktop --out dist-desktop"));
+    assert!(agent_instructions.contains("--runtime tauri --out dist-light"));
     assert!(agent_instructions.contains(
         "/Applications/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli validate . --format json"
     ));
@@ -81,6 +83,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(project_readme.contains("Legacy Chapters"));
     assert!(project_readme.contains("content/chapters/"));
     assert!(project_readme.contains(".galstudio/renderer-contract.md"));
+    assert!(project_readme.contains("--target desktop --runtime electron|tauri"));
     assert!(project_readme.contains(
         "/Applications/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli validate . --format json"
     ));

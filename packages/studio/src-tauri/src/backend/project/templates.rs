@@ -59,6 +59,19 @@ The command validates graph structure, node `Instruction[]` shape, node resource
 meta structure, manifest structure, and asset consistency. It returns structured JSON issues and a non-zero
 exit code when the project has errors or warnings.
 
+## Desktop Build
+
+Agents can build either desktop runtime without opening Studio. Compatible mode is the default;
+lightweight mode must be selected explicitly:
+
+```bash
+vibegal-cli build . --target desktop --out dist-desktop --format json
+vibegal-cli build . --target desktop --runtime tauri --out dist-light --format json
+```
+
+Pass `--runtime electron` when an explicit compatible-mode selection is preferred. Both modes use
+the same Web payload and return `runtime`, `mode`, `executable`, and `artifacts` in JSON.
+
 ## Renderer Authoring Loop
 
 This project is self-contained for renderer work: `tsconfig.json` plus `.galstudio/types/`
@@ -233,6 +246,12 @@ background / audio references from node instructions, meta structure problems, m
 consistency issues as structured `projectIssues`. Node content issues use `source: "node"` and
 include `file`, `jsonPath`, and `nodeId` when available.
 
+## Desktop Build
+
+The CLI accepts `build . --target desktop --runtime electron|tauri --out <dir> --format json`.
+Electron is the default compatible mode; Tauri is the optional lightweight system-WebView mode.
+Both package the same generated Web payload.
+
 ## Legacy Chapters
 
 Old `content/meta.json` `chapters` entries and `content/chapters/` are not supported. Use `content/graph.json` plus `content/nodes/*.json` instead; if they appear, VibeGal-Studio reports them as issues instead of silently using them.
@@ -277,13 +296,22 @@ pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 5] = [
 const SELF_DESCRIPTION_FILES: [(&str, &str); 11] = [
     ("AGENTS.md", PROJECT_AGENTS_MD),
     (".galstudio/README.md", PROJECT_README_MD),
-    (".galstudio/renderer-contract.md", PROJECT_RENDERER_CONTRACT_MD),
+    (
+        ".galstudio/renderer-contract.md",
+        PROJECT_RENDERER_CONTRACT_MD,
+    ),
     (".galstudio/types/engine.d.ts", PROJECT_ENGINE_DTS),
     (".galstudio/types/react.d.ts", PROJECT_REACT_DTS),
     ("tsconfig.json", PROJECT_TSCONFIG_JSON),
     (".galstudio/schemas/graph.json", PROJECT_SCHEMA_FILES[0].1),
-    (".galstudio/schemas/nodeFile.json", PROJECT_SCHEMA_FILES[1].1),
-    (".galstudio/schemas/manifest.json", PROJECT_SCHEMA_FILES[2].1),
+    (
+        ".galstudio/schemas/nodeFile.json",
+        PROJECT_SCHEMA_FILES[1].1,
+    ),
+    (
+        ".galstudio/schemas/manifest.json",
+        PROJECT_SCHEMA_FILES[2].1,
+    ),
     (".galstudio/schemas/meta.json", PROJECT_SCHEMA_FILES[3].1),
     (".galstudio/schemas/fixture.json", PROJECT_SCHEMA_FILES[4].1),
 ];
@@ -299,7 +327,9 @@ pub(crate) fn write_project_self_description(project_path: &std::path::Path) -> 
 }
 
 /// 打开项目时补齐缺失的自描述文件；已存在的文件一律不动。
-pub(crate) fn ensure_project_self_description(project_path: &std::path::Path) -> Result<(), String> {
+pub(crate) fn ensure_project_self_description(
+    project_path: &std::path::Path,
+) -> Result<(), String> {
     use super::super::fs::write_text_file;
 
     for (relative, text) in SELF_DESCRIPTION_FILES {

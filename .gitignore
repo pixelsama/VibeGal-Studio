@@ -19,6 +19,8 @@ src-tauri/gen/
 # esbuild.wasm 二进制（13MB，由 postinstall 从 npm 包拷贝，不提交）
 packages/studio/public/esbuild.wasm
 packages/studio/src-tauri/resources/exporter/*
+packages/studio/src-tauri/resources/player/*
+!packages/studio/src-tauri/resources/player/README.md
 
 # ── 日志 / 临时文件 ──────────────────
 *.log

@@ -2,6 +2,7 @@
 
 use super::cli_tool;
 use super::fs::ProjectRoot;
+use super::game_build::{self, DesktopBuildFailure, DesktopBuildRequest};
 use super::model::{
     AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, ProjectData,
     ProjectListItem, ProjectMeta,
@@ -298,6 +299,22 @@ pub(crate) fn save_app_settings(
     settings: AppSettings,
 ) -> Result<(), String> {
     settings_service::save(&resources::settings_path(&app_handle)?, settings)
+}
+
+#[tauri::command]
+pub(crate) async fn build_desktop_game(
+    app_handle: tauri::AppHandle,
+    request: DesktopBuildRequest,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    let cli_path = resources::cli_binary_path(&app_handle);
+    tauri::async_runtime::spawn_blocking(move || game_build::build_desktop_game(&cli_path, request))
+        .await
+        .map_err(|error| DesktopBuildFailure {
+            ok: false,
+            code: "desktop_build_task_failed".to_string(),
+            message: format!("桌面构建后台任务异常结束: {error}"),
+            cli_error: None,
+        })?
 }
 
 fn cli_paths(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf, Vec<PathBuf>, Option<String>) {

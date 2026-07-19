@@ -728,6 +728,8 @@ vibegal-cli renderer-check <project-path> --renderer <id> [--no-compile] --forma
 vibegal-cli renderer-snapshot <project-path> --renderer <id> --out <dir> --format json|text
 vibegal-cli build <project-path> --target web --out <dir> --format json|text
 vibegal-cli smoke <dist-dir> --target web --format json|text
+vibegal-cli build <project-path> --target desktop [--runtime electron|tauri] --out <dir> --format json|text
+vibegal-cli smoke <dist-dir> --target desktop [--runtime electron|tauri] --format json|text
 ```
 
 It opens the project through the same backend loading/validation path and returns machine-readable
@@ -735,6 +737,10 @@ issues. This is the key bridge for external AI agents and CI-like checks.
 
 `validate` is self-contained and does not require Node. Web `build` uses the packaged exporter and
 currently requires a system Node runtime (or `VIBEGAL_NODE`); `smoke` performs browser-level behavior checks.
+Desktop build defaults to the fixed Electron compatible runtime; `--runtime tauri` selects the
+smaller system-WebView player. Both shells receive the same Web payload, and desktop smoke launches
+the selected shell. The application backend exposes the same CLI build contract without duplicating
+filesystem or packaging logic.
 `renderer-check` runs static contract checks plus a real compile/typecheck through the bundled node
 worker (`--no-compile` skips it). `renderer-snapshot` headlessly mounts the renderer onto built-in
 scene fixtures and writes PNG screenshots via headless Chrome (`VIBEGAL_SMOKE_BROWSER` overrides the

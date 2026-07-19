@@ -3,6 +3,7 @@ mod cli_tool;
 mod commands;
 mod contracts;
 mod fs;
+mod game_build;
 pub(crate) mod model;
 mod mutation;
 mod project;
