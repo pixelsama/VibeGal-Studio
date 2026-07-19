@@ -5,7 +5,6 @@
 当前仍在规划或开发中的 roadmap spec：
 
 - [Spec 18 — Open Non-Project Directory Guidance（打开非项目目录时的项目引导）](./18-open-nonproject-directory-guidance.spec.md)：已记录，暂缓开发，等后续排期。
-- [Spec 19 — Creator-Facing Vocabulary & Preview/Appearance IA（创作者词汇与预览/外观信息架构）](./19-creator-facing-vocabulary-ia.spec.md)：已定稿，待排期。
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
@@ -25,3 +24,4 @@
 - [Note 15 — Gallery / Replay / Music / Endings Implementation](./archive/15-gallery-replay-music-endings-implementation-note.md)
 - [Note 16 — Asset Management / Project Settings Implementation](./archive/16-asset-management-project-settings-implementation-note.md)
 - [Spec 17 — Appearance Design Module（外观设计模块）](./archive/17-appearance-design-module.spec.md)
+- [Spec 19 — Creator-Facing Vocabulary & Preview/Appearance IA（创作者词汇与预览/外观信息架构）](./archive/19-creator-facing-vocabulary-ia.spec.md)
