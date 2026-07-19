@@ -4519,13 +4519,76 @@ fn desktop_artifact_path(root: &Path, relative: &str, label: &str) -> Result<Pat
     Ok(root.join(relative_path))
 }
 
+/// 截取子进程输出的尾部用于错误诊断，避免把完整日志塞进 smoke 错误。
+fn smoke_output_tail(output: &str) -> String {
+    const LIMIT: usize = 400;
+    let trimmed = output.trim();
+    if trimmed.len() <= LIMIT {
+        return trimmed.to_string();
+    }
+    let mut start = trimmed.len() - LIMIT;
+    while !trimmed.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("…{}", &trimmed[start..])
+}
+
 fn run_desktop_shell_smoke(executable: &Path) -> Result<serde_json::Value, SmokeError> {
+    run_desktop_shell_smoke_with_timeout(executable, Duration::from_secs(30))
+}
+
+/// 启动桌面 Player 并收集 smoke 结果。
+///
+/// stdout/stderr 重定向到临时文件而不是管道：桌面 Player 会派生孙进程
+/// （Windows 上的 WebView2 helper、macOS 上的 WebContent 服务），孙进程会
+/// 继承管道写端，等管道 EOF 会在 Player 退出后依然永久阻塞。
+fn run_desktop_shell_smoke_with_timeout(
+    executable: &Path,
+    timeout: Duration,
+) -> Result<serde_json::Value, SmokeError> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let output_dir = std::env::temp_dir().join(format!(
+        "vibegal-desktop-smoke-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&output_dir).map_err(|error| {
+        smoke_error(
+            "smoke_desktop_failed",
+            format!("创建桌面 Player smoke 输出目录失败: {error}"),
+            "desktopBehavior",
+            None,
+        )
+    })?;
+    let stdout_path = output_dir.join("stdout.log");
+    let stderr_path = output_dir.join("stderr.log");
+    let stdout_file = fs::File::create(&stdout_path).map_err(|error| {
+        let _ = fs::remove_dir_all(&output_dir);
+        smoke_error(
+            "smoke_desktop_failed",
+            format!("创建桌面 Player smoke 输出文件失败: {error}"),
+            "desktopBehavior",
+            None,
+        )
+    })?;
+    let stderr_file = fs::File::create(&stderr_path).map_err(|error| {
+        let _ = fs::remove_dir_all(&output_dir);
+        smoke_error(
+            "smoke_desktop_failed",
+            format!("创建桌面 Player smoke 输出文件失败: {error}"),
+            "desktopBehavior",
+            None,
+        )
+    })?;
     let mut command = Command::new(executable);
     command
         .env("VIBEGAL_DESKTOP_SMOKE", "1")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stdout(std::process::Stdio::from(stdout_file))
+        .stderr(std::process::Stdio::from(stderr_file));
     let mut child = command.spawn().map_err(|error| {
+        let _ = fs::remove_dir_all(&output_dir);
         smoke_error(
             "smoke_desktop_launch_failed",
             format!("启动桌面 Player 失败: {error}"),
@@ -4533,32 +4596,32 @@ fn run_desktop_shell_smoke(executable: &Path) -> Result<serde_json::Value, Smoke
             None,
         )
     })?;
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    loop {
+    let deadline = std::time::Instant::now() + timeout;
+    let mut timed_out = false;
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) if std::time::Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(50));
             }
             Ok(None) => {
+                timed_out = true;
                 let _ = child.kill();
-                let output = child.wait_with_output().ok();
-                let stderr = output
-                    .as_ref()
-                    .map(|output| String::from_utf8_lossy(&output.stderr).trim().to_string())
-                    .unwrap_or_default();
-                return Err(smoke_error(
-                    "smoke_desktop_timeout",
-                    if stderr.is_empty() {
-                        "桌面 Player smoke 30 秒内未完成".to_string()
-                    } else {
-                        format!("桌面 Player smoke 30 秒内未完成。{stderr}")
-                    },
-                    "desktopBehavior",
-                    None,
-                ));
+                match child.wait() {
+                    Ok(status) => break status,
+                    Err(error) => {
+                        let _ = fs::remove_dir_all(&output_dir);
+                        return Err(smoke_error(
+                            "smoke_desktop_failed",
+                            format!("等待桌面 Player smoke 失败: {error}"),
+                            "desktopBehavior",
+                            None,
+                        ));
+                    }
+                }
             }
             Err(error) => {
+                let _ = fs::remove_dir_all(&output_dir);
                 return Err(smoke_error(
                     "smoke_desktop_failed",
                     format!("等待桌面 Player smoke 失败: {error}"),
@@ -4567,26 +4630,41 @@ fn run_desktop_shell_smoke(executable: &Path) -> Result<serde_json::Value, Smoke
                 ));
             }
         }
-    }
-    let output = child.wait_with_output().map_err(|error| {
-        smoke_error(
-            "smoke_desktop_failed",
-            format!("读取桌面 Player smoke 输出失败: {error}"),
+    };
+    let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+    let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
+    let _ = fs::remove_dir_all(&output_dir);
+    if timed_out {
+        let detail = smoke_output_tail(&stderr);
+        return Err(smoke_error(
+            "smoke_desktop_timeout",
+            if detail.is_empty() {
+                format!("桌面 Player smoke {timeout:?} 内未完成")
+            } else {
+                format!("桌面 Player smoke {timeout:?} 内未完成。{detail}")
+            },
             "desktopBehavior",
             None,
-        )
-    })?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
+        ));
+    }
     let marker = "VIBEGAL_DESKTOP_SMOKE_RESULT=";
     let result = stdout
         .lines()
         .find_map(|line| line.strip_prefix(marker))
         .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
         .ok_or_else(|| {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let mut detail = format!("进程退出状态: {status}");
+            let stderr_tail = smoke_output_tail(&stderr);
+            if !stderr_tail.is_empty() {
+                detail.push_str(&format!("。stderr: {stderr_tail}"));
+            }
+            let stdout_tail = smoke_output_tail(&stdout);
+            if !stdout_tail.is_empty() {
+                detail.push_str(&format!("。stdout: {stdout_tail}"));
+            }
             smoke_error(
                 "smoke_desktop_incomplete",
-                format!("桌面 Player 未返回 smoke 结果。{}", stderr.trim()),
+                format!("桌面 Player 未返回 smoke 结果。{detail}"),
                 "desktopBehavior",
                 None,
             )
@@ -7238,6 +7316,74 @@ mod tests {
         assert!(text.contains("Non-goals"));
         assert!(text.contains("signing"));
         assert!(text.contains("notarization"));
+    }
+
+    #[cfg(unix)]
+    fn write_executable_script(dir: &Path, name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        write_text(&path, body);
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_shell_smoke_reads_result_from_file_redirected_output() {
+        let dir = unique_temp_dir("cli-desktop-smoke-pass");
+        let player = write_executable_script(
+            &dir,
+            "fake-player.sh",
+            "#!/bin/sh\necho 'VIBEGAL_DESKTOP_SMOKE_RESULT={\"status\":\"passed\"}'\n",
+        );
+
+        let result = run_desktop_shell_smoke_with_timeout(&player, Duration::from_secs(5))
+            .expect("smoke should pass");
+
+        assert_eq!(
+            result.get("status").and_then(serde_json::Value::as_str),
+            Some("passed")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_shell_smoke_reports_exit_status_and_stderr_when_result_missing() {
+        let dir = unique_temp_dir("cli-desktop-smoke-incomplete");
+        let player = write_executable_script(
+            &dir,
+            "fake-player.sh",
+            "#!/bin/sh\necho 'boom' >&2\nexit 3\n",
+        );
+
+        let err = run_desktop_shell_smoke_with_timeout(&player, Duration::from_secs(5))
+            .expect_err("missing smoke result should fail");
+
+        assert_eq!(err.code, "smoke_desktop_incomplete");
+        assert!(err.message.contains("exit status: 3"));
+        assert!(err.message.contains("boom"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_shell_smoke_timeout_does_not_block_on_child_output() {
+        let dir = unique_temp_dir("cli-desktop-smoke-timeout");
+        let player = write_executable_script(&dir, "fake-player.sh", "#!/bin/sh\nsleep 30\n");
+
+        let started = std::time::Instant::now();
+        let err = run_desktop_shell_smoke_with_timeout(&player, Duration::from_millis(300))
+            .expect_err("long-running player should time out");
+
+        assert_eq!(err.code, "smoke_desktop_timeout");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "timeout path must return promptly instead of waiting for pipe EOF"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
