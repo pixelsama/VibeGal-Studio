@@ -32,8 +32,12 @@
 - Windows 上 `pnpm smoke:release` 检测到已安装的 MSVC Rust 工具链（`*-pc-windows-msvc`）时会自动通过 `RUSTUP_TOOLCHAIN` 切换；这避开了默认 windows-gnu 工具链缺 `dlltool.exe` 时依赖编译失败的问题。未安装 MSVC 工具链的环境保持默认行为。
 - 安装包内 CLI 的 Web `build` / `smoke` 必须使用 bundled exporter；当前 build 仍要求系统 Node 或 `VIBEGAL_NODE`。
 - 桌面游戏构建同时提供两种后端目标：默认 `--runtime electron`（兼容模式，固定 Chromium）与可选 `--runtime tauri`（轻量模式，系统 WebView）；两者必须复用同一份 Web 产物。
+- 构建前可运行 `vibegal-cli doctor --format json` 检查 Node、Electron 缓存、Tauri Player 与两个 exporter worker；该命令始终以 0 退出，缺失项通过 JSON 字段表达。
+- 供应用后端消费的流式构建使用 `--format json --progress jsonl`：stdout 逐行输出 `validate`、`web-build`、`desktop-package` 的 start/done 事件，最后一行是原构建结果。不传 `--progress` 时保持原输出契约。
+- Studio 后端通过 `desktop_build_progress` 事件转发构建进度，并以调用方提供的 `buildId` 支持 `cancel_desktop_game_build`；CLI 错误仍写入 stderr 并保持非零退出码。
 - Electron 固定运行时首次构建时按需下载并校验，之后复用 VibeGal 本地缓存；Tauri 轻量 Player 随 Studio 预编译分发，单个游戏不得再次编译 Rust。
 - 桌面产物当前是可直接运行并可自行压缩分发的 portable 目录；签名、公证和商店安装器仍属于独立发布阶段。
+- `smoke_desktop_game` 会真实启动所选 Player 执行行为检查，最长等待 30 秒；`run_desktop_game` 启动后立即放手，`reveal_path` 只负责在系统文件管理器中显示产物。
 - `renderer-check`（真实编译/类型检查）与 `renderer-snapshot`（无头截图）同样走 bundled exporter 里的 node worker（`build-web-export.mjs` / `renderer-snapshot.mjs` + 共享模块 `renderer-worker-shared.mjs`），新增 exporter 侧脚本必须同步 `packages/studio/scripts/prepare-web-exporter.mjs` 的拷贝清单。
 - CI 在 macOS/Windows bundle 后把安装物复制到独立、无 checkout 的 job，并使用含空格路径完成 validate/build/browser smoke。
 

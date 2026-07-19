@@ -2,6 +2,7 @@ pub(crate) mod api;
 mod cli_tool;
 mod commands;
 mod contracts;
+mod desktop_system;
 mod fs;
 mod game_build;
 pub(crate) mod model;

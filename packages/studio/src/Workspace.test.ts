@@ -41,6 +41,13 @@ vi.mock("./features/project/ProjectSettings", () => ({
   ProjectSettings: () => createElement("div", { "data-testid": "project-settings-workspace" }, "项目设置内容"),
 }));
 
+vi.mock("./features/export/ExportWorkspace", () => ({
+  ExportWorkspace: ({ hasUnsavedChanges }: { hasUnsavedChanges: boolean }) => createElement("div", {
+    "data-testid": "export-workspace",
+    "data-unsaved": String(hasUnsavedChanges),
+  }, "导出工作台内容"),
+}));
+
 vi.mock("./features/common/StatusPanel", () => ({
   StatusPanel: () => createElement("div", { "data-testid": "status-panel" }),
 }));
@@ -179,6 +186,7 @@ describe("Workspace renderer chrome", () => {
     expect(html).toContain("脚本");
     expect(html).toContain("资产");
     expect(html).toContain("项目");
+    expect(html).toContain("导出");
     expect(html).not.toContain(">Render<");
     expect(html).not.toContain(">Script<");
     expect(html).not.toContain(">Assets<");
@@ -186,6 +194,23 @@ describe("Workspace renderer chrome", () => {
     expect(html).toContain('aria-label="设置"');
     expect(html).toContain("lucide-settings");
     expect(html).toContain("项目设置内容");
+  });
+
+  it("renders the export workspace for the export location", () => {
+    const html = renderToStaticMarkup(createElement(Workspace, {
+      project,
+      location: { type: "workspace", workspace: "export" },
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      onOpenSettings: () => {},
+    }));
+
+    expect(html).toContain("导出工作台内容");
   });
 
   it("restores persisted sidebar collapse preferences", () => {

@@ -13,6 +13,7 @@ import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
 import { AppearanceWorkspace } from "./features/appearance/AppearanceWorkspace";
+import { ExportWorkspace } from "./features/export/ExportWorkspace";
 import { ProjectSettings } from "./features/project/ProjectSettings";
 import { StatusPanel } from "./features/common/StatusPanel";
 import { CollapsibleSidebar } from "./features/common/CollapsibleSidebar";
@@ -368,6 +369,7 @@ export function Workspace({
       { id: "ws-assets", label: "资产工作台", hint: "切换", keywords: "assets", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "assets" }) },
       { id: "ws-project", label: "项目工作台", hint: "切换", keywords: "project settings", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "project" }) },
       { id: "ws-appearance", label: "外观工作台", hint: "切换", keywords: "appearance design ui skin", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "appearance" }) },
+      { id: "ws-export", label: "导出工作台", hint: "切换", keywords: "export build desktop electron tauri release", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "export" }) },
     ];
     const nodeItems: CommandItem[] = (project.graph?.nodes ?? []).map((node) => ({
       id: `node-${node.id}`,
@@ -427,6 +429,7 @@ export function Workspace({
           <TabBtn active={workspace === "assets"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}>资产</TabBtn>
           <TabBtn active={workspace === "project"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "project" })}>项目</TabBtn>
           <TabBtn active={workspace === "appearance"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "appearance" })}>外观</TabBtn>
+          <TabBtn active={workspace === "export"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "export" })}>导出</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 渲染层 */}
@@ -515,6 +518,13 @@ export function Workspace({
             project={project}
             rendererId={rendererId}
             onSaved={handleSaved}
+          />
+        )}
+        {workspace === "export" && (
+          <ExportWorkspace
+            key={project.path}
+            project={project}
+            hasUnsavedChanges={hasUnsavedChanges}
           />
         )}
       </div>

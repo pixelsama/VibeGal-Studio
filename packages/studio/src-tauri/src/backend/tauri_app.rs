@@ -5,6 +5,7 @@ pub(crate) fn run() {
     tauri::Builder::default()
         .manage(super::watcher::ProjectWatchers::default())
         .manage(super::commands::AssetScopeState::default())
+        .manage(super::game_build::DesktopBuildRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -41,6 +42,11 @@ pub(crate) fn run() {
             super::commands::load_app_settings,
             super::commands::save_app_settings,
             super::commands::build_desktop_game,
+            super::commands::cancel_desktop_game_build,
+            super::commands::desktop_build_preflight,
+            super::commands::smoke_desktop_game,
+            super::commands::reveal_path,
+            super::commands::run_desktop_game,
             super::commands::cli_tool_status,
             super::commands::install_cli_tool,
             super::commands::uninstall_cli_tool,

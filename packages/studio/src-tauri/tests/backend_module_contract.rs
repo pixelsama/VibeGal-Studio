@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 27] = [
+const COMMAND_NAMES: [&str; 32] = [
     "list_projects",
     "open_project",
     "create_project",
@@ -30,6 +30,11 @@ const COMMAND_NAMES: [&str; 27] = [
     "load_app_settings",
     "save_app_settings",
     "build_desktop_game",
+    "cancel_desktop_game_build",
+    "desktop_build_preflight",
+    "smoke_desktop_game",
+    "reveal_path",
+    "run_desktop_game",
     "cli_tool_status",
     "install_cli_tool",
     "uninstall_cli_tool",
@@ -49,7 +54,7 @@ const REQUIRED_DOMAIN_MODULES: [&str; 9] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 27] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 32] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("create_project", &["parentDir", "name"]),
@@ -98,6 +103,11 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 27] = [
     ("load_app_settings", &[]),
     ("save_app_settings", &["settings"]),
     ("build_desktop_game", &["request"]),
+    ("cancel_desktop_game_build", &["buildId"]),
+    ("desktop_build_preflight", &[]),
+    ("smoke_desktop_game", &["request"]),
+    ("reveal_path", &["path"]),
+    ("run_desktop_game", &["executable"]),
     ("cli_tool_status", &[]),
     ("install_cli_tool", &[]),
     ("uninstall_cli_tool", &[]),

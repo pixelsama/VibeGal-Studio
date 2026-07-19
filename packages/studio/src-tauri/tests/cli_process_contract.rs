@@ -32,6 +32,125 @@ fn validate_process_preserves_json_output_and_exit_code_contract() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn build_progress_is_ndjson_and_legacy_json_remains_single_document() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let project = manifest_dir.join("../../../examples/sample-novel");
+    let root = unique_temp_dir();
+
+    let progress = Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
+        .args([
+            "build",
+            project.to_string_lossy().as_ref(),
+            "--target",
+            "web",
+            "--out",
+            root.join("progress").to_string_lossy().as_ref(),
+            "--format",
+            "json",
+            "--progress",
+            "jsonl",
+        ])
+        .output()
+        .expect("progress build must run");
+    assert!(
+        progress.status.success(),
+        "{}",
+        String::from_utf8_lossy(&progress.stderr)
+    );
+    let lines = String::from_utf8(progress.stdout).unwrap();
+    let values = lines
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("each stdout line must be JSON"))
+        .collect::<Vec<_>>();
+    assert!(
+        values.len() >= 5,
+        "expected four progress events plus result: {values:?}"
+    );
+    assert_eq!(values.first().unwrap()["type"], "progress");
+    assert_eq!(values.first().unwrap()["step"], "validate");
+    assert_eq!(values.last().unwrap()["ok"], true);
+    assert!(values.last().unwrap().get("type").is_none());
+
+    let legacy = Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
+        .args([
+            "build",
+            project.to_string_lossy().as_ref(),
+            "--target",
+            "web",
+            "--out",
+            root.join("legacy").to_string_lossy().as_ref(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("legacy build must run");
+    assert!(legacy.status.success());
+    let legacy_value: Value =
+        serde_json::from_slice(&legacy.stdout).expect("legacy stdout is one JSON document");
+    assert_eq!(legacy_value["ok"], true);
+    assert!(legacy_value.get("type").is_none());
+
+    let invalid = Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
+        .args([
+            "build",
+            project.to_string_lossy().as_ref(),
+            "--target",
+            "web",
+            "--out",
+            root.join("invalid").to_string_lossy().as_ref(),
+            "--format",
+            "text",
+            "--progress",
+            "jsonl",
+        ])
+        .output()
+        .expect("invalid progress combination must return a structured error");
+    assert!(!invalid.status.success());
+    let error: Value =
+        serde_json::from_slice(&invalid.stderr).expect("progress option error is JSON");
+    assert_eq!(error["code"], "build_progress_requires_json");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn doctor_uses_vibegal_node_and_reports_missing_components_as_fields() {
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    #[cfg(windows)]
+    let (fake_node, body) = (root.join("fake-node.cmd"), "@echo off\r\necho v99.1.0\r\n");
+    #[cfg(not(windows))]
+    let (fake_node, body) = (root.join("fake-node"), "#!/bin/sh\nprintf 'v99.1.0\\n'\n");
+    fs::write(&fake_node, body).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&fake_node).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_node, permissions).unwrap();
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
+        .args(["doctor", "--format", "json"])
+        .env("VIBEGAL_NODE", &fake_node)
+        .env("VIBEGAL_ELECTRON_RUNTIME_CACHE", root.join("empty-cache"))
+        .env_remove("VIBEGAL_ELECTRON_DIST")
+        .output()
+        .expect("doctor must always run");
+    assert_eq!(output.status.code(), Some(0));
+    let value: Value = serde_json::from_slice(&output.stdout).expect("doctor stdout is JSON");
+    assert_eq!(value["node"]["available"], true);
+    assert_eq!(value["node"]["version"], "v99.1.0");
+    assert_eq!(value["node"]["source"], "env");
+    assert_eq!(value["electron"]["cached"], false);
+    assert_eq!(value["electron"]["version"], "43.1.1");
+    assert!(value["exporter"]["webWorker"].is_boolean());
+    assert!(value["exporter"]["desktopWorker"].is_boolean());
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn run_validate(project: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
         .args([

@@ -628,6 +628,37 @@ Project workspace includes project-level settings stored in `content/meta.json`:
 Future project-level data should be added here when it is about project metadata or contracts,
 not about renderer-specific visual UI.
 
+### 8.6 Export Workspace
+
+The Export workspace packages the current project as a distributable desktop game. It is a thin
+UI over the `build_desktop_game` backend command (see 9.5), so the app and the CLI share one
+build contract; all filesystem and packaging logic stays in the backend.
+
+- Runtime choice: Electron compatible mode (default, pinned Chromium, first build downloads the
+  runtime) or Tauri lightweight mode (system WebView, smaller output).
+- Renderer selection defaults to `activeRendererId`.
+- Output directory defaults to `<project>/dist/desktop-<runtime>` (the watcher ignores the
+  first-level `dist` directory, so builds never trigger hot reload). The form pre-validates the
+  same output-path safety rules the CLI enforces.
+- Advanced options map to `--strict` and `--allow-warnings`.
+- Pre-flight hints surface current project errors and unsaved drafts; builds read from disk only.
+- Build state lives in a module-level store (`features/export/buildStore.ts`), so switching
+  workspaces does not lose a running build or its result, and one project runs one build at a time.
+  The store generates the `buildId`, reduces `desktop_build_progress` events into step state
+  (validate / web-build / desktop-package), exposes cancel through `cancel_desktop_game_build`,
+  and maps the CLI's cancelled outcome to a neutral "cancelled" phase instead of an error.
+- An environment panel runs `desktop_build_preflight` (CLI `doctor`) on mount: Node.js, Electron
+  runtime cache, Tauri player, and exporter workers. Hard blockers (missing CLI/Node/workers, or
+  missing Tauri player in lightweight mode) disable the build button with a reason; an uncached
+  Electron runtime is informational only, since the first build downloads it.
+- Success shows the portable output directory, executable, artifact list, and validation warnings,
+  with actions to reveal the directory (`reveal_path`), launch the game (`run_desktop_game`), and
+  run the desktop smoke (`smoke_desktop_game`, which really starts the player for behavior
+  checks). Failure maps the structured codes (`DesktopBuildFailure` plus the CLI `BuildError`) to
+  localized guidance, including grouped project issues and renderer diagnostics.
+- Per-project export preferences (runtime, custom output directory, renderer, flags) persist in
+  localStorage (`lib/exportPrefs.ts`).
+
 ## 9. Tauri Backend Architecture
 
 The frontend must not read or write project files directly. It calls typed wrappers in
@@ -730,6 +761,8 @@ vibegal-cli build <project-path> --target web --out <dir> --format json|text
 vibegal-cli smoke <dist-dir> --target web --format json|text
 vibegal-cli build <project-path> --target desktop [--runtime electron|tauri] --out <dir> --format json|text
 vibegal-cli smoke <dist-dir> --target desktop [--runtime electron|tauri] --format json|text
+vibegal-cli doctor --format json|text
+vibegal-cli build <project-path> --target desktop --out <dir> --format json --progress jsonl
 ```
 
 It opens the project through the same backend loading/validation path and returns machine-readable
@@ -741,6 +774,13 @@ Desktop build defaults to the fixed Electron compatible runtime; `--runtime taur
 smaller system-WebView player. Both shells receive the same Web payload, and desktop smoke launches
 the selected shell. The application backend exposes the same CLI build contract without duplicating
 filesystem or packaging logic.
+The app backend also exposes `desktop_build_preflight`, `build_desktop_game`,
+`cancel_desktop_game_build`, `smoke_desktop_game`, `reveal_path`, and `run_desktop_game`. Streaming
+builds emit `desktop_build_progress` with `{ buildId, projectPath, step, phase, message, percent }`.
+Desktop smoke starts the real packaged Player and may run for up to 30 seconds. `reveal_path` and
+`run_desktop_game` are native Rust commands; no opener permission is exposed to frontend JavaScript.
+The app-backend build result normalizes `executable` to an absolute path for `run_desktop_game`;
+the CLI and `desktop.manifest.json` keep their portable relative executable path.
 `renderer-check` runs static contract checks plus a real compile/typecheck through the bundled node
 worker (`--no-compile` skips it). `renderer-snapshot` headlessly mounts the renderer onto built-in
 scene fixtures and writes PNG screenshots via headless Chrome (`VIBEGAL_SMOKE_BROWSER` overrides the

@@ -1,8 +1,12 @@
 //! Thin Tauri command adapters over backend domain services.
 
 use super::cli_tool;
+use super::desktop_system;
 use super::fs::ProjectRoot;
-use super::game_build::{self, DesktopBuildFailure, DesktopBuildRequest};
+use super::game_build::{
+    self, DesktopBuildFailure, DesktopBuildRegistry, DesktopBuildRequest, DesktopSmokeRequest,
+    DESKTOP_BUILD_PROGRESS_EVENT,
+};
 use super::model::{
     AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, ProjectData,
     ProjectListItem, ProjectMeta,
@@ -305,16 +309,66 @@ pub(crate) fn save_app_settings(
 pub(crate) async fn build_desktop_game(
     app_handle: tauri::AppHandle,
     request: DesktopBuildRequest,
+    builds: tauri::State<'_, DesktopBuildRegistry>,
 ) -> Result<serde_json::Value, DesktopBuildFailure> {
     let cli_path = resources::cli_binary_path(&app_handle);
-    tauri::async_runtime::spawn_blocking(move || game_build::build_desktop_game(&cli_path, request))
+    let builds = builds.inner().clone();
+    let event_handle = app_handle.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        game_build::build_desktop_game(&cli_path, request, &builds, |payload| {
+            let _ = event_handle.emit(DESKTOP_BUILD_PROGRESS_EVENT, payload);
+        })
+    })
+    .await
+    .map_err(desktop_task_failure)?
+}
+
+fn desktop_task_failure(error: impl std::fmt::Display) -> DesktopBuildFailure {
+    DesktopBuildFailure {
+        ok: false,
+        code: "desktop_build_task_failed".to_string(),
+        message: format!("桌面构建后台任务异常结束: {error}"),
+        cli_error: None,
+    }
+}
+
+#[tauri::command]
+pub(crate) fn cancel_desktop_game_build(
+    build_id: String,
+    builds: tauri::State<'_, DesktopBuildRegistry>,
+) -> Result<(), DesktopBuildFailure> {
+    builds.cancel(&build_id)
+}
+
+#[tauri::command]
+pub(crate) async fn desktop_build_preflight(
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    let cli_path = resources::cli_binary_path(&app_handle);
+    tauri::async_runtime::spawn_blocking(move || game_build::desktop_build_preflight(&cli_path))
         .await
-        .map_err(|error| DesktopBuildFailure {
-            ok: false,
-            code: "desktop_build_task_failed".to_string(),
-            message: format!("桌面构建后台任务异常结束: {error}"),
-            cli_error: None,
-        })?
+        .map_err(desktop_task_failure)?
+}
+
+#[tauri::command]
+pub(crate) async fn smoke_desktop_game(
+    app_handle: tauri::AppHandle,
+    request: DesktopSmokeRequest,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    let cli_path = resources::cli_binary_path(&app_handle);
+    tauri::async_runtime::spawn_blocking(move || game_build::smoke_desktop_game(&cli_path, request))
+        .await
+        .map_err(desktop_task_failure)?
+}
+
+#[tauri::command]
+pub(crate) fn reveal_path(path: String) -> Result<(), String> {
+    desktop_system::reveal_path(Path::new(&path))
+}
+
+#[tauri::command]
+pub(crate) fn run_desktop_game(executable: String) -> Result<(), String> {
+    desktop_system::run_desktop_game(Path::new(&executable))
 }
 
 fn cli_paths(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf, Vec<PathBuf>, Option<String>) {

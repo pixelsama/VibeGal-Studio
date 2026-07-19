@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -65,6 +66,9 @@ enum Commands {
         /// 输出格式：text（默认，人类可读）或 json（结构化）
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
+        /// 逐行输出构建进度；仅支持 jsonl，且必须与 --format json 同用。
+        #[arg(long, value_enum)]
+        progress: Option<ProgressOutput>,
     },
     /// 检查 renderer contract 与编译约束
     RendererCheck {
@@ -108,12 +112,23 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
+    /// 检查桌面游戏构建环境；缺失项通过字段报告，命令始终返回 0。
+    Doctor {
+        /// 输出格式：text（默认，人类可读）或 json（结构化）
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum OutputFormat {
     Text,
     Json,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum ProgressOutput {
+    Jsonl,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -177,6 +192,7 @@ struct BuildOptions {
     strict: bool,
     allow_warnings: bool,
     base_path: String,
+    progress: Option<ProgressOutput>,
 }
 
 #[derive(Debug)]
@@ -351,6 +367,47 @@ struct SmokeError {
     step: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DoctorNodeStatus {
+    available: bool,
+    version: Option<String>,
+    source: Option<String>,
+    path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DoctorElectronStatus {
+    cached: bool,
+    version: String,
+    override_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DoctorTauriPlayerStatus {
+    available: bool,
+    path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DoctorExporterStatus {
+    web_worker: bool,
+    desktop_worker: bool,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+struct DoctorOutput {
+    ok: bool,
+    node: DoctorNodeStatus,
+    electron: DoctorElectronStatus,
+    #[serde(rename = "tauriPlayer")]
+    tauri_player: DoctorTauriPlayerStatus,
+    exporter: DoctorExporterStatus,
 }
 
 #[derive(Deserialize, Debug)]
@@ -558,6 +615,48 @@ fn build_error(
         diagnostics: vec![],
         issues,
     }
+}
+
+fn validate_progress_output(
+    progress: Option<ProgressOutput>,
+    format: OutputFormat,
+) -> Result<(), BuildError> {
+    if progress.is_some() && format != OutputFormat::Json {
+        return Err(build_error(
+            "build_progress_requires_json",
+            "--progress jsonl 必须与 --format json 同时使用",
+            "progress",
+            None,
+            None,
+            vec![],
+        ));
+    }
+    Ok(())
+}
+
+fn progress_json_line(step: &str, phase: &str, message: &str, percent: Option<u8>) -> String {
+    serde_json::to_string(&serde_json::json!({
+        "type": "progress",
+        "step": step,
+        "phase": phase,
+        "message": message,
+        "percent": percent,
+    }))
+    .expect("build progress must serialize")
+}
+
+fn emit_build_progress(
+    progress: Option<ProgressOutput>,
+    step: &str,
+    phase: &str,
+    message: &str,
+    percent: Option<u8>,
+) {
+    if progress.is_none() {
+        return;
+    }
+    println!("{}", progress_json_line(step, phase, message, percent));
+    let _ = std::io::stdout().flush();
 }
 
 fn selected_desktop_runtime(
@@ -1031,6 +1130,205 @@ fn tauri_player_path() -> Result<PathBuf, String> {
 
 fn node_executable() -> String {
     std::env::var("VIBEGAL_NODE").unwrap_or_else(|_| "node".to_string())
+}
+
+fn electron_platform_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "win32"
+    } else if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        "linux"
+    }
+}
+
+fn electron_arch_name() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        "arm" => "armv7l",
+        other => other,
+    }
+}
+
+fn electron_runtime_cache_root() -> PathBuf {
+    if let Some(path) = std::env::var_os("VIBEGAL_ELECTRON_RUNTIME_CACHE") {
+        return PathBuf::from(path);
+    }
+    if cfg!(target_os = "windows") {
+        if let Some(path) = std::env::var_os("LOCALAPPDATA") {
+            return PathBuf::from(path).join("VibeGal/runtime");
+        }
+    }
+    if cfg!(target_os = "macos") {
+        if let Some(path) = std::env::var_os("HOME") {
+            return PathBuf::from(path).join("Library/Caches/VibeGal/runtime");
+        }
+    }
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    cache.join("vibegal/runtime")
+}
+
+// Keep this directory contract synchronized with electronCacheRoot() and
+// resolveElectronDist() in scripts/build-desktop-export.mjs.
+fn electron_runtime_cache_dir_for(root: &Path) -> PathBuf {
+    root.join(format!(
+        "electron-v{}-{}-{}",
+        ELECTRON_RUNTIME_VERSION,
+        electron_platform_name(),
+        electron_arch_name()
+    ))
+}
+
+fn electron_runtime_is_cached_at(root: &Path) -> bool {
+    electron_runtime_cache_dir_for(root)
+        .join(".vibegal-runtime-ready")
+        .is_file()
+}
+
+fn probe_node_with<F>(executable: &str, source: &str, run_version: F) -> DoctorNodeStatus
+where
+    F: FnOnce(&str) -> Option<String>,
+{
+    let version = run_version(executable).map(|value| value.trim().to_string());
+    let available = version.is_some();
+    DoctorNodeStatus {
+        available,
+        version,
+        source: available.then(|| source.to_string()),
+        path: available.then(|| executable.to_string()),
+    }
+}
+
+fn resolve_executable_on_path(executable: &str) -> Option<PathBuf> {
+    let requested = Path::new(executable);
+    if requested.is_absolute() || requested.components().count() > 1 {
+        return requested.is_file().then(|| {
+            requested
+                .canonicalize()
+                .unwrap_or_else(|_| requested.to_path_buf())
+        });
+    }
+    let path_env = std::env::var_os("PATH")?;
+    let extensions: &[&str] = if cfg!(windows) {
+        &["", ".exe", ".cmd", ".bat", ".com"]
+    } else {
+        &[""]
+    };
+    for directory in std::env::split_paths(&path_env) {
+        for extension in extensions {
+            let candidate = directory.join(format!("{executable}{extension}"));
+            if candidate.is_file() {
+                return Some(candidate.canonicalize().unwrap_or(candidate));
+            }
+        }
+    }
+    None
+}
+
+fn probe_node() -> DoctorNodeStatus {
+    let explicit = std::env::var("VIBEGAL_NODE").ok();
+    let executable = explicit.clone().unwrap_or_else(|| node_executable());
+    let source = if explicit.is_some() { "env" } else { "path" };
+    let mut status = probe_node_with(&executable, source, |program| {
+        let output = Command::new(program).arg("--version").output().ok()?;
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).to_string())
+    });
+    if status.available {
+        status.path = resolve_executable_on_path(&executable)
+            .map(|path| path.to_string_lossy().to_string())
+            .or_else(|| Some(executable));
+    }
+    status
+}
+
+fn doctor_environment() -> DoctorOutput {
+    let node = probe_node();
+    let override_path = std::env::var("VIBEGAL_ELECTRON_DIST").ok();
+    let electron = DoctorElectronStatus {
+        cached: override_path.is_some()
+            || electron_runtime_is_cached_at(&electron_runtime_cache_root()),
+        version: ELECTRON_RUNTIME_VERSION.to_string(),
+        override_path,
+    };
+    let tauri_path = tauri_player_path().ok();
+    let tauri_player = DoctorTauriPlayerStatus {
+        available: tauri_path.is_some(),
+        path: tauri_path.map(|path| path.to_string_lossy().to_string()),
+    };
+    let exporter = DoctorExporterStatus {
+        web_worker: build_worker_path().is_ok(),
+        desktop_worker: desktop_worker_path().is_ok(),
+    };
+    DoctorOutput {
+        ok: node.available
+            && tauri_player.available
+            && exporter.web_worker
+            && exporter.desktop_worker,
+        node,
+        electron,
+        tauri_player,
+        exporter,
+    }
+}
+
+fn run_doctor(format: OutputFormat) -> i32 {
+    let output = doctor_environment();
+    match format {
+        OutputFormat::Json => print_build_json(&output),
+        OutputFormat::Text => {
+            println!(
+                "桌面构建环境：{}",
+                if output.ok {
+                    "可用"
+                } else {
+                    "存在缺失项"
+                }
+            );
+            println!(
+                "Node.js：{}{}",
+                if output.node.available {
+                    "可用"
+                } else {
+                    "不可用"
+                },
+                output
+                    .node
+                    .version
+                    .as_deref()
+                    .map(|version| format!(" ({version})"))
+                    .unwrap_or_default()
+            );
+            println!(
+                "Electron {}：{}",
+                output.electron.version,
+                if output.electron.cached {
+                    "运行时已缓存"
+                } else {
+                    "首次构建时下载"
+                }
+            );
+            println!(
+                "Tauri 轻量 Player：{}",
+                if output.tauri_player.available {
+                    "可用"
+                } else {
+                    "不可用"
+                }
+            );
+            println!(
+                "Exporter：web={} desktop={}",
+                output.exporter.web_worker, output.exporter.desktop_worker
+            );
+        }
+    }
+    0
 }
 
 fn source_snippet(project_root: &Path, rel_file: &str, line: Option<u32>) -> Option<String> {
@@ -1680,6 +1978,13 @@ fn built_at_iso() -> String {
 }
 
 fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
+    emit_build_progress(
+        options.progress,
+        "validate",
+        "start",
+        "正在校验项目与构建配置",
+        None,
+    );
     let project = app_lib::open_project_for_cli(&options.project_path).map_err(|message| {
         build_error(
             "open_project_failed",
@@ -1716,6 +2021,14 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
             issues,
         ));
     }
+    emit_build_progress(options.progress, "validate", "done", "项目校验完成", None);
+    emit_build_progress(
+        options.progress,
+        "web-build",
+        "start",
+        "正在生成 Web 游戏资源",
+        None,
+    );
 
     let renderer_id = options
         .renderer_id
@@ -1908,6 +2221,13 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
     })?;
 
     run_build_worker(&options, &renderer_id)?;
+    emit_build_progress(
+        options.progress,
+        "web-build",
+        "done",
+        "Web 游戏资源构建完成",
+        None,
+    );
 
     Ok(BuildOutput {
         ok: true,
@@ -1991,6 +2311,19 @@ fn build_desktop_project(options: BuildOptions) -> Result<BuildOutput, BuildErro
             .and_then(serde_json::Value::as_str)
             .filter(|title| !title.trim().is_empty())
             .unwrap_or("VibeGal Game");
+        let package_message = match runtime {
+            DesktopRuntime::Electron => {
+                "正在打包 Electron 兼容模式；首次构建需下载 Electron 运行时，可能较慢"
+            }
+            DesktopRuntime::Tauri => "正在打包 Tauri 轻量模式",
+        };
+        emit_build_progress(
+            options.progress,
+            "desktop-package",
+            "start",
+            package_message,
+            None,
+        );
         let packaged = run_desktop_worker(runtime, &web_dist, &options.out_dir, product_name)?;
         if !packaged.ok || packaged.runtime != runtime.as_str() || packaged.mode != runtime.mode() {
             return Err(build_error(
@@ -2002,6 +2335,13 @@ fn build_desktop_project(options: BuildOptions) -> Result<BuildOutput, BuildErro
                 vec![],
             ));
         }
+        emit_build_progress(
+            options.progress,
+            "desktop-package",
+            "done",
+            "桌面游戏打包完成",
+            Some(100),
+        );
         Ok(BuildOutput {
             ok: true,
             target: BuildTarget::Desktop.as_str().to_string(),
@@ -2020,6 +2360,14 @@ fn build_desktop_project(options: BuildOptions) -> Result<BuildOutput, BuildErro
 
 fn print_build_json<T: Serialize>(output: &T) {
     println!("{}", serde_json::to_string_pretty(output).unwrap());
+}
+
+fn print_build_json_line<T: Serialize>(output: &T) {
+    println!("{}", serde_json::to_string(output).unwrap());
+}
+
+fn print_build_error_json<T: Serialize>(output: &T) {
+    eprintln!("{}", serde_json::to_string_pretty(output).unwrap());
 }
 
 fn print_build_error_text(error: &BuildError) {
@@ -2043,7 +2391,12 @@ fn print_build_error_text(error: &BuildError) {
 }
 
 fn run_build(options: BuildOptions, format: OutputFormat) -> i32 {
+    if let Err(error) = validate_progress_output(options.progress, format) {
+        print_build_error_json(&error);
+        return 1;
+    }
     let target = options.target;
+    let progress = options.progress;
     let result = match target {
         BuildTarget::Web => selected_desktop_runtime(target, options.desktop_runtime)
             .and_then(|_| build_web_project(options)),
@@ -2052,6 +2405,7 @@ fn run_build(options: BuildOptions, format: OutputFormat) -> i32 {
     match result {
         Ok(output) => {
             match format {
+                OutputFormat::Json if progress.is_some() => print_build_json_line(&output),
                 OutputFormat::Json => print_build_json(&output),
                 OutputFormat::Text => {
                     if let Some(runtime) = &output.runtime {
@@ -2071,7 +2425,7 @@ fn run_build(options: BuildOptions, format: OutputFormat) -> i32 {
         }
         Err(error) => {
             match format {
-                OutputFormat::Json => print_build_json(&error),
+                OutputFormat::Json => print_build_error_json(&error),
                 OutputFormat::Text => print_build_error_text(&error),
             }
             if error.code == "open_project_failed" {
@@ -2234,7 +2588,7 @@ fn serve_snapshot_connection(
     content_root: &Path,
     reports: &std::sync::Arc<std::sync::Mutex<HashMap<String, SnapshotPageReport>>>,
 ) {
-    use std::io::{Read, Write};
+    use std::io::Read;
 
     if stream.set_nonblocking(false).is_err() {
         return;
@@ -2841,7 +3195,7 @@ fn serve_smoke_connection(
     root: &Path,
     report: &std::sync::Arc<std::sync::Mutex<Option<BrowserSmokeReport>>>,
 ) {
-    use std::io::{Read, Write};
+    use std::io::Read;
 
     if stream.set_nonblocking(false).is_err() {
         return;
@@ -3520,7 +3874,7 @@ fn run_smoke(
         }
         Err(error) => {
             match format {
-                OutputFormat::Json => print_build_json(&error),
+                OutputFormat::Json => print_build_error_json(&error),
                 OutputFormat::Text => {
                     eprintln!("[{}] {} (step={})", error.code, error.message, error.step)
                 }
@@ -3544,6 +3898,7 @@ fn main() {
             allow_warnings,
             base_path,
             format,
+            progress,
         } => run_build(
             BuildOptions {
                 project_path: path,
@@ -3554,6 +3909,7 @@ fn main() {
                 strict,
                 allow_warnings,
                 base_path,
+                progress,
             },
             format,
         ),
@@ -3589,6 +3945,7 @@ fn main() {
             },
             format,
         ),
+        Commands::Doctor { format } => run_doctor(format),
     };
     std::process::exit(code);
 }
@@ -3702,6 +4059,7 @@ mod tests {
             strict: false,
             allow_warnings: false,
             base_path: "./".to_string(),
+            progress: None,
         }
     }
 
@@ -3734,6 +4092,84 @@ mod tests {
             assert_eq!(target, BuildTarget::Desktop);
             assert_eq!(runtime, Some(expected));
         }
+    }
+
+    #[test]
+    fn cli_accepts_doctor_and_jsonl_build_progress_contracts() {
+        let doctor = Cli::try_parse_from(["vibegal-cli", "doctor", "--format", "json"])
+            .expect("doctor syntax should parse");
+        assert!(matches!(
+            doctor.command,
+            Commands::Doctor {
+                format: OutputFormat::Json
+            }
+        ));
+
+        let build = Cli::try_parse_from([
+            "vibegal-cli",
+            "build",
+            "project",
+            "--target",
+            "desktop",
+            "--out",
+            "dist-game",
+            "--format",
+            "json",
+            "--progress",
+            "jsonl",
+        ])
+        .expect("JSONL progress syntax should parse");
+        let Commands::Build {
+            progress, format, ..
+        } = build.command
+        else {
+            panic!("expected build command");
+        };
+        assert_eq!(progress, Some(ProgressOutput::Jsonl));
+        assert_eq!(format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn jsonl_progress_requires_json_result_format() {
+        let error = validate_progress_output(Some(ProgressOutput::Jsonl), OutputFormat::Text)
+            .expect_err("text output must reject JSONL progress");
+        assert_eq!(error.code, "build_progress_requires_json");
+        assert_eq!(error.step, "progress");
+        validate_progress_output(Some(ProgressOutput::Jsonl), OutputFormat::Json)
+            .expect("JSON output should accept JSONL progress");
+        validate_progress_output(None, OutputFormat::Text)
+            .expect("the legacy no-progress behavior must remain valid");
+    }
+
+    #[test]
+    fn progress_events_are_single_line_machine_readable_json() {
+        let line = progress_json_line(
+            "desktop-package",
+            "start",
+            "首次构建需下载 Electron 运行时，可能较慢",
+            None,
+        );
+        assert!(!line.contains('\n'));
+        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(value["type"], "progress");
+        assert_eq!(value["step"], "desktop-package");
+        assert_eq!(value["phase"], "start");
+        assert!(value["percent"].is_null());
+    }
+
+    #[test]
+    fn doctor_reports_fixed_runtime_cache_and_injected_node_probe() {
+        let root = unique_temp_dir("doctor-cache");
+        let marker = electron_runtime_cache_dir_for(&root).join(".vibegal-runtime-ready");
+        write_text(&marker, ELECTRON_RUNTIME_VERSION);
+        assert!(electron_runtime_is_cached_at(&root));
+
+        let node = probe_node_with("C:/tools/node", "env", |_| Some("v22.14.0\n".to_string()));
+        assert!(node.available);
+        assert_eq!(node.version.as_deref(), Some("v22.14.0"));
+        assert_eq!(node.source.as_deref(), Some("env"));
+        assert_eq!(node.path.as_deref(), Some("C:/tools/node"));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -4932,7 +5368,7 @@ mod tests {
 
     #[test]
     fn browser_smoke_server_sends_large_runtime_bundle_without_truncation() {
-        use std::io::{Read, Write};
+        use std::io::Read;
         use std::sync::{Arc, Mutex};
 
         let root = unique_temp_dir("smoke-large-runtime");
