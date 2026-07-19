@@ -19,3 +19,6 @@
 - [Spec 13 — Default Renderer Player UX And Runtime Settings](./13-default-renderer-player-ux-and-runtime-settings.spec.md)
 - [Note 15 — Gallery / Replay / Music / Endings Implementation](./15-gallery-replay-music-endings-implementation-note.md)
 - [Note 16 — Asset Management / Project Settings Implementation](./16-asset-management-project-settings-implementation-note.md)
+- [Spec 17 — Appearance Design Module（外观设计模块）](./17-appearance-design-module.spec.md)
+- [Spec 19 — Creator-Facing Vocabulary & Preview/Appearance IA（创作者词汇与预览/外观信息架构）](./19-creator-facing-vocabulary-ia.spec.md)
+- [Spec 20 — Stable Instruction Identity Workflow（稳定指令身份工作流）](./20-stable-instruction-identity-workflow.spec.md)

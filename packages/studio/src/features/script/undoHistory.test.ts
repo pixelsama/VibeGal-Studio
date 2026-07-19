@@ -81,6 +81,27 @@ describe("undoScenarioText / redoScenarioText", () => {
     expect(undone).not.toBeNull();
     expect(undone!.text).toBe("");
   });
+
+  it("round-trips identity metadata with a deleted line", () => {
+    const original = {
+      text: "第一句\n第二句",
+      instructions: [
+        { t: "narrate", id: "sp_first", text: "第一句" },
+        { t: "narrate", id: "sp_second", text: "第二句" },
+      ],
+    };
+    const deleted = {
+      text: "第一句",
+      instructions: [original.instructions[0]],
+    };
+    let history = createUndoHistory<typeof original>();
+    history = recordUndoCheckpoint(history, original, { now: 1000 });
+
+    const undone = undoScenarioText(history, deleted);
+
+    expect(undone?.text).toEqual(original);
+    expect(undone?.history.future).toEqual([deleted]);
+  });
 });
 
 describe("undoShortcutType", () => {

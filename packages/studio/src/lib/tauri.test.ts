@@ -8,6 +8,7 @@ import {
   normalizeDesktopBuildFailure,
   revealPath,
   runDesktopGame,
+  saveNode,
   smokeDesktopGame,
   type DesktopBuildResult,
 } from "./tauri";
@@ -36,6 +37,32 @@ const successResult: DesktopBuildResult = {
 
 beforeEach(() => {
   invokeMock.mockReset();
+});
+
+describe("saveNode", () => {
+  it("uses the typed identity-aware persistence boundary", async () => {
+    const expectedRevision = { relPath: "content/nodes/start.json", mtimeMs: 1, size: 2 };
+    const result = {
+      instructions: [{ t: "narrate", id: "sp_saved", text: "Saved" }],
+      serializedText: '[{"t":"narrate","id":"sp_saved","text":"Saved"}]',
+      revision: { relPath: "content/nodes/start.json", mtimeMs: 2, size: 64 },
+      assigned: [{ file: "content/nodes/start.json", nodeId: "start", jsonPath: "$[0].id", id: "sp_saved" }],
+    };
+    invokeMock.mockResolvedValue(result);
+
+    await expect(saveNode(
+      "/project",
+      "nodes/start.json",
+      [{ t: "narrate", text: "Saved" }],
+      expectedRevision,
+    )).resolves.toEqual(result);
+    expect(invokeMock).toHaveBeenCalledWith("save_node", {
+      projectPath: "/project",
+      nodeFile: "nodes/start.json",
+      instructions: [{ t: "narrate", text: "Saved" }],
+      expectedRevision,
+    });
+  });
 });
 
 describe("buildDesktopGame", () => {

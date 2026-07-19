@@ -25,3 +25,4 @@
 - [Note 16 — Asset Management / Project Settings Implementation](./archive/16-asset-management-project-settings-implementation-note.md)
 - [Spec 17 — Appearance Design Module（外观设计模块）](./archive/17-appearance-design-module.spec.md)
 - [Spec 19 — Creator-Facing Vocabulary & Preview/Appearance IA（创作者词汇与预览/外观信息架构）](./archive/19-creator-facing-vocabulary-ia.spec.md)
+- [Spec 20 — Stable Instruction Identity Workflow（稳定指令身份工作流）](./archive/20-stable-instruction-identity-workflow.spec.md)

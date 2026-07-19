@@ -7,7 +7,10 @@ import {
   conflictDraftCopyPath,
   insertScenarioCommandAtCursor,
   isWriteConflictError,
+  JSON_IDENTITY_GUIDANCE,
   loadNodeInspectorPaneState,
+  loadNodeEditorDraft,
+  nodeEditorInitialText,
   NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
   resolveNodeInspectorPaneLayout,
@@ -43,6 +46,53 @@ describe("NodeEditor safe persistence", () => {
 
   it("builds conflict draft copy path next to the node file", () => {
     expect(conflictDraftCopyPath("nodes/act1/start.json", 123)).toBe("nodes/act1/start.conflict-123.json");
+  });
+
+  it("restores pending backend-assigned identity provenance from the session draft", () => {
+    const storage = {
+      getItem: () => JSON.stringify({
+        version: 1,
+        mode: "json",
+        text: '[{"t":"narrate","text":"edited"}]',
+        instructions: [{ t: "narrate", id: "sp_backend", text: "edited" }],
+        baseJsonText: '[{"t":"narrate","id":"sp_backend","text":"saved"}]',
+        pendingAssignedIdentitySources: [{
+          savedInstructions: [{ t: "narrate", id: "sp_backend", text: "saved" }],
+          assigned: [{ id: "sp_backend" }],
+        }],
+      }),
+      setItem: () => {},
+      removeItem: () => {},
+    };
+
+    expect(loadNodeEditorDraft(storage, "draft")?.pendingAssignedIdentitySources).toEqual([{
+      savedInstructions: [{ t: "narrate", id: "sp_backend", text: "saved" }],
+      assigned: [{ id: "sp_backend" }],
+    }]);
+  });
+
+  it("hydrates restored JSON text with identities merged into the draft instructions", () => {
+    const draft = {
+      version: 1 as const,
+      mode: "json" as const,
+      text: '[{"t":"narrate","text":"edited"}]',
+      instructions: [{ t: "narrate", id: "sp_backend", text: "edited" }] as Instruction[],
+      baseJsonText: "[]",
+    };
+
+    expect(nodeEditorInitialText(draft, draft.instructions, "scenario")).toContain('"id": "sp_backend"');
+  });
+
+  it("preserves invalid restored JSON text instead of replacing the user's draft", () => {
+    const draft = {
+      version: 1 as const,
+      mode: "json" as const,
+      text: '[{"t":"narrate",',
+      instructions: [{ t: "narrate", id: "sp_backend", text: "last valid" }] as Instruction[],
+      baseJsonText: "[]",
+    };
+
+    expect(nodeEditorInitialText(draft, draft.instructions, "scenario")).toBe(draft.text);
   });
 });
 
@@ -136,6 +186,13 @@ describe("NodeEditor scenario surface", () => {
 
     expect(html).toContain("data-region=\"scenario-starter-guide\"");
     expect(html).toContain("从模板开始");
+  });
+});
+
+describe("NodeEditor JSON identity guidance", () => {
+  it("warns that editing existing story-point IDs can invalidate persistent state", () => {
+    expect(JSON_IDENTITY_GUIDANCE).toContain("修改已有 ID 可能使旧记录失效");
+    expect(JSON_IDENTITY_GUIDANCE).toContain("删除后保存会生成新 ID");
   });
 });
 

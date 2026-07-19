@@ -1,5 +1,7 @@
 //! Project filesystem capabilities, revisions, atomic writes, and trash operations.
 
+use sha2::{Digest, Sha256};
+
 /// Canonical, capability-scoped project directory. Construction checks the
 /// project control file and content root before any filesystem operation.
 #[derive(Clone, Debug)]
@@ -201,11 +203,14 @@ pub(crate) fn file_revision(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64() * 1000.0)
         .unwrap_or(0.0);
+    let bytes =
+        fs::read(&target).map_err(|e| format!("读取文件内容失败 {}: {}", target.display(), e))?;
+    let sha256 = format!("{:x}", Sha256::digest(&bytes));
     Ok(Some(FileRevision {
         rel_path: rel_path.replace('\\', "/"),
         mtime_ms,
         size: metadata.len(),
-        sha256: None,
+        sha256: Some(sha256),
     }))
 }
 
@@ -253,9 +258,15 @@ pub(crate) fn ensure_expected_revision(
 }
 
 fn revisions_match(expected: &FileRevision, current: &FileRevision) -> bool {
-    expected.rel_path == current.rel_path
+    let metadata_matches = expected.rel_path == current.rel_path
         && expected.size == current.size
-        && (expected.mtime_ms - current.mtime_ms).abs() < 0.001
+        && (expected.mtime_ms - current.mtime_ms).abs() < 0.001;
+    metadata_matches
+        && match (&expected.sha256, &current.sha256) {
+            (Some(expected), Some(current)) => expected == current,
+            (None, _) => true,
+            (Some(_), None) => false,
+        }
 }
 
 fn write_conflict_error(rel_path: &str, current_revision: Option<FileRevision>) -> String {

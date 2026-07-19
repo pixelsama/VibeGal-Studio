@@ -5,6 +5,7 @@ mod contracts;
 mod desktop_system;
 mod fs;
 mod game_build;
+pub(crate) mod identity;
 pub(crate) mod model;
 mod mutation;
 mod project;

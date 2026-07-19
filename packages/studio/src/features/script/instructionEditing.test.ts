@@ -3,6 +3,7 @@ import type { Instruction } from "@vibegal/engine";
 import {
   deleteInstruction,
   duplicateInstruction,
+  insertInstruction,
   moveInstruction,
   parseInstructionDraft,
   serializeInstructionDraft,
@@ -47,6 +48,20 @@ describe("updateInstruction", () => {
     expect(next[0]).not.toBe(original[0]);
     expect(next[1]).toBe(original[1]);
   });
+
+  it("preserves a story-point id even when the patch contains another id", () => {
+    const original = [{ t: "say", id: "say_original", who: "hero", text: "Before" }] as Instruction[];
+
+    const next = updateInstruction(original, 0, { id: "say_replacement", text: "After" } as Partial<Instruction>);
+
+    expect(next).toEqual([{ t: "say", id: "say_original", who: "hero", text: "After" }]);
+  });
+
+  it("allows resource ids to be updated", () => {
+    const original = [{ t: "bg", id: "room" }] as Instruction[];
+
+    expect(updateInstruction(original, 0, { id: "hall" })).toEqual([{ t: "bg", id: "hall" }]);
+  });
 });
 
 describe("moveInstruction", () => {
@@ -79,6 +94,41 @@ describe("duplicateInstruction", () => {
       { t: "wait", ms: 500 },
     ]);
     expect(next[0]).not.toBe(next[1]);
+  });
+
+  it("removes identity from a duplicated story point but retains resource ids", () => {
+    const original = [
+      { t: "say", id: "say_original", who: "hero", text: "Hello" },
+      { t: "bg", id: "room" },
+    ] as Instruction[];
+
+    const duplicatedStoryPoint = duplicateInstruction(original, 0);
+    const duplicatedResource = duplicateInstruction(original, 1);
+
+    expect(duplicatedStoryPoint[1]).toEqual({ t: "say", who: "hero", text: "Hello" });
+    expect(duplicatedResource[2]).toEqual({ t: "bg", id: "room" });
+  });
+
+  it("moves the complete story-point object with its identity", () => {
+    const original = [
+      { t: "say", id: "say_a", who: "hero", text: "A" },
+      { t: "say", id: "say_b", who: "hero", text: "B" },
+    ] as Instruction[];
+
+    expect(moveInstruction(original, 0, 1)).toEqual([
+      { t: "say", id: "say_b", who: "hero", text: "B" },
+      { t: "say", id: "say_a", who: "hero", text: "A" },
+    ]);
+  });
+});
+
+describe("insertInstruction", () => {
+  it("removes a supplied id from a new story point but retains resource ids", () => {
+    const storyPoint = insertInstruction([], { t: "wait", id: "copied_wait", ms: 500 });
+    const resource = insertInstruction([], { t: "bg", id: "room" });
+
+    expect(storyPoint).toEqual([{ t: "wait", ms: 500 }]);
+    expect(resource).toEqual([{ t: "bg", id: "room" }]);
   });
 });
 

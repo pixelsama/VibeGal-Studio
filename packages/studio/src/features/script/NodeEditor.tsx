@@ -7,12 +7,17 @@ import {
   type Instruction,
   type ScenarioDiagnostic,
 } from "@vibegal/engine";
-import { saveFile } from "../../lib/tauri";
+import { saveFile, saveNode } from "../../lib/tauri";
 import type { FileRevision, GraphIssueFocusRequest, GraphNode, ProjectData } from "../../lib/types";
 import type { InsertableKind } from "./instructions";
 import {
   instructionIndexFromJsonPath,
 } from "./instructionEditing";
+import {
+  type AssignedInstructionIdentity,
+  mergeAssignedInstructionIdentities,
+  reconcileScenarioInstructionIdentities,
+} from "./instructionIdentity";
 import {
   conflictDraftCopyPath,
   instructionsFromNodeData,
@@ -81,12 +86,23 @@ interface NodeEditorProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
+export interface PendingAssignedIdentitySource {
+  savedInstructions: Instruction[];
+  assigned: AssignedInstructionIdentity[];
+}
+
+interface ScenarioUndoSnapshot {
+  text: string;
+  instructions: Instruction[];
+}
+
 const NODE_INSPECTOR_PANE_STORAGE_KEY = "vibegal.nodeEditor.inspectorPane";
 const NODE_INSPECTOR_PANE_DEFAULT_WIDTH = 440;
 const NODE_INSPECTOR_PANE_MIN_WIDTH = 320;
 const NODE_INSPECTOR_PANE_MAX_WIDTH = 720;
 const NODE_INSPECTOR_PANE_MAX_RATIO = 0.6;
 const NODE_INSPECTOR_REGION_ID = "node-editor-inspector-pane";
+export const JSON_IDENTITY_GUIDANCE = "story point 的 id 用于存档、已读和回滚定位。删除后保存会生成新 ID；修改已有 ID 可能使旧记录失效，重复 ID 会由项目校验报错。";
 
 interface NodeInspectorPaneState {
   collapsed: boolean;
@@ -105,6 +121,7 @@ export interface NodeEditorStoredDraft {
   instructions: Instruction[];
   baseJsonText: string;
   baseRevision?: FileRevision | null;
+  pendingAssignedIdentitySources?: PendingAssignedIdentitySource[];
 }
 
 export function loadNodeEditorDraft(storage: DraftStorage | null, key: string): NodeEditorStoredDraft | null {
@@ -114,7 +131,22 @@ export function loadNodeEditorDraft(storage: DraftStorage | null, key: string): 
   if (draft.version !== 1) return null;
   if (draft.mode !== "scenario" && draft.mode !== "json") return null;
   if (typeof draft.text !== "string" || !Array.isArray(draft.instructions) || typeof draft.baseJsonText !== "string") return null;
-  return draft as NodeEditorStoredDraft;
+  const pendingAssignedIdentitySources = Array.isArray(draft.pendingAssignedIdentitySources)
+    ? draft.pendingAssignedIdentitySources
+    : [];
+  return { ...draft, pendingAssignedIdentitySources } as NodeEditorStoredDraft;
+}
+
+export function nodeEditorInitialText(
+  draft: NodeEditorStoredDraft | null,
+  restoredInstructions: Instruction[] | null,
+  incomingScenarioText: string,
+): string {
+  if (!draft) return incomingScenarioText;
+  if (draft.mode === "json" && restoredInstructions && parseJsonInstructionText(draft.text).ok) {
+    return JSON.stringify(restoredInstructions, null, 2);
+  }
+  return draft.text;
 }
 
 export function clampNodeInspectorPaneWidth(width: number, containerWidth?: number): number {
@@ -197,20 +229,28 @@ export function NodeEditor({
     if (restoredDraft.mode === "scenario") {
       const parsed = parseScenarioText(restoredDraft.text);
       return {
-        instructions: parsed.ok ? parsed.instructions : restoredDraft.instructions,
+        instructions: parsed.ok
+          ? reconcileScenarioInstructionIdentities(restoredDraft.instructions, parsed.instructions)
+          : restoredDraft.instructions,
         diagnostics: parsed.ok ? [] : parsed.diagnostics,
       };
     }
     if (restoredDraft.mode === "json") {
       const parsed = parseJsonInstructionText(restoredDraft.text);
       return {
-        instructions: parsed.ok ? parsed.instructions : restoredDraft.instructions,
+        instructions: parsed.ok
+          ? reconcileScenarioInstructionIdentities(restoredDraft.instructions, parsed.instructions)
+          : restoredDraft.instructions,
         diagnostics: parsed.ok ? [] : [{ line: 1, message: parsed.error }],
       };
     }
   }, [restoredDraft]);
   const [mode, setMode] = useState<NodeEditorMode>(restoredDraft?.mode ?? "scenario");
-  const [text, setText] = useState(restoredDraft?.text ?? incomingScenarioText);
+  const [text, setText] = useState(() => nodeEditorInitialText(
+    restoredDraft,
+    restoredDraftState?.instructions ?? null,
+    incomingScenarioText,
+  ));
   const [instructions, setInstructions] = useState<Instruction[]>(restoredDraftState?.instructions ?? incomingInstructions);
   const [lastValidInstructions, setLastValidInstructions] = useState<Instruction[]>(restoredDraftState?.instructions ?? incomingInstructions);
   const [diagnostics, setDiagnostics] = useState<ScenarioDiagnostic[]>(restoredDraftState?.diagnostics ?? []);
@@ -231,9 +271,17 @@ export function NodeEditor({
   const layoutRootRef = useRef<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
   const draftVersionRef = useRef(0);
-  const undoHistoryRef = useRef<UndoHistory>(createUndoHistory());
+  const instructionsRef = useRef(restoredDraftState?.instructions ?? incomingInstructions);
+  const lastValidInstructionsRef = useRef(restoredDraftState?.instructions ?? incomingInstructions);
+  const textRef = useRef(text);
+  const pendingAssignedIdentitySourcesRef = useRef<PendingAssignedIdentitySource[]>(
+    restoredDraft?.pendingAssignedIdentitySources ?? [],
+  );
+  const undoHistoryRef = useRef<UndoHistory<ScenarioUndoSnapshot>>(createUndoHistory());
   const loadedTextRef = useRef(restoredDraft?.baseJsonText ?? incomingJsonText);
-  const loadedRevisionRef = useRef(restoredDraft?.baseRevision ?? project.nodeRevisions?.[node.file] ?? undefined);
+  const loadedRevisionRef = useRef<FileRevision | null | undefined>(
+    restoredDraft ? restoredDraft.baseRevision : project.nodeRevisions?.[node.file],
+  );
   const [inspectorPane, setInspectorPane] = useState<NodeInspectorPaneState>(() => loadNodeInspectorPaneState());
   const [layoutWidth, setLayoutWidth] = useState<number | undefined>(undefined);
   const [draggingInspector, setDraggingInspector] = useState(false);
@@ -241,6 +289,38 @@ export function NodeEditor({
     () => resolveNodeInspectorPaneLayout(inspectorPane, layoutWidth),
     [inspectorPane, layoutWidth],
   );
+
+  const replaceInstructions = (nextInstructions: Instruction[]) => {
+    instructionsRef.current = nextInstructions;
+    setInstructions(nextInstructions);
+  };
+
+  const replaceValidInstructions = (nextInstructions: Instruction[]) => {
+    instructionsRef.current = nextInstructions;
+    lastValidInstructionsRef.current = nextInstructions;
+    setInstructions(nextInstructions);
+    setLastValidInstructions(nextInstructions);
+  };
+
+  const mergePendingAssignedIdentities = (draftInstructions: Instruction[]) => (
+    pendingAssignedIdentitySourcesRef.current.reduce(
+      (current, source) => mergeAssignedInstructionIdentities(
+        source.savedInstructions,
+        source.assigned,
+        current,
+      ),
+      draftInstructions,
+    )
+  );
+
+  const clearPendingAssignedIdentities = () => {
+    pendingAssignedIdentitySourcesRef.current = [];
+  };
+
+  const replaceText = (nextText: string) => {
+    textRef.current = nextText;
+    setText(nextText);
+  };
 
   const nodeIssues = useMemo(() => {
     const file = `content/${node.file}`;
@@ -250,7 +330,7 @@ export function NodeEditor({
   }, [node.file, node.id, project.projectReport]);
 
   useEffect(() => {
-    const incomingRevision = project.nodeRevisions?.[node.file] ?? undefined;
+    const incomingRevision = project.nodeRevisions?.[node.file];
     if (dirty) {
       if (incomingJsonText !== loadedTextRef.current) {
         setPendingExternalText(incomingJsonText);
@@ -260,10 +340,10 @@ export function NodeEditor({
     }
     loadedTextRef.current = incomingJsonText;
     loadedRevisionRef.current = incomingRevision;
+    clearPendingAssignedIdentities();
     undoHistoryRef.current = createUndoHistory();
-    setText(mode === "json" ? incomingJsonText : incomingScenarioText);
-    setInstructions(incomingInstructions);
-    setLastValidInstructions(incomingInstructions);
+    replaceText(mode === "json" ? incomingJsonText : incomingScenarioText);
+    replaceValidInstructions(incomingInstructions);
     setDiagnostics([]);
     setPendingExternalText(null);
     setHasExternalUpdate(false);
@@ -315,6 +395,7 @@ export function NodeEditor({
         instructions,
         baseJsonText: loadedTextRef.current,
         baseRevision: loadedRevisionRef.current,
+        pendingAssignedIdentitySources: pendingAssignedIdentitySourcesRef.current,
       } satisfies NodeEditorStoredDraft);
     } else {
       clearProjectDraft(draftStorage, draftStorageKey);
@@ -402,18 +483,23 @@ export function NodeEditor({
 
   const applyScenarioText = (nextText: string, options: { programmatic?: boolean; skipHistory?: boolean } = {}) => {
     if (!options.skipHistory) {
-      undoHistoryRef.current = recordUndoCheckpoint(undoHistoryRef.current, text, {
+      undoHistoryRef.current = recordUndoCheckpoint(undoHistoryRef.current, {
+        text,
+        instructions: lastValidInstructionsRef.current,
+      }, {
         programmatic: options.programmatic,
       });
     }
     draftVersionRef.current += 1;
-    setText(nextText);
+    replaceText(nextText);
     setDirty(true);
     setStatus("");
     const parsed = parseScenarioText(nextText);
     if (parsed.ok) {
-      setInstructions(parsed.instructions);
-      setLastValidInstructions(parsed.instructions);
+      const reconciled = mergePendingAssignedIdentities(
+        reconcileScenarioInstructionIdentities(lastValidInstructionsRef.current, parsed.instructions),
+      );
+      replaceValidInstructions(reconciled);
       setDiagnostics([]);
     } else {
       setDiagnostics(parsed.diagnostics);
@@ -422,13 +508,12 @@ export function NodeEditor({
 
   const applyJsonText = (nextText: string) => {
     draftVersionRef.current += 1;
-    setText(nextText);
+    replaceText(nextText);
     setDirty(true);
     setStatus("");
     const parsed = parseJsonInstructionText(nextText);
     if (parsed.ok) {
-      setInstructions(parsed.instructions);
-      setLastValidInstructions(parsed.instructions);
+      replaceValidInstructions(mergePendingAssignedIdentities(parsed.instructions));
       setDiagnostics([]);
     } else {
       setDiagnostics([{ line: 1, message: parsed.error }]);
@@ -439,11 +524,15 @@ export function NodeEditor({
     if (mode === "scenario") {
       const parsed = parseScenarioText(text);
       if (!parsed.ok) return { ok: false, message: `剧本文本有 ${parsed.diagnostics.length} 个问题，修正后才能保存。` };
-      return { ok: true, payload: JSON.stringify(parsed.instructions, null, 2), nextInstructions: parsed.instructions };
+      const reconciled = mergePendingAssignedIdentities(
+        reconcileScenarioInstructionIdentities(lastValidInstructionsRef.current, parsed.instructions),
+      );
+      return { ok: true, payload: JSON.stringify(reconciled, null, 2), nextInstructions: reconciled };
     }
     const parsed = parseJsonInstructionText(text);
     if (!parsed.ok) return { ok: false, message: `JSON 无法保存：${parsed.error}` };
-    return { ok: true, payload: JSON.stringify(parsed.instructions, null, 2), nextInstructions: parsed.instructions };
+    const reconciled = mergePendingAssignedIdentities(parsed.instructions);
+    return { ok: true, payload: JSON.stringify(reconciled, null, 2), nextInstructions: reconciled };
   };
 
   const handleSave = async () => {
@@ -457,18 +546,41 @@ export function NodeEditor({
     setStatus("");
     try {
       if (dirty) {
-        const nextRevision = await saveFile(project.path, `content/${node.file}`, built.payload, loadedRevisionRef.current);
-        loadedTextRef.current = built.payload;
-        loadedRevisionRef.current = nextRevision ?? undefined;
+        const saved = await saveNode(project.path, node.file, built.nextInstructions, loadedRevisionRef.current);
+        loadedTextRef.current = saved.serializedText;
+        loadedRevisionRef.current = saved.revision;
         setDraftBaseVersion((version) => version + 1);
         if (isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)) {
-          setInstructions(built.nextInstructions);
-          setLastValidInstructions(built.nextInstructions);
+          clearPendingAssignedIdentities();
+          replaceValidInstructions(saved.instructions);
           setDiagnostics([]);
-          setText(mode === "json" ? built.payload : formatScenarioText(built.nextInstructions));
+          replaceText(mode === "json" ? saved.serializedText : formatScenarioText(saved.instructions));
           setDirty(false);
           setStatus("已保存 ✓");
         } else {
+          const merged = mergeAssignedInstructionIdentities(
+            saved.instructions,
+            saved.assigned,
+            instructionsRef.current,
+          );
+          replaceValidInstructions(merged);
+          if (mode === "json") {
+            const latestParsed = parseJsonInstructionText(textRef.current);
+            if (latestParsed.ok) {
+              clearPendingAssignedIdentities();
+              replaceText(JSON.stringify(merged, null, 2));
+            } else if (saved.assigned.length > 0) {
+              pendingAssignedIdentitySourcesRef.current.push({
+                savedInstructions: saved.instructions,
+                assigned: saved.assigned,
+              });
+            }
+          } else if (saved.assigned.length > 0) {
+            pendingAssignedIdentitySourcesRef.current.push({
+              savedInstructions: saved.instructions,
+              assigned: saved.assigned,
+            });
+          }
           setStatus("已保存；保存期间的新改动仍未保存。");
         }
         setPendingExternalText(null);
@@ -483,8 +595,8 @@ export function NodeEditor({
       const preserved = nodeEditorKeepsDraftOnWriteConflict({ text, instructions }, error);
       if (preserved.conflict && preserved.draft) {
         if (isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)) {
-          setText(preserved.draft.text);
-          setInstructions(preserved.draft.instructions);
+          replaceText(preserved.draft.text);
+          replaceInstructions(preserved.draft.instructions);
         }
         setWriteConflict(true);
         setStatus("保存失败: 文件已被外部修改，当前草稿已保留。");
@@ -511,10 +623,10 @@ export function NodeEditor({
     const parsed = parseJsonInstructionText(nextJsonText);
     const nextInstructions = parsed.ok ? parsed.instructions : [];
     loadedTextRef.current = nextJsonText;
-    loadedRevisionRef.current = project.nodeRevisions?.[node.file] ?? undefined;
-    setText(mode === "json" ? nextJsonText : formatScenarioText(nextInstructions));
-    setInstructions(nextInstructions);
-    setLastValidInstructions(nextInstructions);
+    loadedRevisionRef.current = project.nodeRevisions?.[node.file];
+    clearPendingAssignedIdentities();
+    replaceText(mode === "json" ? nextJsonText : formatScenarioText(nextInstructions));
+    replaceValidInstructions(nextInstructions);
     setDiagnostics(parsed.ok ? [] : [{ line: 1, message: parsed.error }]);
     setDirty(false);
     setPendingExternalText(null);
@@ -599,14 +711,21 @@ export function NodeEditor({
       const shortcut = undoShortcutType(event);
       if (shortcut) {
         const result = shortcut === "undo"
-          ? undoScenarioText(undoHistoryRef.current, text)
-          : redoScenarioText(undoHistoryRef.current, text);
+          ? undoScenarioText(undoHistoryRef.current, {
+            text,
+            instructions: lastValidInstructionsRef.current,
+          })
+          : redoScenarioText(undoHistoryRef.current, {
+            text,
+            instructions: lastValidInstructionsRef.current,
+          });
         if (!result) return; // 栈空时交给 textarea 原生撤销
         event.preventDefault();
         undoHistoryRef.current = result.history;
-        pendingSelectionRef.current = result.text.length;
-        setCursorOffset(result.text.length);
-        applyScenarioText(result.text, { skipHistory: true });
+        pendingSelectionRef.current = result.text.text.length;
+        setCursorOffset(result.text.text.length);
+        replaceValidInstructions(result.text.instructions);
+        applyScenarioText(result.text.text, { skipHistory: true });
         return;
       }
     }
@@ -632,15 +751,16 @@ export function NodeEditor({
       draftVersionRef.current += 1;
       undoHistoryRef.current = createUndoHistory();
       setMode("json");
-      setText(built.payload);
-      setInstructions(built.nextInstructions);
-      setLastValidInstructions(built.nextInstructions);
+      replaceText(built.payload);
+      replaceValidInstructions(built.nextInstructions);
       setDiagnostics([]);
       setStatus("");
       return;
     }
     const parsed = parseJsonInstructionText(text);
-    const nextInstructions = mode === "json" && parsed.ok ? parsed.instructions : lastValidInstructions;
+    const nextInstructions = mode === "json" && parsed.ok
+      ? mergePendingAssignedIdentities(parsed.instructions)
+      : lastValidInstructionsRef.current;
     if (mode === "json" && !parsed.ok) {
       setStatus(`切换失败：${parsed.error}`);
       return;
@@ -648,9 +768,8 @@ export function NodeEditor({
     draftVersionRef.current += 1;
     undoHistoryRef.current = createUndoHistory();
     setMode("scenario");
-    setText(formatScenarioText(nextInstructions));
-    setInstructions(nextInstructions);
-    setLastValidInstructions(nextInstructions);
+    replaceText(formatScenarioText(nextInstructions));
+    replaceValidInstructions(nextInstructions);
     setDiagnostics([]);
     setStatus("");
   };
@@ -766,6 +885,9 @@ export function NodeEditor({
     <div style={jsonInspectorStyle}>
       <div style={titleStyle}>JSON 高级模式</div>
       <div style={helperTextStyle}>返回剧本模式后可使用 Inspector 编辑当前行。</div>
+      <div style={helperTextStyle}>
+        {JSON_IDENTITY_GUIDANCE}
+      </div>
       {nodeIssues.length > 0 && (
         <div style={issueListStyle}>
           {nodeIssues.map((issue) => (

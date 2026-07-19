@@ -175,6 +175,16 @@ pub(crate) fn save_file(
 }
 
 #[tauri::command]
+pub(crate) fn save_node(
+    project_path: String,
+    node_file: String,
+    instructions: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<mutation::SaveNodeResult, String> {
+    mutation::save_node(project_path, node_file, instructions, expected_revision)
+}
+
+#[tauri::command]
 pub(crate) fn save_graph(
     project_path: String,
     graph: serde_json::Value,

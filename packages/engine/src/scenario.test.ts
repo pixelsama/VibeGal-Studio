@@ -4,6 +4,7 @@ import type { Instruction } from "./types";
 import {
   formatScenarioText,
   parseScenarioText,
+  withoutStoryPointId,
 } from "./scenario";
 
 describe("scenario text DSL", () => {
@@ -108,7 +109,7 @@ akari: 早上好。
 @continue`);
   });
 
-  it("round-trips every instruction field without changing the source data", () => {
+  it("round-trips every semantic field while hiding story-point ids", () => {
     const instructions: Instruction[] = [
       { t: "bg", id: "ocean_night", trans: "dissolve", ms: 2375 },
       { t: "bgm", id: "theme", fade: 0, loop: false },
@@ -131,7 +132,34 @@ akari: 早上好。
     const result = parseScenarioText(formatted);
 
     expect(result).toMatchObject({ ok: true, diagnostics: [] });
-    expect(result.instructions).toEqual(instructions);
+    expect(formatted).not.toContain("say_001");
+    expect(formatted).not.toContain("narrate_001");
+    expect(formatted).not.toContain("wait_001");
+    expect(formatted).not.toContain("pause_001");
+    expect(result.instructions).toEqual(instructions.map(withoutStoryPointId));
+  });
+
+  it("removes story-point ids from fallback instruction JSON", () => {
+    const instructions = [
+      { t: "say", id: "say_fallback", who: "hero", text: "Keep every semantic field.", ms: 125 },
+      { t: "narrate", id: "narrate_fallback", text: "Narration", ms: 250 },
+    ] as Instruction[];
+
+    const formatted = formatScenarioText(instructions);
+    const result = parseScenarioText(formatted);
+
+    expect(formatted).toContain('@instruction {"t":"say","who":"hero","text":"Keep every semantic field.","ms":125}');
+    expect(formatted).toContain('@instruction {"t":"narrate","text":"Narration","ms":250}');
+    expect(formatted).not.toContain("fallback");
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual(instructions.map(withoutStoryPointId));
+  });
+
+  it("does not confuse resource ids with story-point identity", () => {
+    const background = { t: "bg", id: "classroom", ms: 125 } as Instruction;
+
+    expect(withoutStoryPointId(background)).toEqual(background);
+    expect(withoutStoryPointId({ t: "wait", id: "wait_001", ms: 125 })).toEqual({ t: "wait", ms: 125 });
   });
 
   it("preserves omitted default fields and never formats them as undefined", () => {
@@ -169,7 +197,7 @@ akari: 早上好。
     const result = parseScenarioText(formatScenarioText(source));
 
     expect(result).toMatchObject({ ok: true, diagnostics: [] });
-    expect(result.instructions).toEqual(source);
+    expect(result.instructions).toEqual(source.map(withoutStoryPointId));
   });
 
   it("does not invent an implicit pause after a formatted non-blocking tail", () => {

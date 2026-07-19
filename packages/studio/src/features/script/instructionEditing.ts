@@ -1,4 +1,4 @@
-import type { Instruction } from "@vibegal/engine";
+import { isStoryPointInstruction, withoutStoryPointId, type Instruction } from "@vibegal/engine";
 
 export type InstructionDraftParseResult =
   | { ok: true; instructions: Instruction[] }
@@ -30,7 +30,7 @@ export function updateInstruction(
   if (index < 0 || index >= instructions.length) return instructions;
   return instructions.map((instruction, currentIndex) => (
     currentIndex === index
-      ? ({ ...instruction, ...patch } as Instruction)
+      ? updateInstructionPreservingIdentity(instruction, patch)
       : instruction
   ));
 }
@@ -48,7 +48,7 @@ export function moveInstruction(instructions: Instruction[], from: number, to: n
 export function duplicateInstruction(instructions: Instruction[], index: number): Instruction[] {
   if (index < 0 || index >= instructions.length) return instructions;
   const next = instructions.slice();
-  next.splice(index + 1, 0, cloneInstruction(instructions[index]));
+  next.splice(index + 1, 0, withoutStoryPointId(cloneInstruction(instructions[index])));
   return next;
 }
 
@@ -60,7 +60,7 @@ export function deleteInstruction(instructions: Instruction[], index: number): I
 export function insertInstruction(instructions: Instruction[], instruction: Instruction, index = instructions.length): Instruction[] {
   const clampedIndex = Math.max(0, Math.min(index, instructions.length));
   const next = instructions.slice();
-  next.splice(clampedIndex, 0, instruction);
+  next.splice(clampedIndex, 0, withoutStoryPointId(instruction));
   return next;
 }
 
@@ -118,4 +118,18 @@ export function instructionIndexFromJsonPath(jsonPath?: string): number | null {
 
 function cloneInstruction(instruction: Instruction): Instruction {
   return { ...instruction };
+}
+
+function updateInstructionPreservingIdentity(
+  instruction: Instruction,
+  patch: Partial<Instruction>,
+): Instruction {
+  const updated = { ...instruction, ...patch } as Instruction;
+  if (!isStoryPointInstruction(instruction)) return updated;
+
+  const originalId = "id" in instruction ? instruction.id : undefined;
+  const withoutPatchedId = withoutStoryPointId(updated);
+  return originalId == null
+    ? withoutPatchedId
+    : ({ ...withoutPatchedId, id: originalId } as Instruction);
 }

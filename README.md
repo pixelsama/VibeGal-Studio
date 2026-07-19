@@ -57,6 +57,12 @@ The bundled CLI is named `vibegal-cli`.
 
 ```bash
 vibegal-cli validate <project-path> --format json
+vibegal-cli instruction-ids assign <project-path> --format json
+vibegal-cli node insert <project-path> <node-id> --after <story-point-id> --file <instruction.json> --format json
+vibegal-cli node update <project-path> <node-id> <story-point-id> --patch-file <patch.json> --format json
+vibegal-cli node move <project-path> <node-id> <story-point-id> --before <story-point-id> --format json
+vibegal-cli node duplicate <project-path> <node-id> <story-point-id> --format json
+vibegal-cli node delete <project-path> <node-id> <story-point-id> --format json
 vibegal-cli renderer-check <project-path> --renderer default --format json
 vibegal-cli build <project-path> --target web --out dist-game --format json
 vibegal-cli smoke dist-game --target web --format json

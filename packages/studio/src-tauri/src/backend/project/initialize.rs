@@ -1,5 +1,6 @@
 //! Conservative project initialization helpers.
 
+use super::super::identity::{assign_missing_story_point_ids, InstructionIdentityContext};
 use std::fs;
 use std::path::Path;
 
@@ -131,9 +132,14 @@ pub(crate) fn initialize_project_root(
             "edges": []
         }),
     )?;
+    let initial_node = assign_missing_story_point_ids(
+        &serde_json::json!([{ "t": "narrate", "text": "新的故事从这里开始。" }]),
+        &InstructionIdentityContext::new("content/nodes/start.json", "start"),
+    )
+    .map_err(|error| format!("初始化默认节点身份失败: {error}"))?;
     write_json(
         &project_path.join("content/nodes/start.json"),
-        &serde_json::json!([{ "t": "narrate", "text": "新的故事从这里开始。" }]),
+        &initial_node.node,
     )?;
     super::write_project_self_description(project_path)?;
     copy_dir_all(

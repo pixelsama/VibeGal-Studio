@@ -546,7 +546,11 @@ fn validate_ui_skin_convergence_flags_multiple_skins() {
         }
     });
     let issues = validate_ui_skin_convergence(&manifest);
-    assert_eq!(issues.len(), 1, "多套 uiSkins 应恰好产出一个 issue: {issues:?}");
+    assert_eq!(
+        issues.len(),
+        1,
+        "多套 uiSkins 应恰好产出一个 issue: {issues:?}"
+    );
     assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
     assert_eq!(issues[0].source, "manifest");
     assert_eq!(issues[0].code, "multiple_ui_skins");
@@ -568,7 +572,10 @@ fn validate_ui_skin_convergence_clean_for_single_or_no_skin() {
     ];
     for manifest in cases {
         let issues = validate_ui_skin_convergence(&manifest);
-        assert!(issues.is_empty(), "单 skin / 无 skin 不应出 issue: {issues:?}");
+        assert!(
+            issues.is_empty(),
+            "单 skin / 无 skin 不应出 issue: {issues:?}"
+        );
     }
 }
 

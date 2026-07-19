@@ -14,7 +14,33 @@ fn file_revision_changes_when_file_changes() {
     let after = file_revision(&project, rel_path).unwrap().unwrap();
 
     assert_ne!(before.size, after.size);
+    assert_ne!(before.sha256, after.sha256);
+    assert_eq!(after.sha256.as_deref().map(str::len), Some(64));
     assert_eq!(after.rel_path, rel_path);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn expected_revision_rejects_same_size_content_with_spoofed_metadata() {
+    let root = unique_temp_dir("file-revision-hash-conflict");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    let rel_path = "content/nodes/a.json";
+    write_text(&project.join(rel_path), "[1]");
+
+    let expected = file_revision(&project, rel_path).unwrap().unwrap();
+    write_text(&project.join(rel_path), "[2]");
+    let mut hash_mismatch = file_revision(&project, rel_path).unwrap().unwrap();
+    hash_mismatch.sha256 = expected.sha256;
+
+    let error = ensure_expected_revision(
+        &project,
+        rel_path,
+        Some(serde_json::to_value(hash_mismatch).unwrap()),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("write_conflict"));
     let _ = fs::remove_dir_all(&root);
 }
 

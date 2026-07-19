@@ -25,6 +25,7 @@ pub(crate) fn run() {
             super::commands::watch_project,
             super::commands::unwatch_project,
             super::commands::save_file,
+            super::commands::save_node,
             super::commands::save_graph,
             super::commands::save_graph_positions,
             super::commands::delete_file,

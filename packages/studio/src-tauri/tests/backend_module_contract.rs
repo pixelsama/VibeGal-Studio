@@ -1,11 +1,12 @@
 use app_lib::{
-    open_project_for_cli, GraphIssue, GraphIssueSeverity, ProjectData, ProjectIssue, ProjectMeta,
+    open_project_for_cli, save_node_for_cli, validate_node_for_cli, GraphIssue, GraphIssueSeverity,
+    ProjectData, ProjectIssue, ProjectMeta, SaveNodeResult,
 };
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 32] = [
+const COMMAND_NAMES: [&str; 33] = [
     "list_projects",
     "open_project",
     "create_project",
@@ -13,6 +14,7 @@ const COMMAND_NAMES: [&str; 32] = [
     "watch_project",
     "unwatch_project",
     "save_file",
+    "save_node",
     "save_graph",
     "save_graph_positions",
     "delete_file",
@@ -40,12 +42,13 @@ const COMMAND_NAMES: [&str; 32] = [
     "uninstall_cli_tool",
 ];
 
-const REQUIRED_DOMAIN_MODULES: [&str; 9] = [
+const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
     "model",
     "fs",
     "validation",
     "project",
     "mutation",
+    "identity",
     "renderer",
     "watcher",
     "commands",
@@ -54,7 +57,7 @@ const REQUIRED_DOMAIN_MODULES: [&str; 9] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 32] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 33] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("create_project", &["parentDir", "name"]),
@@ -64,6 +67,15 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 32] = [
     (
         "save_file",
         &["projectPath", "relPath", "content", "expectedRevision"],
+    ),
+    (
+        "save_node",
+        &[
+            "projectPath",
+            "nodeFile",
+            "instructions",
+            "expectedRevision",
+        ],
     ),
     ("save_graph", &["projectPath", "graph", "expectedRevision"]),
     (
@@ -266,6 +278,13 @@ fn validation_domain_does_not_open_project_files() {
 #[test]
 fn cli_public_facade_remains_available_to_external_crates() {
     let _: fn(&str) -> Result<ProjectData, String> = open_project_for_cli;
+    let _: fn(
+        &str,
+        &str,
+        serde_json::Value,
+        Option<serde_json::Value>,
+    ) -> Result<SaveNodeResult, String> = save_node_for_cli;
+    let _: fn(&serde_json::Value) -> Result<(), String> = validate_node_for_cli;
     let _: Option<ProjectMeta> = None;
     fn inspect(data: &ProjectData, project_issue: &ProjectIssue, graph_issue: &GraphIssue) {
         let _: &str = &data.path;

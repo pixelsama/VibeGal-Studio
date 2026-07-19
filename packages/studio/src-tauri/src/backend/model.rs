@@ -69,9 +69,7 @@ impl AssetKind {
             Self::Font
         } else if lower.starts_with("assets/ui/") {
             Self::Ui
-        } else if lower.starts_with("assets/atlases/")
-            || lower.starts_with("assets/animations/")
-        {
+        } else if lower.starts_with("assets/atlases/") || lower.starts_with("assets/animations/") {
             Self::Animation
         } else {
             Self::Unknown

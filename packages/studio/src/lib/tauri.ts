@@ -16,6 +16,7 @@ import type {
   ProjectGraph,
   ProjectIssue,
   ProjectListItem,
+  SaveNodeResult,
   ProjectMeta,
 } from "./types";
 
@@ -97,6 +98,19 @@ export async function saveFile(
   expectedRevision?: FileRevision | null,
 ): Promise<FileRevision | null> {
   return invoke<FileRevision | null>("save_file", withExpectedRevision({ projectPath, relPath, content }, expectedRevision));
+}
+
+/** 保存 graph 引用的节点，并在后端补齐缺失的 story-point ID。 */
+export async function saveNode(
+  projectPath: string,
+  nodeFile: string,
+  instructions: unknown[],
+  expectedRevision?: FileRevision | null,
+): Promise<SaveNodeResult> {
+  return invoke<SaveNodeResult>(
+    "save_node",
+    withExpectedRevision({ projectPath, nodeFile, instructions }, expectedRevision),
+  );
 }
 
 /** 保存图结构到 content/graph.json */

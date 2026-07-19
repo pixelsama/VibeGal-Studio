@@ -755,6 +755,12 @@ The CLI currently supports:
 
 ```text
 vibegal-cli validate <project-path> --format json|text
+vibegal-cli instruction-ids assign <project-path> [--node <node-id>] [--dry-run] --format json|text
+vibegal-cli node insert <project-path> <node-id> --after <story-point-id> --file <instruction.json> [--dry-run] --format json|text
+vibegal-cli node update <project-path> <node-id> <story-point-id> --patch-file <patch.json> [--dry-run] --format json|text
+vibegal-cli node move <project-path> <node-id> <story-point-id> --before <story-point-id> [--dry-run] --format json|text
+vibegal-cli node duplicate <project-path> <node-id> <story-point-id> [--dry-run] --format json|text
+vibegal-cli node delete <project-path> <node-id> <story-point-id> [--dry-run] --format json|text
 vibegal-cli renderer-check <project-path> --renderer <id> [--no-compile] --format json|text
 vibegal-cli renderer-snapshot <project-path> --renderer <id> --out <dir> --format json|text
 vibegal-cli build <project-path> --target web --out <dir> --format json|text
@@ -767,6 +773,12 @@ vibegal-cli build <project-path> --target desktop --out <dir> --format json --pr
 
 It opens the project through the same backend loading/validation path and returns machine-readable
 issues. This is the key bridge for external AI agents and CI-like checks.
+
+`instruction-ids assign` is a missing-only, idempotent normalization pass for graph-referenced
+node files. The `node` mutation commands address story points by `nodeId + instructionId`, preserve
+identity for update/move, generate fresh identity for insert/duplicate, and use the backend's path,
+revision, schema, and atomic-write boundaries. Direct project JSON editing remains a supported and
+documented interface; these commands are an optional safer path for identity-sensitive changes.
 
 `validate` is self-contained and does not require Node. Web `build` uses the packaged exporter and
 currently requires a system Node runtime (or `VIBEGAL_NODE`); `smoke` performs browser-level behavior checks.

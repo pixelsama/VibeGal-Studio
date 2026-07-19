@@ -118,6 +118,96 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
+    /// Assign stable IDs to story points that do not have one yet.
+    InstructionIds {
+        #[command(subcommand)]
+        command: InstructionIdsCommand,
+    },
+    /// Safely edit a node by addressing story points through stable IDs.
+    Node {
+        #[command(subcommand)]
+        command: NodeCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum InstructionIdsCommand {
+    /// Assign IDs to missing story points in graph-referenced node files.
+    Assign {
+        /// Project root containing gal.project.json.
+        project_path: String,
+        /// Limit assignment to one graph node ID.
+        #[arg(long)]
+        node: Option<String>,
+        /// Report changes without writing node files.
+        #[arg(long)]
+        dry_run: bool,
+        /// Output format for humans or automation.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum NodeCommand {
+    /// Insert one instruction immediately after a uniquely identified story point.
+    Insert {
+        project_path: String,
+        node_id: String,
+        #[arg(long)]
+        after: String,
+        /// JSON file containing one instruction object.
+        #[arg(long = "file")]
+        instruction_file: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    /// Apply a JSON Merge Patch while preserving the target's `id` and `t` fields.
+    Update {
+        project_path: String,
+        node_id: String,
+        story_point_id: String,
+        #[arg(long)]
+        patch_file: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    /// Move exactly one instruction immediately before another story point.
+    Move {
+        project_path: String,
+        node_id: String,
+        story_point_id: String,
+        #[arg(long)]
+        before: String,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    /// Duplicate one instruction immediately after itself and assign a new ID.
+    Duplicate {
+        project_path: String,
+        node_id: String,
+        story_point_id: String,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    /// Delete exactly one uniquely identified story point.
+    Delete {
+        project_path: String,
+        node_id: String,
+        story_point_id: String,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -180,6 +270,131 @@ struct ValidateOutput {
     graph_issues: Vec<app_lib::GraphIssue>,
     #[serde(rename = "assetIssues")]
     asset_issues: Vec<app_lib::GraphIssue>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct InstructionIdChangedFile {
+    file: String,
+    assigned: Vec<app_lib::AssignedInstructionId>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct InstructionIdAssignOutput {
+    ok: bool,
+    project_path: String,
+    dry_run: bool,
+    assigned_count: usize,
+    changed_files: Vec<InstructionIdChangedFile>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NodeMutationOutput {
+    ok: bool,
+    operation: String,
+    project_path: String,
+    node_id: String,
+    file: String,
+    dry_run: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    story_point_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    new_story_point_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    before_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    new_revision: Option<serde_json::Value>,
+    assigned: Vec<app_lib::AssignedInstructionId>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliOperationError {
+    ok: bool,
+    code: String,
+    message: String,
+    step: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    modified_files: Vec<String>,
+    #[serde(skip)]
+    exit_code: i32,
+}
+
+impl CliOperationError {
+    fn new(code: &str, message: impl Into<String>, step: &str) -> Self {
+        Self {
+            ok: false,
+            code: code.to_string(),
+            message: message.into(),
+            step: step.to_string(),
+            file: None,
+            modified_files: vec![],
+            exit_code: 1,
+        }
+    }
+
+    fn open(message: impl Into<String>) -> Self {
+        let mut error = Self::new("open_project_failed", message, "open-project");
+        error.exit_code = 70;
+        error
+    }
+
+    fn file(mut self, file: impl Into<String>) -> Self {
+        self.file = Some(file.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PlannedNodeAssignment {
+    node_file: String,
+    revision: serde_json::Value,
+    assignment: app_lib::InstructionIdentityAssignment,
+}
+
+#[derive(Clone, Debug)]
+struct LoadedCliNode {
+    project_path: String,
+    node_id: String,
+    node_file: String,
+    revision: serde_json::Value,
+    instructions: serde_json::Value,
+}
+
+#[derive(Clone, Debug)]
+enum NodeMutation {
+    Insert {
+        after: String,
+        instruction: serde_json::Value,
+    },
+    Update {
+        story_point_id: String,
+        patch: serde_json::Value,
+    },
+    Move {
+        story_point_id: String,
+        before: String,
+    },
+    Duplicate {
+        story_point_id: String,
+    },
+    Delete {
+        story_point_id: String,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct MutatedNode {
+    instructions: serde_json::Value,
+    story_point_id: Option<String>,
+    before_index: Option<usize>,
+    after_index: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -532,6 +747,629 @@ fn run_validate(path: &str, format: OutputFormat) -> i32 {
         2
     } else {
         0
+    }
+}
+
+fn emit_operation_error(error: &CliOperationError, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(error).expect("CLI error must serialize")
+        ),
+        OutputFormat::Text => {
+            eprintln!("{}: {}", error.code, error.message);
+            if !error.modified_files.is_empty() {
+                eprintln!(
+                    "Files already modified: {}",
+                    error.modified_files.join(", ")
+                );
+            }
+        }
+    }
+}
+
+fn read_cli_json(path: &Path, step: &str) -> Result<serde_json::Value, CliOperationError> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        CliOperationError::new(
+            "input_file_read_failed",
+            format!("failed to read {}: {error}", path.display()),
+            step,
+        )
+        .file(path.to_string_lossy())
+    })?;
+    serde_json::from_str(&text).map_err(|error| {
+        CliOperationError::new(
+            "input_json_invalid",
+            format!("failed to parse {}: {error}", path.display()),
+            step,
+        )
+        .file(path.to_string_lossy())
+    })
+}
+
+fn ensure_graph_preflight(project: &app_lib::ProjectData) -> Result<(), CliOperationError> {
+    let graph_error = project.graph_report.as_ref().and_then(|report| {
+        report
+            .graph_issues
+            .iter()
+            .find(|issue| issue.severity == app_lib::GraphIssueSeverity::Error)
+    });
+    if let Some(issue) = graph_error {
+        return Err(CliOperationError::new(
+            "graph_preflight_failed",
+            format!("{} ({})", issue.message, issue.code),
+            "preflight",
+        )
+        .file(
+            issue
+                .file
+                .clone()
+                .unwrap_or_else(|| "content/graph.json".to_string()),
+        ));
+    }
+    Ok(())
+}
+
+fn preflight_identity_assignment(
+    path: &str,
+    selected_node: Option<&str>,
+) -> Result<(String, Vec<PlannedNodeAssignment>), CliOperationError> {
+    let project = app_lib::open_project_for_cli(path).map_err(CliOperationError::open)?;
+    ensure_graph_preflight(&project)?;
+    let graph = project
+        .graph
+        .as_ref()
+        .ok_or_else(|| CliOperationError::open("project graph is unavailable"))?;
+    let nodes = project
+        .nodes
+        .as_ref()
+        .ok_or_else(|| CliOperationError::open("project nodes are unavailable"))?;
+    let revisions = project
+        .node_revisions
+        .as_ref()
+        .ok_or_else(|| CliOperationError::open("project node revisions are unavailable"))?;
+
+    let targets = match selected_node {
+        Some(node_id) => {
+            let matching = graph
+                .nodes
+                .iter()
+                .filter(|node| node.id == node_id)
+                .collect::<Vec<_>>();
+            if matching.len() != 1 {
+                return Err(CliOperationError::new(
+                    "node_not_unique",
+                    format!(
+                        "graph node ID {node_id:?} must identify exactly one node (found {})",
+                        matching.len()
+                    ),
+                    "preflight",
+                ));
+            }
+            matching
+        }
+        None => graph.nodes.iter().collect(),
+    };
+
+    let mut planned = Vec::with_capacity(targets.len());
+    for graph_node in targets {
+        let matching_entries = nodes
+            .iter()
+            .filter(|entry| entry.rel_path == graph_node.file)
+            .collect::<Vec<_>>();
+        if matching_entries.len() != 1 {
+            return Err(CliOperationError::new(
+                "node_file_not_unique",
+                format!(
+                    "node file {:?} must resolve to exactly one loaded graph entry",
+                    graph_node.file
+                ),
+                "preflight",
+            )
+            .file(format!("content/{}", graph_node.file)));
+        }
+        let node = matching_entries[0].data.as_ref().ok_or_else(|| {
+            CliOperationError::new(
+                "node_file_missing",
+                format!("graph node {:?} has no readable node file", graph_node.id),
+                "preflight",
+            )
+            .file(format!("content/{}", graph_node.file))
+        })?;
+        let revision = revisions
+            .get(&graph_node.file)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| {
+                CliOperationError::new(
+                    "node_revision_missing",
+                    format!("node file {:?} has no revision", graph_node.file),
+                    "preflight",
+                )
+                .file(format!("content/{}", graph_node.file))
+            })?;
+        let file = format!("content/{}", graph_node.file.replace('\\', "/"));
+        let assignment = app_lib::assign_missing_story_point_ids(
+            node,
+            &app_lib::InstructionIdentityContext::new(&file, &graph_node.id),
+        )
+        .map_err(|error| {
+            CliOperationError::new(
+                "instruction_id_assignment_failed",
+                error.to_string(),
+                "preflight",
+            )
+            .file(&file)
+        })?;
+        planned.push(PlannedNodeAssignment {
+            node_file: graph_node.file.clone(),
+            revision: serde_json::to_value(revision).expect("file revision must serialize"),
+            assignment,
+        });
+    }
+    Ok((project.path, planned))
+}
+
+fn assign_instruction_ids(
+    path: &str,
+    selected_node: Option<&str>,
+    dry_run: bool,
+) -> Result<InstructionIdAssignOutput, CliOperationError> {
+    let (project_path, planned) = preflight_identity_assignment(path, selected_node)?;
+    execute_identity_assignment_plan(&project_path, planned, dry_run, |project_path, plan| {
+        app_lib::save_node_for_cli(
+            project_path,
+            &plan.node_file,
+            plan.assignment.node.clone(),
+            Some(plan.revision.clone()),
+        )
+        .map(|_| ())
+    })
+}
+
+fn execute_identity_assignment_plan<F>(
+    project_path: &str,
+    planned: Vec<PlannedNodeAssignment>,
+    dry_run: bool,
+    mut save: F,
+) -> Result<InstructionIdAssignOutput, CliOperationError>
+where
+    F: FnMut(&str, &PlannedNodeAssignment) -> Result<(), String>,
+{
+    let mut changed_files = Vec::new();
+    let mut modified_files = Vec::new();
+    for plan in planned {
+        if plan.assignment.assigned.is_empty() {
+            continue;
+        }
+        let file = format!("content/{}", plan.node_file.replace('\\', "/"));
+        if !dry_run {
+            if let Err(message) = save(project_path, &plan) {
+                let mut error =
+                    CliOperationError::new("instruction_id_write_failed", message, "write")
+                        .file(&file);
+                error.modified_files = modified_files;
+                return Err(error);
+            }
+            modified_files.push(file.clone());
+        }
+        changed_files.push(InstructionIdChangedFile {
+            file,
+            assigned: plan.assignment.assigned,
+        });
+    }
+    let assigned_count = changed_files
+        .iter()
+        .map(|changed| changed.assigned.len())
+        .sum();
+    Ok(InstructionIdAssignOutput {
+        ok: true,
+        project_path: project_path.to_string(),
+        dry_run,
+        assigned_count,
+        changed_files,
+    })
+}
+
+fn run_assign_instruction_ids(
+    path: &str,
+    selected_node: Option<&str>,
+    dry_run: bool,
+    format: OutputFormat,
+) -> i32 {
+    match assign_instruction_ids(path, selected_node, dry_run) {
+        Ok(output) => {
+            match format {
+                OutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output).expect("assign output must serialize")
+                ),
+                OutputFormat::Text => println!(
+                    "Assigned {} stable instruction ID(s) in {} file(s){}.",
+                    output.assigned_count,
+                    output.changed_files.len(),
+                    if dry_run { " (dry run)" } else { "" }
+                ),
+            }
+            0
+        }
+        Err(error) => {
+            emit_operation_error(&error, format);
+            error.exit_code
+        }
+    }
+}
+
+fn load_cli_node(path: &str, node_id: &str) -> Result<LoadedCliNode, CliOperationError> {
+    let project = app_lib::open_project_for_cli(path).map_err(CliOperationError::open)?;
+    ensure_graph_preflight(&project)?;
+    let graph = project
+        .graph
+        .as_ref()
+        .ok_or_else(|| CliOperationError::open("project graph is unavailable"))?;
+    let matches = graph
+        .nodes
+        .iter()
+        .filter(|node| node.id == node_id)
+        .collect::<Vec<_>>();
+    if matches.len() != 1 {
+        return Err(CliOperationError::new(
+            "node_not_unique",
+            format!(
+                "graph node ID {node_id:?} must identify exactly one node (found {})",
+                matches.len()
+            ),
+            "preflight",
+        ));
+    }
+    let graph_node = matches[0];
+    let node_entries = project
+        .nodes
+        .as_ref()
+        .ok_or_else(|| CliOperationError::open("project nodes are unavailable"))?;
+    let matching_entries = node_entries
+        .iter()
+        .filter(|entry| entry.rel_path == graph_node.file)
+        .collect::<Vec<_>>();
+    if matching_entries.len() != 1 {
+        return Err(CliOperationError::new(
+            "node_file_not_unique",
+            format!(
+                "node file {:?} must resolve to exactly one loaded graph entry",
+                graph_node.file
+            ),
+            "preflight",
+        ));
+    }
+    let instructions = matching_entries[0].data.clone().ok_or_else(|| {
+        CliOperationError::new(
+            "node_file_missing",
+            format!("graph node {node_id:?} has no readable node file"),
+            "preflight",
+        )
+        .file(format!("content/{}", graph_node.file))
+    })?;
+    if !instructions.is_array() {
+        return Err(CliOperationError::new(
+            "node_file_not_array",
+            "node contents must be a JSON array",
+            "preflight",
+        )
+        .file(format!("content/{}", graph_node.file)));
+    }
+    let revision = project
+        .node_revisions
+        .as_ref()
+        .and_then(|revisions| revisions.get(&graph_node.file))
+        .and_then(Option::as_ref)
+        .ok_or_else(|| {
+            CliOperationError::new(
+                "node_revision_missing",
+                format!("node file {:?} has no revision", graph_node.file),
+                "preflight",
+            )
+            .file(format!("content/{}", graph_node.file))
+        })?;
+    Ok(LoadedCliNode {
+        project_path: project.path,
+        node_id: node_id.to_string(),
+        node_file: graph_node.file.clone(),
+        revision: serde_json::to_value(revision).expect("file revision must serialize"),
+        instructions,
+    })
+}
+
+fn unique_story_point_index(
+    instructions: &[serde_json::Value],
+    id: &str,
+) -> Result<usize, CliOperationError> {
+    let matches = instructions
+        .iter()
+        .enumerate()
+        .filter(|(_, instruction)| {
+            app_lib::is_story_point_instruction(instruction)
+                && instruction.get("id").and_then(serde_json::Value::as_str) == Some(id)
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if matches.len() != 1 {
+        return Err(CliOperationError::new(
+            "story_point_id_not_unique",
+            format!(
+                "story point ID {id:?} must identify exactly one instruction (found {})",
+                matches.len()
+            ),
+            "mutate",
+        ));
+    }
+    Ok(matches[0])
+}
+
+fn merge_json_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+    let Some(patch_object) = patch.as_object() else {
+        *target = patch.clone();
+        return;
+    };
+    if !target.is_object() {
+        *target = serde_json::json!({});
+    }
+    let target_object = target.as_object_mut().expect("target was made an object");
+    for (key, patch_value) in patch_object {
+        if patch_value.is_null() {
+            target_object.remove(key);
+        } else {
+            merge_json_patch(
+                target_object
+                    .entry(key.clone())
+                    .or_insert(serde_json::Value::Null),
+                patch_value,
+            );
+        }
+    }
+}
+
+fn mutate_node_value(
+    node: &serde_json::Value,
+    mutation: NodeMutation,
+) -> Result<MutatedNode, CliOperationError> {
+    let mut instructions = node.as_array().cloned().ok_or_else(|| {
+        CliOperationError::new(
+            "node_file_not_array",
+            "node contents must be a JSON array",
+            "mutate",
+        )
+    })?;
+    let mut story_point_ids = std::collections::HashSet::new();
+    for instruction in &instructions {
+        if !app_lib::is_story_point_instruction(instruction) {
+            continue;
+        }
+        let Some(id) = instruction
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        if !story_point_ids.insert(id) {
+            return Err(CliOperationError::new(
+                "story_point_id_duplicate",
+                format!("node contains duplicate story point ID {id:?}"),
+                "mutate",
+            ));
+        }
+    }
+
+    let (story_point_id, before_index, after_index) = match mutation {
+        NodeMutation::Insert {
+            after,
+            mut instruction,
+        } => {
+            let anchor = unique_story_point_index(&instructions, &after)?;
+            if !instruction.is_object() {
+                return Err(CliOperationError::new(
+                    "instruction_not_object",
+                    "insert input must contain one JSON instruction object",
+                    "mutate",
+                ));
+            }
+            if !app_lib::is_story_point_instruction(&instruction) {
+                return Err(CliOperationError::new(
+                    "instruction_not_story_point",
+                    "node insert currently supports story point instructions only",
+                    "mutate",
+                ));
+            }
+            instruction
+                .as_object_mut()
+                .expect("instruction is an object")
+                .remove("id");
+            instructions.insert(anchor + 1, instruction);
+            (None, None, Some(anchor + 1))
+        }
+        NodeMutation::Update {
+            story_point_id,
+            patch,
+        } => {
+            let target = unique_story_point_index(&instructions, &story_point_id)?;
+            let patch_object = patch.as_object().ok_or_else(|| {
+                CliOperationError::new(
+                    "patch_not_object",
+                    "update patch must be a JSON object",
+                    "mutate",
+                )
+            })?;
+            if patch_object.contains_key("id") || patch_object.contains_key("t") {
+                return Err(CliOperationError::new(
+                    "protected_field_change",
+                    "update patch must not contain protected fields `id` or `t`",
+                    "mutate",
+                ));
+            }
+            merge_json_patch(&mut instructions[target], &patch);
+            (Some(story_point_id), Some(target), Some(target))
+        }
+        NodeMutation::Move {
+            story_point_id,
+            before,
+        } => {
+            if story_point_id == before {
+                return Err(CliOperationError::new(
+                    "move_target_same",
+                    "move target and destination must be different story points",
+                    "mutate",
+                ));
+            }
+            let source = unique_story_point_index(&instructions, &story_point_id)?;
+            let destination = unique_story_point_index(&instructions, &before)?;
+            let instruction = instructions.remove(source);
+            let adjusted_destination = if source < destination {
+                destination - 1
+            } else {
+                destination
+            };
+            instructions.insert(adjusted_destination, instruction);
+            (
+                Some(story_point_id),
+                Some(source),
+                Some(adjusted_destination),
+            )
+        }
+        NodeMutation::Duplicate { story_point_id } => {
+            let target = unique_story_point_index(&instructions, &story_point_id)?;
+            let mut duplicate = instructions[target].clone();
+            duplicate
+                .as_object_mut()
+                .expect("story point must be an object")
+                .remove("id");
+            instructions.insert(target + 1, duplicate);
+            (Some(story_point_id), Some(target), Some(target + 1))
+        }
+        NodeMutation::Delete { story_point_id } => {
+            let target = unique_story_point_index(&instructions, &story_point_id)?;
+            instructions.remove(target);
+            (Some(story_point_id), Some(target), None)
+        }
+    };
+    Ok(MutatedNode {
+        instructions: serde_json::Value::Array(instructions),
+        story_point_id,
+        before_index,
+        after_index,
+    })
+}
+
+fn execute_node_mutation(
+    path: &str,
+    node_id: &str,
+    operation: &str,
+    mutation: NodeMutation,
+    dry_run: bool,
+) -> Result<NodeMutationOutput, CliOperationError> {
+    let loaded = load_cli_node(path, node_id)?;
+    let mutated = mutate_node_value(&loaded.instructions, mutation)?;
+    let file = format!("content/{}", loaded.node_file.replace('\\', "/"));
+
+    let preview_assignment = app_lib::assign_missing_story_point_ids(
+        &mutated.instructions,
+        &app_lib::InstructionIdentityContext::new(&file, &loaded.node_id),
+    )
+    .map_err(|error| {
+        CliOperationError::new(
+            "instruction_id_assignment_failed",
+            error.to_string(),
+            "normalize",
+        )
+        .file(&file)
+    })?;
+    let created_identity_path = if matches!(operation, "insert" | "duplicate") {
+        mutated.after_index.map(|index| format!("$[{index}].id"))
+    } else {
+        None
+    };
+    let preview_new_id = created_identity_path.as_deref().and_then(|path| {
+        preview_assignment
+            .assigned
+            .iter()
+            .find(|item| item.json_path == path)
+            .map(|item| item.id.clone())
+    });
+    app_lib::validate_node_for_cli(&preview_assignment.node).map_err(|message| {
+        CliOperationError::new("node_mutation_invalid", message, "validate").file(&file)
+    })?;
+
+    let (new_revision, assigned, new_story_point_id) = if dry_run {
+        (None, preview_assignment.assigned, preview_new_id)
+    } else {
+        // The save boundary repeats missing-only assignment with the current revision;
+        // it is authoritative for both generated IDs and persisted output.
+        let saved = app_lib::save_node_for_cli(
+            &loaded.project_path,
+            &loaded.node_file,
+            mutated.instructions,
+            Some(loaded.revision),
+        )
+        .map_err(|message| {
+            CliOperationError::new("node_mutation_write_failed", message, "write").file(&file)
+        })?;
+        let new_id = created_identity_path.as_deref().and_then(|path| {
+            saved
+                .assigned
+                .iter()
+                .find(|item| item.json_path == path)
+                .map(|item| item.id.clone())
+        });
+        (
+            Some(serde_json::to_value(saved.revision).expect("revision must serialize")),
+            saved.assigned,
+            new_id,
+        )
+    };
+    Ok(NodeMutationOutput {
+        ok: true,
+        operation: operation.to_string(),
+        project_path: loaded.project_path,
+        node_id: loaded.node_id,
+        file,
+        dry_run,
+        story_point_id: mutated.story_point_id,
+        new_story_point_id,
+        before_index: mutated.before_index,
+        after_index: mutated.after_index,
+        new_revision,
+        assigned,
+    })
+}
+
+fn run_node_mutation(
+    path: &str,
+    node_id: &str,
+    operation: &str,
+    mutation: NodeMutation,
+    dry_run: bool,
+    format: OutputFormat,
+) -> i32 {
+    match execute_node_mutation(path, node_id, operation, mutation, dry_run) {
+        Ok(output) => {
+            match format {
+                OutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output)
+                        .expect("node mutation output must serialize")
+                ),
+                OutputFormat::Text => println!(
+                    "{} {} in node {}{}.",
+                    if dry_run { "Previewed" } else { "Completed" },
+                    operation,
+                    node_id,
+                    if dry_run { " (dry run)" } else { "" }
+                ),
+            }
+            0
+        }
+        Err(error) => {
+            emit_operation_error(&error, format);
+            error.exit_code
+        }
     }
 }
 
@@ -3950,6 +4788,108 @@ fn main() {
             format,
         ),
         Commands::Doctor { format } => run_doctor(format),
+        Commands::InstructionIds {
+            command:
+                InstructionIdsCommand::Assign {
+                    project_path,
+                    node,
+                    dry_run,
+                    format,
+                },
+        } => run_assign_instruction_ids(&project_path, node.as_deref(), dry_run, format),
+        Commands::Node { command } => match command {
+            NodeCommand::Insert {
+                project_path,
+                node_id,
+                after,
+                instruction_file,
+                dry_run,
+                format,
+            } => match read_cli_json(&instruction_file, "read-instruction") {
+                Ok(instruction) => run_node_mutation(
+                    &project_path,
+                    &node_id,
+                    "insert",
+                    NodeMutation::Insert { after, instruction },
+                    dry_run,
+                    format,
+                ),
+                Err(error) => {
+                    emit_operation_error(&error, format);
+                    error.exit_code
+                }
+            },
+            NodeCommand::Update {
+                project_path,
+                node_id,
+                story_point_id,
+                patch_file,
+                dry_run,
+                format,
+            } => match read_cli_json(&patch_file, "read-patch") {
+                Ok(patch) => run_node_mutation(
+                    &project_path,
+                    &node_id,
+                    "update",
+                    NodeMutation::Update {
+                        story_point_id,
+                        patch,
+                    },
+                    dry_run,
+                    format,
+                ),
+                Err(error) => {
+                    emit_operation_error(&error, format);
+                    error.exit_code
+                }
+            },
+            NodeCommand::Move {
+                project_path,
+                node_id,
+                story_point_id,
+                before,
+                dry_run,
+                format,
+            } => run_node_mutation(
+                &project_path,
+                &node_id,
+                "move",
+                NodeMutation::Move {
+                    story_point_id,
+                    before,
+                },
+                dry_run,
+                format,
+            ),
+            NodeCommand::Duplicate {
+                project_path,
+                node_id,
+                story_point_id,
+                dry_run,
+                format,
+            } => run_node_mutation(
+                &project_path,
+                &node_id,
+                "duplicate",
+                NodeMutation::Duplicate { story_point_id },
+                dry_run,
+                format,
+            ),
+            NodeCommand::Delete {
+                project_path,
+                node_id,
+                story_point_id,
+                dry_run,
+                format,
+            } => run_node_mutation(
+                &project_path,
+                &node_id,
+                "delete",
+                NodeMutation::Delete { story_point_id },
+                dry_run,
+                format,
+            ),
+        },
     };
     std::process::exit(code);
 }
@@ -4131,6 +5071,762 @@ mod tests {
         };
         assert_eq!(progress, Some(ProgressOutput::Jsonl));
         assert_eq!(format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn cli_accepts_instruction_id_assignment_contract() {
+        let cli = Cli::try_parse_from([
+            "vibegal-cli",
+            "instruction-ids",
+            "assign",
+            "project",
+            "--node",
+            "start",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .expect("instruction ID assignment syntax should parse");
+
+        let Commands::InstructionIds {
+            command:
+                InstructionIdsCommand::Assign {
+                    project_path,
+                    node,
+                    dry_run,
+                    format,
+                },
+        } = cli.command
+        else {
+            panic!("expected instruction-ids assign command");
+        };
+        assert_eq!(project_path, "project");
+        assert_eq!(node.as_deref(), Some("start"));
+        assert!(dry_run);
+        assert_eq!(format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn cli_accepts_all_stable_id_node_mutation_contracts() {
+        let insert = Cli::try_parse_from([
+            "vibegal-cli",
+            "node",
+            "insert",
+            "project",
+            "start",
+            "--after",
+            "sp_anchor",
+            "--file",
+            "instruction.json",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .expect("node insert syntax should parse");
+        assert!(matches!(
+            insert.command,
+            Commands::Node {
+                command: NodeCommand::Insert {
+                    project_path,
+                    node_id,
+                    after,
+                    instruction_file,
+                    dry_run: true,
+                    format: OutputFormat::Json,
+                }
+            } if project_path == "project"
+                && node_id == "start"
+                && after == "sp_anchor"
+                && instruction_file == PathBuf::from("instruction.json")
+        ));
+
+        let update = Cli::try_parse_from([
+            "vibegal-cli",
+            "node",
+            "update",
+            "project",
+            "start",
+            "sp_target",
+            "--patch-file",
+            "patch.json",
+        ])
+        .expect("node update syntax should parse");
+        assert!(matches!(
+            update.command,
+            Commands::Node {
+                command: NodeCommand::Update {
+                    project_path,
+                    node_id,
+                    story_point_id,
+                    patch_file,
+                    dry_run: false,
+                    format: OutputFormat::Text,
+                }
+            } if project_path == "project"
+                && node_id == "start"
+                && story_point_id == "sp_target"
+                && patch_file == PathBuf::from("patch.json")
+        ));
+
+        let move_command = Cli::try_parse_from([
+            "vibegal-cli",
+            "node",
+            "move",
+            "project",
+            "start",
+            "sp_target",
+            "--before",
+            "sp_destination",
+        ])
+        .expect("node move syntax should parse");
+        assert!(matches!(
+            move_command.command,
+            Commands::Node {
+                command: NodeCommand::Move {
+                    before,
+                    dry_run: false,
+                    ..
+                }
+            } if before == "sp_destination"
+        ));
+
+        for verb in ["duplicate", "delete"] {
+            let cli = Cli::try_parse_from([
+                "vibegal-cli",
+                "node",
+                verb,
+                "project",
+                "start",
+                "sp_target",
+                "--dry-run",
+                "--format",
+                "json",
+            ])
+            .unwrap_or_else(|error| panic!("node {verb} syntax should parse: {error}"));
+            assert!(matches!(cli.command, Commands::Node { .. }));
+        }
+    }
+
+    #[test]
+    fn cli_rejects_incomplete_identity_and_node_mutation_commands() {
+        for args in [
+            vec!["vibegal-cli", "instruction-ids", "assign"],
+            vec!["vibegal-cli", "node", "insert", "project", "start"],
+            vec![
+                "vibegal-cli",
+                "node",
+                "update",
+                "project",
+                "start",
+                "sp_target",
+            ],
+            vec![
+                "vibegal-cli",
+                "node",
+                "move",
+                "project",
+                "start",
+                "sp_target",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+    }
+
+    fn make_identity_project(root: &Path) {
+        make_project(
+            root,
+            Some(
+                r#"{"version":1,"entryNodeId":"start","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}},{"id":"end","title":"End","file":"nodes/end.json","position":{"x":200,"y":0}}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &root.join("content/nodes/start.json"),
+            r#"[{"t":"narrate","id":"first","text":"One"},{"t":"say","id":"second","who":"hero","text":"Two"},{"t":"pause","id":"third"},{"t":"narrate","text":"Missing"}]"#,
+        );
+        write_text(
+            &root.join("content/nodes/end.json"),
+            r#"[{"t":"narrate","text":"End"}]"#,
+        );
+    }
+
+    #[test]
+    fn instruction_id_assignment_preflights_dry_run_and_is_idempotent() {
+        let root = unique_temp_dir("cli-assign-ids");
+        make_identity_project(&root);
+        let before = fs::read_to_string(root.join("content/nodes/start.json")).unwrap();
+
+        let preview =
+            assign_instruction_ids(root.to_string_lossy().as_ref(), Some("start"), true).unwrap();
+        assert_eq!(preview.assigned_count, 1);
+        assert!(preview.dry_run);
+        assert_eq!(
+            fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+            before
+        );
+
+        let applied = assign_instruction_ids(root.to_string_lossy().as_ref(), None, false).unwrap();
+        assert_eq!(applied.assigned_count, 2);
+        let second = assign_instruction_ids(root.to_string_lossy().as_ref(), None, false).unwrap();
+        assert_eq!(second.assigned_count, 0);
+        assert!(second.changed_files.is_empty());
+        let start: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(start[3]["id"].as_str().unwrap().starts_with("sp_"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn instruction_id_assignment_closes_the_missing_id_validation_loop() {
+        let root = unique_temp_dir("cli-assign-validate");
+        make_identity_project(&root);
+        write_text(
+            &root.join("content/manifest.json"),
+            r##"{"characters":{"hero":{"name":"Hero","color":"#ffffff","sprites":{"default":"assets/characters/hero.png"}}},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"##,
+        );
+        write_text(
+            &root.join("content/assets/characters/hero.png"),
+            "hero image",
+        );
+        write_text(
+            &root.join("content/graph.json"),
+            r#"{"version":1,"entryNodeId":"start","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}},{"id":"end","title":"End","file":"nodes/end.json","position":{"x":200,"y":0}}],"edges":[{"id":"start-end","from":"start","to":"end","mode":"linear"}]}"#,
+        );
+
+        assert_eq!(
+            run_validate(root.to_string_lossy().as_ref(), OutputFormat::Json),
+            2,
+            "the fixture should initially report missing-ID warnings"
+        );
+
+        let assigned =
+            assign_instruction_ids(root.to_string_lossy().as_ref(), None, false).unwrap();
+        assert_eq!(assigned.assigned_count, 2);
+        assert_eq!(
+            run_validate(root.to_string_lossy().as_ref(), OutputFormat::Json),
+            0,
+            "assign followed by validate should produce a clean project"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn instruction_id_assignment_preserves_existing_and_duplicate_ids() {
+        let root = unique_temp_dir("cli-assign-preserve-ids");
+        make_identity_project(&root);
+        write_text(
+            &root.join("content/nodes/start.json"),
+            r#"[{"t":"narrate","id":"manual","text":"Manual"},{"t":"say","id":"duplicate","who":"hero","text":"One"},{"t":"pause","id":"duplicate"},{"t":"wait","id":"","ms":10}]"#,
+        );
+        write_text(
+            &root.join("content/nodes/end.json"),
+            r#"[{"t":"narrate","id":"end","text":"End"}]"#,
+        );
+
+        let assigned =
+            assign_instruction_ids(root.to_string_lossy().as_ref(), None, false).unwrap();
+        assert_eq!(assigned.assigned_count, 1);
+
+        let saved: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved[0]["id"], "manual");
+        assert_eq!(saved[1]["id"], "duplicate");
+        assert_eq!(saved[2]["id"], "duplicate");
+        assert!(saved[3]["id"].as_str().unwrap().starts_with("sp_"));
+        assert_eq!(
+            run_validate(root.to_string_lossy().as_ref(), OutputFormat::Json),
+            1,
+            "assign must leave duplicate ownership for validation to report"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn instruction_id_assignment_json_output_has_a_stable_machine_contract() {
+        let output = InstructionIdAssignOutput {
+            ok: true,
+            project_path: "C:/project".into(),
+            dry_run: false,
+            assigned_count: 1,
+            changed_files: vec![InstructionIdChangedFile {
+                file: "content/nodes/start.json".into(),
+                assigned: vec![app_lib::AssignedInstructionId {
+                    file: "content/nodes/start.json".into(),
+                    node_id: "start".into(),
+                    json_path: "$[0].id".into(),
+                    id: "sp_test".into(),
+                }],
+            }],
+        };
+        let json = serde_json::to_value(output).unwrap();
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["projectPath"], "C:/project");
+        assert_eq!(json["dryRun"], false);
+        assert_eq!(json["assignedCount"], 1);
+        assert_eq!(json["changedFiles"][0]["file"], "content/nodes/start.json");
+        assert_eq!(json["changedFiles"][0]["assigned"][0]["nodeId"], "start");
+        assert_eq!(
+            json["changedFiles"][0]["assigned"][0]["jsonPath"],
+            "$[0].id"
+        );
+    }
+
+    #[test]
+    fn assignment_ignores_orphan_node_files() {
+        let root = unique_temp_dir("cli-assign-orphan");
+        make_identity_project(&root);
+        let orphan = root.join("content/nodes/orphan.json");
+        write_text(&orphan, r#"[{"t":"narrate","text":"Orphan"}]"#);
+        let before = fs::read_to_string(&orphan).unwrap();
+
+        assign_instruction_ids(root.to_string_lossy().as_ref(), None, false).unwrap();
+
+        assert_eq!(fs::read_to_string(&orphan).unwrap(), before);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn assignment_preflight_failure_does_not_write_other_nodes() {
+        let root = unique_temp_dir("cli-assign-preflight");
+        make_identity_project(&root);
+        let start_before = fs::read_to_string(root.join("content/nodes/start.json")).unwrap();
+        write_text(&root.join("content/nodes/end.json"), "not json");
+
+        let error = assign_instruction_ids(root.to_string_lossy().as_ref(), None, false)
+            .expect_err("all files must pass preflight before writes begin");
+        assert_eq!(error.exit_code, 70);
+        assert_eq!(
+            fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+            start_before
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn assignment_write_failure_reports_files_modified_before_the_failure() {
+        let root = unique_temp_dir("cli-assign-partial-write");
+        make_identity_project(&root);
+        let (project_path, planned) =
+            preflight_identity_assignment(root.to_string_lossy().as_ref(), None).unwrap();
+        let mut writes = 0;
+
+        let error = execute_identity_assignment_plan(
+            &project_path,
+            planned,
+            false,
+            |_project_path, _plan| {
+                writes += 1;
+                if writes == 2 {
+                    Err("injected second write failure".to_string())
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .expect_err("the second node write should fail after the first succeeds");
+
+        assert_eq!(error.code, "instruction_id_write_failed");
+        assert_eq!(error.file.as_deref(), Some("content/nodes/end.json"));
+        assert_eq!(error.modified_files, vec!["content/nodes/start.json"]);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["modifiedFiles"],
+            serde_json::json!(["content/nodes/start.json"])
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn assignment_rejects_traversing_node_paths_without_writing_safe_nodes() {
+        let root = unique_temp_dir("cli-assign-path-traversal");
+        make_project(
+            &root,
+            Some(
+                r#"{"version":1,"entryNodeId":"start","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}},{"id":"escape","title":"Escape","file":"../outside.json","position":{"x":200,"y":0}}],"edges":[]}"#,
+            ),
+        );
+        let safe_node = root.join("content/nodes/start.json");
+        write_text(&safe_node, r#"[{"t":"narrate","text":"Missing"}]"#);
+        write_text(
+            &root.join("outside.json"),
+            r#"[{"t":"narrate","text":"Outside"}]"#,
+        );
+        let before = fs::read_to_string(&safe_node).unwrap();
+
+        let error = assign_instruction_ids(root.to_string_lossy().as_ref(), None, false)
+            .expect_err("path traversal must fail before assignment writes begin");
+
+        assert_eq!(error.exit_code, 70);
+        assert_eq!(fs::read_to_string(&safe_node).unwrap(), before);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn assignment_rejects_symlinked_node_files_without_writing_safe_nodes() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("cli-assign-symlink");
+        make_identity_project(&root);
+        let safe_node = root.join("content/nodes/start.json");
+        let before = fs::read_to_string(&safe_node).unwrap();
+        let external = root.join("external.json");
+        write_text(&external, r#"[{"t":"narrate","text":"External"}]"#);
+        fs::remove_file(root.join("content/nodes/end.json")).unwrap();
+        symlink(&external, root.join("content/nodes/end.json")).unwrap();
+
+        assign_instruction_ids(root.to_string_lossy().as_ref(), None, false)
+            .expect_err("node symlinks must fail before assignment writes begin");
+
+        assert_eq!(fs::read_to_string(&safe_node).unwrap(), before);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn assignment_rejects_contract_invalid_graph_as_a_preflight_failure() {
+        let root = unique_temp_dir("cli-assign-invalid-graph");
+        make_project(&root, Some(r#"{"version":1,"nodes":[],"edges":[]}"#));
+
+        let error = assign_instruction_ids(root.to_string_lossy().as_ref(), None, false)
+            .expect_err("invalid graph must not be treated as a successful zero-change run");
+
+        assert_eq!(error.code, "graph_preflight_failed");
+        assert_eq!(error.file.as_deref(), Some("content/graph.json"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pure_node_mutations_follow_stable_identity_semantics() {
+        let original = serde_json::json!([
+            { "t": "narrate", "id": "first", "text": "One" },
+            { "t": "say", "id": "second", "who": "hero", "text": "Two", "meta": { "mood": "calm" } },
+            { "t": "pause", "id": "third" }
+        ]);
+
+        let inserted = mutate_node_value(
+            &original,
+            NodeMutation::Insert {
+                after: "first".into(),
+                instruction: serde_json::json!({
+                    "t": "narrate", "id": "must-not-survive", "text": "Inserted"
+                }),
+            },
+        )
+        .unwrap();
+        assert_eq!(inserted.instructions[1]["text"], "Inserted");
+        assert!(inserted.instructions[1].get("id").is_none());
+
+        let updated = mutate_node_value(
+            &original,
+            NodeMutation::Update {
+                story_point_id: "second".into(),
+                patch: serde_json::json!({ "text": "Changed", "meta": { "mood": "happy" } }),
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.instructions[1]["id"], "second");
+        assert_eq!(updated.instructions[1]["t"], "say");
+        assert_eq!(updated.instructions[1]["text"], "Changed");
+        assert_eq!(updated.instructions[1]["meta"]["mood"], "happy");
+
+        let moved = mutate_node_value(
+            &original,
+            NodeMutation::Move {
+                story_point_id: "third".into(),
+                before: "first".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(moved.instructions[0]["id"], "third");
+        assert_eq!(moved.before_index, Some(2));
+        assert_eq!(moved.after_index, Some(0));
+
+        let duplicated = mutate_node_value(
+            &original,
+            NodeMutation::Duplicate {
+                story_point_id: "second".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(duplicated.instructions[2]["text"], "Two");
+        assert!(duplicated.instructions[2].get("id").is_none());
+
+        let deleted = mutate_node_value(
+            &original,
+            NodeMutation::Delete {
+                story_point_id: "second".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(deleted.instructions.as_array().unwrap().len(), 2);
+        assert_eq!(deleted.instructions[1]["id"], "third");
+    }
+
+    #[test]
+    fn node_mutations_reject_ambiguous_targets_and_identity_changes() {
+        let duplicate = serde_json::json!([
+            { "t": "narrate", "id": "same", "text": "One" },
+            { "t": "pause", "id": "same" }
+        ]);
+        let error = mutate_node_value(
+            &duplicate,
+            NodeMutation::Delete {
+                story_point_id: "same".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "story_point_id_duplicate");
+
+        let unrelated_duplicate = serde_json::json!([
+            { "t": "narrate", "id": "target", "text": "Target" },
+            { "t": "pause", "id": "unrelated" },
+            { "t": "wait", "id": "unrelated", "ms": 10 }
+        ]);
+        let error = mutate_node_value(
+            &unrelated_duplicate,
+            NodeMutation::Delete {
+                story_point_id: "target".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "story_point_id_duplicate");
+
+        let original = serde_json::json!([
+            { "t": "say", "id": "target", "who": "hero", "text": "Two" }
+        ]);
+        for patch in [
+            serde_json::json!({ "id": "other" }),
+            serde_json::json!({ "t": "narrate" }),
+        ] {
+            let error = mutate_node_value(
+                &original,
+                NodeMutation::Update {
+                    story_point_id: "target".into(),
+                    patch,
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "protected_field_change");
+        }
+
+        let error = mutate_node_value(
+            &original,
+            NodeMutation::Insert {
+                after: "target".into(),
+                instruction: serde_json::json!({ "t": "bg", "ref": "school" }),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "instruction_not_story_point");
+    }
+
+    #[test]
+    fn node_mutation_reports_the_created_id_when_earlier_ids_are_also_missing() {
+        let root = unique_temp_dir("cli-mutation-created-id");
+        make_identity_project(&root);
+        write_text(
+            &root.join("content/nodes/start.json"),
+            r#"[{"t":"narrate","text":"Earlier missing"},{"t":"pause","id":"anchor"}]"#,
+        );
+
+        let output = execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "duplicate",
+            NodeMutation::Duplicate {
+                story_point_id: "anchor".into(),
+            },
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(output.assigned.len(), 2);
+        let created = output.new_story_point_id.as_deref().unwrap();
+        assert_eq!(
+            output
+                .assigned
+                .iter()
+                .find(|item| item.json_path == "$[2].id")
+                .map(|item| item.id.as_str()),
+            Some(created)
+        );
+        assert_ne!(created, output.assigned[0].id);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn node_mutation_json_output_has_a_stable_machine_contract() {
+        let output = NodeMutationOutput {
+            ok: true,
+            operation: "move".into(),
+            project_path: "C:/project".into(),
+            node_id: "start".into(),
+            file: "content/nodes/start.json".into(),
+            dry_run: false,
+            story_point_id: Some("sp_target".into()),
+            new_story_point_id: Some("sp_created".into()),
+            before_index: Some(3),
+            after_index: Some(1),
+            new_revision: Some(serde_json::json!({
+                "relPath": "content/nodes/start.json",
+                "mtimeMs": 1234.0,
+                "size": 42
+            })),
+            assigned: vec![app_lib::AssignedInstructionId {
+                file: "content/nodes/start.json".into(),
+                node_id: "start".into(),
+                json_path: "$[1].id".into(),
+                id: "sp_created".into(),
+            }],
+        };
+
+        let json = serde_json::to_value(output).unwrap();
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["operation"], "move");
+        assert_eq!(json["projectPath"], "C:/project");
+        assert_eq!(json["nodeId"], "start");
+        assert_eq!(json["storyPointId"], "sp_target");
+        assert_eq!(json["newStoryPointId"], "sp_created");
+        assert_eq!(json["beforeIndex"], 3);
+        assert_eq!(json["afterIndex"], 1);
+        assert_eq!(json["newRevision"]["relPath"], "content/nodes/start.json");
+        assert_eq!(json["assigned"][0]["jsonPath"], "$[1].id");
+        assert!(json.get("project_path").is_none());
+        assert!(json.get("story_point_id").is_none());
+    }
+
+    #[test]
+    fn node_mutation_execution_persists_all_five_operations_and_dry_run_is_read_only() {
+        let root = unique_temp_dir("cli-mutation-e2e");
+        make_identity_project(&root);
+        let before = fs::read_to_string(root.join("content/nodes/start.json")).unwrap();
+        let preview = execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "move",
+            NodeMutation::Move {
+                story_point_id: "third".into(),
+                before: "first".into(),
+            },
+            true,
+        )
+        .unwrap();
+        assert!(preview.new_revision.is_none());
+        assert_eq!(
+            fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+            before
+        );
+
+        let instruction_file_value = serde_json::json!({
+            "t": "narrate", "id": "discard-this", "text": "Inserted"
+        });
+        let inserted = execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "insert",
+            NodeMutation::Insert {
+                after: "first".into(),
+                instruction: instruction_file_value,
+            },
+            false,
+        )
+        .unwrap();
+        let inserted_id = inserted.new_story_point_id.unwrap();
+        assert!(inserted.new_revision.is_some());
+
+        execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "update",
+            NodeMutation::Update {
+                story_point_id: inserted_id.clone(),
+                patch: serde_json::json!({ "text": "Updated" }),
+            },
+            false,
+        )
+        .unwrap();
+        execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "move",
+            NodeMutation::Move {
+                story_point_id: "third".into(),
+                before: "first".into(),
+            },
+            false,
+        )
+        .unwrap();
+        let duplicate = execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "duplicate",
+            NodeMutation::Duplicate {
+                story_point_id: inserted_id.clone(),
+            },
+            false,
+        )
+        .unwrap();
+        let duplicate_id = duplicate.new_story_point_id.unwrap();
+        assert_ne!(duplicate_id, inserted_id);
+        execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "delete",
+            NodeMutation::Delete {
+                story_point_id: inserted_id.clone(),
+            },
+            false,
+        )
+        .unwrap();
+
+        let saved: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(saved.as_array().unwrap().iter().all(|instruction| {
+            instruction.get("id").and_then(serde_json::Value::as_str) != Some(&inserted_id)
+        }));
+        let duplicated = saved
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|instruction| {
+                instruction.get("id").and_then(serde_json::Value::as_str) == Some(&duplicate_id)
+            })
+            .unwrap();
+        assert_eq!(duplicated["text"], "Updated");
+        assert_eq!(saved[0]["id"], "third");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn node_mutation_dry_run_rejects_contract_invalid_results_without_writing() {
+        let root = unique_temp_dir("cli-mutation-dry-run-invalid");
+        make_identity_project(&root);
+        let before = fs::read_to_string(root.join("content/nodes/start.json")).unwrap();
+
+        let error = execute_node_mutation(
+            root.to_string_lossy().as_ref(),
+            "start",
+            "update",
+            NodeMutation::Update {
+                story_point_id: "second".into(),
+                patch: serde_json::json!({ "who": null }),
+            },
+            true,
+        )
+        .expect_err("dry-run must validate the normalized result");
+
+        assert_eq!(error.code, "node_mutation_invalid");
+        assert_eq!(
+            fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+            before
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

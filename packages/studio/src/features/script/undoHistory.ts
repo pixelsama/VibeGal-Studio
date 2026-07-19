@@ -6,9 +6,9 @@
  * 程序化修改（programmatic: true）始终独立成一步。
  * 仅用于剧本模式；JSON 模式保留 textarea 原生撤销。
  */
-export interface UndoHistory {
-  past: string[];
-  future: string[];
+export interface UndoHistory<T = string> {
+  past: T[];
+  future: T[];
   /** 最近一次记录检查点的时间戳；undo/redo 后归零，确保下一次输入生成新检查点。 */
   lastRecordedAt: number;
 }
@@ -16,16 +16,16 @@ export interface UndoHistory {
 export const UNDO_HISTORY_LIMIT = 100;
 export const TYPING_COALESCE_MS = 600;
 
-export function createUndoHistory(): UndoHistory {
+export function createUndoHistory<T = string>(): UndoHistory<T> {
   return { past: [], future: [], lastRecordedAt: 0 };
 }
 
 /** 在应用新文本之前基于 currentText 记录检查点，返回新栈。 */
-export function recordUndoCheckpoint(
-  history: UndoHistory,
-  currentText: string,
+export function recordUndoCheckpoint<T>(
+  history: UndoHistory<T>,
+  currentText: T,
   options: { programmatic?: boolean; now?: number } = {},
-): UndoHistory {
+): UndoHistory<T> {
   const now = options.now ?? Date.now();
   const coalesce = !options.programmatic && now - history.lastRecordedAt < TYPING_COALESCE_MS;
   if (coalesce) return { ...history, lastRecordedAt: now };
@@ -36,10 +36,10 @@ export function recordUndoCheckpoint(
   };
 }
 
-export function undoScenarioText(
-  history: UndoHistory,
-  currentText: string,
-): { history: UndoHistory; text: string } | null {
+export function undoScenarioText<T>(
+  history: UndoHistory<T>,
+  currentText: T,
+): { history: UndoHistory<T>; text: T } | null {
   const text = history.past[history.past.length - 1];
   if (text == null) return null;
   return {
@@ -52,10 +52,10 @@ export function undoScenarioText(
   };
 }
 
-export function redoScenarioText(
-  history: UndoHistory,
-  currentText: string,
-): { history: UndoHistory; text: string } | null {
+export function redoScenarioText<T>(
+  history: UndoHistory<T>,
+  currentText: T,
+): { history: UndoHistory<T>; text: T } | null {
   const text = history.future[history.future.length - 1];
   if (text == null) return null;
   return {

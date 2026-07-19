@@ -70,6 +70,13 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(agent_instructions.contains("Instruction[]"));
     assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
     assert!(agent_instructions.contains("vibegal-cli validate . --format json"));
+    assert!(agent_instructions.contains("vibegal-cli instruction-ids assign . --format json"));
+    assert!(agent_instructions.contains("Identity-sensitive operations"));
+    assert!(agent_instructions.contains("vibegal-cli node insert . <node-id>"));
+    assert!(agent_instructions.contains("vibegal-cli node update . <node-id>"));
+    assert!(agent_instructions.contains("vibegal-cli node move . <node-id>"));
+    assert!(agent_instructions.contains("vibegal-cli node duplicate . <node-id>"));
+    assert!(agent_instructions.contains("vibegal-cli node delete . <node-id>"));
     assert!(agent_instructions.contains("build . --target desktop --out dist-desktop"));
     assert!(agent_instructions.contains("--runtime tauri --out dist-light"));
     assert!(agent_instructions.contains(
@@ -82,6 +89,8 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(project_readme.contains("missing_graph"));
     assert!(project_readme.contains("Legacy Chapters"));
     assert!(project_readme.contains("content/chapters/"));
+    assert!(project_readme.contains("Stable Instruction Identity"));
+    assert!(project_readme.contains("sp_<UUIDv4>"));
     assert!(project_readme.contains(".galstudio/renderer-contract.md"));
     assert!(project_readme.contains("--target desktop --runtime electron|tauri"));
     assert!(project_readme.contains(
@@ -118,6 +127,22 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     let graph = opened.graph.expect("新项目应有 graph.json");
     assert_eq!(graph.entry_node_id, "start");
     assert_eq!(graph.nodes[0].file, "nodes/start.json");
+    let start_node = opened
+        .nodes
+        .expect("新项目应加载默认节点")
+        .into_iter()
+        .find(|node| node.rel_path == "nodes/start.json")
+        .and_then(|node| node.data)
+        .expect("默认节点应可读取");
+    let start_id = start_node[0]["id"]
+        .as_str()
+        .expect("默认旁白应由共享身份服务分配 ID");
+    assert!(start_id.starts_with("sp_"));
+    assert!(opened
+        .project_report
+        .expect("新项目应有校验报告")
+        .project_issues
+        .is_empty());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -269,4 +294,55 @@ fn debounce_state_coalesces_changes_until_quiet_window() {
         state.due(start + std::time::Duration::from_millis(700), delay),
         None
     );
+}
+
+#[test]
+fn watcher_reports_external_missing_id_change_without_rewriting_the_node() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let root = unique_temp_dir("watcher-missing-id-no-repair");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "nodes": [{
+                "id": "start",
+                "title": "Start",
+                "file": "nodes/start.json",
+                "position": { "x": 0, "y": 0 }
+            }],
+            "edges": []
+        }),
+        &[(
+            "nodes/start.json",
+            serde_json::json!([{ "t": "narrate", "id": "sp_existing", "text": "Before" }]),
+        )],
+    );
+    let watchers = ProjectWatchers::default();
+    let (tx, rx) = mpsc::channel();
+    watch(project.to_str().unwrap(), &watchers, move |payload| {
+        let _ = tx.send(payload);
+    })
+    .unwrap();
+
+    let node_path = project.join("content/nodes/start.json");
+    let external_text = "[\n  { \"t\": \"narrate\", \"text\": \"External draft\" }\n]\n";
+    fs::write(&node_path, external_text).unwrap();
+
+    let payload = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("watcher should report the external content change");
+    assert_eq!(
+        payload.project_path,
+        project.canonicalize().unwrap().to_string_lossy()
+    );
+    assert!(!payload.renderer_changed);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(fs::read_to_string(&node_path).unwrap(), external_text);
+
+    unwatch(project.to_str().unwrap(), &watchers).unwrap();
+    let _ = fs::remove_dir_all(&root);
 }

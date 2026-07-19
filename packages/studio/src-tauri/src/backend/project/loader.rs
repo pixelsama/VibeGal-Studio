@@ -88,8 +88,7 @@ fn load_project_fixtures(content_root: &ContentRoot) -> (Vec<FixtureEntry>, Vec<
             .flatten()
             .map(|entry| entry.path())
             .filter(|path| {
-                path.is_file()
-                    && path.extension().and_then(|ext| ext.to_str()) == Some("json")
+                path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("json")
             })
             .collect(),
         Err(error) => {

@@ -2,6 +2,7 @@
  * 项目相关类型 —— studio 与 Rust 后端之间的数据契约。
  */
 import type { Manifest as EngineManifest } from "@vibegal/engine";
+import type { Instruction } from "@vibegal/engine";
 
 /** gal.project.json 的结构 */
 export interface ProjectMeta {
@@ -22,6 +23,20 @@ export interface FileRevision {
   mtimeMs: number;
   size: number;
   sha256?: string;
+}
+
+export interface AssignedInstructionId {
+  file: string;
+  nodeId: string;
+  jsonPath: string;
+  id: string;
+}
+
+export interface SaveNodeResult {
+  instructions: Instruction[];
+  serializedText: string;
+  revision: FileRevision;
+  assigned: AssignedInstructionId[];
 }
 
 /** 图节点（graph.json 中的一项） */

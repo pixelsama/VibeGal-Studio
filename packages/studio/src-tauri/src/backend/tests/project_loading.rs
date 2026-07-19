@@ -586,7 +586,10 @@ fn open_project_warns_and_skips_invalid_fixture_files() {
     let root = unique_temp_dir("fixtures-invalid");
     let project = root.join("project");
     write_minimal_project(&project);
-    write_text(&project.join("content/fixtures/good.json"), r#"{"state":{}}"#);
+    write_text(
+        &project.join("content/fixtures/good.json"),
+        r#"{"state":{}}"#,
+    );
     write_text(&project.join("content/fixtures/broken.json"), "{not json");
     write_text(&project.join("content/fixtures/array.json"), "[]");
 

@@ -8,6 +8,18 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const docsDir = path.join(repoRoot, "docs", "script-graph");
 const archiveDir = path.join(docsDir, "archive");
 const schemaDir = path.join(docsDir, "schemas");
+const cliDocFiles = [
+  path.join(repoRoot, "README.md"),
+  path.join(repoRoot, "docs", "project-wiki.md"),
+];
+const stableIdentityCliCommands = [
+  "vibegal-cli instruction-ids assign",
+  "vibegal-cli node insert",
+  "vibegal-cli node update",
+  "vibegal-cli node move",
+  "vibegal-cli node duplicate",
+  "vibegal-cli node delete",
+];
 const bannedPatterns = [/合成线性图/g, /synthesizes linear/gi];
 const excludedFromBannedScan = new Set([
   "00-feature-plan.md",
@@ -90,6 +102,16 @@ for (const md of walkMarkdown(docsDir)) {
 assertExists("docs/script-graph/archive/README.md");
 for (const schemaName of ["graph.json", "nodeFile.json", "manifest.json", "meta.json", "fixture.json"]) {
   assertExists(path.join("docs/script-graph/schemas", schemaName));
+}
+
+for (const filePath of cliDocFiles) {
+  const rel = path.relative(repoRoot, filePath).split(path.sep).join("/");
+  const text = fs.readFileSync(filePath, "utf8");
+  for (const command of stableIdentityCliCommands) {
+    if (!text.includes(command)) {
+      errors.push(`${rel}: missing stable identity CLI command -> ${command}`);
+    }
+  }
 }
 
 if (errors.length > 0) {

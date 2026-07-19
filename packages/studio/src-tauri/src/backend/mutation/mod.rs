@@ -80,6 +80,65 @@ pub(crate) fn save_file(
     project_root.revision(&rel_path)
 }
 
+/// Save a graph-referenced node through the identity-aware persistence boundary.
+pub(crate) fn save_node(
+    project_path: String,
+    node_file: String,
+    instructions: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<SaveNodeResult, String> {
+    let project_root = ProjectRoot::open(Path::new(&project_path))?;
+    let content_root = project_root.content_root()?;
+    let graph = content_root.read_control_json("graph.json")?;
+    validate_write_contract(contracts::ContractSchemaKind::Graph, &graph, "graph")?;
+
+    let matches = graph["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|node| node.get("file").and_then(serde_json::Value::as_str) == Some(&node_file))
+        .collect::<Vec<_>>();
+    if matches.len() != 1 {
+        return Err(format!(
+            "node file must be referenced by exactly one graph node: {node_file}"
+        ));
+    }
+    let node_id = matches[0]["id"]
+        .as_str()
+        .expect("validated graph node id")
+        .to_string();
+    let node_path = content_root.resolve_write_target(&node_file)?;
+    let project_rel_path = PathBuf::from("content")
+        .join(safe_relative_path(&node_file)?)
+        .to_string_lossy()
+        .replace('\\', "/");
+    ensure_expected_revision(project_root.path(), &project_rel_path, expected_revision)?;
+
+    let assignment = assign_missing_story_point_ids(
+        &instructions,
+        &InstructionIdentityContext::new(project_rel_path.clone(), node_id),
+    )
+    .map_err(|error| format!("instruction ID assignment failed: {error}"))?;
+    validate_write_contract(
+        contracts::ContractSchemaKind::NodeFile,
+        &assignment.node,
+        "节点内容",
+    )?;
+    write_json(&node_path, &assignment.node)?;
+    let revision = project_root
+        .revision(&project_rel_path)?
+        .ok_or_else(|| format!("failed to read saved node revision: {project_rel_path}"))?;
+    let serialized_text = serde_json::to_string_pretty(&assignment.node)
+        .map_err(|error| format!("serialize saved node failed: {error}"))?;
+
+    Ok(SaveNodeResult {
+        instructions: assignment.node,
+        serialized_text,
+        revision,
+        assigned: assignment.assigned,
+    })
+}
+
 /// 保存 content/graph.json。节点文件生命周期由 save_file/delete_file 单独管理。
 pub(crate) fn save_graph(
     project_path: String,
@@ -117,6 +176,10 @@ fn validate_write_contract(
         ));
     }
     Ok(())
+}
+
+pub(crate) fn validate_node_contract(value: &serde_json::Value) -> Result<(), String> {
+    validate_write_contract(contracts::ContractSchemaKind::NodeFile, value, "节点内容")
 }
 
 fn is_node_file_path(rel_path: &str) -> bool {
@@ -387,6 +450,9 @@ use super::fs::{
     move_project_file_to_trash, parse_expected_revision, read_json, safe_relative_path,
     validate_plain_name, write_json, ProjectRoot,
 };
+use super::identity::{
+    assign_missing_story_point_ids, AssignedInstructionId, InstructionIdentityContext,
+};
 use super::model::{AssetEntry, FileRevision, GraphPositionPatchInput, ProjectMeta};
 use super::project::{initialize_project_root, list_asset_entries};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
@@ -395,3 +461,12 @@ use std::fs::{self, OpenOptions};
 use std::path::{Component, Path, PathBuf};
 
 const MAX_ASSET_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
+
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveNodeResult {
+    pub instructions: serde_json::Value,
+    pub serialized_text: String,
+    pub revision: FileRevision,
+    pub assigned: Vec<AssignedInstructionId>,
+}

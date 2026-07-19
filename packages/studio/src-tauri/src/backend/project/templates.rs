@@ -41,11 +41,38 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 
 ## Validation
 
-Run this from the project root after edits:
+Story-point instructions (`say`, `narrate`, `wait`, and `pause`) use a stable `id` for saves,
+read history, rollback, and precise tooling references. The ID is machine-managed:
+
+- Preserve every existing non-empty story-point ID when editing or moving content.
+- New story points may temporarily omit `id` during a batch writing task.
+- Do not renumber, hash text into IDs, or copy an existing story-point ID into a duplicate.
+- Direct JSON editing remains supported. Identity-sensitive operations (move, duplicate, update,
+  or delete by stable ID) should prefer `vibegal-cli node ...` commands.
+
+Finish a script-editing task from the project root with:
 
 ```bash
+vibegal-cli instruction-ids assign . --format json
 vibegal-cli validate . --format json
 ```
+
+`instruction-ids assign` only fills missing/empty story-point IDs; it never rewrites an existing
+ID or guesses how to repair duplicates. It is a task-completion normalization step, not a command
+that must run after every new line.
+
+Optional safe commands for identity-sensitive edits are:
+
+```bash
+vibegal-cli node insert . <node-id> --after <story-point-id> --file instruction.json --format json
+vibegal-cli node update . <node-id> <story-point-id> --patch-file patch.json --format json
+vibegal-cli node move . <node-id> <story-point-id> --before <story-point-id> --format json
+vibegal-cli node duplicate . <node-id> <story-point-id> --format json
+vibegal-cli node delete . <node-id> <story-point-id> --format json
+```
+
+These commands operate on one instruction, support `--dry-run`, and do not replace direct JSON
+editing. They reject ambiguous duplicate IDs instead of guessing identity ownership.
 
 If `vibegal-cli` is not registered in the shell, macOS agents can use the app-bundled CLI directly:
 
@@ -166,9 +193,28 @@ Minimal node file:
 
 ```json
 [
-  { "t": "narrate", "text": "新的故事从这里开始。" }
+  { "t": "narrate", "id": "sp_550e8400-e29b-41d4-a716-446655440000", "text": "新的故事从这里开始。" }
 ]
 ```
+
+## Stable Instruction Identity
+
+The runtime identifies a restorable story point through `nodeId + instructionId`. The four V1
+story-point instruction types are `say`, `narrate`, `wait`, and `pause`. Newly generated IDs use
+the opaque `sp_<UUIDv4>` form, but existing non-empty human-authored IDs remain valid.
+
+Project files deliberately allow a temporary authoring state where a new story point has no `id`.
+Studio assigns missing IDs on its explicit node-save boundary. External tools can normalize direct
+JSON edits with:
+
+```bash
+vibegal-cli instruction-ids assign . --format json
+vibegal-cli validate . --format json
+```
+
+Assignment is missing-only and idempotent. Duplicate IDs are not guessed or silently repaired;
+validation reports them as errors so the author or Agent can choose which instruction keeps the
+original identity. Scenario text hides machine IDs, while JSON mode exposes the complete data.
 
 Scenario DSL shown by the Studio editor compiles back to this JSON format. For example:
 

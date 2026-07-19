@@ -1,5 +1,6 @@
 import { InstructionSchema } from "./schema";
 import type { Instruction } from "./types";
+import { instructionPolicies } from "@vibegal/contracts";
 
 export interface ScenarioDiagnostic {
   line: number;
@@ -220,12 +221,25 @@ export function formatScenarioText(instructions: Instruction[]): string {
 }
 
 export function formatScenarioInstruction(instruction: Instruction): string {
-  const readable = formatReadableScenarioInstruction(instruction);
+  const projectedInstruction = withoutStoryPointId(instruction);
+  const readable = formatReadableScenarioInstruction(projectedInstruction);
   const reparsed = parseScenarioLine(readable);
-  if (reparsed.ok && reparsed.instruction && instructionsAreEquivalent(reparsed.instruction, instruction)) {
+  if (reparsed.ok && reparsed.instruction && instructionsAreEquivalent(reparsed.instruction, projectedInstruction)) {
     return readable;
   }
-  return `@instruction ${stringifyScenarioJson(instruction)}`;
+  return `@instruction ${stringifyScenarioJson(projectedInstruction)}`;
+}
+
+export function isStoryPointInstruction(instruction: Pick<Instruction, "t">): boolean {
+  const policy = instructionPolicies[instruction.t] as { storyPoint?: boolean };
+  return policy.storyPoint === true;
+}
+
+export function withoutStoryPointId(instruction: Instruction): Instruction {
+  if (!isStoryPointInstruction(instruction) || !("id" in instruction)) return instruction;
+  const projected = { ...instruction } as Instruction & { id?: string };
+  delete projected.id;
+  return projected;
 }
 
 function formatReadableScenarioInstruction(instruction: Instruction): string {
