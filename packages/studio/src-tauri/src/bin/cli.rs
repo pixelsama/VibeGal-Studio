@@ -4590,7 +4590,9 @@ fn desktop_artifact_path(root: &Path, relative: &str, label: &str) -> Result<Pat
 
 /// 截取子进程输出的尾部用于错误诊断，避免把完整日志塞进 smoke 错误。
 fn smoke_output_tail(output: &str) -> String {
-    const LIMIT: usize = 400;
+    // 需要容纳播放器原生崩溃处理器输出的完整 backtrace（每帧一行，
+    // 崩溃点在最前面的帧里），所以上限要覆盖几十帧的文本量。
+    const LIMIT: usize = 6000;
     let trimmed = output.trim();
     if trimmed.len() <= LIMIT {
         return trimmed.to_string();
