@@ -192,6 +192,10 @@ fn create_cli_tool_symlink_with_admin_prompt(
     }
 }
 
+// 这三个辅助函数的生产调用方是 macOS 的管理员提权安装路径；any(..., test)
+// 让纯字符串逻辑的测试在所有平台保留覆盖，同时非 macOS 的 lib 构建不再
+// 报 dead_code。
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn admin_symlink_script(cli_path: &Path, link_path: &Path) -> Result<String, String> {
     let Some(parent) = link_path.parent() else {
         return Err(format!("命令链接路径没有父目录: {}", link_path.display()));
@@ -208,10 +212,12 @@ pub(crate) fn admin_symlink_script(cli_path: &Path, link_path: &Path) -> Result<
     ))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn applescript_string_literal(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     escaped.push('"');

@@ -224,8 +224,12 @@ struct SnapshotWorkerScene {
 
 #[derive(Debug, Deserialize)]
 struct SnapshotWorkerOutput {
+    // ok / rendererId 是 worker JSON 契约的完整形状，当前消费方只读
+    // scenes / stage / snapshotDir；保留字段记录契约，显式允许未读。
+    #[allow(dead_code)]
     ok: bool,
     #[serde(rename = "rendererId")]
+    #[allow(dead_code)]
     renderer_id: String,
     scenes: Vec<SnapshotWorkerScene>,
     stage: SnapshotStage,

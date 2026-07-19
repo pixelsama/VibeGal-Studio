@@ -78,10 +78,14 @@ pub(crate) fn cli_binary_path(app_handle: &tauri::AppHandle) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(cli_executable_name()))
 }
 
+// 启动脚本概念只存在于 Unix（Windows 直接把 sidecar 当 CLI 本体，见
+// commands/mod.rs 的 cli_paths）；any(..., test) 保留跨平台测试覆盖。
+#[cfg(any(unix, test))]
 pub(crate) fn cli_launcher_path_from_resource_dir(resource_dir: &std::path::Path) -> PathBuf {
     resource_dir.join("bin").join(cli_executable_name())
 }
 
+#[cfg(any(unix, test))]
 pub(crate) fn cli_launcher_path(app_handle: &tauri::AppHandle) -> PathBuf {
     let mut candidates = Vec::new();
     if let Ok(path) = env::var("VIBEGAL_CLI_LAUNCHER_PATH") {
