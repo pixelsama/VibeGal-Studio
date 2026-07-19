@@ -31,6 +31,10 @@ const targets = [
     version: loadJson(resolve(workspaceRoot, "packages/engine/package.json")).version,
   },
   {
+    name: "contracts package.json",
+    version: loadJson(resolve(workspaceRoot, "packages/contracts/package.json")).version,
+  },
+  {
     name: "src-tauri/Cargo.toml",
     version: parseTomlVersion(resolve(workspaceRoot, "packages/studio/src-tauri/Cargo.toml")),
   },
@@ -40,12 +44,24 @@ const targets = [
       resolve(workspaceRoot, "packages/studio/src-tauri/tauri.conf.json"),
     ).version,
   },
+  {
+    name: "src-tauri/player.tauri.conf.json",
+    version: loadJson(
+      resolve(workspaceRoot, "packages/studio/src-tauri/player.tauri.conf.json"),
+    ).version,
+  },
 ];
 
 const expected = targets[0].version;
 const invalid = targets.filter((target) => target.version !== expected);
+const releaseTag = process.env.RELEASE_TAG;
+if (releaseTag && releaseTag !== `v${expected}`) {
+  process.stderr.write(`发布标签 ${releaseTag} 与版本 v${expected} 不一致\n`);
+  process.exit(1);
+}
+
 if (invalid.length === 0) {
-  process.stdout.write(`版本一致：${expected}\n`);
+  process.stdout.write(`版本一致：${expected}${releaseTag ? `（标签 ${releaseTag}）` : ""}\n`);
   process.exit(0);
 }
 

@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag and project versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: pnpm check:versions
+
+      - name: Run release quality gates
+        run: |
+          pnpm test
+          pnpm build
+          pnpm check:schemas
+          pnpm check:engine-types
+          pnpm check:renderer-template
+          pnpm check:doc-contract
+          pnpm smoke:release
+          cargo test --locked --manifest-path packages/studio/src-tauri/Cargo.toml
+
+  bundle:
+    name: Bundle and install smoke (${{ matrix.name }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            artifact: VibeGal-Studio-Windows-x64
+            bundle_command: pnpm bundle:windows
+            bundle_path: packages/studio/src-tauri/target/release/bundle/nsis/*.exe
+          - name: macOS arm64
+            os: macos-latest
+            artifact: VibeGal-Studio-macOS-arm64
+            bundle_command: pnpm bundle:macos
+            bundle_path: packages/studio/src-tauri/target/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build platform bundle
+        run: ${{ matrix.bundle_command }}
+
+      - name: Verify Apple Silicon bundle architecture
+        if: runner.os == 'macOS'
+        run: |
+          test "$(uname -m)" = "arm64"
+          file packages/studio/src-tauri/target/release/bundle/macos/VibeGal-Studio.app/Contents/MacOS/vibegal-studio | grep -q 'arm64'
+
+      - name: Install and smoke Windows bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem packages/studio/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $project = Join-Path $env:RUNNER_TEMP "Project With Spaces"
+          Copy-Item examples/sample-novel $project -Recurse
+          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($installProcess.ExitCode -ne 0) { exit $installProcess.ExitCode }
+          $installDir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\VibeGal-Studio').InstallLocation.Trim('"')
+          $cli = Join-Path $installDir "vibegal-cli.exe"
+          $originalPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32"
+          & $cli validate $project --format json
+          $validateExit = $LASTEXITCODE
+          $env:PATH = $originalPath
+          if ($validateExit -ne 0) { exit $validateExit }
+          $webOut = Join-Path $env:RUNNER_TEMP "Web Export With Spaces"
+          & $cli build $project --target web --out $webOut --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $cli smoke $webOut --target web --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $desktopOut = Join-Path $env:RUNNER_TEMP "Desktop Export With Spaces"
+          & $cli build $project --target desktop --runtime tauri --out $desktopOut --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $cli smoke $desktopOut --target desktop --runtime tauri --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $uninstaller = Get-ChildItem $installDir -Filter 'uninstall*.exe' | Select-Object -First 1
+          if ($uninstaller) {
+            $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru
+            if ($uninstallProcess.ExitCode -ne 0) { exit $uninstallProcess.ExitCode }
+          }
+
+      - name: Mount and smoke macOS bundle
+        if: runner.os == 'macOS'
+        run: |
+          DMG=$(find packages/studio/src-tauri/target/release/bundle/dmg -name '*.dmg' -print -quit)
+          MOUNT="$RUNNER_TEMP/vibegal-dmg"
+          INSTALL="$RUNNER_TEMP/VibeGal Installed App"
+          PROJECT="$RUNNER_TEMP/Project With Spaces"
+          mkdir -p "$MOUNT" "$INSTALL"
+          ditto examples/sample-novel "$PROJECT"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
+          ditto "$MOUNT/VibeGal-Studio.app" "$INSTALL/VibeGal-Studio.app"
+          hdiutil detach "$MOUNT"
+          CLI="$INSTALL/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli"
+          env -i HOME="$HOME" PATH="/usr/bin:/bin" "$CLI" validate "$PROJECT" --format json
+          WEB_OUT="$RUNNER_TEMP/Web Export With Spaces"
+          "$CLI" build "$PROJECT" --target web --out "$WEB_OUT" --format json
+          "$CLI" smoke "$WEB_OUT" --target web --format json
+          DESKTOP_OUT="$RUNNER_TEMP/Desktop Export With Spaces"
+          "$CLI" build "$PROJECT" --target desktop --runtime tauri --out "$DESKTOP_OUT" --format json
+          "$CLI" smoke "$DESKTOP_OUT" --target desktop --runtime tauri --format json
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.bundle_path }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download bundles
+        uses: actions/download-artifact@v5
+        with:
+          pattern: VibeGal-Studio-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: release-assets
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then PRERELEASE="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "VibeGal-Studio $GITHUB_REF_NAME" \
+            --generate-notes \
+            $PRERELEASE

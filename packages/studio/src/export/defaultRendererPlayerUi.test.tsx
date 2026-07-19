@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -10,7 +11,7 @@ import {
 import { PlayerHud } from "../../src-tauri/resources/default-renderer/PlayerHud";
 import { EndingsPanel, GalleryPanel, MusicRoomPanel, ReplayPanel } from "../../src-tauri/resources/default-renderer/GalleryPanels";
 import { HistoryPanel } from "../../src-tauri/resources/default-renderer/HistoryPanel";
-import { PlayerMenu } from "../../src-tauri/resources/default-renderer/PlayerMenu";
+import { PlayerMenu, menuStyle } from "../../src-tauri/resources/default-renderer/PlayerMenu";
 import { RuntimeSettingsPanel } from "../../src-tauri/resources/default-renderer/RuntimeSettingsPanel";
 import { SaveLoadPanel } from "../../src-tauri/resources/default-renderer/SaveLoadPanel";
 import { Stage } from "../../src-tauri/resources/default-renderer/Stage";
@@ -176,6 +177,28 @@ describe("default renderer player UI", () => {
     expect(html).toContain("系统");
     expect(html).toContain("暂无历史记录");
     expect(html).toContain('aria-modal="true"');
+  });
+
+  it("keeps menu page navigation separate from opening playback controls", () => {
+    const stageSource = readFileSync(
+      new URL("../../src-tauri/resources/default-renderer/Stage.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(stageSource).toContain("const changeMenuPage = (page: PlayerMenuPage) => {");
+    expect(stageSource).toContain("onPageChange={changeMenuPage}");
+    expect(stageSource).not.toContain("onPageChange={(page) => openMenu(page)}");
+  });
+
+  it("constrainsTheTokenDrivenMenuWindowToTheStageBounds", () => {
+    expect(menuStyle(DEFAULT_UI_TOKENS.menuWindow)).toEqual(expect.objectContaining({
+      left: 110,
+      top: 40,
+      width: 1060,
+      height: 640,
+      maxWidth: "calc(100% - 110px)",
+      maxHeight: "calc(100% - 40px)",
+    }));
   });
 
   it("rendersEveryDeterministicSlotAndTheSixRuntimeSettings", () => {

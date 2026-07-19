@@ -1,13 +1,16 @@
 {
   "name": "vibegal-studio",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.1",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "pnpm --filter @vibegal/studio dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "tauri": "pnpm --filter @vibegal/studio tauri",
+    "bundle": "pnpm tauri build --ci --no-sign",
+    "bundle:windows": "pnpm tauri build --bundles nsis --ci --no-sign",
+    "bundle:macos": "pnpm tauri build --bundles app,dmg --ci --no-sign",
     "check:versions": "node scripts/check-version-consistency.mjs",
     "check:schemas": "node scripts/check-schema-drift.mjs",
     "check:engine-types": "node scripts/check-engine-types-drift.mjs",

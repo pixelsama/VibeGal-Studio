@@ -13,7 +13,7 @@ export function resolveAsset(contentBase: string, rel: string): string {
   const path = `${base}/${tail}`;
   const convertFileSrc = tauriConvertFileSrc();
 
-  if (convertFileSrc && !isUrlLike(base)) {
+  if (convertFileSrc && isAbsoluteLocalPath(base)) {
     return convertFileSrc(path, "asset");
   }
 
@@ -24,9 +24,8 @@ function stripTrailingSlash(path: string): string {
   return path.replace(/[\\/]+$/, "");
 }
 
-function isUrlLike(value: string): boolean {
-  if (/^[A-Za-z]:[\\/]/.test(value)) return false;
-  return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
+function isAbsoluteLocalPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\\\");
 }
 
 function tauriConvertFileSrc(): ((path: string, protocol?: string) => string) | null {

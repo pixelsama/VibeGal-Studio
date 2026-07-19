@@ -4,7 +4,10 @@ import {
   createWebRuntimePlayer,
   createWebStorageAdapter,
   defaultRuntimeSettings,
+  resetWebRuntimeSmokeStorage,
+  runtimeStorageProjectId,
   runWebRuntimeBehaviorSmoke,
+  storyProgressFingerprint,
   type StorageLike,
 } from "./webRuntimeHost";
 
@@ -253,6 +256,54 @@ describe("web export runtime host", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("resetWebRuntimeSmokeStorageClearsOnlyTheSmokeProjectRuntimeData", () => {
+    const storage = new MemoryStorage();
+    storage.setItem("vibegal:project-a:saveIndex", JSON.stringify(["quick", "manual-01"]));
+    storage.setItem("vibegal:project-a:save:quick", "quick");
+    storage.setItem("vibegal:project-a:save:manual-01", "manual");
+    storage.setItem("vibegal:project-a:global", "global");
+    storage.setItem("vibegal:project-a:settings", "settings");
+    storage.setItem("vibegal:project-b:saveIndex", JSON.stringify(["quick"]));
+
+    resetWebRuntimeSmokeStorage("project-a", storage);
+
+    expect(storage.getItem("vibegal:project-a:saveIndex")).toBeNull();
+    expect(storage.getItem("vibegal:project-a:save:quick")).toBeNull();
+    expect(storage.getItem("vibegal:project-a:save:manual-01")).toBeNull();
+    expect(storage.getItem("vibegal:project-a:global")).toBeNull();
+    expect(storage.getItem("vibegal:project-a:settings")).toBeNull();
+    expect(storage.getItem("vibegal:project-b:saveIndex")).not.toBeNull();
+  });
+
+  it("runtimeStorageProjectIdIsolatesSmokeDataFromRealPlayerSaves", () => {
+    expect(runtimeStorageProjectId("project-a", false)).toBe("project-a");
+    expect(runtimeStorageProjectId("project-a", true)).toBe("project-a:__smoke__");
+  });
+
+  it("storyProgressFingerprintIgnoresOnlyNaturalTypewriterProgress", () => {
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([]),
+      nodes: [node("start", "typing")],
+      contentBase: "./content",
+    });
+    runtime.advance();
+    const initial = runtime.getState();
+    const typingAdvanced = {
+      ...initial,
+      narration: { ...initial.narration!, typedLen: 1 },
+    };
+    const storyAdvanced = {
+      ...typingAdvanced,
+      narration: { ...typingAdvanced.narration, text: "next line" },
+    };
+
+    expect(storyProgressFingerprint(typingAdvanced)).toBe(storyProgressFingerprint(initial));
+    expect(storyProgressFingerprint(storyAdvanced)).not.toBe(storyProgressFingerprint(initial));
+    runtime.dispose();
   });
 
   it("webRuntimeAppliesPersistedVoiceVolumeBeforeTheFirstVoice", async () => {

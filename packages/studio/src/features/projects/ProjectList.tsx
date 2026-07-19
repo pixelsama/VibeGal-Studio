@@ -21,12 +21,43 @@ interface Props {
   onOpenSettings?: () => void;
 }
 
+type ProjectDirectoryResolution =
+  | { kind: "project"; project: ProjectData }
+  | { kind: "contained"; path: string; projects: ProjectListItem[] }
+  | { kind: "initialize"; path: string };
+
+export async function resolveProjectDirectory(
+  path: string,
+  operations: {
+    open: (path: string) => Promise<ProjectData>;
+    scan: (path: string) => Promise<ProjectListItem[]>;
+  } = { open: openProject, scan: listProjects },
+): Promise<ProjectDirectoryResolution> {
+  try {
+    return { kind: "project", project: await operations.open(path) };
+  } catch (error) {
+    if (!String(error).includes("缺少 gal.project.json")) throw error;
+  }
+
+  try {
+    const projects = await operations.scan(path);
+    if (projects.length > 0) return { kind: "contained", path, projects };
+  } catch {
+    // Discovery is guidance only; an unreadable directory keeps the safe existing prompt.
+  }
+  return { kind: "initialize", path };
+}
+
 export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSettings }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [initTarget, setInitTarget] = useState<string | null>(null);
+  const [containedTarget, setContainedTarget] = useState<{
+    path: string;
+    projects: ProjectListItem[];
+  } | null>(null);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(() => loadWorkspaceDir());
   const [workspaceProjects, setWorkspaceProjects] = useState<ProjectListItem[] | null>(null);
 
@@ -39,14 +70,16 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setLoading(true);
     setError(null);
     try {
-      onOpen(await openProject(target));
-    } catch (e) {
-      const message = String(e);
-      if (message.includes("缺少 gal.project.json")) {
-        setInitTarget(target);
+      const resolution = await resolveProjectDirectory(target);
+      if (resolution.kind === "project") {
+        onOpen(resolution.project);
+      } else if (resolution.kind === "contained") {
+        setContainedTarget({ path: resolution.path, projects: resolution.projects });
       } else {
-        setError(message);
+        setInitTarget(resolution.path);
       }
+    } catch (e) {
+      setError(String(e));
     } finally {
       setLoading(false);
     }
@@ -249,6 +282,57 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
           onClose={() => setInitTarget(null)}
         />
       )}
+
+      {containedTarget && (
+        <ContainedProjectsDialog
+          path={containedTarget.path}
+          projects={containedTarget.projects}
+          disabled={loading}
+          onOpen={(path) => {
+            setContainedTarget(null);
+            void openDirectory(path);
+          }}
+          onInitialize={() => {
+            setContainedTarget(null);
+            setInitTarget(containedTarget.path);
+          }}
+          onClose={() => setContainedTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export function ContainedProjectsDialog({
+  path,
+  projects,
+  disabled,
+  onOpen,
+  onInitialize,
+  onClose,
+}: {
+  path: string;
+  projects: ProjectListItem[];
+  disabled: boolean;
+  onOpen: (path: string) => void;
+  onInitialize: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="gs-anim-fade" style={modalOverlayStyle}>
+      <div className="gs-anim-pop" role="dialog" aria-modal="true" aria-labelledby="contained-projects-title" style={containedProjectsModalStyle}>
+        <div id="contained-projects-title" style={modalHeaderStyle}>这个目录本身不是项目</div>
+        <div style={containedProjectsDescriptionStyle}>
+          里面有 {projects.length} 个项目。请选择要打开的项目，而不是把工作区目录初始化成嵌套项目。
+        </div>
+        <div style={parentPathStyle} title={path}>{path}</div>
+        <WorkspaceProjectList items={projects} disabled={disabled} onOpen={onOpen} />
+        <div style={containedProjectsSafetyStyle}>仍然初始化时，只会添加工程文件，不会删除或覆盖现有文件。</div>
+        <div style={containedProjectsActionsStyle}>
+          <Button variant="ghost" disabled={disabled} onClick={onInitialize}>仍然在此目录初始化</Button>
+          <Button variant="secondary" disabled={disabled} onClick={onClose}>取消</Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -354,6 +438,27 @@ const modalStyle: React.CSSProperties = {
   border: "1px solid var(--border-strong)",
   borderRadius: "var(--radius-md)",
   boxShadow: "0 24px 80px var(--overlay)",
+};
+const containedProjectsModalStyle: React.CSSProperties = {
+  ...modalStyle,
+  width: "min(620px, 100%)",
+};
+const containedProjectsDescriptionStyle: React.CSSProperties = {
+  color: "var(--text-secondary)",
+  lineHeight: 1.6,
+  marginBottom: "var(--space-2)",
+};
+const containedProjectsSafetyStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
+  lineHeight: 1.5,
+  marginTop: "var(--space-3)",
+};
+const containedProjectsActionsStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "var(--space-2)",
+  marginTop: "var(--space-4)",
 };
 const modalHeaderStyle: React.CSSProperties = { fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "var(--space-2)" };
 const parentPathStyle: React.CSSProperties = { fontSize: "var(--text-sm)", color: "var(--text-muted)", marginBottom: "var(--space-3)", wordBreak: "break-all" };

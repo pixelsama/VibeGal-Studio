@@ -168,13 +168,15 @@ const overlayStyle: CSSProperties = {
   cursor: "default",
 };
 
-function menuStyle(window: MenuWindowTokens): CSSProperties {
+export function menuStyle(window: MenuWindowTokens): CSSProperties {
   return {
     position: "absolute",
     left: window.x,
     top: window.y,
     width: window.width,
     height: window.height,
+    maxWidth: `calc(100% - ${Math.max(0, window.x)}px)`,
+    maxHeight: `calc(100% - ${Math.max(0, window.y)}px)`,
     // 几何 token 语义 = 部件边框盒（与 Studio 拖拽 overlay 的选框一致）
     boxSizing: "border-box",
     minHeight: 0,

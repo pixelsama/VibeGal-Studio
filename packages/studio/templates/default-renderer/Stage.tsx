@@ -147,6 +147,14 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
     if (page === "settings") setSettings(runtime.settings.getSettings());
   };
 
+  const changeMenuPage = (page: PlayerMenuPage) => {
+    if (!runtime || hideControls || busy || confirmAction) return;
+    setNotice(null);
+    setMenuPage(page);
+    if (page === "save") void refreshSlots();
+    if (page === "settings") setSettings(runtime.settings.getSettings());
+  };
+
   const closeMenu = () => {
     if (busy || confirmAction) return;
     setMenuPage(null);
@@ -459,7 +467,7 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
           busy={busy}
           notice={notice}
           window={uiTokens.menuWindow}
-          onPageChange={(page) => openMenu(page)}
+          onPageChange={changeMenuPage}
           onClose={closeMenu}
         >
           {menuPage === "save" && (

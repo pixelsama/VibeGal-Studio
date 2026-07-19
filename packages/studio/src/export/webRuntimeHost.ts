@@ -87,6 +87,14 @@ export interface WebRuntimeBehaviorSmokeResult {
   media: "loaded" | "not-configured";
 }
 
+export function storyProgressFingerprint(state: NovelState): string {
+  return JSON.stringify({
+    ...state,
+    dialogue: state.dialogue ? { ...state.dialogue, typedLen: 0, fullyRevealed: false } : null,
+    narration: state.narration ? { ...state.narration, typedLen: 0, fullyRevealed: false } : null,
+  });
+}
+
 function browserStorage(): StorageLike | null {
   try {
     return typeof globalThis.localStorage === "undefined" ? null : globalThis.localStorage;
@@ -216,6 +224,32 @@ export function createWebStorageAdapter(
       await adapter.writeSettings(projectId, RuntimeSettingsRecordSchema.parse(settings));
     },
   };
+}
+
+export function resetWebRuntimeSmokeStorage(
+  projectId: string,
+  storage: StorageLike | null = browserStorage(),
+): void {
+  if (!storage) return;
+  const prefix = `vibegal:${projectId}`;
+  try {
+    const rawIndex = storage.getItem(`${prefix}:saveIndex`);
+    const slotIds = rawIndex == null ? [] : JSON.parse(rawIndex);
+    if (Array.isArray(slotIds)) {
+      for (const slotId of slotIds) {
+        if (typeof slotId === "string") storage.removeItem(`${prefix}:save:${slotId}`);
+      }
+    }
+    storage.removeItem(`${prefix}:saveIndex`);
+    storage.removeItem(`${prefix}:global`);
+    storage.removeItem(`${prefix}:settings`);
+  } catch {
+    // A blocked storage backend already falls back safely when the adapter is created.
+  }
+}
+
+export function runtimeStorageProjectId(projectId: string, smokeRequested: boolean): string {
+  return smokeRequested ? `${projectId}:__smoke__` : projectId;
 }
 
 export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRuntimePlayer {
@@ -519,10 +553,11 @@ async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokeP
   );
 
   await clickUiButton('[data-player-action="menu"]');
-  const beforeMenuInteraction = JSON.stringify(runtime.getState());
+  const beforeMenuInteraction = storyProgressFingerprint(runtime.getState());
   await clickUiButton('[data-menu-page="history"]');
-  if (JSON.stringify(runtime.getState()) !== beforeMenuInteraction) {
-    throw new Error("menu interaction advanced playback");
+  const afterMenuInteraction = storyProgressFingerprint(runtime.getState());
+  if (afterMenuInteraction !== beforeMenuInteraction) {
+    throw new Error(`menu interaction changed playback state: before=${beforeMenuInteraction}; after=${afterMenuInteraction}`);
   }
   await clickUiButton('[data-menu-page="save"]');
   await clickUiButton('[data-player-slot="manual-01"] [data-slot-action="save"]');
@@ -716,7 +751,15 @@ async function verifyDefaultPlayerLayouts(stage: HTMLElement, menuOpen: boolean)
           || rect.right > stageRect.right + 1
           || rect.bottom > stageRect.bottom + 1
         ) {
-          throw new Error(`player UI overflow at ${size.width}x${size.height}`);
+          const label = element.getAttribute("data-player-menu")
+            ?? element.getAttribute("data-ui-part")
+            ?? element.getAttribute("aria-label")
+            ?? element.tagName.toLowerCase();
+          throw new Error([
+            `player UI overflow at ${size.width}x${size.height}: ${label}`,
+            `stage=${formatRect(stageRect)}`,
+            `element=${formatRect(rect)}`,
+          ].join("; "));
         }
       }
       for (const button of stage.querySelectorAll<HTMLButtonElement>("button")) {
@@ -731,6 +774,10 @@ async function verifyDefaultPlayerLayouts(stage: HTMLElement, menuOpen: boolean)
     stage.style.height = originalHeight;
     await nextUiTurn();
   }
+}
+
+function formatRect(rect: DOMRect): string {
+  return `${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.right)},${Math.round(rect.bottom)}`;
 }
 
 function createWebRuntimeServices(options: {
@@ -849,11 +896,16 @@ export async function startVibeGalWebRuntime(rendererManifest: RendererManifest)
     throw new Error(`Renderer contract mismatch: ${gameManifest.contractVersion}`);
   }
   const content = await loadExportedContent(gameManifest.basePath || "./");
-  const storage = createWebStorageAdapter(gameManifest.projectId);
+  const smokeRequested = new URLSearchParams(window.location.search).get("vibegalSmoke") === "1";
+  const storageProjectId = runtimeStorageProjectId(gameManifest.projectId, smokeRequested);
+  if (smokeRequested && sessionStorage.getItem(UI_SMOKE_PHASE_KEY) == null) {
+    resetWebRuntimeSmokeStorage(storageProjectId);
+  }
+  const storage = createWebStorageAdapter(storageProjectId);
   const runtime = createWebRuntimePlayer({
     ...content,
     contentBase: joinBasePath(gameManifest.basePath || "./", "content"),
-    projectId: gameManifest.projectId,
+    projectId: storageProjectId,
     storage,
   });
   const rootElement = document.getElementById("root");
@@ -861,7 +913,7 @@ export async function startVibeGalWebRuntime(rendererManifest: RendererManifest)
   const root = createRoot(rootElement);
   const unsubscribe = mountRuntime(root, runtime, rendererManifest);
 
-  if (new URLSearchParams(window.location.search).get("vibegalSmoke") === "1") {
+  if (smokeRequested) {
     const marker = document.createElement("div");
     marker.hidden = true;
     marker.dataset.vibegalSmoke = "running";

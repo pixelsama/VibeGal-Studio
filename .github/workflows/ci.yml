@@ -5,26 +5,38 @@ on:
     branches: ["main"]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   app-frontend:
     name: Frontend & CLI scripts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -47,6 +59,9 @@ jobs:
       - name: Version consistency check
         run: pnpm run check:versions
 
+      - name: Documentation contract check
+        run: pnpm run check:doc-contract
+
       - name: Release smoke scripts
         run: pnpm smoke:release
 
@@ -61,21 +76,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
 
       - name: Rust test
         working-directory: packages/studio/src-tauri
@@ -86,14 +95,19 @@ jobs:
         run: cargo build --locked --bins
 
   rust-msrv:
-    name: Pure Cargo (Rust 1.77.2, locked/offline)
+    name: Pure Cargo (Rust 1.85.0, locked/offline)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 
       - name: Setup exact MSRV
-        uses: dtolnay/rust-toolchain@1.77.2
+        uses: dtolnay/rust-toolchain@1.85.0
 
       - name: Fetch locked dependencies
         run: cargo fetch --locked --manifest-path packages/studio/src-tauri/Cargo.toml
@@ -117,26 +131,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
-
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: pnpm tauri build
+        run: pnpm bundle
 
       - name: Stage installed CLI smoke artifact (macOS)
         if: runner.os == 'macOS'
@@ -204,10 +218,10 @@ jobs:
         run: |
           $stage = Join-Path $env:RUNNER_TEMP "installed-cli-smoke"
           Expand-Archive (Join-Path $env:RUNNER_TEMP "installed-cli-windows.zip") -DestinationPath $stage
-          $installDir = Join-Path $stage "VibeGal App"
           $installer = Join-Path $stage "VibeGal Installer.exe"
-          & $installer /S "/D=$installDir"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installProcess = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+          if ($installProcess.ExitCode -ne 0) { exit $installProcess.ExitCode }
+          $installDir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\VibeGal-Studio').InstallLocation.Trim('"')
           $cli = Join-Path $installDir "vibegal-cli.exe"
           $project = Join-Path $stage "Project With Spaces"
           Push-Location $env:RUNNER_TEMP
@@ -220,7 +234,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Setup Node for installed exporter smoke
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -234,19 +248,33 @@ jobs:
           cd "$RUNNER_TEMP"
           "$CLI" build "$PROJECT" --target web --out "$OUT" --format json
           "$CLI" smoke "$OUT" --target web --format json
+          DESKTOP_OUT="$RUNNER_TEMP/VibeGal Desktop With Spaces"
+          "$CLI" build "$PROJECT" --target desktop --runtime tauri --out "$DESKTOP_OUT" --format json
+          "$CLI" smoke "$DESKTOP_OUT" --target desktop --runtime tauri --format json
 
       - name: Build and smoke with installed CLI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $stage = Join-Path $env:RUNNER_TEMP "installed-cli-smoke"
-          $cli = Join-Path $stage "VibeGal App\vibegal-cli.exe"
+          $installDir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\VibeGal-Studio').InstallLocation.Trim('"')
+          $cli = Join-Path $installDir "vibegal-cli.exe"
           $project = Join-Path $stage "Project With Spaces"
           $outDir = Join-Path $env:RUNNER_TEMP "VibeGal Export With Spaces"
           Push-Location $env:RUNNER_TEMP
           & $cli build $project --target web --out $outDir --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $cli smoke $outDir --target web --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $desktopOut = Join-Path $env:RUNNER_TEMP "VibeGal Desktop With Spaces"
+          & $cli build $project --target desktop --runtime tauri --out $desktopOut --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $cli smoke $desktopOut --target desktop --runtime tauri --format json
           $exitCode = $LASTEXITCODE
           Pop-Location
           if ($exitCode -ne 0) { exit $exitCode }
+          $uninstaller = Get-ChildItem $installDir -Filter 'uninstall*.exe' | Select-Object -First 1
+          if ($uninstaller) {
+            $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru
+            if ($uninstallProcess.ExitCode -ne 0) { exit $uninstallProcess.ExitCode }
+          }

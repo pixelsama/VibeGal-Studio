@@ -4,12 +4,12 @@
 
 ## 安装前提
 - Node.js + pnpm
-- Rust + Cargo
+- Rust 1.85+ 与 Cargo
 - macOS 打包时（若需要）：对应 Xcode Command Line Tools
 - Windows 打包时：Windows 10+（需 WebView2 运行时，Windows 11 自带）+ Rust MSVC 工具链
 
 ## Windows 平台说明
-- `pnpm tauri build` 产出 NSIS 安装包（`packages/studio/src-tauri/target/release/bundle/nsis/`）。
+- `pnpm bundle` 在 Windows 产出 NSIS 安装包（`packages/studio/src-tauri/target/release/bundle/nsis/`）。
 - Windows 保留原生标题栏（`titleBarStyle: Overlay` 仅 macOS 生效），前端按平台做红绿灯避让。
 - 应用内「一键安装命令行工具」依赖 symlink，仅 macOS/Linux 提供；Windows 请在 设置 → 命令行工具 中复制随附的 `vibegal-cli.exe` 路径，把它所在目录手动加入 PATH 后使用。
 - symlink 相关的安全测试用例标注 `#[cfg(unix)]`，Windows 下运行 `cargo test` 时自动跳过。
@@ -21,12 +21,14 @@
 - 版本一致性校验：`pnpm run check:versions`
 - 发布前 smoke：`pnpm smoke:release`
 - 打包（未签名）：
-  - `pnpm tauri build`
+  - 当前平台自动选择：`pnpm bundle`
+  - Windows NSIS：`pnpm bundle:windows`
+  - macOS app + DMG：`pnpm bundle:macos`
 - 产物目录（默认）：
   - `packages/studio/src-tauri/target/release/bundle/`
 
 ## Contracts 与 CLI 发布门槛
-- exact MSRV：`cargo +1.77.2 check --locked --all-targets --manifest-path packages/studio/src-tauri/Cargo.toml`
+- exact MSRV：`cargo +1.85.0 check --locked --all-targets --manifest-path packages/studio/src-tauri/Cargo.toml`
 - 离线 Cargo：先 `cargo fetch --locked`，再运行 `CARGO_NET_OFFLINE=true cargo test --locked --manifest-path packages/studio/src-tauri/Cargo.toml`
 - `validate` 必须能从任意 cwd、无 Node 的 PATH 和无源码 checkout 环境运行。
 - Windows 上 `pnpm smoke:release` 检测到已安装的 MSVC Rust 工具链（`*-pc-windows-msvc`）时会自动通过 `RUSTUP_TOOLCHAIN` 切换；这避开了默认 windows-gnu 工具链缺 `dlltool.exe` 时依赖编译失败的问题。未安装 MSVC 工具链的环境保持默认行为。

@@ -29,4 +29,12 @@ describe("resolveAsset", () => {
     expect(convertFileSrc).toHaveBeenCalledWith("/Users/me/Game/content/assets/backgrounds/bg 1.png", "asset");
     expect(url).toBe("asset:///Users/me/Game/content/assets/backgrounds/bg 1.png");
   });
+
+  it("keeps relative export paths on the current Tauri custom protocol", () => {
+    const convertFileSrc = vi.fn((path: string) => `asset://${path}`);
+    globals.__TAURI_INTERNALS__ = { convertFileSrc };
+
+    expect(resolveAsset("./content", "assets/backgrounds/bg.png")).toBe("./content/assets/backgrounds/bg.png");
+    expect(convertFileSrc).not.toHaveBeenCalled();
+  });
 });
