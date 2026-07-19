@@ -10,6 +10,12 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true, // Tauri 依赖固定端口
+    watch: {
+      // Rust 构建产物目录：cargo 链接 exe 时文件被瞬时锁定，chokidar 去 watch
+      // 会在 Windows 上撞出 EBUSY 直接崩掉 beforeDevCommand；target/ 变动本来
+      // 也不需要触发前端刷新（src-tauri 源码由 cargo watch 负责重启）
+      ignored: ["**/src-tauri/target/**"],
+    },
   },
   build: {
     chunkSizeWarningLimit: 600,
