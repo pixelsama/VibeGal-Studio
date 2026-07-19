@@ -99,7 +99,7 @@ const project: ProjectData = {
   ],
 };
 
-describe("Preview 场景刷", () => {
+describe("Preview 场景快照", () => {
   beforeEach(() => {
     (globalThis as { window?: unknown }).window = {};
   });
@@ -112,12 +112,13 @@ describe("Preview 场景刷", () => {
 
     expect(html).toContain("剧情模式台词");
     expect(html).toContain("剧情播放");
-    expect(html).toContain("场景刷");
+    expect(html).toContain("场景快照");
+    expect(html).not.toContain("场景刷");
     expect(html).not.toContain("<select");
     expect(html).not.toContain("海平线上的第一缕光");
   });
 
-  it("场景刷模式：渲染 fixture 场景（内置第一个场景），场景下拉含内置面板与自定义 fixture", () => {
+  it("场景快照模式：渲染 fixture 场景（内置第一个场景），场景下拉含内置面板与自定义 fixture", () => {
     const html = renderToStaticMarkup(
       <Preview project={project} rendererId="default" initialPreviewMode="fixtures" />,
     );
@@ -134,7 +135,7 @@ describe("Preview 场景刷", () => {
     expect(html).toContain("sky");
   });
 
-  it("场景刷模式默认场景无 uiHint：渲染后 uiHint 全局保持 undefined", () => {
+  it("场景快照模式默认场景无 uiHint：渲染后 uiHint 全局保持 undefined", () => {
     renderToStaticMarkup(
       <Preview project={project} rendererId="default" initialPreviewMode="fixtures" />,
     );

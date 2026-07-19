@@ -1,19 +1,19 @@
 /**
  * 预览面板 —— 用引擎跑项目，挂载当前选中的渲染层。
  *
- * 顶部工具条提供两种模式（Spec 17 步骤 1）：
+ * 顶部工具条提供两种模式（Spec 17 步骤 1；Spec 19 §4.3 定稿文案）：
  * - 剧情播放：player 驱动，行为与此前一致；
- * - 场景刷：把渲染层挂载到 fixture 场景（内置 + 项目自定义），设计视角的
- *   即时预览，与 CLI renderer-snapshot 看的是同一组场景。
+ * - 场景快照：把渲染层挂载到 fixture 场景（内置 + 项目自定义），设计视角的
+ *   只读巡检，与 CLI renderer-snapshot 看的是同一组场景。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ProjectData } from "../../lib/types";
 import { RuntimeStateInspector } from "./RuntimeStateInspector";
 import { useProjectPlayer } from "./useProjectPlayer";
 import { useRendererComponent } from "./useRendererComponent";
 import { StageFrame } from "./StageFrame";
 import { SceneFixtureView, fixtureScenesForPreview, setFixtureUiHintGlobal } from "./SceneFixtureView";
-import { formatRendererDiagnostics, type RendererDiagnostic } from "../renderers/diagnostics";
+import { formatRendererDiagnostics } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
 import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
 import { RuntimeMediaOverlay } from "./RuntimeMediaOverlay";
@@ -23,12 +23,11 @@ type PreviewMode = "story" | "fixtures";
 interface Props {
   project: ProjectData;
   rendererId: string;
-  onRendererDiagnosticsChange?: (diagnostics: RendererDiagnostic[]) => void;
-  /** 初始模式，默认剧情播放；场景刷初始模式给测试与外观面板嵌入用。 */
+  /** 初始模式，默认剧情播放；场景快照初始模式给测试与外观面板嵌入用。 */
   initialPreviewMode?: PreviewMode;
 }
 
-export function Preview({ project, rendererId, onRendererDiagnosticsChange, initialPreviewMode = "story" }: Props) {
+export function Preview({ project, rendererId, initialPreviewMode = "story" }: Props) {
   const player = useProjectPlayer(project);
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
@@ -36,10 +35,6 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange, init
   const fixtureScenes = useMemo(() => fixtureScenesForPreview(project), [project]);
   const [fixtureSceneId, setFixtureSceneId] = useState<string | null>(null);
   const activeFixtureScene = fixtureScenes.find((scene) => scene.id === fixtureSceneId) ?? fixtureScenes[0] ?? null;
-
-  useEffect(() => {
-    onRendererDiagnosticsChange?.(loadDiagnostics);
-  }, [loadDiagnostics, onRendererDiagnosticsChange]);
 
   // uiHint 必须在渲染层重挂载之前写入全局（渲染层只在挂载初始化期读一次），
   // 因此所有模式/场景切换入口都先 setFixtureUiHintGlobal 再 setState。
@@ -94,7 +89,7 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange, init
             className={fixtureMode ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={showFixtureMode}
           >
-            场景刷
+            场景快照
           </button>
           {fixtureMode && (
             <select
@@ -120,8 +115,8 @@ export function Preview({ project, rendererId, onRendererDiagnosticsChange, init
           )}
         </div>
       </div>
-      {/* 场景刷模式下检视器显示 fixture state：场景刷是设计视角，侧栏本来
-          就是 state 检视器，隐藏反而丢掉对 fixture state 的核对面。 */}
+      {/* 场景快照模式下检视器显示 fixture state：场景快照是设计视角的只读巡检，
+          侧栏本来就是 state 检视器，隐藏反而丢掉对 fixture state 的核对面。 */}
       <RuntimeStateInspector state={fixtureMode ? activeFixtureScene.state : player.state} />
     </div>
   );

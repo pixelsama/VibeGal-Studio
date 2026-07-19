@@ -18,6 +18,31 @@ pub(crate) fn validate_meta_structure(meta: &serde_json::Value) -> Vec<ProjectIs
     )
 }
 
+/// 单 skin 收敛（Spec 19 §4.4）：uiSkins 保持 record 结构，不强制迁移、
+/// 不静默忽略；条目 > 1 时出 Warn 级 project issue 引导用户自行清理。
+/// 引擎只消费 `default`（缺省时回退第一个条目），多余条目不会被消费。
+pub(crate) fn validate_ui_skin_convergence(manifest: &serde_json::Value) -> Vec<ProjectIssue> {
+    let Some(skins) = manifest.get("uiSkins").and_then(|v| v.as_object()) else {
+        return vec![];
+    };
+    if skins.len() <= 1 {
+        return vec![];
+    }
+    vec![ProjectIssue {
+        severity: GraphIssueSeverity::Warn,
+        source: "manifest".to_string(),
+        code: "multiple_ui_skins".to_string(),
+        message: format!(
+            "manifest 登记了 {} 套外观资源（uiSkins）：多余的外观资源条目不会被消费（引擎只读取 default，缺省时回退第一个条目），请自行清理多余条目。",
+            skins.len()
+        ),
+        file: Some("content/manifest.json".to_string()),
+        json_path: Some("$.uiSkins".to_string()),
+        node_id: None,
+        edge_id: None,
+    }]
+}
+
 fn contract_project_issues(
     schema: contracts::ContractSchemaKind,
     value: &serde_json::Value,
@@ -52,4 +77,4 @@ pub(crate) fn graph_issue_to_project(issue: &GraphIssue, source: &str) -> Projec
     }
 }
 use super::super::contracts;
-use super::super::model::{GraphIssue, ProjectIssue};
+use super::super::model::{GraphIssue, GraphIssueSeverity, ProjectIssue};

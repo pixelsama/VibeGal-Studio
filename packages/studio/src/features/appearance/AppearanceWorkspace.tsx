@@ -11,8 +11,8 @@
  *   save_manifest 返回 null = revision 冲突（磁盘已被外部改写）：保留 draft 并
  *   锁死编辑，banner 提供「重新加载」。
  *
- * 布局：左侧 token 属性分组（TokenEditorPanel），右侧场景刷预览（宫格同屏 /
- * 单场景设计面）。渲染层加载与信任流程复用 Preview 的接法。
+ * 布局：左侧 token 属性分组（TokenEditorPanel + 贴图分组），右侧场景快照预览
+ * （宫格同屏 / 单场景设计面）。渲染层加载与信任流程复用 Preview 的接法。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Palette } from "lucide-react";
@@ -40,6 +40,7 @@ import {
   withUiSkinToken,
 } from "./appearanceTokens";
 import { TokenEditorPanel } from "./TokenEditorPanel";
+import { SkinAssetsSection } from "./SkinAssetsSection";
 import { StageDesignView } from "./StageDesignView";
 
 type AppearanceViewMode = "grid" | "single";
@@ -88,6 +89,11 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
   const skinId = useMemo(() => selectEditableSkinId(displayManifest), [displayManifest]);
   const skinTokens = useMemo(
     () => (skinId ? readSkinTokens(displayManifest, skinId) : {}),
+    [displayManifest, skinId],
+  );
+  // 生效 skin 的贴图槽位（Spec 19 §4.5「贴图」分组，只读展示）
+  const skinAssets = useMemo<Record<string, string>>(
+    () => ({ ...(skinId ? (displayManifest.uiSkins?.[skinId]?.assets ?? {}) : {}) }),
     [displayManifest, skinId],
   );
   const fontFamilies = useMemo(
@@ -284,8 +290,10 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
         ) : (
           <>
             <div style={skinHeaderStyle}>
-              编辑皮肤：<span style={skinIdStyle}>{skinId}</span>
-              {skinId !== "default" && <span style={skinFallbackHintStyle}>（无 default，回退到第一个条目）</span>}
+              {/* Spec 19 §4.5：把外观依附于界面风格的层级关系说破 */}
+              <div style={hierarchyNoteStyle}>调整当前界面风格（{rendererId}）暴露的外观参数</div>
+              {/* Spec 19 §3：「编辑皮肤：<id>」→「编辑外观」，单 skin 后 skin id 无展示价值 */}
+              <div style={skinTitleStyle}>编辑外观</div>
             </div>
             {selectedPart !== null && viewMode === "single" && (
               <div style={selectionBarStyle} data-selected-part={selectedPart}>
@@ -309,11 +317,13 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
               groups={selectedPart !== null && viewMode === "single" ? tokenGroupsForPart(selectedPart) : undefined}
               onEdit={handleEditToken}
             />
+            {/* Spec 19 §4.5：生效 skin 的贴图槽位（折叠高级区，V1 只读） */}
+            <SkinAssetsSection projectPath={project.path} assets={skinAssets} />
           </>
         )}
       </div>
 
-      {/* 左侧：场景刷预览（宫格 / 单场景） */}
+      {/* 左侧：场景快照预览（宫格 / 单场景） */}
       <div style={previewColumnStyle}>
         <div style={toolbarStyle}>
           <button
@@ -530,13 +540,16 @@ const selectionClearStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const skinIdStyle: React.CSSProperties = {
-  color: "var(--text-primary)",
-  fontWeight: 600,
+const hierarchyNoteStyle: React.CSSProperties = {
+  marginBottom: "var(--space-1)",
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
+  lineHeight: 1.5,
 };
 
-const skinFallbackHintStyle: React.CSSProperties = {
-  color: "var(--text-muted)",
+const skinTitleStyle: React.CSSProperties = {
+  color: "var(--text-primary)",
+  fontWeight: 600,
 };
 
 const conflictBannerStyle: React.CSSProperties = {

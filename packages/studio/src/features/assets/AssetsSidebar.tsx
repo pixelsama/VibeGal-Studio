@@ -19,7 +19,7 @@ export const SECTIONS: { id: AssetSection; label: string }[] = [
   { id: "cg", label: "CG" },
   { id: "video", label: "视频" },
   { id: "font", label: "字体" },
-  { id: "ui", label: "UI Skin" },
+  { id: "ui", label: "外观资源" },
   { id: "animation", label: "动画图集" },
 ];
 

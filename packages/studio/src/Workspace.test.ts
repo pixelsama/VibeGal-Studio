@@ -149,7 +149,7 @@ const project: ProjectData = {
 };
 
 describe("Workspace renderer chrome", () => {
-  it("shows the current renderer as read-only title bar text instead of a select", () => {
+  it("顶栏以「界面风格」选择器作为渲染层唯一切换入口（Spec 19 §4.2）", () => {
     const html = renderToStaticMarkup(createElement(Workspace, {
       project,
       location: { type: "workspace", workspace: "render" },
@@ -163,8 +163,57 @@ describe("Workspace renderer chrome", () => {
       onOpenSettings: () => {},
     }));
 
-    expect(html).toContain("当前渲染层");
-    expect(html).toContain("default");
+    expect(html).toContain("界面风格");
+    expect(html).not.toContain("当前渲染层");
+    expect(html).toContain('aria-label="界面风格"');
+    expect(html).toContain("<select");
+    expect(html).toContain(">default</option>");
+    expect(html).toContain(">mobile</option>");
+    // 选择器附近带 AI 生成引导（title 级）
+    expect(html).toContain("新界面风格可由 AI 在 renderers/ 目录下生成，出现后自动可选择");
+  });
+
+  it("预览工作区不再挂载渲染层侧栏与其管理按钮（Spec 19 §4.2）", () => {
+    const html = renderToStaticMarkup(createElement(Workspace, {
+      project,
+      location: { type: "workspace", workspace: "render" },
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      onOpenSettings: () => {},
+    }));
+
+    expect(html).not.toContain("渲染层列表");
+    expect(html).not.toContain("渲染层诊断");
+    expect(html).not.toContain(">新建</button>");
+    expect(html).not.toContain(">重命名</button>");
+  });
+
+  it("renderers/ 为空时选择器为空态并展示 AI 生成引导文案（Spec 19 §6）", () => {
+    const emptyProject: ProjectData = {
+      ...project,
+      meta: { ...project.meta, activeRendererId: "" },
+      rendererIds: [],
+    };
+    const html = renderToStaticMarkup(createElement(Workspace, {
+      project: emptyProject,
+      location: { type: "workspace", workspace: "render" },
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      onOpenSettings: () => {},
+    }));
+
+    expect(html).toContain("无界面风格");
+    expect(html).toContain("新界面风格可由 AI 在 renderers/ 目录下生成，出现后自动可选择");
     expect(html).not.toContain("<select");
   });
 
@@ -182,11 +231,12 @@ describe("Workspace renderer chrome", () => {
       onOpenSettings: () => {},
     }));
 
-    expect(html).toContain("渲染");
+    expect(html).toContain("预览");
     expect(html).toContain("脚本");
     expect(html).toContain("资产");
     expect(html).toContain("项目");
     expect(html).toContain("导出");
+    expect(html).not.toContain(">渲染<");
     expect(html).not.toContain(">Render<");
     expect(html).not.toContain(">Script<");
     expect(html).not.toContain(">Assets<");
@@ -217,7 +267,6 @@ describe("Workspace renderer chrome", () => {
     vi.stubGlobal("localStorage", {
       getItem: vi.fn((key: string) => key === SIDEBAR_PREFS_STORAGE_KEY
         ? JSON.stringify({
-          renderSidebarCollapsed: true,
           assetsSidebarCollapsed: true,
           scriptOutlineCollapsed: true,
         })
@@ -237,10 +286,6 @@ describe("Workspace renderer chrome", () => {
       onOpenSettings: () => {},
     };
 
-    const renderHtml = renderToStaticMarkup(createElement(Workspace, {
-      ...baseProps,
-      location: { type: "workspace", workspace: "render" },
-    }));
     const scriptHtml = renderToStaticMarkup(createElement(Workspace, {
       ...baseProps,
       location: { type: "script-graph" },
@@ -250,7 +295,6 @@ describe("Workspace renderer chrome", () => {
       location: { type: "workspace", workspace: "assets" },
     }));
 
-    expect(renderHtml).toContain('aria-label="展开渲染层"');
     expect(scriptHtml).toContain('data-outline-collapsed="true"');
     expect(assetsHtml).toContain('data-sidebar-collapsed="true"');
   });

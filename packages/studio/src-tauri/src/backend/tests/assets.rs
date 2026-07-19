@@ -532,6 +532,75 @@ fn validate_manifest_structure_clean_for_new_format() {
     assert!(issues.is_empty(), "新格式应无结构问题: {issues:?}");
 }
 
+// ── 单 skin 收敛：多套 uiSkins 出 Warn 级 project issue（Spec 19 §4.4） ──
+
+#[test]
+fn validate_ui_skin_convergence_flags_multiple_skins() {
+    let manifest = serde_json::json!({
+        "characters": {},
+        "backgrounds": {},
+        "audio": { "bgm": {}, "sfx": {}, "voice": {} },
+        "uiSkins": {
+            "default": { "assets": {} },
+            "classic": { "assets": { "frame": "assets/ui/classic/frame.png" } }
+        }
+    });
+    let issues = validate_ui_skin_convergence(&manifest);
+    assert_eq!(issues.len(), 1, "多套 uiSkins 应恰好产出一个 issue: {issues:?}");
+    assert_eq!(issues[0].severity, GraphIssueSeverity::Warn);
+    assert_eq!(issues[0].source, "manifest");
+    assert_eq!(issues[0].code, "multiple_ui_skins");
+    assert_eq!(issues[0].file.as_deref(), Some("content/manifest.json"));
+    assert_eq!(issues[0].json_path.as_deref(), Some("$.uiSkins"));
+    assert!(
+        issues[0].message.contains("多余的外观资源条目不会被消费"),
+        "issue 文案应说明多余条目不会被消费: {}",
+        issues[0].message
+    );
+}
+
+#[test]
+fn validate_ui_skin_convergence_clean_for_single_or_no_skin() {
+    let cases = vec![
+        serde_json::json!({ "uiSkins": { "default": { "assets": {} } } }),
+        serde_json::json!({ "uiSkins": {} }),
+        serde_json::json!({}),
+    ];
+    for manifest in cases {
+        let issues = validate_ui_skin_convergence(&manifest);
+        assert!(issues.is_empty(), "单 skin / 无 skin 不应出 issue: {issues:?}");
+    }
+}
+
+#[test]
+fn open_project_report_includes_multiple_ui_skins_warning() {
+    let dir = unique_temp_dir("report-multi-ui-skins");
+    write_asset_project(
+        &dir,
+        r#"{
+            "characters":{},
+            "backgrounds":{},
+            "audio":{"bgm":{},"sfx":{},"voice":{}},
+            "uiSkins":{
+                "default":{"assets":{}},
+                "classic":{"assets":{"frame":"assets/ui/classic/frame.png"}}
+            }
+        }"#,
+        &["assets/ui/classic/frame.png"],
+    );
+
+    let data = open_project_inner(dir.to_string_lossy().as_ref()).unwrap();
+    let report = data.project_report.expect("应有 project_report");
+    let issue = report
+        .project_issues
+        .iter()
+        .find(|issue| issue.code == "multiple_ui_skins")
+        .expect("多套 uiSkins 应进入 project_report");
+    assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+    assert_eq!(issue.source, "manifest");
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn open_project_aggregates_project_report() {
     let dir = unique_temp_dir("aggregate-report");

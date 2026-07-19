@@ -25,13 +25,11 @@ describe("sidebarPrefs", () => {
   it("reads existing sidebar preferences from app-level localStorage", () => {
     const storage = new MemoryStorage();
     storage.data.set(SIDEBAR_PREFS_STORAGE_KEY, JSON.stringify({
-      renderSidebarCollapsed: true,
       assetsSidebarCollapsed: false,
       scriptOutlineCollapsed: true,
     }));
 
     expect(loadSidebarPrefs(storage)).toEqual({
-      renderSidebarCollapsed: true,
       assetsSidebarCollapsed: false,
       scriptOutlineCollapsed: true,
     });
@@ -41,7 +39,6 @@ describe("sidebarPrefs", () => {
     const storage = new MemoryStorage();
 
     saveSidebarPrefs({
-      renderSidebarCollapsed: true,
       assetsSidebarCollapsed: true,
       scriptOutlineCollapsed: false,
     }, storage);
@@ -49,7 +46,6 @@ describe("sidebarPrefs", () => {
     expect(storage.setItem).toHaveBeenCalledWith(
       SIDEBAR_PREFS_STORAGE_KEY,
       JSON.stringify({
-        renderSidebarCollapsed: true,
         assetsSidebarCollapsed: true,
         scriptOutlineCollapsed: false,
       }),
@@ -59,18 +55,15 @@ describe("sidebarPrefs", () => {
   it("updates one sidebar preference without discarding the others", () => {
     const storage = new MemoryStorage();
     storage.data.set(SIDEBAR_PREFS_STORAGE_KEY, JSON.stringify({
-      renderSidebarCollapsed: false,
       assetsSidebarCollapsed: true,
       scriptOutlineCollapsed: false,
     }));
 
     expect(updateSidebarPref("scriptOutlineCollapsed", true, storage)).toEqual({
-      renderSidebarCollapsed: false,
       assetsSidebarCollapsed: true,
       scriptOutlineCollapsed: true,
     });
     expect(JSON.parse(storage.data.get(SIDEBAR_PREFS_STORAGE_KEY) ?? "{}")).toEqual({
-      renderSidebarCollapsed: false,
       assetsSidebarCollapsed: true,
       scriptOutlineCollapsed: true,
     });
@@ -95,7 +88,6 @@ describe("sidebarPrefs", () => {
 
     expect(loadSidebarPrefs(throwingStorage)).toEqual(DEFAULT_SIDEBAR_PREFS);
     expect(() => saveSidebarPrefs({
-      renderSidebarCollapsed: true,
       assetsSidebarCollapsed: false,
       scriptOutlineCollapsed: true,
     }, throwingStorage)).not.toThrow();

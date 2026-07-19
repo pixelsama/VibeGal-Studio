@@ -801,7 +801,7 @@ function ExtendedAssetRegistryEditor({
   if (section === "ui") {
     const entries = Object.entries(manifest.uiSkins ?? {});
     return (
-      <RegistryPanel title="UI Skin 登记" empty={entries.length === 0}>
+      <RegistryPanel title="外观资源登记" empty={entries.length === 0}>
         {entries.map(([id, skin]) => (
           <RegistryCard key={id} id={id} onDelete={() => onChange(removeUiSkin(manifest, id))} disabled={disabled}>
             <RegistryTextField label="名称" value={skin.name ?? ""} disabled={disabled} onChange={(name) => {
@@ -819,7 +819,7 @@ function ExtendedAssetRegistryEditor({
               }} />
             ))}
             {Object.keys(skin.assets ?? {}).length === 0 && (
-              <div style={registryEmptyTextStyle}>没有 UI 资源槽；导入或登记 UI 资源会创建 default 槽。</div>
+              <div style={registryEmptyTextStyle}>没有外观资源槽；导入或登记外观资源会创建 default 槽。</div>
             )}
           </RegistryCard>
         ))}

@@ -651,8 +651,22 @@ describe("read-only asset UI", () => {
     expect(html).toContain("CG");
     expect(html).toContain("视频");
     expect(html).toContain("字体");
-    expect(html).toContain("UI Skin");
+    expect(html).toContain("外观资源");
+    expect(html).not.toContain("UI Skin");
     expect(html).toContain("动画图集");
+  });
+
+  it("外观资源分类的导入按钮文案（Spec 19 §3）", () => {
+    const html = renderToStaticMarkup(createElement(AssetsToolbar, {
+      section: "ui",
+      search: "",
+      onSearch: () => {},
+      onImport: () => {},
+      count: 0,
+    }));
+
+    expect(html).toContain("导入外观资源");
+    expect(html).not.toContain("UI Skin");
   });
 
   it("shows import controls for extended asset sections", () => {

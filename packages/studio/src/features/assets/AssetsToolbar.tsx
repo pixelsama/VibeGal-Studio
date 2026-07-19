@@ -99,7 +99,7 @@ function sectionLabel(section: AssetSection): string {
     case "font":
       return "字体";
     case "ui":
-      return "UI Skin";
+      return "外观资源";
     case "animation":
       return "动画图集";
     default:

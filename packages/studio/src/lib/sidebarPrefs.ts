@@ -1,5 +1,4 @@
 export interface SidebarPrefs {
-  renderSidebarCollapsed: boolean;
   assetsSidebarCollapsed: boolean;
   scriptOutlineCollapsed: boolean;
 }
@@ -14,7 +13,6 @@ export interface SidebarPrefsStorage {
 export const SIDEBAR_PREFS_STORAGE_KEY = "vibegal.sidebarPrefs.v1";
 
 export const DEFAULT_SIDEBAR_PREFS: SidebarPrefs = {
-  renderSidebarCollapsed: false,
   assetsSidebarCollapsed: false,
   scriptOutlineCollapsed: false,
 };
@@ -70,7 +68,6 @@ function normalizeSidebarPrefs(value: unknown): SidebarPrefs {
 
   const maybePrefs = value as Partial<Record<SidebarPrefKey, unknown>>;
   return {
-    renderSidebarCollapsed: boolOrDefault(maybePrefs.renderSidebarCollapsed, DEFAULT_SIDEBAR_PREFS.renderSidebarCollapsed),
     assetsSidebarCollapsed: boolOrDefault(maybePrefs.assetsSidebarCollapsed, DEFAULT_SIDEBAR_PREFS.assetsSidebarCollapsed),
     scriptOutlineCollapsed: boolOrDefault(maybePrefs.scriptOutlineCollapsed, DEFAULT_SIDEBAR_PREFS.scriptOutlineCollapsed),
   };

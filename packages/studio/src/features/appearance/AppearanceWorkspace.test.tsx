@@ -19,6 +19,11 @@ vi.mock("../../lib/tauri", () => ({
   saveManifest: vi.fn(async () => ({ relPath: "content/manifest.json", mtimeMs: 1, size: 1 })),
 }));
 
+// 贴图缩略图走 convertFileSrc（asset: 协议），测试里换成可断言的 asset:// 前缀
+vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (path: string) => `asset://${path}`,
+}));
+
 vi.mock("../preview/useRendererComponent", async () => {
   const React = await import("react");
   return {
@@ -115,7 +120,9 @@ describe("AppearanceWorkspace", () => {
       <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />,
     );
 
-    expect(html).toContain("编辑皮肤");
+    // Spec 19 §3：「编辑皮肤：default」→「编辑外观」，skin id 不再展示
+    expect(html).toContain("编辑外观");
+    expect(html).not.toContain("编辑皮肤");
     for (const group of ["对话框", "名字框", "选项区", "选项按钮", "HUD", "菜单窗口", "舞台"]) {
       expect(html).toContain(group);
     }
@@ -126,14 +133,63 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("Test Serif");
   });
 
-  it("无 default skin 时编辑回退到的第一个条目（与渲染器消费规则一致）", () => {
+  it("顶部层级说明：点破外观依附于当前界面风格（Spec 19 §4.5）", () => {
+    const project = makeProject({
+      default: { name: "默认外观", assets: {}, tokens: {} },
+    });
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />,
+    );
+
+    expect(html).toContain("调整当前界面风格（default）暴露的外观参数");
+  });
+
+  it("贴图分组：展示生效 skin 的 assets 槽位（缩略图 + 槽位名 + 路径，只读）", () => {
+    const project = makeProject({
+      default: {
+        name: "默认外观",
+        assets: { frame: "assets/ui/default/frame.png" },
+        tokens: {},
+      },
+    });
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />,
+    );
+
+    expect(html).toContain('aria-label="贴图"');
+    expect(html).toContain("frame");
+    expect(html).toContain("assets/ui/default/frame.png");
+    // 图片槽位渲染缩略图（convertFileSrc → asset:// 前缀，相对 content 根解析）
+    expect(html).toContain("<img");
+    expect(html).toContain('src="asset:///tmp/fixture-project/content/assets/ui/default/frame.png"');
+    // 只读：不提供替换/编辑入口
+    expect(html).not.toContain("替换贴图");
+  });
+
+  it("贴图分组：皮肤无 assets 槽时显示空态并引导去资产页导入外观资源（Spec 19 §6）", () => {
+    const project = makeProject({
+      default: { name: "默认外观", assets: {}, tokens: {} },
+    });
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />,
+    );
+
+    expect(html).toContain('aria-label="贴图"');
+    expect(html).toContain("导入外观资源");
+  });
+
+  it("无 default skin 时编辑目标回退到第一个条目（与渲染器消费规则一致）", () => {
     const project = makeProject({ dark: { assets: {}, tokens: { "hud.visible": 0 } } });
     const html = renderToStaticMarkup(
       <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />,
     );
 
-    expect(html).toContain("dark");
-    expect(html).toContain("回退到第一个条目");
+    // 单 skin 收敛后 skin id 无展示价值：头部固定为「编辑外观」，回退条目照常可编辑
+    expect(html).toContain("编辑外观");
+    expect(html).not.toContain("编辑皮肤");
+    expect(html).not.toContain("回退到第一个条目");
+    // 回退条目（dark）的 token 照常进面板（hud.visible = 0 → HUD 分组可见）
+    expect(html).toContain("HUD");
   });
 
   it("单场景视图：渲染层声明 layout-parts-v1 时挂载拖拽 overlay", () => {

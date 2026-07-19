@@ -189,6 +189,8 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let node_issues = validate_node_contents(&graph, &nodes, &manifest);
     let manifest_issues = validate_manifest_structure(&manifest);
     let meta_issues = validate_meta_structure(&meta_json);
+    // 单 skin 收敛（Spec 19 §4.4）：多套 uiSkins 只提示不迁移
+    let ui_skin_issues = validate_ui_skin_convergence(&manifest);
     let mut project_issues: Vec<ProjectIssue> = vec![];
     project_issues.extend(
         graph_report
@@ -205,6 +207,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     );
     project_issues.extend(manifest_issues);
     project_issues.extend(meta_issues);
+    project_issues.extend(ui_skin_issues);
     project_issues.extend(fixture_issues);
     project_issues.sort_by(|a, b| {
         (
@@ -262,7 +265,7 @@ use super::super::model::{
 };
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_manifest_structure,
-    validate_meta_structure, validate_node_contents,
+    validate_meta_structure, validate_node_contents, validate_ui_skin_convergence,
 };
 use super::{legacy_chapter_layout_issues, load_project_graph_data};
 use std::collections::HashMap;
