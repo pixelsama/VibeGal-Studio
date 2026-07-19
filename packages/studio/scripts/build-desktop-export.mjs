@@ -129,7 +129,7 @@ async function packageTauri({ webDist, outDir, productName, playerPath }) {
     const resourcesDir = path.join(bundle, "Contents/Resources");
     await mkdir(macosDir, { recursive: true });
     await mkdir(resourcesDir, { recursive: true });
-    const bundledExecutable = path.join(bundle, executable);
+    const bundledExecutable = path.join(outDir, executable);
     await cp(playerPath, bundledExecutable);
     await chmod(bundledExecutable, 0o755);
     await cp(webDist, path.join(resourcesDir, "game"), { recursive: true });

@@ -3988,12 +3988,41 @@ fn smoke_browser_executable() -> Option<String> {
         }
     }
     candidates.into_iter().find(|candidate| {
-        Command::new(candidate)
-            .arg("--version")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
+        browser_candidate_works(candidate)
     })
+}
+
+/// 用 --version 探测浏览器可执行文件是否可用。
+///
+/// 不能用 `.output()`：它会等管道 EOF，而 Chrome/Edge 可能留下
+/// crashpad 之类的孙进程继承管道写端，EOF 永远不到（Windows CI 上
+/// 曾因此挂死整个 smoke）。这里改用 null stdio + 轮询退出状态，
+/// 整个探测有 10 秒上限。
+fn browser_candidate_works(candidate: &str) -> bool {
+    let Ok(mut child) = Command::new(candidate)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+            Err(_) => return false,
+        }
+    }
 }
 
 fn percent_decode_url_path(value: &str) -> Option<String> {
@@ -4207,6 +4236,7 @@ fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
         Arc::clone(&report),
         Arc::clone(&stop),
     );
+    eprintln!("[vibegal-smoke] behavior server listening on {address}");
     let profile = std::env::temp_dir().join(format!(
         "vibegal-smoke-browser-{}",
         SystemTime::now()
@@ -4240,25 +4270,32 @@ fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
         browser_command.stderr(std::process::Stdio::null());
     }
     let child = browser_command.spawn();
+    eprintln!("[vibegal-smoke] behavior browser launched: {browser}");
     let browser_result = match child {
         Ok(mut process) => {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             loop {
                 if let Some(callback) = report.lock().ok().and_then(|slot| slot.clone()) {
+                    eprintln!(
+                        "[vibegal-smoke] behavior report received: status={}",
+                        callback.status
+                    );
                     let _ = process.kill();
                     let _ = process.wait();
                     break Ok(callback);
                 }
                 match process.try_wait() {
                     Ok(Some(status)) => {
+                        eprintln!("[vibegal-smoke] behavior browser exited early: {status}");
                         break Err(std::io::Error::other(format!(
                             "Chrome/Chromium behavior smoke exited before reporting ({status})"
-                        )))
+                        )));
                     }
                     Ok(None) if std::time::Instant::now() < deadline => {
                         std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                     Ok(None) => {
+                        eprintln!("[vibegal-smoke] behavior browser timed out, killing");
                         let _ = process.kill();
                         let _ = process.wait();
                         break Err(std::io::Error::new(
