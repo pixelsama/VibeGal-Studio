@@ -6724,6 +6724,21 @@ mod tests {
             let web_dist = desktop_manifest["webDist"].as_str().unwrap();
             assert!(out_dir.join(web_dist).join("game.manifest.json").is_file());
             assert!(out_dir.join(web_dist).join("runtime/bundle.js").is_file());
+            #[cfg(target_os = "macos")]
+            if runtime == DesktopRuntime::Tauri {
+                // macOS 的 Tauri 轻量导出必须是真正的 .app bundle，
+                // 否则 WebKit/NSBundle 在裸二进制下直接崩溃。
+                let product = desktop_manifest["productName"].as_str().unwrap();
+                let bundle = out_dir.join(format!("{product}.app"));
+                let plist = std::fs::read_to_string(bundle.join("Contents/Info.plist")).unwrap();
+                assert!(plist.contains("<string>APPL</string>"));
+                assert!(bundle.join("Contents/MacOS").join(product).is_file());
+                assert!(bundle.join("Contents/Resources/game/index.html").is_file());
+                assert_eq!(
+                    web_dist,
+                    format!("{product}.app/Contents/Resources/game")
+                );
+            }
         }
         std::env::remove_var("VIBEGAL_ELECTRON_DIST");
         std::env::remove_var("VIBEGAL_TAURI_PLAYER");

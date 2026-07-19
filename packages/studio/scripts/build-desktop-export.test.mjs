@@ -50,11 +50,25 @@ test("tauri runtime packages the exact web dist with a reusable player", async (
     assert.equal(output.runtime, "tauri");
     assert.equal(output.mode, "lightweight");
     await access(path.join(outDir, output.executable));
-    assert.equal(await readFile(path.join(outDir, "game/runtime/bundle.js"), "utf8"), "export {};");
     const manifest = JSON.parse(await readFile(path.join(outDir, "desktop.manifest.json"), "utf8"));
     assert.equal(manifest.runtime, "tauri");
     assert.equal(manifest.mode, "lightweight");
-    assert.equal(manifest.webDist, "game");
+    if (process.platform === "darwin") {
+      // macOS 导出为真正的 .app bundle：裸二进制下 WebKit/NSBundle 会崩溃。
+      assert.equal(output.executable, "桌面测试游戏.app/Contents/MacOS/桌面测试游戏");
+      assert.equal(manifest.webDist, "桌面测试游戏.app/Contents/Resources/game");
+      const plist = await readFile(path.join(outDir, "桌面测试游戏.app/Contents/Info.plist"), "utf8");
+      assert.match(plist, /<key>CFBundleExecutable<\/key>\s*<string>桌面测试游戏<\/string>/);
+      assert.match(plist, /<key>CFBundlePackageType<\/key>\s*<string>APPL<\/string>/);
+      await access(path.join(outDir, manifest.webDist, "game.manifest.json"));
+      assert.equal(
+        await readFile(path.join(outDir, manifest.webDist, "runtime/bundle.js"), "utf8"),
+        "export {};",
+      );
+    } else {
+      assert.equal(await readFile(path.join(outDir, "game/runtime/bundle.js"), "utf8"), "export {};");
+      assert.equal(manifest.webDist, "game");
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

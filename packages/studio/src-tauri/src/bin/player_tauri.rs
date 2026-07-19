@@ -1,8 +1,9 @@
 //! Generic lightweight desktop player.
 //!
 //! The executable is compiled once and placed next to a `game/` directory by
-//! the desktop export worker. It serves that immutable Web export through a
-//! private protocol so no per-game Rust compilation is required.
+//! the desktop export worker (on macOS inside a real `.app` bundle, with the
+//! game under `Contents/Resources/game`). It serves that immutable Web export
+//! through a private protocol so no per-game Rust compilation is required.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -21,10 +22,28 @@ fn game_root() -> Result<PathBuf, String> {
     }
     let executable =
         std::env::current_exe().map_err(|error| format!("无法定位轻量 Player: {error}"))?;
-    let parent = executable
-        .parent()
-        .ok_or_else(|| "无法定位轻量 Player 所在目录".to_string())?;
-    Ok(parent.join("game"))
+    Ok(game_root_for_executable(&executable))
+}
+
+/// 游戏目录约定：
+/// 1. 可执行文件旁的 `game/`（Windows/Linux 导出布局）；
+/// 2. macOS `.app` 布局下 `Contents/MacOS/<bin>` 对应的 `Contents/Resources/game`。
+/// 两者都不存在时返回可执行文件旁的 `game/`，让后续 index.html 检查报错。
+fn game_root_for_executable(executable: &Path) -> PathBuf {
+    let Some(parent) = executable.parent() else {
+        return PathBuf::from("game");
+    };
+    let sibling = parent.join("game");
+    if sibling.is_dir() {
+        return sibling;
+    }
+    if let Some(contents) = parent.parent() {
+        let resources = contents.join("Resources").join("game");
+        if resources.is_dir() {
+            return resources;
+        }
+    }
+    sibling
 }
 
 fn decode_uri_path(uri_path: &str) -> Option<PathBuf> {
@@ -233,5 +252,38 @@ mod tests {
         );
         assert_eq!(content_type(Path::new("content/bgm.mp3")), "audio/mpeg");
         assert_eq!(content_type(Path::new("content/movie.webm")), "video/webm");
+    }
+
+    #[test]
+    fn game_root_prefers_sibling_then_macos_resources() {
+        let base = std::env::temp_dir().join(format!(
+            "vibegal-player-game-root-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        // Windows/Linux 布局：<exe>/game
+        let flat = base.join("flat");
+        let flat_game = flat.join("game");
+        fs::create_dir_all(&flat_game).unwrap();
+        let flat_exe = flat.join("player");
+        assert_eq!(game_root_for_executable(&flat_exe), flat_game);
+
+        // macOS .app 布局：Contents/MacOS/<bin> → Contents/Resources/game
+        let bundle = base.join("bundle").join("Game.app");
+        let resources_game = bundle.join("Contents/Resources/game");
+        fs::create_dir_all(&resources_game).unwrap();
+        let bundle_exe = bundle.join("Contents/MacOS/Game");
+        assert_eq!(game_root_for_executable(&bundle_exe), resources_game);
+
+        // 都没有时回落到可执行文件旁的 game/（由 index.html 检查报错）
+        let bare = base.join("bare");
+        fs::create_dir_all(&bare).unwrap();
+        let bare_exe = bare.join("player");
+        assert_eq!(game_root_for_executable(&bare_exe), bare.join("game"));
+
+        let _ = fs::remove_dir_all(&base);
     }
 }

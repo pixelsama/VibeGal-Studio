@@ -5,7 +5,7 @@
  * Both shells receive the exact same already-built Web distribution. The
  * worker only adds a desktop host; it never recompiles renderer/runtime code.
  */
-import { cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -55,10 +55,57 @@ async function writeDesktopManifest(outDir, manifest) {
 
 function hostExecutableName(productName, runtime) {
   if (process.platform === "win32") return `${productName}.exe`;
-  if (process.platform === "darwin" && runtime === "electron") {
-    return `${productName}.app/Contents/MacOS/Electron`;
+  if (process.platform === "darwin") {
+    if (runtime === "electron") return `${productName}.app/Contents/MacOS/Electron`;
+    return `${productName}.app/Contents/MacOS/${productName}`;
   }
   return productName;
+}
+
+function xmlEscape(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function bundleIdentifier(productName) {
+  const slug = String(productName || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `com.vibegal.${slug || "game"}`;
+}
+
+function macAppInfoPlist(productName) {
+  const name = xmlEscape(productName);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>${name}</string>
+  <key>CFBundleIdentifier</key>
+  <string>${bundleIdentifier(productName)}</string>
+  <key>CFBundleName</key>
+  <string>${name}</string>
+  <key>CFBundleDisplayName</key>
+  <string>${name}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>
+`;
 }
 
 async function packageTauri({ webDist, outDir, productName, playerPath }) {
@@ -73,10 +120,34 @@ async function packageTauri({ webDist, outDir, productName, playerPath }) {
 
   const executable = hostExecutableName(productName, "tauri");
   await mkdir(outDir, { recursive: true });
+  if (process.platform === "darwin") {
+    // macOS 上必须是真正的 .app bundle：CoreFoundation/WebKit 的 bundle
+    // 机制（wry webview_version 的 NSBundle 调用）在裸可执行文件下会
+    // 直接崩溃，而且 .app 本来就是 macOS 应用的标准分发形态。
+    const bundle = path.join(outDir, `${productName}.app`);
+    const macosDir = path.join(bundle, "Contents/MacOS");
+    const resourcesDir = path.join(bundle, "Contents/Resources");
+    await mkdir(macosDir, { recursive: true });
+    await mkdir(resourcesDir, { recursive: true });
+    const bundledExecutable = path.join(bundle, executable);
+    await cp(playerPath, bundledExecutable);
+    await chmod(bundledExecutable, 0o755);
+    await cp(webDist, path.join(resourcesDir, "game"), { recursive: true });
+    await writeFile(path.join(bundle, "Contents/Info.plist"), macAppInfoPlist(productName));
+    const webDistRelative = `${productName}.app/Contents/Resources/game`;
+    await writeDesktopManifest(outDir, {
+      target: "desktop",
+      runtime: "tauri",
+      mode: "lightweight",
+      productName,
+      executable,
+      webDist: webDistRelative,
+    });
+    return { executable, artifacts: [`${productName}.app`, "desktop.manifest.json"] };
+  }
   await cp(playerPath, path.join(outDir, executable));
   await cp(webDist, path.join(outDir, "game"), { recursive: true });
   if (process.platform !== "win32") {
-    const { chmod } = await import("node:fs/promises");
     await chmod(path.join(outDir, executable), 0o755);
   }
   await writeDesktopManifest(outDir, {
