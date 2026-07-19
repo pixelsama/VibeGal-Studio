@@ -4062,6 +4062,37 @@ fn parse_browser_smoke_callback(target: &str) -> Option<BrowserSmokeReport> {
     })
 }
 
+/// 启动 smoke 本地文件服务器的 accept 线程。
+///
+/// 每个连接都在独立线程中处理：accept 线程绝不能被单个连接阻塞，否则
+/// 浏览器打开的空闲/preconnect 连接会把 accept 线程永远卡在 read 上，
+/// 进而让 join 在主线程永久阻塞（Windows CI 上曾复现为 job 跑满 6 小时超时）。
+fn spawn_smoke_server(
+    listener: std::net::TcpListener,
+    root: PathBuf,
+    report: std::sync::Arc<std::sync::Mutex<Option<BrowserSmokeReport>>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    use std::sync::atomic::Ordering;
+    std::thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    let connection_root = root.clone();
+                    let connection_report = std::sync::Arc::clone(&report);
+                    std::thread::spawn(move || {
+                        serve_smoke_connection(stream, &connection_root, &connection_report);
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(_) => break,
+            }
+        }
+    })
+}
+
 fn serve_smoke_connection(
     mut stream: std::net::TcpStream,
     root: &Path,
@@ -4072,6 +4103,8 @@ fn serve_smoke_connection(
     if stream.set_nonblocking(false).is_err() {
         return;
     }
+    // 空闲连接（例如浏览器 preconnect）不允许把处理线程永远卡住。
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(10)));
     let mut request = [0_u8; 8192];
     let Ok(read) = stream.read(&mut request) else {
         return;
@@ -4168,20 +4201,12 @@ fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
         .map_err(|error| smoke_error("smoke_server_failed", error.to_string(), "behavior", None))?;
     let stop = Arc::new(AtomicBool::new(false));
     let report = Arc::new(Mutex::new(None::<BrowserSmokeReport>));
-    let server_stop = Arc::clone(&stop);
-    let server_report = Arc::clone(&report);
-    let root = dist_dir.to_path_buf();
-    let server = std::thread::spawn(move || {
-        while !server_stop.load(Ordering::Relaxed) {
-            match listener.accept() {
-                Ok((stream, _)) => serve_smoke_connection(stream, &root, &server_report),
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-                Err(_) => break,
-            }
-        }
-    });
+    let server = spawn_smoke_server(
+        listener,
+        dist_dir.to_path_buf(),
+        Arc::clone(&report),
+        Arc::clone(&stop),
+    );
     let profile = std::env::temp_dir().join(format!(
         "vibegal-smoke-browser-{}",
         SystemTime::now()
@@ -7262,6 +7287,55 @@ mod tests {
         let body = &response[body_start..];
         assert_eq!(body.len(), payload.len());
         assert!(body.iter().all(|byte| *byte == b'x'));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn browser_smoke_server_is_not_blocked_by_idle_connections() {
+        use std::io::Read;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        let root = unique_temp_dir("smoke-idle-connection");
+        write_text(&root.join("index.html"), "ok-body");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let report = Arc::new(Mutex::new(None));
+        let server = spawn_smoke_server(
+            listener,
+            root.clone(),
+            Arc::clone(&report),
+            Arc::clone(&stop),
+        );
+
+        // 浏览器 preconnect 式的空闲连接：只建立连接，不发送任何数据。
+        let _idle = std::net::TcpStream::connect(address).unwrap();
+
+        // 真实请求必须仍然能被及时处理，而不是排在空闲连接后面干等。
+        let mut client = std::net::TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).unwrap();
+        assert!(
+            response.windows(7).any(|window| window == b"ok-body"),
+            "real request must be served while an idle connection is open"
+        );
+
+        // 停止服务器必须即刻完成，不能被空闲连接拖住。
+        stop.store(true, Ordering::Relaxed);
+        let started = std::time::Instant::now();
+        server.join().unwrap();
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "server shutdown must not block on idle connections"
+        );
         let _ = fs::remove_dir_all(root);
     }
 

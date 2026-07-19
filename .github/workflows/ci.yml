@@ -229,6 +229,7 @@ jobs:
   installed-cli-smoke:
     name: Installed CLI without source (${{ matrix.os }})
     needs: desktop-bundle
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -291,6 +292,19 @@ jobs:
           DESKTOP_OUT="$RUNNER_TEMP/VibeGal Desktop With Spaces"
           "$CLI" build "$PROJECT" --target desktop --runtime tauri --out "$DESKTOP_OUT" --format json
           "$CLI" smoke "$DESKTOP_OUT" --target desktop --runtime tauri --format json
+
+      - name: Collect macOS player crash reports on failure
+        if: failure() && runner.os == 'macOS'
+        run: |
+          echo "== newest DiagnosticReports =="
+          ls -lt "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | head -8 || true
+          for report in $(ls -t "$HOME/Library/Logs/DiagnosticReports/"*.ips 2>/dev/null | head -2); do
+            echo "== $report =="
+            head -c 8000 "$report" || true
+            echo
+          done
+          echo "== unified log (last 10m, crash-related) =="
+          log show --last 10m --style compact --predicate 'subsystem == "com.apple.WebKit" OR processImagePath CONTAINS[c] "Desktop With Spaces" OR senderImagePath CONTAINS[c] "Desktop With Spaces"' 2>/dev/null | tail -80 || true
 
       - name: Build and smoke with installed CLI (Windows)
         if: runner.os == 'Windows'
