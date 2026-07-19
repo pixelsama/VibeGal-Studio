@@ -4,13 +4,12 @@
  * 与 check-schema-drift.mjs 同思路：重新生成 → 逐字节比对 → 不一致则失败。
  */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 const tracked = "packages/studio/src-tauri/generated/engine-types/engine.d.ts";
-const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+const normalizedSource = (file) => readFileSync(file, "utf8").replace(/\r/g, "");
 
 const tempDir = mkdtempSync(path.join(tmpdir(), "vibegal-engine-types-drift-"));
 const regenerated = path.join(tempDir, "engine.d.ts");
@@ -21,7 +20,7 @@ try {
     regenerated,
   ], { stdio: "inherit" });
 
-  if (sha256(tracked) !== sha256(regenerated)) {
+  if (normalizedSource(tracked) !== normalizedSource(regenerated)) {
     process.stderr.write(
       `${tracked} 与 packages/engine/src/rendererPublic.ts 当前导出不一致。\n`
         + "请运行 node packages/studio/scripts/generate-engine-types.mjs 重新生成并提交。\n",

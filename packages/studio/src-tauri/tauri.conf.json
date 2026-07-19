@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build && node scripts/prepare-web-exporter.mjs",
     "beforeBundleCommand": "node scripts/prepare-cli-sidecar.mjs"
   },
   "app": {

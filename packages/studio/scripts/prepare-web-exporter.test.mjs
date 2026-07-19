@@ -27,6 +27,12 @@ test("Tauri bundles the standalone exporter without flattening its directories",
     "player/",
     "the precompiled lightweight player must be available to the bundled CLI",
   );
+  assert.match(
+    config.build.beforeBuildCommand,
+    /prepare-web-exporter\.mjs/,
+    "the exporter resource must exist before Tauri validates bundle resources",
+  );
+  await access(path.join(studioRoot, "src-tauri/resources/exporter/README.md"));
 });
 
 test("lightweight player starts with one hidden bootstrap window", async () => {

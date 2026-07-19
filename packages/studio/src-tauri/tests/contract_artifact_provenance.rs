@@ -27,6 +27,14 @@ fn build_contract_verifier_rejects_tampered_artifact_and_source() {
 
     verify_contracts(&generated, &contracts).expect("tracked contracts must be self-consistent");
 
+    for artifact in CONTRACT_ARTIFACTS {
+        let path = generated.join(artifact);
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(&path, content.replace('\n', "\r\n")).unwrap();
+    }
+    verify_contracts(&generated, &contracts)
+        .expect("CRLF checkouts must preserve contract provenance");
+
     fs::write(generated.join("graph.schema.json"), b"{}\n").unwrap();
     assert!(verify_contracts(&generated, &contracts)
         .unwrap_err()

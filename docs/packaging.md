@@ -4,7 +4,7 @@
 
 ## 安装前提
 - Node.js + pnpm
-- Rust 1.85+ 与 Cargo
+- Rust 1.88+ 与 Cargo
 - macOS 打包时（若需要）：对应 Xcode Command Line Tools
 - Windows 打包时：Windows 10+（需 WebView2 运行时，Windows 11 自带）+ Rust MSVC 工具链
 
@@ -28,7 +28,7 @@
   - `packages/studio/src-tauri/target/release/bundle/`
 
 ## Contracts 与 CLI 发布门槛
-- exact MSRV：`cargo +1.85.0 check --locked --all-targets --manifest-path packages/studio/src-tauri/Cargo.toml`
+- exact MSRV：`cargo +1.88.0 check --locked --all-targets --manifest-path packages/studio/src-tauri/Cargo.toml`
 - 离线 Cargo：先 `cargo fetch --locked`，再运行 `CARGO_NET_OFFLINE=true cargo test --locked --manifest-path packages/studio/src-tauri/Cargo.toml`
 - `validate` 必须能从任意 cwd、无 Node 的 PATH 和无源码 checkout 环境运行。
 - Windows 上 `pnpm smoke:release` 检测到已安装的 MSVC Rust 工具链（`*-pc-windows-msvc`）时会自动通过 `RUSTUP_TOOLCHAIN` 切换；这避开了默认 windows-gnu 工具链缺 `dlltool.exe` 时依赖编译失败的问题。未安装 MSVC 工具链的环境保持默认行为。

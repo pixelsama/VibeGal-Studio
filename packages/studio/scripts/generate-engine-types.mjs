@@ -158,7 +158,10 @@ export function generateEngineTypesSource() {
 
   const seen = new Set();
   const chunks = [];
-  for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+  const exports = checker.getExportsOfModule(moduleSymbol).sort((left, right) => (
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+  ));
+  for (const exported of exports) {
     if (exported.name === "default" || seen.has(exported.name)) continue;
     seen.add(exported.name);
     const sym = (exported.flags & ts.SymbolFlags.Alias) !== 0
@@ -189,7 +192,10 @@ export function generateEngineTypesSource() {
     "// React 类型由 .galstudio/types/react.d.ts（最小 shim）提供。",
     'import type { ComponentType } from "react";',
     "",
-    chunks.map((chunk) => chunk.replaceAll("export declare ", "export ").replace(/^/gm, "  ")).join("\n\n"),
+    chunks.map((chunk) => chunk
+      .replace(/\r/g, "")
+      .replaceAll("export declare ", "export ")
+      .replace(/^/gm, "  ")).join("\n\n"),
     "",
     "}",
     "",
@@ -197,7 +203,7 @@ export function generateEngineTypesSource() {
     '  export * from "@vibegal/engine";',
     "}",
     "",
-  ].join("\n");
+  ].join("\n").replace(/\r/g, "").replace(/[ \t]+$/gm, "");
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

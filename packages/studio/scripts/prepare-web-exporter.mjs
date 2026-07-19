@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -48,6 +48,10 @@ function platformEsbuildPackage() {
 export function prepareWebExporter(outDir = parseOutArg(process.argv.slice(2))) {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
+  writeFileSync(
+    path.join(outDir, "README.md"),
+    "# Generated Exporter Resource\n\nThis directory is populated by `scripts/prepare-web-exporter.mjs` before a Tauri build.\nThe tracked placeholder keeps direct Cargo checks valid in a clean checkout.\n",
+  );
 
   const copies = [
     [path.join(studioRoot, "package.json"), "packages/studio/package.json"],

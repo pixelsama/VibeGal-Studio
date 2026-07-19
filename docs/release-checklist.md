@@ -9,7 +9,7 @@
 - [ ] 代码已通过 `cargo build`（`packages/studio/src-tauri`）
 - [ ] `pnpm run check:versions` 成功
 - [ ] `pnpm run check:schemas` 成功（schema 无漂移）
-- [ ] Rust `1.85.0` 下 `cargo check --locked --all-targets` 成功
+- [ ] Rust `1.88.0` 下 `cargo check --locked --all-targets` 成功
 - [ ] `cargo fetch --locked` 后，`CARGO_NET_OFFLINE=true cargo test --locked` 成功
 - [ ] `git status --short` 干净（除本次更改外）
 

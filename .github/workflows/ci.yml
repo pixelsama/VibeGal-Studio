@@ -95,7 +95,7 @@ jobs:
         run: cargo build --locked --bins
 
   rust-msrv:
-    name: Pure Cargo (Rust 1.85.0, locked/offline)
+    name: Pure Cargo (Rust 1.88.0, locked/offline)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -107,7 +107,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 
       - name: Setup exact MSRV
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@1.88.0
 
       - name: Fetch locked dependencies
         run: cargo fetch --locked --manifest-path packages/studio/src-tauri/Cargo.toml

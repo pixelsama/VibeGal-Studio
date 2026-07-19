@@ -78,7 +78,7 @@ fn verify_hash(
     let expected = expected
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| format!("{message}: missing hash"))?;
-    let actual = sha256_file(path)?;
+    let actual = sha256_text_file(path)?;
     if actual == expected {
         Ok(())
     } else {
@@ -109,12 +109,6 @@ fn read_json(path: &Path) -> Result<serde_json::Value, String> {
         .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
-    let bytes =
-        std::fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
-}
-
 fn verify_source_hash(
     path: &Path,
     expected: Option<&serde_json::Value>,
@@ -132,8 +126,8 @@ fn verify_source_hash(
 }
 
 /// Mirrors `hashTextFile` in packages/contracts/scripts/generate-contracts.ts:
-/// contract sources are hashed after normalizing CRLF to LF, so Windows
-/// checkouts (autocrlf) produce the same digest as LF platforms.
+/// contract text files are hashed after normalizing all carriage returns, so
+/// Windows checkouts (autocrlf) produce the same digest as LF platforms.
 fn sha256_text_file(path: &Path) -> Result<String, String> {
     let bytes =
         std::fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
@@ -142,11 +136,10 @@ fn sha256_text_file(path: &Path) -> Result<String, String> {
 
 fn normalize_lf(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
-    for (index, &byte) in bytes.iter().enumerate() {
-        if byte == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
-            continue;
+    for &byte in bytes {
+        if byte != b'\r' {
+            out.push(byte);
         }
-        out.push(byte);
     }
     out
 }
