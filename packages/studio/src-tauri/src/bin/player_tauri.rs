@@ -149,10 +149,20 @@ fn read_window_metadata(root: &Path) -> (String, f64, f64) {
     (title, width, height)
 }
 
-fn player_background_throttling_policy(
-    smoke: bool,
-) -> Option<tauri::utils::config::BackgroundThrottlingPolicy> {
-    smoke.then_some(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
+#[derive(Debug, PartialEq)]
+struct PlayerWindowPolicy {
+    visible: bool,
+    background_throttling: Option<tauri::utils::config::BackgroundThrottlingPolicy>,
+}
+
+fn player_window_policy(smoke: bool, macos: bool) -> PlayerWindowPolicy {
+    PlayerWindowPolicy {
+        // A fully hidden WKWebView clamps JavaScript timers to roughly one tick per second even
+        // with inactive scheduling disabled. Keep the macOS smoke window visible and active.
+        visible: !smoke || macos,
+        background_throttling: smoke
+            .then_some(tauri::utils::config::BackgroundThrottlingPolicy::Disabled),
+    }
 }
 
 /// smoke 模式下（仅 macOS）安装最小原生崩溃处理器：播放器若在原生层
@@ -255,14 +265,15 @@ fn main() {
             let url = format!("vibegal://game/index.html{query}")
                 .parse()
                 .map_err(|error| format!("invalid player URL: {error}"))?;
+            let window_policy = player_window_policy(smoke, cfg!(target_os = "macos"));
             let mut builder =
                 WebviewWindowBuilder::new(app, "game", WebviewUrl::CustomProtocol(url))
                     .title(title)
                     .inner_size(width, height)
                     .min_inner_size(960.0, 540.0)
                     .resizable(true)
-                    .visible(!smoke);
-            if let Some(policy) = player_background_throttling_policy(smoke) {
+                    .visible(window_policy.visible);
+            if let Some(policy) = window_policy.background_throttling {
                 builder = builder.background_throttling(policy);
             }
             builder.build()?;
@@ -313,12 +324,20 @@ mod tests {
     }
 
     #[test]
-    fn smoke_disables_background_throttling_for_hidden_webview() {
+    fn smoke_window_policy_keeps_macos_webview_visible_and_active() {
+        let macos = player_window_policy(true, true);
+        assert!(macos.visible);
         assert_eq!(
-            player_background_throttling_policy(true),
+            macos.background_throttling,
             Some(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         );
-        assert_eq!(player_background_throttling_policy(false), None);
+
+        let other = player_window_policy(true, false);
+        assert!(!other.visible);
+
+        let normal = player_window_policy(false, true);
+        assert!(normal.visible);
+        assert_eq!(normal.background_throttling, None);
     }
 
     #[test]
