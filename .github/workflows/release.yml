@@ -3,12 +3,21 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to build and publish
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -18,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Install Linux desktop dependencies
         run: |
@@ -41,8 +52,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify tag and project versions
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: pnpm check:versions
 
       - name: Run release quality gates
@@ -77,6 +86,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -145,7 +156,7 @@ jobs:
           PROJECT="$RUNNER_TEMP/Project With Spaces"
           mkdir -p "$MOUNT" "$INSTALL"
           ditto examples/sample-novel "$PROJECT"
-          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
+          hdiutil attach "$DMG" -acceptlicense -nobrowse -readonly -mountpoint "$MOUNT"
           ditto "$MOUNT/VibeGal-Studio.app" "$INSTALL/VibeGal-Studio.app"
           hdiutil detach "$MOUNT"
           CLI="$INSTALL/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli"
@@ -185,9 +196,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           PRERELEASE=""
-          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then PRERELEASE="--prerelease"; fi
-          gh release create "$GITHUB_REF_NAME" release-assets/* \
+          if [[ "$RELEASE_TAG" == *-* ]]; then PRERELEASE="--prerelease"; fi
+          gh release create "$RELEASE_TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "VibeGal-Studio $GITHUB_REF_NAME" \
+            --title "VibeGal-Studio $RELEASE_TAG" \
             --generate-notes \
             $PRERELEASE
