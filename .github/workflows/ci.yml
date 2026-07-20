@@ -91,22 +91,20 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # macOS 腿上补跑 CLI 脚本测试（如 build-desktop-export），
+      # Rust 测试会拉起 node worker（esbuild/typescript），必须装好依赖。
+      # macOS 腿上额外补跑 CLI 脚本测试（如 build-desktop-export），
       # 覆盖按平台分支的打包夹具；前端 vitest 仍只在 Ubuntu 跑。
-      - name: Setup pnpm (macOS)
-        if: runner.os == 'macOS'
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      - name: Setup Node (macOS)
-        if: runner.os == 'macOS'
+      - name: Setup Node
         uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install deps (macOS)
-        if: runner.os == 'macOS'
+      - name: Install deps
         run: pnpm install --frozen-lockfile
 
       - name: CLI script tests (macOS)
@@ -139,6 +137,20 @@ jobs:
 
       - name: Fetch locked dependencies
         run: cargo fetch --locked --manifest-path packages/studio/src-tauri/Cargo.toml
+
+      # cargo 步骤保持 offline；node 依赖只用于测试拉起的 worker（esbuild/typescript）。
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
 
       - name: Check all targets offline
         env:
