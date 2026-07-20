@@ -149,6 +149,12 @@ fn read_window_metadata(root: &Path) -> (String, f64, f64) {
     (title, width, height)
 }
 
+fn player_background_throttling_policy(
+    smoke: bool,
+) -> Option<tauri::utils::config::BackgroundThrottlingPolicy> {
+    smoke.then_some(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
+}
+
 /// smoke 模式下（仅 macOS）安装最小原生崩溃处理器：播放器若在原生层
 /// 崩溃（SIGSEGV/SIGBUS/SIGABRT/SIGTRAP），先把 `backtrace_symbols_fd`
 /// 符号化堆栈写进 stderr（CLI smoke 会把 stderr 尾部带进
@@ -249,13 +255,17 @@ fn main() {
             let url = format!("vibegal://game/index.html{query}")
                 .parse()
                 .map_err(|error| format!("invalid player URL: {error}"))?;
-            WebviewWindowBuilder::new(app, "game", WebviewUrl::CustomProtocol(url))
-                .title(title)
-                .inner_size(width, height)
-                .min_inner_size(960.0, 540.0)
-                .resizable(true)
-                .visible(!smoke)
-                .build()?;
+            let mut builder =
+                WebviewWindowBuilder::new(app, "game", WebviewUrl::CustomProtocol(url))
+                    .title(title)
+                    .inner_size(width, height)
+                    .min_inner_size(960.0, 540.0)
+                    .resizable(true)
+                    .visible(!smoke);
+            if let Some(policy) = player_background_throttling_policy(smoke) {
+                builder = builder.background_throttling(policy);
+            }
+            builder.build()?;
             if let Some(bootstrap) = app.get_webview_window("main") {
                 bootstrap.close()?;
             }
@@ -300,6 +310,15 @@ mod tests {
         );
         assert_eq!(content_type(Path::new("content/bgm.mp3")), "audio/mpeg");
         assert_eq!(content_type(Path::new("content/movie.webm")), "video/webm");
+    }
+
+    #[test]
+    fn smoke_disables_background_throttling_for_hidden_webview() {
+        assert_eq!(
+            player_background_throttling_policy(true),
+            Some(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
+        );
+        assert_eq!(player_background_throttling_policy(false), None);
     }
 
     #[test]
