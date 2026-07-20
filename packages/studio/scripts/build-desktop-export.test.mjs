@@ -66,10 +66,32 @@ test("electron runtime packages the exact web dist with the bundled chromium she
     const webDist = await createWebDist(root);
     const electronDist = path.join(root, "electron-dist");
     const outDir = path.join(root, "desktop-out");
-    await mkdir(path.join(electronDist, "resources"), { recursive: true });
-    const electronExecutable = process.platform === "win32" ? "electron.exe" : "electron";
-    await writeFile(path.join(electronDist, electronExecutable), "fake-electron");
-    await writeFile(path.join(electronDist, "resources/default_app.asar"), "default-app");
+    if (process.platform === "darwin") {
+      // macOS 的 Electron 运行时是完整的 .app bundle 结构，
+      // 打包逻辑会整体复制 Electron.app 并改名。
+      const bundle = path.join(electronDist, "Electron.app");
+      await mkdir(path.join(bundle, "Contents/MacOS"), { recursive: true });
+      await mkdir(path.join(bundle, "Contents/Resources"), { recursive: true });
+      await writeFile(path.join(bundle, "Contents/MacOS/Electron"), "fake-electron");
+      await writeFile(path.join(bundle, "Contents/Resources/default_app.asar"), "default-app");
+      await writeFile(path.join(bundle, "Contents/Info.plist"), [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<plist version="1.0">',
+        "<dict>",
+        "  <key>CFBundleName</key>",
+        "  <string>Electron</string>",
+        "  <key>CFBundleDisplayName</key>",
+        "  <string>Electron</string>",
+        "</dict>",
+        "</plist>",
+        "",
+      ].join("\n"));
+    } else {
+      await mkdir(path.join(electronDist, "resources"), { recursive: true });
+      const electronExecutable = process.platform === "win32" ? "electron.exe" : "electron";
+      await writeFile(path.join(electronDist, electronExecutable), "fake-electron");
+      await writeFile(path.join(electronDist, "resources/default_app.asar"), "default-app");
+    }
 
     const result = runWorker([
       "--runtime", "electron",
@@ -86,12 +108,19 @@ test("electron runtime packages the exact web dist with the bundled chromium she
     assert.equal(output.runtime, "electron");
     assert.equal(output.mode, "compatible");
     await access(path.join(outDir, output.executable));
-    const mainSource = await readFile(path.join(outDir, "resources/app/main.cjs"), "utf8");
+    const appResources = process.platform === "darwin"
+      ? path.join(outDir, "桌面测试游戏.app/Contents/Resources/app")
+      : path.join(outDir, "resources/app");
+    const mainSource = await readFile(path.join(appResources, "main.cjs"), "utf8");
     assert.match(mainSource, /let mainWindow;/, "the Electron window must stay strongly referenced");
     assert.match(mainSource, /vibegal:\/\/game/, "the player should use a stable local origin");
     assert.match(mainSource, /contentType\(file\)/, "protocol responses should preserve JavaScript and media MIME types");
     assert.match(mainSource, /registerFileProtocol\("vibegal"/, "local files must be served as protocol file responses");
-    assert.equal(await readFile(path.join(outDir, "resources/app/game/runtime/bundle.js"), "utf8"), "export {};");
+    assert.equal(await readFile(path.join(appResources, "game/runtime/bundle.js"), "utf8"), "export {};");
+    if (process.platform === "darwin") {
+      const plist = await readFile(path.join(outDir, "桌面测试游戏.app/Contents/Info.plist"), "utf8");
+      assert.match(plist, /<string>桌面测试游戏<\/string>/, "the macOS bundle should be rebranded to the product name");
+    }
     const manifest = JSON.parse(await readFile(path.join(outDir, "desktop.manifest.json"), "utf8"));
     assert.equal(manifest.runtime, "electron");
     assert.equal(manifest.mode, "compatible");

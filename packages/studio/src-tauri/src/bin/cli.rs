@@ -3502,7 +3502,20 @@ fn serve_snapshot_connection(
 struct SnapshotSceneRun {
     png_exists: bool,
     timed_out: bool,
+    timeout_secs: u64,
     spawn_error: Option<String>,
+}
+
+fn snapshot_browser_timeout() -> std::time::Duration {
+    // 慢机器/CI 上 headless Chrome 截图可能超过默认 45s，
+    // 可通过 VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS 调高。
+    const DEFAULT_SECS: u64 = 45;
+    let secs = std::env::var("VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(DEFAULT_SECS);
+    std::time::Duration::from_secs(secs)
 }
 
 fn run_snapshot_browser_scene(
@@ -3541,21 +3554,33 @@ fn run_snapshot_browser_scene(
     } else {
         command.stderr(std::process::Stdio::null());
     }
+    let timeout = snapshot_browser_timeout();
     let result = match command.spawn() {
         Ok(mut process) => {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+            let deadline = std::time::Instant::now() + timeout;
             let mut timed_out = false;
+            // 部分平台/版本的 headless Chrome 写完截图后进程不退出
+            // （本机 Chrome 150 macOS 复现：PNG 已生成但进程挂起 90s+）。
+            // 截图文件出现即视为成功，给浏览器短暂优雅退出窗口后直接结束进程。
+            let mut png_seen_at: Option<std::time::Instant> = None;
             loop {
                 match process.try_wait() {
                     Ok(Some(_)) => break,
-                    Ok(None) if std::time::Instant::now() < deadline => {
-                        std::thread::sleep(std::time::Duration::from_millis(50));
-                    }
                     Ok(None) => {
-                        timed_out = true;
-                        let _ = process.kill();
-                        let _ = process.wait();
-                        break;
+                        if png_path.is_file() {
+                            let seen_at = png_seen_at.get_or_insert_with(std::time::Instant::now);
+                            if seen_at.elapsed() >= std::time::Duration::from_millis(1500) {
+                                let _ = process.kill();
+                                let _ = process.wait();
+                                break;
+                            }
+                        } else if std::time::Instant::now() >= deadline {
+                            timed_out = true;
+                            let _ = process.kill();
+                            let _ = process.wait();
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                     Err(_) => break,
                 }
@@ -3563,12 +3588,14 @@ fn run_snapshot_browser_scene(
             SnapshotSceneRun {
                 png_exists: png_path.is_file(),
                 timed_out,
+                timeout_secs: timeout.as_secs(),
                 spawn_error: None,
             }
         }
         Err(error) => SnapshotSceneRun {
             png_exists: false,
             timed_out: false,
+            timeout_secs: timeout.as_secs(),
             spawn_error: Some(error.to_string()),
         },
     };
@@ -3598,7 +3625,10 @@ fn classify_snapshot_scene(
         return result("error", Some(format!("启动浏览器失败: {spawn_error}")));
     }
     if run.timed_out {
-        return result("error", Some("浏览器截图超时（45s）".to_string()));
+        return result(
+            "error",
+            Some(format!("浏览器截图超时（{}s）", run.timeout_secs)),
+        );
     }
     if !run.png_exists {
         return result("error", Some("浏览器未生成截图".to_string()));
@@ -6526,16 +6556,43 @@ mod tests {
         let dir = unique_temp_dir("cli-build-desktop-runtimes");
         make_exportable_project(&dir);
         let electron_dist = dir.join("fake-electron");
-        let electron_executable = if cfg!(windows) {
-            "electron.exe"
+        if cfg!(target_os = "macos") {
+            // macOS 的 Electron 运行时是完整的 .app bundle 结构，
+            // 打包逻辑会整体复制 Electron.app 并改名。
+            write_text(
+                &electron_dist.join("Electron.app/Contents/MacOS/Electron"),
+                "fake electron",
+            );
+            write_text(
+                &electron_dist.join("Electron.app/Contents/Resources/default_app.asar"),
+                "fake default app",
+            );
+            write_text(
+                &electron_dist.join("Electron.app/Contents/Info.plist"),
+                concat!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+                    "<plist version=\"1.0\">\n",
+                    "<dict>\n",
+                    "    <key>CFBundleName</key>\n",
+                    "    <string>Electron</string>\n",
+                    "    <key>CFBundleDisplayName</key>\n",
+                    "    <string>Electron</string>\n",
+                    "</dict>\n",
+                    "</plist>\n",
+                ),
+            );
         } else {
-            "electron"
-        };
-        write_text(&electron_dist.join(electron_executable), "fake electron");
-        write_text(
-            &electron_dist.join("resources/default_app.asar"),
-            "fake default app",
-        );
+            let electron_executable = if cfg!(windows) {
+                "electron.exe"
+            } else {
+                "electron"
+            };
+            write_text(&electron_dist.join(electron_executable), "fake electron");
+            write_text(
+                &electron_dist.join("resources/default_app.asar"),
+                "fake default app",
+            );
+        }
         let tauri_player = dir.join(tauri_player_executable_name());
         write_text(&tauri_player, "fake tauri player");
 
@@ -6783,6 +6840,20 @@ mod tests {
 
         assert!(parse_snapshot_page_callback("/snapshot.html?scene=dialogue").is_none());
         assert!(parse_snapshot_page_callback("/__vibegal_snapshot_result__?status=ok").is_none());
+    }
+
+    #[test]
+    fn snapshot_browser_timeout_defaults_to_45s_and_honors_env_override() {
+        std::env::remove_var("VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS");
+        assert_eq!(snapshot_browser_timeout().as_secs(), 45);
+        std::env::set_var("VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS", "120");
+        assert_eq!(snapshot_browser_timeout().as_secs(), 120);
+        // 非法值（0、非数字）回退到默认 45s
+        std::env::set_var("VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS", "0");
+        assert_eq!(snapshot_browser_timeout().as_secs(), 45);
+        std::env::set_var("VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS", "not-a-number");
+        assert_eq!(snapshot_browser_timeout().as_secs(), 45);
+        std::env::remove_var("VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS");
     }
 
     #[test]
