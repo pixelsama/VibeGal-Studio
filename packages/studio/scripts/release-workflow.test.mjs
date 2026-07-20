@@ -13,6 +13,6 @@ test("release workflow can retry an immutable tag and accept the DMG license", a
   assert.match(source, /workflow_dispatch:\s*\n\s*inputs:\s*\n\s*release_tag:/);
   assert.match(source, /RELEASE_TAG: \$\{\{ inputs\.release_tag \|\| github\.ref_name \}\}/);
   assert.match(source, /ref: \$\{\{ env\.RELEASE_TAG \}\}/);
-  assert.match(source, /hdiutil attach "\$DMG" -acceptlicense -nobrowse -readonly -mountpoint "\$MOUNT"/);
+  assert.match(source, /printf 'Y\\n' \| hdiutil attach "\$DMG" -nobrowse -readonly -mountpoint "\$MOUNT"/);
   assert.match(source, /gh release create "\$RELEASE_TAG"/);
 });

@@ -156,7 +156,7 @@ jobs:
           PROJECT="$RUNNER_TEMP/Project With Spaces"
           mkdir -p "$MOUNT" "$INSTALL"
           ditto examples/sample-novel "$PROJECT"
-          hdiutil attach "$DMG" -acceptlicense -nobrowse -readonly -mountpoint "$MOUNT"
+          printf 'Y\n' | hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
           ditto "$MOUNT/VibeGal-Studio.app" "$INSTALL/VibeGal-Studio.app"
           hdiutil detach "$MOUNT"
           CLI="$INSTALL/VibeGal-Studio.app/Contents/Resources/bin/vibegal-cli"
