@@ -1,0 +1,60 @@
+{
+  "scenes": [
+    {
+      "id": "dialogue",
+      "title": "对话"
+    },
+    {
+      "id": "narration",
+      "title": "旁白"
+    },
+    {
+      "id": "choice",
+      "title": "选项"
+    },
+    {
+      "id": "sprites",
+      "title": "多立绘"
+    },
+    {
+      "id": "save",
+      "title": "存档"
+    },
+    {
+      "id": "history",
+      "title": "历史"
+    },
+    {
+      "id": "settings",
+      "title": "设置"
+    },
+    {
+      "id": "gallery-cg",
+      "title": "CG 画廊"
+    },
+    {
+      "id": "gallery-replay",
+      "title": "场景回放"
+    },
+    {
+      "id": "gallery-music",
+      "title": "音乐室"
+    },
+    {
+      "id": "gallery-endings",
+      "title": "结局列表"
+    },
+    {
+      "id": "title",
+      "title": "标题画面"
+    },
+    {
+      "id": "dawn-reunion",
+      "title": "黎明重逢"
+    }
+  ],
+  "stage": {
+    "width": 1280,
+    "height": 720
+  }
+}
