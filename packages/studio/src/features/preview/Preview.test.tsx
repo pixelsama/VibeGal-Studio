@@ -135,11 +135,11 @@ describe("Preview 场景快照", () => {
     expect(html).toContain("sky");
   });
 
-  it("场景快照模式默认场景无 uiHint：渲染后 uiHint 全局保持 undefined", () => {
+  it("场景快照模式默认场景带 story 语义 uiHint（Spec 21：剧情 fixture 不卡标题门）", () => {
     renderToStaticMarkup(
       <Preview project={project} rendererId="default" initialPreviewMode="fixtures" />,
     );
     const target = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
-    expect(target.__VIBEGAL_FIXTURE_UI__).toBeUndefined();
+    expect(target.__VIBEGAL_FIXTURE_UI__).toEqual({ screen: "story" });
   });
 });

@@ -27,5 +27,20 @@
       "path": "assets/cg/smoke_ocean.svg",
       "name": "海上黎明"
     }
+  },
+  "uiSkins": {
+    "default": {
+      "name": "默认皮肤",
+      "assets": {
+        "titleBackground": "ocean_dawn",
+        "titleBgm": "bgm_main"
+      },
+      "tokens": {
+        "titleScreen.titleColor": "#ff6f9f",
+        "titleScreen.titleFontSize": 48,
+        "titleScreen.buttonRadius": 999,
+        "titleScreen.buttonFontSize": 17
+      }
+    }
   }
 }

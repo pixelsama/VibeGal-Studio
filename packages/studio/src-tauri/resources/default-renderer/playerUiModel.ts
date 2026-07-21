@@ -40,6 +40,9 @@ export type FixtureUiPanelId =
   | "gallery-music"
   | "gallery-endings";
 
+/** 标题门初始屏（Spec 21 第 4 节）：title = 标题画面；story = 直接呈现剧情。 */
+export type TitleGateScreen = "title" | "story";
+
 const FIXTURE_UI_PANEL_PAGES: Record<FixtureUiPanelId, PlayerMenuPage> = {
   save: "save",
   history: "history",
@@ -50,17 +53,41 @@ const FIXTURE_UI_PANEL_PAGES: Record<FixtureUiPanelId, PlayerMenuPage> = {
   "gallery-endings": "endings",
 };
 
+/** 结构化读取一次 uiHint 全局（SSR / 非浏览器环境安全返回 undefined）。 */
+function readFixtureUiHint(): { panel?: unknown; screen?: unknown } | undefined {
+  if (typeof window === "undefined") return undefined;
+  const hint = (window as { __VIBEGAL_FIXTURE_UI__?: unknown }).__VIBEGAL_FIXTURE_UI__;
+  if (!hint || typeof hint !== "object") return undefined;
+  return hint as { panel?: unknown; screen?: unknown };
+}
+
+function fixtureUiHintMenuPage(hint: { panel?: unknown } | undefined): PlayerMenuPage | null {
+  const panel = hint?.panel;
+  if (typeof panel !== "string") return null;
+  return (FIXTURE_UI_PANEL_PAGES as Record<string, PlayerMenuPage>)[panel] ?? null;
+}
+
 /**
  * 读取一次 uiHint（仅在挂载时调用）：无该全局、结构非法或 panel 未知时返回 null，
  * 此时行为与现状完全一致。SSR / 非浏览器环境下安全返回 null。
  */
 export function readFixtureUiHintMenuPage(): PlayerMenuPage | null {
-  if (typeof window === "undefined") return null;
-  const hint = (window as { __VIBEGAL_FIXTURE_UI__?: unknown }).__VIBEGAL_FIXTURE_UI__;
-  if (!hint || typeof hint !== "object") return null;
-  const panel = (hint as { panel?: unknown }).panel;
-  if (typeof panel !== "string") return null;
-  return (FIXTURE_UI_PANEL_PAGES as Record<string, PlayerMenuPage>)[panel] ?? null;
+  return fixtureUiHintMenuPage(readFixtureUiHint());
+}
+
+/**
+ * 标题门初始屏判定（Spec 21 第 4 节语义表，仅在挂载时调用一次）：
+ * - 全局不存在（真实启动）→ "title"；
+ * - `{ screen: "title" }` → "title"；
+ * - `{ screen: "story" }` 或携带合法 panel → "story"（panel 语义蕴含 story）；
+ * - 其它非法结构 → "title"（按真实启动退化）。
+ */
+export function readFixtureUiHintScreen(): TitleGateScreen {
+  const hint = readFixtureUiHint();
+  if (hint?.screen === "title") return "title";
+  if (hint?.screen === "story") return "story";
+  if (fixtureUiHintMenuPage(hint) !== null) return "story";
+  return "title";
 }
 
 export interface PlayerSlotView {
@@ -112,6 +139,25 @@ export function buildPlayerSlots(summaries: SaveSlotSummary[]): PlayerSlotView[]
       summary,
     };
   });
+}
+
+/**
+ * 「继续游戏」的存档选择策略（Spec 21 §5 定点）：取 updatedAt 最新的槽位直进，
+ * 含 auto/quick 槽——auto 槽按节点持续写，最新槽即"上次玩到的位置"。
+ * updatedAt 是 ISO 时间串，字典序即时间序；空列表返回 null（按钮禁用）。
+ */
+export function pickContinueSlot(summaries: SaveSlotSummary[]): SaveSlotSummary | null {
+  let latest: SaveSlotSummary | null = null;
+  for (const summary of summaries) {
+    if (latest === null || summary.updatedAt > latest.updatedAt) latest = summary;
+  }
+  return latest;
+}
+
+/** 存档时间的展示格式（标题页「继续游戏」副标题）：ISO → "YYYY-MM-DD HH:mm"（UTC 口径，跨时区确定性）。 */
+export function formatSlotTime(updatedAt: string): string {
+  const normalized = updatedAt.slice(0, 16).replace("T", " ");
+  return normalized || updatedAt;
 }
 
 export function createCurrentSavePreview(state: NovelState): SavePreview {

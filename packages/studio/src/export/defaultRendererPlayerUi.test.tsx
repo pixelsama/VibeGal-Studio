@@ -11,10 +11,11 @@ import {
 import { PlayerHud } from "../../src-tauri/resources/default-renderer/PlayerHud";
 import { EndingsPanel, GalleryPanel, MusicRoomPanel, ReplayPanel } from "../../src-tauri/resources/default-renderer/GalleryPanels";
 import { HistoryPanel } from "../../src-tauri/resources/default-renderer/HistoryPanel";
-import { PlayerMenu, menuStyle } from "../../src-tauri/resources/default-renderer/PlayerMenu";
+import { PlayerMenu, SystemPanel, menuStyle } from "../../src-tauri/resources/default-renderer/PlayerMenu";
 import { RuntimeSettingsPanel } from "../../src-tauri/resources/default-renderer/RuntimeSettingsPanel";
 import { SaveLoadPanel } from "../../src-tauri/resources/default-renderer/SaveLoadPanel";
 import { Stage } from "../../src-tauri/resources/default-renderer/Stage";
+import { TitleScreen } from "../../src-tauri/resources/default-renderer/TitleScreen";
 import { DEFAULT_UI_TOKENS } from "../../src-tauri/resources/default-renderer/useUiTokens";
 import {
   MANUAL_SLOT_IDS,
@@ -22,8 +23,12 @@ import {
   PlayerUiController,
   buildPlayerSlots,
   createCurrentSavePreview,
+  formatSlotTime,
+  pickContinueSlot,
+  readFixtureUiHintScreen,
   runtimeErrorDetails,
   isPlayerShortcutTarget,
+  type TitleGateScreen,
 } from "../../src-tauri/resources/default-renderer/playerUiModel";
 
 function runtime(): RuntimeServices {
@@ -314,27 +319,138 @@ describe("default renderer player UI", () => {
   });
 
   it("rendersTheCompleteStageThroughContractV1Props", () => {
-    const services = runtime();
-    const html = renderToStaticMarkup(
-      <Stage
-        state={createInitialState()}
-        manifest={{ characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } }}
-        contentBase="./content"
-        stage={{ width: 1280, height: 720 }}
-        controls={{
-          advance: vi.fn(),
-          choose: vi.fn(),
-          setAutoPlay: vi.fn(),
-          setSkipMode: vi.fn(),
-          rollbackTo: vi.fn(),
-          restart: vi.fn(),
+    const globalScope = globalThis as { window?: unknown };
+    // Spec 21：无 uiHint 全局 = 真实启动 = 标题门；剧情 UI 断言注入 story hint
+    globalScope.window = { __VIBEGAL_FIXTURE_UI__: { screen: "story" } };
+    try {
+      const services = runtime();
+      const html = renderToStaticMarkup(
+        <Stage
+          state={createInitialState()}
+          manifest={{ characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } }}
+          contentBase="./content"
+          stage={{ width: 1280, height: 720 }}
+          controls={{
+            advance: vi.fn(),
+            choose: vi.fn(),
+            setAutoPlay: vi.fn(),
+            setSkipMode: vi.fn(),
+            rollbackTo: vi.fn(),
+            restart: vi.fn(),
+          }}
+          runtime={services}
+        />,
+      );
+
+      expect(html).toContain('data-player-stage="true"');
+      expect(html).toContain('data-player-action="quick-save"');
+      expect(html).not.toContain("存档 / 读档");
+    } finally {
+      delete globalScope.window;
+    }
+  });
+});
+
+describe("title screen（Spec 21）", () => {
+  it("readFixtureUiHintScreen 按语义表判定初始屏", () => {
+    const globalScope = globalThis as { window?: unknown };
+    const cases: Array<[unknown, TitleGateScreen]> = [
+      [undefined, "title"], // 全局不存在 = 真实启动
+      [{ screen: "title" }, "title"],
+      [{ screen: "story" }, "story"],
+      [{ panel: "save" }, "story"], // panel 语义蕴含 story
+      [{ screen: "title", panel: "save" }, "title"], // 显式 title 优先
+      [{ screen: "menu" }, "title"], // 非法 screen 按真实启动退化
+      [{}, "title"],
+      ["save", "title"],
+    ];
+    try {
+      for (const [hint, expected] of cases) {
+        if (hint === undefined) delete globalScope.window;
+        else globalScope.window = { __VIBEGAL_FIXTURE_UI__: hint };
+        expect(readFixtureUiHintScreen()).toBe(expected);
+      }
+    } finally {
+      delete globalScope.window;
+    }
+  });
+
+  it("pickContinueSlot 取 updatedAt 最新槽（含 auto/quick），空列表返回 null", () => {
+    expect(pickContinueSlot([])).toBeNull();
+    const summaries: SaveSlotSummary[] = [
+      { slotId: "manual-01", updatedAt: "2026-07-10T08:00:00.000Z", position: null },
+      { slotId: "auto:node", updatedAt: "2026-07-12T20:30:00.000Z", position: null },
+      { slotId: "quick", updatedAt: "2026-07-11T12:00:00.000Z", position: null },
+    ];
+    expect(pickContinueSlot(summaries)?.slotId).toBe("auto:node");
+    // 单槽（quick）也是合法继续目标
+    expect(pickContinueSlot([summaries[2]])?.slotId).toBe("quick");
+  });
+
+  it("formatSlotTime 输出确定性的 YYYY-MM-DD HH:mm", () => {
+    expect(formatSlotTime("2026-07-12T20:30:45.000Z")).toBe("2026-07-12 20:30");
+    expect(formatSlotTime("not-a-date")).toBe("not-a-date");
+  });
+
+  it("TitleScreen 渲染四按钮、继续副标题与禁用态", () => {
+    const manifest = { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } };
+    const withSaves = renderToStaticMarkup(
+      <TitleScreen
+        manifest={manifest}
+        titleBackgroundUrl={null}
+        tokens={DEFAULT_UI_TOKENS.titleScreen}
+        continueSlot={{
+          slotId: "auto:node",
+          label: "节点自动存档",
+          updatedAt: "2026-07-12T20:30:00.000Z",
+          position: null,
         }}
-        runtime={services}
+        hasSaves
+        busy={false}
+        onStart={vi.fn()}
+        onContinue={vi.fn()}
+        onLoad={vi.fn()}
+        onSettings={vi.fn()}
       />,
     );
+    expect(withSaves).toContain('data-ui-part="titleScreen"');
+    expect(withSaves).toContain('data-title-action="start"');
+    expect(withSaves).toContain('data-title-action="continue"');
+    expect(withSaves).toContain('data-title-action="load"');
+    expect(withSaves).toContain('data-title-action="settings"');
+    // 继续副标题 = 槽 label + 时间
+    expect(withSaves).toContain("节点自动存档 · 2026-07-12 20:30");
+    const continueButton = withSaves.match(/<button[^>]*data-title-action="continue"[^>]*>/)?.[0] ?? "";
+    expect(continueButton).not.toContain("disabled");
 
-    expect(html).toContain('data-player-stage="true"');
-    expect(html).toContain('data-player-action="quick-save"');
-    expect(html).not.toContain("存档 / 读档");
+    const noSaves = renderToStaticMarkup(
+      <TitleScreen
+        manifest={manifest}
+        titleBackgroundUrl={null}
+        tokens={DEFAULT_UI_TOKENS.titleScreen}
+        continueSlot={null}
+        hasSaves={false}
+        busy={false}
+        onStart={vi.fn()}
+        onContinue={vi.fn()}
+        onLoad={vi.fn()}
+        onSettings={vi.fn()}
+      />,
+    );
+    const disabledContinue = noSaves.match(/<button[^>]*data-title-action="continue"[^>]*>/)?.[0] ?? "";
+    const disabledLoad = noSaves.match(/<button[^>]*data-title-action="load"[^>]*>/)?.[0] ?? "";
+    expect(disabledContinue).toContain("disabled");
+    expect(disabledLoad).toContain("disabled");
+    expect(noSaves).toContain("暂无存档");
+  });
+
+  it("SystemPanel 提供「回到标题」按钮（不 reset player 的切屏入口）", () => {
+    const html = renderToStaticMarkup(
+      <SystemPanel busy={false} onReturn={vi.fn()} onRestart={vi.fn()} onReturnToTitle={vi.fn()} />,
+    );
+    expect(html).toContain('data-system-action="return-to-title"');
+    expect(html).toContain("回到标题");
+    expect(html).toContain("返回游戏");
+    expect(html).toContain("重新开始");
   });
 });

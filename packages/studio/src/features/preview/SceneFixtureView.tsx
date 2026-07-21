@@ -7,13 +7,14 @@
  * 因此有确定性的真实内容。场景来源与 CLI renderer-snapshot 单源
  * （同一 snapshotScenes 模块），用户与外部 Agent 看到同一组画面。
  *
- * uiHint 时序（Spec 17 §4.1）：渲染层只在挂载初始化期读一次
- * window.__VIBEGAL_FIXTURE_UI__，因此注入必须发生在挂载之前 —— 由父组件
- * 在切换场景的事件处理器里先 setFixtureUiHintGlobal 再 setState；本组件
- * 以 key={scene.id} 强制渲染层随场景切换重挂载；自身卸载时清除该全局，
- * 避免污染剧情播放。
+ * uiHint 时序（Spec 17 §4.1 + Spec 21 修订）：渲染层只在挂载初始化期读一次
+ * window.__VIBEGAL_FIXTURE_UI__。父组件在切换场景的事件处理器里先
+ * setFixtureUiHintGlobal 再 setState（单场景路径的双保险）；本组件另外在
+ * 渲染体中 stash/覆盖本场景 hint（宫格多棵渲染层子树共存时，每棵挂载读到
+ * 的都是自己场景的 hint），卸载时恢复旧值。以 key={scene.id} 强制渲染层随
+ * 场景切换重挂载。
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   createInMemoryRuntimeServices,
   type RendererManifest,
@@ -45,6 +46,40 @@ export function setFixtureUiHintGlobal(uiHint: FixtureScene["uiHint"] | undefine
   } else {
     delete target.__VIBEGAL_FIXTURE_UI__;
   }
+}
+
+/** uiHint 全局的快照（stash/restore 成对使用）。 */
+interface FixtureUiHintStash {
+  present: boolean;
+  value: unknown;
+}
+
+/**
+ * 写入本场景 uiHint 并返回旧值快照；非浏览器环境（SSR 测试无 window）退化为空快照。
+ */
+function stashFixtureUiHintGlobal(uiHint: FixtureScene["uiHint"] | undefined): FixtureUiHintStash {
+  if (typeof window === "undefined") return { present: false, value: undefined };
+  const target = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
+  const stash: FixtureUiHintStash = {
+    present: "__VIBEGAL_FIXTURE_UI__" in target,
+    value: target.__VIBEGAL_FIXTURE_UI__,
+  };
+  setFixtureUiHintGlobal(uiHint);
+  return stash;
+}
+
+/** 恢复 stashFixtureUiHintGlobal 保存的旧值。 */
+function restoreFixtureUiHintGlobal(stash: FixtureUiHintStash): void {
+  if (typeof window === "undefined") return;
+  const target = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
+  if (stash.present) target.__VIBEGAL_FIXTURE_UI__ = stash.value;
+  else delete target.__VIBEGAL_FIXTURE_UI__;
+}
+
+/** setFixtureUiHintGlobal 的浏览器守卫版（SSR 渲染体中安全调用）。 */
+function setFixtureUiHintGlobalIfBrowser(uiHint: FixtureScene["uiHint"] | undefined): void {
+  if (typeof window === "undefined") return;
+  setFixtureUiHintGlobal(uiHint);
 }
 
 /** fixture 路径 → 场景 id：取文件名去掉 .json（与 CLI worker 的命名一致）。 */
@@ -94,9 +129,27 @@ export function SceneFixtureView({ project, renderer, scene }: SceneFixtureViewP
     [scene, manifest],
   );
 
-  // 卸载（退出场景刷 / 关闭预览）时清除 uiHint 全局；注入本身由父组件的
-  // 事件处理器在 setState 之前完成，保证重挂载的渲染层读到正确值。
-  useEffect(() => () => setFixtureUiHintGlobal(undefined), []);
+  // uiHint 注入（Spec 21：标题门使"无注入"从"面板不预开"升级为"卡标题页"）：
+  // 本组件在渲染体中保证全局 = 本场景 hint —— 父组件渲染体先于子渲染层的
+  // useState 初始化执行，宫格 12 棵子树按顺序各自覆盖，每棵树挂载时读到的
+  // 都是自己的 hint；卸载时恢复 stash 的旧值。父组件事件处理器的注入
+  // （Preview / AppearanceWorkspace）因此变成冗余但无害的双保险。
+  const stashRef = useRef<FixtureUiHintStash | null>(null);
+  if (stashRef.current === null) {
+    stashRef.current = stashFixtureUiHintGlobal(scene.uiHint);
+  } else {
+    // 场景 prop 变化（key 强制子渲染层重挂载）：覆盖为新场景 hint；
+    // stash 保持首次挂载的旧值，卸载时统一恢复。
+    setFixtureUiHintGlobalIfBrowser(scene.uiHint);
+  }
+  useEffect(
+    () => () => {
+      const stash = stashRef.current;
+      stashRef.current = null;
+      if (stash) restoreFixtureUiHintGlobal(stash);
+    },
+    [],
+  );
 
   const stage = readStageResolution(project.content.meta);
   const props: RendererProps = {

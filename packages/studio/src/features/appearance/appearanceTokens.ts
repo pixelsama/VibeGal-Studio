@@ -224,6 +224,32 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
     ],
   },
   {
+    id: "titleScreen",
+    title: "标题画面",
+    fields: [
+      { key: "titleScreen.x", label: "X", kind: "number", step: 1 },
+      { key: "titleScreen.y", label: "Y", kind: "number", step: 1 },
+      { key: "titleScreen.width", label: "宽", kind: "number", step: 1, min: 0 },
+      { key: "titleScreen.height", label: "高", kind: "number", step: 1, min: 0 },
+      { key: "titleScreen.bgColor", label: "背景色", kind: "color", nullable: true },
+      { key: "titleScreen.bgOpacity", label: "不透明度", kind: "number", step: 0.05, min: 0, max: 1, nullable: true },
+      { key: "titleScreen.titleColor", label: "标题色", kind: "color" },
+      { key: "titleScreen.titleFontSize", label: "标题字号", kind: "number", step: 1, min: 1 },
+      { key: "titleScreen.titleFontFamily", label: "标题字体", kind: "font" },
+    ],
+  },
+  {
+    id: "titleScreenButton",
+    title: "标题按钮",
+    fields: [
+      { key: "titleScreen.buttonBgColor", label: "背景色", kind: "color" },
+      { key: "titleScreen.buttonTextColor", label: "文字色", kind: "color" },
+      { key: "titleScreen.buttonHoverColor", label: "悬停色", kind: "color" },
+      { key: "titleScreen.buttonRadius", label: "圆角", kind: "number", step: 1, min: 0 },
+      { key: "titleScreen.buttonFontSize", label: "字号", kind: "number", step: 1, min: 1 },
+    ],
+  },
+  {
     id: "stage",
     title: "舞台",
     fields: [{ key: "stage.fontFamily", label: "全局字体", kind: "font" }],
@@ -236,7 +262,8 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
 
 /**
  * 部件名 → 展示的分组 id 列表。choiceBox 带按钮样式组（选项区管几何，
- * 选项按钮管配色），其余部件一对一；null（未选中）= 全部分组。
+ * 选项按钮管配色），titleScreen 带标题按钮样式组，其余部件一对一；
+ * null（未选中）= 全部分组。
  */
 const PART_TOKEN_GROUP_IDS: Record<string, string[]> = {
   dialogueBox: ["dialogueBox"],
@@ -244,6 +271,7 @@ const PART_TOKEN_GROUP_IDS: Record<string, string[]> = {
   choiceBox: ["choiceBox", "choiceButton"],
   hud: ["hud"],
   menuWindow: ["menuWindow"],
+  titleScreen: ["titleScreen", "titleScreenButton"],
 };
 
 /**
@@ -307,6 +335,18 @@ function flattenDefaultTokens(): Record<string, string | number> {
     "menuWindow.y": d.menuWindow.y,
     "menuWindow.width": d.menuWindow.width,
     "menuWindow.height": d.menuWindow.height,
+    "titleScreen.x": d.titleScreen.x,
+    "titleScreen.y": d.titleScreen.y,
+    "titleScreen.width": d.titleScreen.width,
+    "titleScreen.height": d.titleScreen.height,
+    "titleScreen.titleColor": d.titleScreen.titleColor,
+    "titleScreen.titleFontSize": d.titleScreen.titleFontSize,
+    "titleScreen.titleFontFamily": d.titleScreen.titleFontFamily,
+    "titleScreen.buttonBgColor": d.titleScreen.buttonBgColor,
+    "titleScreen.buttonTextColor": d.titleScreen.buttonTextColor,
+    "titleScreen.buttonHoverColor": d.titleScreen.buttonHoverColor,
+    "titleScreen.buttonRadius": d.titleScreen.buttonRadius,
+    "titleScreen.buttonFontSize": d.titleScreen.buttonFontSize,
     "stage.fontFamily": d.stageFontFamily,
   };
 }
@@ -324,6 +364,8 @@ const NULL_DEFAULT_HINTS: Record<string, string> = {
   "choiceBox.height": "自动（约 42% 舞台高）",
   "hud.x": "右上锚定（右缘 16px）",
   "hud.y": "顶部 14px",
+  "titleScreen.bgColor": "内置磨砂白",
+  "titleScreen.bgOpacity": "仅配背景色生效",
 };
 
 /** 输入框 placeholder：显示该 token 的默认值（null 语义键显示行为说明）。 */

@@ -162,6 +162,8 @@ describe("tokenDefaultPlaceholder", () => {
     expect(tokenDefaultPlaceholder("dialogueBox.x")).toBe("默认：77.08");
     expect(tokenDefaultPlaceholder("choiceButton.bgColor")).toBe("默认：rgba(255, 255, 255, 0.9)");
     expect(tokenDefaultPlaceholder("menuWindow.width")).toBe("默认：1060");
+    expect(tokenDefaultPlaceholder("titleScreen.width")).toBe("默认：400");
+    expect(tokenDefaultPlaceholder("titleScreen.titleFontSize")).toBe("默认：40");
   });
 
   it("null 语义键显示默认行为说明", () => {
@@ -170,6 +172,7 @@ describe("tokenDefaultPlaceholder", () => {
     expect(tokenDefaultPlaceholder("nameBox.width")).toBe("默认：auto（随内容）");
     expect(tokenDefaultPlaceholder("nameBox.bgColor")).toBe("默认：跟随说话人颜色");
     expect(tokenDefaultPlaceholder("hud.x")).toBe("默认：右上锚定（右缘 16px）");
+    expect(tokenDefaultPlaceholder("titleScreen.bgColor")).toBe("默认：内置磨砂白");
   });
 
   it("未知键退化为「默认」", () => {
@@ -182,12 +185,13 @@ describe("tokenGroupsForPart", () => {
     expect(tokenGroupsForPart(null)).toBe(APPEARANCE_TOKEN_GROUPS);
   });
 
-  it("已知部件映射到对应分组（choiceBox 连按钮样式组）", () => {
+  it("已知部件映射到对应分组（choiceBox 连按钮样式组，titleScreen 连标题按钮组）", () => {
     expect(tokenGroupsForPart("dialogueBox").map((group) => group.id)).toEqual(["dialogueBox"]);
     expect(tokenGroupsForPart("nameBox").map((group) => group.id)).toEqual(["nameBox"]);
     expect(tokenGroupsForPart("hud").map((group) => group.id)).toEqual(["hud"]);
     expect(tokenGroupsForPart("menuWindow").map((group) => group.id)).toEqual(["menuWindow"]);
     expect(tokenGroupsForPart("choiceBox").map((group) => group.id)).toEqual(["choiceBox", "choiceButton"]);
+    expect(tokenGroupsForPart("titleScreen").map((group) => group.id)).toEqual(["titleScreen", "titleScreenButton"]);
   });
 
   it("第三方渲染器的未知部件合成几何分组（x/y/width/height）", () => {

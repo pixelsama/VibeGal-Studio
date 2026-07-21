@@ -97,6 +97,27 @@ describe("customSceneFromFixture", () => {
     }
   });
 
+  it("uiHint.screen 支持 title/story 并透传归一化（Spec 21 §4）", () => {
+    const title = customSceneFromFixture(
+      { state: minimalState(), uiHint: { screen: "title" } },
+      "title-fixture",
+    );
+    expect(title.uiHint).toEqual({ screen: "title" });
+
+    const both = customSceneFromFixture(
+      { state: minimalState(), uiHint: { panel: "save", screen: "story" } },
+      "panel-story",
+    );
+    expect(both.uiHint).toEqual({ panel: "save", screen: "story" });
+
+    expect(() =>
+      customSceneFromFixture({ state: minimalState(), uiHint: { screen: "menu" } }, "bad-screen"),
+    ).toThrowError(/bad-screen.*uiHint\.screen.*title.*story/);
+    expect(() =>
+      customSceneFromFixture({ state: minimalState(), uiHint: {} }, "empty-hint"),
+    ).toThrowError(/empty-hint.*uiHint/);
+  });
+
   it("persistent.unlock 数组含非字符串时报错", () => {
     expect(() =>
       customSceneFromFixture(
@@ -144,21 +165,46 @@ const emptyManifest: Manifest = {
 };
 
 describe("buildSnapshotScenes", () => {
-  it("产出 4 剧情 + 7 面板场景，id 与标题顺序固定", () => {
+  it("产出 4 剧情 + 7 面板 + 1 标题页场景，id 与标题顺序固定", () => {
     const scenes = buildSnapshotScenes(manifest);
     expect(scenes.map((scene) => scene.id)).toEqual([
       "dialogue", "narration", "choice", "sprites",
       "save", "history", "settings",
       "gallery-cg", "gallery-replay", "gallery-music", "gallery-endings",
+      "title",
     ]);
     expect(scenes.map((scene) => scene.title)).toEqual([
       "对话", "旁白", "选项", "多立绘",
       "存档", "历史", "设置", "CG 画廊", "场景回放", "音乐室", "结局列表",
+      "标题画面",
     ]);
   });
 
   it("输出只依赖 manifest：两次调用深度相等", () => {
     expect(buildSnapshotScenes(manifest)).toEqual(buildSnapshotScenes(manifest));
+  });
+
+  it("剧情场景注入 story 语义 uiHint（Spec 21 §4：fixture 挂载不卡标题门）", () => {
+    const scenes = buildSnapshotScenes(manifest);
+    for (const id of ["dialogue", "narration", "choice", "sprites"]) {
+      const scene = scenes.find((item) => item.id === id)!;
+      expect(scene.uiHint).toEqual({ screen: "story" });
+      expect(scene.persistent).toBeUndefined();
+      expect(scene.backlog).toBeUndefined();
+    }
+  });
+
+  it("标题页场景：uiHint.screen = title，state 给最小背景与空对话", () => {
+    const scenes = buildSnapshotScenes(manifest);
+    const title = scenes.find((scene) => scene.id === "title")!;
+    expect(title.title).toBe("标题画面");
+    expect(title.uiHint).toEqual({ screen: "title" });
+    expect(title.state.background).toBe("sky");
+    expect(title.state.dialogue).toBeNull();
+    expect(title.state.narration).toBeNull();
+    expect(title.state.sprites).toEqual([]);
+    expect(title.persistent).toBeUndefined();
+    expect(title.backlog).toBeUndefined();
   });
 
   it("面板场景：uiHint.panel 与 id 对应，底景与 dialogue 场景相同", () => {
@@ -173,7 +219,7 @@ describe("buildSnapshotScenes", () => {
     }
   });
 
-  it("面板场景 unlock 快照填满 manifest 注册表全部 id；剧情场景不带附加通道", () => {
+  it("面板场景 unlock 快照填满 manifest 注册表全部 id；标题页场景不带附加通道", () => {
     const scenes = buildSnapshotScenes(manifest);
     for (const panel of FIXTURE_UI_PANELS) {
       const scene = scenes.find((item) => item.id === panel)!;
@@ -186,10 +232,8 @@ describe("buildSnapshotScenes", () => {
         },
       });
     }
-    const dialogue = scenes.find((scene) => scene.id === "dialogue")!;
-    expect(dialogue.persistent).toBeUndefined();
-    expect(dialogue.uiHint).toBeUndefined();
-    expect(dialogue.backlog).toBeUndefined();
+    const title = scenes.find((scene) => scene.id === "title")!;
+    expect(title.persistent).toBeUndefined();
   });
 
   it("历史面板场景带 3 条示例 backlog，其它场景不带 backlog", () => {

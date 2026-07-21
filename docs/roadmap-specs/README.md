@@ -25,3 +25,4 @@
 - [Spec 18 — Open Non-Project Directory Guidance（打开非项目目录时的项目引导）](./archive/18-open-nonproject-directory-guidance.spec.md)
 - [Spec 19 — Creator-Facing Vocabulary & Preview/Appearance IA（创作者词汇与预览/外观信息架构）](./archive/19-creator-facing-vocabulary-ia.spec.md)
 - [Spec 20 — Stable Instruction Identity Workflow（稳定指令身份工作流）](./archive/20-stable-instruction-identity-workflow.spec.md)
+- [Spec 21 — Title Screen（标题画面 / 游戏主界面）](./archive/21-title-screen.spec.md)

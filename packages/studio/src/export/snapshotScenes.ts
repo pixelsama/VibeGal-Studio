@@ -11,12 +11,13 @@
  * customSceneFromFixture 归一化后由 worker 排在内置场景之后合并，
  * Studio 场景刷与 CLI snapshot 单源读取同一格式。
  *
- * 除 4 个剧情场景外，buildSnapshotScenes 还产出 7 个面板场景（Spec 17 §4.1：
- * 存档/历史/设置/画廊四页）。面板开合是渲染层内部 UI 状态，不在 NovelState
- * 里，因此面板场景走两条附加通道：uiHint（宿主挂载前写
- * window.__VIBEGAL_FIXTURE_UI__，渲染层当作初始 UI 状态读一次）与
- * persistent 瘦身 unlock 快照（经 fixturePersistentToGlobal 映射成
- * GlobalPersistentRecord 后注入 createInMemoryRuntimeServices）。
+ * 内置场景 = 4 个剧情场景 + 7 个面板场景（Spec 17 §4.1：存档/历史/设置/画廊
+ * 四页）+ 1 个标题页场景（Spec 21）。面板开合与标题门都是渲染层内部 UI 状态，
+ * 不在 NovelState 里，因此走两条附加通道：uiHint（宿主挂载前写
+ * window.__VIBEGAL_FIXTURE_UI__，渲染层当作初始 UI 状态读一次；panel 预开面板、
+ * screen 决定标题/故事初始屏，Spec 21 §4）与 persistent 瘦身 unlock 快照（经
+ * fixturePersistentToGlobal 映射成 GlobalPersistentRecord 后注入
+ * createInMemoryRuntimeServices）。
  *
  * 注意：本文件只允许对 @vibegal/engine 做 type import。worker 会对本文件做
  * 单文件 esbuild.transform 后直接 dynamic import（probe），任何 value import
@@ -47,9 +48,18 @@ export const FIXTURE_UI_PANELS = [
 
 export type FixtureUiPanel = (typeof FIXTURE_UI_PANELS)[number];
 
-/** uiHint 通道：宿主在挂载前写入 window.__VIBEGAL_FIXTURE_UI__ 的初始 UI 提示。 */
+/** uiHint.screen 的合法取值（Spec 21 第 4 节）：title = 呈现标题画面；story = 跳过标题门。 */
+export const FIXTURE_UI_SCREENS = ["title", "story"] as const;
+
+export type FixtureUiScreen = (typeof FIXTURE_UI_SCREENS)[number];
+
+/**
+ * uiHint 通道：宿主在挂载前写入 window.__VIBEGAL_FIXTURE_UI__ 的初始 UI 提示。
+ * panel 与 screen 均可选；panel 语义即"剧情中某面板"，天然蕴含 story（Spec 21 §4）。
+ */
 export interface FixtureUiHint {
-  panel: FixtureUiPanel;
+  panel?: FixtureUiPanel;
+  screen?: FixtureUiScreen;
 }
 
 /**
@@ -137,10 +147,20 @@ export function customSceneFromFixture(json: unknown, fallbackId: string): Fixtu
       return fail("uiHint 必须是对象");
     }
     const panel = uiHint.panel;
-    if (typeof panel !== "string" || !(FIXTURE_UI_PANELS as readonly string[]).includes(panel)) {
+    if (panel !== undefined && (typeof panel !== "string" || !(FIXTURE_UI_PANELS as readonly string[]).includes(panel))) {
       return fail(`uiHint.panel 必须是以下值之一: ${FIXTURE_UI_PANELS.join(" | ")}`);
     }
-    normalizedUiHint = { panel: panel as FixtureUiPanel };
+    const screen = uiHint.screen;
+    if (screen !== undefined && (typeof screen !== "string" || !(FIXTURE_UI_SCREENS as readonly string[]).includes(screen))) {
+      return fail(`uiHint.screen 必须是以下值之一: ${FIXTURE_UI_SCREENS.join(" | ")}`);
+    }
+    if (panel === undefined && screen === undefined) {
+      return fail("uiHint 必须至少包含 panel 或 screen 之一");
+    }
+    normalizedUiHint = {
+      ...(panel !== undefined ? { panel: panel as FixtureUiPanel } : {}),
+      ...(screen !== undefined ? { screen: screen as FixtureUiScreen } : {}),
+    };
   }
 
   return {
@@ -294,9 +314,11 @@ const SNAPSHOT_PANEL_SCENES: Array<{ id: FixtureUiPanel; title: string }> = [
 ];
 
 /**
- * 生成 11 个确定性快照场景：4 个剧情场景（dialogue / narration / choice /
- * sprites）+ 7 个面板场景（Spec 17 §4.1）。输出只依赖 manifest，同一项目
- * 多次运行结果一致，便于截图对比。
+ * 生成 12 个确定性快照场景：1 个标题页场景（Spec 21：uiHint.screen = "title"）
+ * + 4 个剧情场景（dialogue / narration / choice / sprites，注入
+ * uiHint.screen = "story"，fixture 挂载不会卡在渲染层标题门）
+ * + 7 个面板场景（Spec 17 §4.1，uiHint.panel 语义天然蕴含 story）。
+ * 输出只依赖 manifest，同一项目多次运行结果一致，便于截图对比。
  */
 export function buildSnapshotScenes(manifest: Manifest): SnapshotScene[] {
   const cast = snapshotCast(manifest);
@@ -359,11 +381,18 @@ export function buildSnapshotScenes(manifest: Manifest): SnapshotScene[] {
   const panelPersistent = snapshotPanelPersistent(manifest);
   const panelBacklog = snapshotPanelBacklog(protagonist);
 
+  // 标题画面（Spec 21）：最小背景 + 空对话，真正的标题 UI 由渲染层标题门呈现。
+  const title = createSnapshotBaseState();
+  title.background = background;
+
+  // 剧情场景统一注入 story 语义 hint：宿主挂载任何 fixture 都不会卡在标题门。
+  const storyHint: SnapshotScene["uiHint"] = { screen: "story" };
+
   return [
-    { id: "dialogue", title: "对话", state: dialogue },
-    { id: "narration", title: "旁白", state: narration },
-    { id: "choice", title: "选项", state: choice },
-    { id: "sprites", title: "多立绘", state: sprites },
+    { id: "dialogue", title: "对话", state: dialogue, uiHint: storyHint },
+    { id: "narration", title: "旁白", state: narration, uiHint: storyHint },
+    { id: "choice", title: "选项", state: choice, uiHint: storyHint },
+    { id: "sprites", title: "多立绘", state: sprites, uiHint: storyHint },
     ...SNAPSHOT_PANEL_SCENES.map((panel): SnapshotScene => ({
       id: panel.id,
       title: panel.title,
@@ -372,5 +401,6 @@ export function buildSnapshotScenes(manifest: Manifest): SnapshotScene[] {
       uiHint: { panel: panel.id },
       ...(panel.id === "history" ? { backlog: panelBacklog } : {}),
     })),
+    { id: "title", title: "标题画面", state: title, uiHint: { screen: "title" } },
   ];
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { BacklogEntry, RendererProps, RuntimeSettingsRecord } from "@vibegal/engine";
+import { resolveAsset, type BacklogEntry, type RendererProps, type RuntimeSettingsRecord, type SaveSlotSummary } from "@vibegal/engine";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { SpriteLayer } from "./SpriteLayer";
 import { DialogueBox } from "./DialogueBox";
@@ -10,17 +10,21 @@ import { PlayerHud } from "./PlayerHud";
 import { ConfirmDialog, PlayerMenu, SystemPanel, type PlayerNotice } from "./PlayerMenu";
 import { RuntimeSettingsPanel } from "./RuntimeSettingsPanel";
 import { SaveLoadPanel } from "./SaveLoadPanel";
+import { TitleScreen } from "./TitleScreen";
 import {
   PlayerUiController,
   buildPlayerSlots,
   isPlayerShortcutTarget,
+  pickContinueSlot,
   readFixtureUiHintMenuPage,
+  readFixtureUiHintScreen,
   runtimeErrorDetails,
   type PlayerMenuPage,
   type PlayerSlotView,
+  type TitleGateScreen,
 } from "./playerUiModel";
 import { useShake } from "./useShake";
-import { useUiTokens, type ChoiceBoxTokens, type ChoiceButtonTokens } from "./useUiTokens";
+import { resolveUiSkinAssets, useUiTokens, type ChoiceBoxTokens, type ChoiceButtonTokens } from "./useUiTokens";
 import { palette } from "./uiTheme";
 
 type ConfirmAction =
@@ -41,17 +45,38 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
   // window.__VIBEGAL_FIXTURE_UI__ = { panel }，把它当作初始 UI 状态读一次；
   // 无该全局时初始 menuPage = null，与现状完全一致。
   const [menuPage, setMenuPage] = useState<PlayerMenuPage | null>(() => readFixtureUiHintMenuPage());
+  // 标题门（Spec 21）：渲染层内部 React state，不进 NovelState。挂载读一次
+  // uiHint.screen（语义表见 playerUiModel.readFixtureUiHintScreen）；真实启动
+  // （无 uiHint 全局）= 标题画面，{ screen: "story" } 或携带 panel = 直进剧情。
+  const [screen, setScreen] = useState<TitleGateScreen>(() => readFixtureUiHintScreen());
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<PlayerNotice | null>(null);
   const [slots, setSlots] = useState(() => buildPlayerSlots([]));
   const [settings, setSettings] = useState<RuntimeSettingsRecord>(() => runtime?.settings.getSettings() ?? fallbackSettings);
   const [choiceHint, setChoiceHint] = useState<string | null>(null);
+  // 标题页「继续游戏」的槽位数据（进入标题屏时拉取一次）。
+  const [titleSlots, setTitleSlots] = useState<SaveSlotSummary[]>([]);
   const stateRef = useRef(state);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 「开始游戏」只在第一次进入故事时推进首行；「回到标题」后再点开始直接回到剧情。
+  const hasEnteredStoryRef = useRef(false);
+  // 标题 BGM 是否由本组件启动（进入故事/卸载时只停自己起的）。
+  const titleBgmPlayingRef = useRef(false);
   const hideControls = state.flags.isRecording;
   const { containerStyle: shakeStyle, keyframes: shakeKeyframes } = useShake(state);
   const uiTokens = useUiTokens(manifest);
+  // uiSkin assets 槽位（Spec 21 §6）：titleBackground / titleBgm → manifest 注册表资产 id。
+  const skinAssets = useMemo(() => resolveUiSkinAssets(manifest), [manifest]);
+  const titleBackgroundUrl = useMemo(() => {
+    const assetId = skinAssets.titleBackground;
+    const path = assetId ? manifest.backgrounds?.[assetId] : undefined;
+    return path ? resolveAsset(contentBase, path) : null;
+  }, [skinAssets, manifest, contentBase]);
+  const titleBgmId = useMemo(() => {
+    const assetId = skinAssets.titleBgm;
+    return assetId && manifest.audio?.bgm?.[assetId] ? assetId : null;
+  }, [skinAssets, manifest]);
 
   stateRef.current = state;
   const controller = useMemo(
@@ -68,6 +93,44 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
     setMenuPage(null);
     setConfirmAction(null);
   }, [hideControls]);
+
+  // 标题屏可见时拉取槽位列表：「继续游戏」取 updatedAt 最新槽（含 auto/quick），
+  // 无存档时「继续/读档」禁用。
+  useEffect(() => {
+    if (screen !== "title" || !runtime) return;
+    let cancelled = false;
+    runtime.save.listSlots()
+      .then((summaries) => {
+        if (!cancelled) setTitleSlots(summaries);
+      })
+      .catch((error) => {
+        if (!cancelled) showError(error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, runtime]);
+
+  // 标题 BGM（Spec 21 §6）：titleBgm 资产 id 可解析时循环播放；进入故事或
+  // 卸载时停止（剧情 bgm 指令接管）。音频桥不可用时静默降级为无 BGM。
+  useEffect(() => {
+    if (screen !== "title" || !titleBgmId || !runtime) return;
+    try {
+      runtime.audio.playMusic(titleBgmId, { loop: true });
+      titleBgmPlayingRef.current = true;
+    } catch {
+      titleBgmPlayingRef.current = false;
+    }
+    return () => {
+      if (!titleBgmPlayingRef.current) return;
+      titleBgmPlayingRef.current = false;
+      try {
+        runtime.audio.stopMusic(300);
+      } catch {
+        // 音频桥不可用：忽略
+      }
+    };
+  }, [screen, titleBgmId, runtime]);
 
   // uiHint：挂载时若带初始面板，补齐该面板的数据加载副作用（等价 openMenu 的数据面），
   // 但不触碰播放控制。只跑一次；无 hint（menuPage 初始为 null）时什么都不做。
@@ -197,6 +260,9 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
     if (showWarnings(warnings)) return;
     setConfirmAction(null);
     setMenuPage(null);
+    // 标题屏上的读档/继续成功后直进剧情（剧情位置已被 runtime 恢复）。
+    hasEnteredStoryRef.current = true;
+    setScreen("story");
     showNotice({ tone: "success", message: "剧情位置已恢复。" }, true);
   };
 
@@ -225,6 +291,51 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
     } catch (error) {
       showError(error);
     }
+  };
+
+  // ── 标题门动作（Spec 21 §5） ──
+
+  /** 进入故事：停标题 BGM（剧情 bgm 指令接管），切屏；firstEntry 时推进首行。 */
+  const enterStory = (firstEntry: boolean) => {
+    if (titleBgmPlayingRef.current) {
+      titleBgmPlayingRef.current = false;
+      try {
+        runtime?.audio.stopMusic(300);
+      } catch {
+        // 音频桥不可用：忽略
+      }
+    }
+    setNotice(null);
+    setScreen("story");
+    if (firstEntry) controls.advance();
+  };
+
+  /** 开始游戏：首次进入推进到首行；「回到标题」后再点开始直接回到当前剧情。 */
+  const handleTitleStart = () => {
+    const firstEntry = !hasEnteredStoryRef.current;
+    hasEnteredStoryRef.current = true;
+    enterStory(firstEntry);
+  };
+
+  /** 继续游戏（定点）：updatedAt 最新槽（含 auto/quick）直进。 */
+  const performTitleContinue = async () => {
+    if (!controller) return;
+    const latest = pickContinueSlot(titleSlots);
+    if (!latest) return;
+    try {
+      const result = await controller.load(latest.slotId);
+      handleRestoreResult(result.warnings);
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  /** 回到标题（定点最小版）：渲染层内部切回标题屏，不 reset player。 */
+  const returnToTitle = () => {
+    setMenuPage(null);
+    setConfirmAction(null);
+    setNotice(null);
+    setScreen("title");
   };
 
   const performDelete = async (slot: PlayerSlotView) => {
@@ -337,18 +448,24 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
         event.stopImmediatePropagation();
       };
 
-      if (key === "f5" || key === "f9") {
-        block();
-        if (hideControls || confirmAction || interactiveTarget || busy) return;
-        if (key === "f5") void performQuickSave();
-        else void performQuickLoad();
-        return;
-      }
       if (key === "escape") {
         if (!confirmAction && !menuPage) return;
         block();
         if (confirmAction && !busy) setConfirmAction(null);
         else if (!busy) closeMenu();
+        return;
+      }
+      // 标题屏：capture 阶段拦截 Space/Enter（与宿主 bubble 阶段的全局 advance
+      // 冲突，见 webRuntimeHost 的 keydown 监听）；a/r 同样不穿透到剧情。
+      if (screen === "title") {
+        if ((key === " " || key === "enter" || key === "a" || key === "r") && !interactiveTarget) block();
+        return;
+      }
+      if (key === "f5" || key === "f9") {
+        block();
+        if (hideControls || confirmAction || interactiveTarget || busy) return;
+        if (key === "f5") void performQuickSave();
+        else void performQuickLoad();
         return;
       }
       if (menuPage || confirmAction || busy) {
@@ -369,14 +486,16 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
   });
 
   const confirmCopy = confirmAction ? confirmationCopy(confirmAction) : null;
+  const continueSlot = pickContinueSlot(titleSlots);
 
   return (
     <div
       data-player-stage="true"
-      data-player-blocking={menuPage != null || confirmAction != null || busy ? "true" : "false"}
+      data-player-screen={screen}
+      data-player-blocking={screen === "title" || menuPage != null || confirmAction != null || busy ? "true" : "false"}
       tabIndex={0}
       onClick={() => {
-        if (!menuPage && !confirmAction && !busy) controls.advance();
+        if (screen === "story" && !menuPage && !confirmAction && !busy) controls.advance();
       }}
       style={{
         position: "relative",
@@ -390,12 +509,34 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
         containerType: "size",
       }}
     >
-      <div style={{ position: "absolute", inset: 0, ...shakeStyle }}>
-        <BackgroundLayer state={state} manifest={manifest} contentBase={contentBase} />
-        <SpriteLayer state={state} manifest={manifest} contentBase={contentBase} />
-        <DialogueBox state={state} manifest={manifest} />
-      </div>
-      <Effects state={state} />
+      {screen === "title" && (
+        <>
+          {/* 标题美术缺省时以剧情当前背景打底（fixture 标题场景的最小背景由此上屏） */}
+          {!titleBackgroundUrl && (
+            <BackgroundLayer state={state} manifest={manifest} contentBase={contentBase} />
+          )}
+          <TitleScreen
+            manifest={manifest}
+            titleBackgroundUrl={titleBackgroundUrl}
+            tokens={uiTokens.titleScreen}
+            continueSlot={continueSlot}
+            hasSaves={titleSlots.length > 0}
+            busy={busy}
+            onStart={handleTitleStart}
+            onContinue={() => void performTitleContinue()}
+            onLoad={() => openMenu("save")}
+            onSettings={() => openMenu("settings")}
+          />
+        </>
+      )}
+      {screen === "story" && (
+        <>
+          <div style={{ position: "absolute", inset: 0, ...shakeStyle }}>
+            <BackgroundLayer state={state} manifest={manifest} contentBase={contentBase} />
+            <SpriteLayer state={state} manifest={manifest} contentBase={contentBase} />
+            <DialogueBox state={state} manifest={manifest} />
+          </div>
+          <Effects state={state} />
       <style>{shakeKeyframes}</style>
 
       {state.choice && (
@@ -447,6 +588,14 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
           onToggleAllSkip={() => controls.setSkipMode(state.flags.skipMode === "all" ? "off" : "all")}
           onOpenHistory={() => openMenu("history")}
         />
+      )}
+
+      {!hideControls && (
+        <div style={progressStyle}>
+          {state.flags.progress.current}/{state.flags.progress.total}
+        </div>
+      )}
+        </>
       )}
 
       {!hideControls && (notice || busy) && (
@@ -527,6 +676,7 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
               busy={busy}
               onReturn={closeMenu}
               onRestart={() => setConfirmAction({ kind: "restart" })}
+              onReturnToTitle={returnToTitle}
             />
           )}
         </PlayerMenu>
@@ -539,12 +689,6 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
           onConfirm={confirm}
           onCancel={() => !busy && setConfirmAction(null)}
         />
-      )}
-
-      {!hideControls && (
-        <div style={progressStyle}>
-          {state.flags.progress.current}/{state.flags.progress.total}
-        </div>
       )}
     </div>
   );

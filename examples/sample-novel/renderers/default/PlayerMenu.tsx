@@ -139,16 +139,20 @@ export function ConfirmDialog({
   );
 }
 
-export function SystemPanel({ busy, onReturn, onRestart }: { busy: boolean; onReturn: () => void; onRestart: () => void }) {
+export function SystemPanel({ busy, onReturn, onRestart, onReturnToTitle }: { busy: boolean; onReturn: () => void; onRestart: () => void; onReturnToTitle: () => void }) {
   return (
     <div style={systemStyle}>
       <div>
         <h2 style={sectionTitleStyle}>系统</h2>
-        <p style={systemHintStyle}>返回当前剧情，或从头开始整个故事。</p>
+        <p style={systemHintStyle}>返回当前剧情，回到标题画面，或从头开始整个故事。</p>
       </div>
       <div style={systemActionsStyle}>
         <button type="button" disabled={busy} onClick={onReturn} style={primaryPillButton}>
           返回游戏
+        </button>
+        {/* 回到标题（Spec 21 定点最小版）：渲染层内部切回标题屏，不 reset player */}
+        <button type="button" data-system-action="return-to-title" disabled={busy} onClick={onReturnToTitle} style={secondaryPillButton}>
+          回到标题
         </button>
         <button type="button" disabled={busy} onClick={onRestart} style={dangerPillButton}>
           重新开始

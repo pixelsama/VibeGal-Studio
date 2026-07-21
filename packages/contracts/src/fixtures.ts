@@ -119,8 +119,24 @@ export const FixturePersistentSchema = z.object({
   unlock: FixtureUnlockSchema,
 });
 
+/**
+ * uiHint.screen 的合法取值（Spec 21 第 4 节）：
+ * - "title"：挂载呈现标题画面；
+ * - "story"：跳过标题门，直接呈现给定 state（panel 语义天然蕴含 story）。
+ */
+export const FIXTURE_UI_SCREENS = ["title", "story"] as const;
+
+export const FixtureUiScreenSchema = z.enum(FIXTURE_UI_SCREENS);
+
+/**
+ * uiHint（Spec 17 步骤 5 + Spec 21 第 4 节扩展）：panel 与 screen 均可选，
+ * 但至少声明其一。旧 fixture 只带 panel 时行为不变。
+ */
 export const FixtureUiHintSchema = z.object({
-  panel: FixtureUiPanelSchema,
+  panel: FixtureUiPanelSchema.optional(),
+  screen: FixtureUiScreenSchema.optional(),
+}).refine((hint) => hint.panel !== undefined || hint.screen !== undefined, {
+  message: "uiHint 必须至少包含 panel 或 screen 之一",
 });
 
 export const FixtureFileSchema = z.object({
@@ -136,6 +152,7 @@ export const FixtureFileSchema = z.object({
 
 export type FixtureNovelState = z.infer<typeof NovelStateSchema>;
 export type FixtureUiPanel = z.infer<typeof FixtureUiPanelSchema>;
+export type FixtureUiScreen = z.infer<typeof FixtureUiScreenSchema>;
 export type FixtureUnlock = z.infer<typeof FixtureUnlockSchema>;
 export type FixturePersistent = z.infer<typeof FixturePersistentSchema>;
 export type FixtureUiHint = z.infer<typeof FixtureUiHintSchema>;

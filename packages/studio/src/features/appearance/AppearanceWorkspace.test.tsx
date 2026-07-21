@@ -79,8 +79,8 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("尚未启用外观编辑");
     expect(html).toContain("宫格");
     expect(html).toContain("单场景");
-    // 宫格：内置 11 场景同屏（抽查剧情 + 面板两侧）
-    for (const title of ["对话", "旁白", "选项", "多立绘", "存档", "CG 画廊", "结局列表"]) {
+    // 宫格：内置 12 场景同屏（抽查剧情 + 面板 + 标题页三侧）
+    for (const title of ["对话", "旁白", "选项", "多立绘", "存档", "CG 画廊", "结局列表", "标题画面"]) {
       expect(html).toContain(title);
     }
     // 探针渲染层确实被挂载（场景台词来自 snapshotScenes 的内置 fixture）
@@ -105,14 +105,15 @@ describe("AppearanceWorkspace", () => {
       <AppearanceWorkspace project={makeProject()} rendererId="default" onSaved={() => {}} />,
     );
 
-    // 11 个内置场景各一张可点卡片（button 保证键盘可达，data-scene-id 标识目标场景）
+    // 12 个内置场景各一张可点卡片（button 保证键盘可达，data-scene-id 标识目标场景）
     const cards = html.match(/<button type="button" class="gs-scene-card" data-scene-id="[^"]+"/g) ?? [];
-    expect(cards.length).toBe(11);
+    expect(cards.length).toBe(12);
     expect(html).toContain('data-scene-id="dialogue"');
     expect(html).toContain('data-scene-id="gallery-endings"');
+    expect(html).toContain('data-scene-id="title"');
   });
 
-  it("分组渲染：有 default skin 时显示七组属性与字体 datalist 候选", () => {
+  it("分组渲染：有 default skin 时显示九组属性与字体 datalist 候选", () => {
     const project = makeProject({
       default: { name: "默认外观", assets: {}, tokens: { "dialogueBox.x": 120 } },
     });
@@ -123,7 +124,7 @@ describe("AppearanceWorkspace", () => {
     // Spec 19 §3：「编辑皮肤：default」→「编辑外观」，skin id 不再展示
     expect(html).toContain("编辑外观");
     expect(html).not.toContain("编辑皮肤");
-    for (const group of ["对话框", "名字框", "选项区", "选项按钮", "HUD", "菜单窗口", "舞台"]) {
+    for (const group of ["对话框", "名字框", "选项区", "选项按钮", "HUD", "菜单窗口", "标题画面", "标题按钮", "舞台"]) {
       expect(html).toContain(group);
     }
     // raw token 值进输入框，默认值进 placeholder

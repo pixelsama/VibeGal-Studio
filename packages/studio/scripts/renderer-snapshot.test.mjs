@@ -44,11 +44,12 @@ const stageSource = [
   "}",
 ].join("\n");
 
-/** 内置场景 id：4 剧情 + 7 面板（Spec 17 §4.1），顺序固定。 */
+/** 内置场景 id：4 剧情 + 7 面板（Spec 17 §4.1）+ 1 标题页（Spec 21），顺序固定。 */
 const BUILTIN_SCENE_IDS = [
   "dialogue", "narration", "choice", "sprites",
   "save", "history", "settings",
   "gallery-cg", "gallery-replay", "gallery-music", "gallery-endings",
+  "title",
 ];
 
 function runSnapshot(project, outDir) {

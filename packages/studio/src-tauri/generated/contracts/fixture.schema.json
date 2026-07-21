@@ -498,11 +498,15 @@
             "gallery-music",
             "gallery-endings"
           ]
+        },
+        "screen": {
+          "type": "string",
+          "enum": [
+            "title",
+            "story"
+          ]
         }
-      },
-      "required": [
-        "panel"
-      ]
+      }
     }
   },
   "required": [

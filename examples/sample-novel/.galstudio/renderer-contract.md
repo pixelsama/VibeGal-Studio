@@ -44,7 +44,7 @@ Required fields:
 Optional fields:
 
 - `description`
-- `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings. It declares `gallery-ui-v1` when it also provides default CG Gallery, replay, music room, and ending list pages.
+- `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings. It declares `gallery-ui-v1` when it also provides default CG Gallery, replay, music room, and ending list pages. It declares `layout-parts-v1` when its draggable parts are fully driven by geometry tokens and carry `data-ui-part` (see "Appearance Tokens, `data-ui-part`, and uiHint" below).
 
 VibeGal-Studio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
 
@@ -107,6 +107,47 @@ VibeGal-Studio presents renderers inside a fixed-size stage defined by `content/
 ```
 
 The Studio preview scales that stage to fit the available panel with letterboxing. Renderer components should size their root to `width: "100%"` and `height: "100%"` and treat `props.stage` as the coordinate system. Avoid `100vw` / `100vh` for renderer layout because project renderers are embedded inside Studio panels and may later be recorded or exported at the project stage size.
+
+## Appearance Tokens, `data-ui-part`, and uiHint (Optional, Spec 17)
+
+Renderers may consume appearance design tokens from `manifest.uiSkins`. This is an opt-in convention, not a UI framework: renderers that ignore it keep working, and third-party renderers may consume a subset or define their own extension keys.
+
+**Skin selection rule**: consume the uiSkin with id `"default"`. If the registry has no `"default"` entry, fall back to the first entry and emit a `console.warn`. If the registry is empty, use built-in defaults for everything.
+
+**Token keys** (flat dotted keys in `uiSkins.<id>.tokens`, values `string | number`; all keys optional, missing keys fall back to the renderer's built-in values):
+
+```text
+dialogueBox.x / .y / .width / .height      part geometry in stage coordinates (px)
+dialogueBox.bgColor / .bgOpacity / .radius / .padding / .borderColor
+dialogueBox.textColor / .fontSize / .fontFamily / .lineHeight
+nameBox.x / .y / .width / .height
+nameBox.bgColor / .textColor / .fontSize / .visible
+choiceBox.x / .y / .width / .height        choice list container (.height = max-height)
+choiceButton.bgColor / .textColor / .hoverColor / .hoverTextColor / .radius / .fontSize
+hud.x / .y                                 null/missing = built-in top-right anchoring
+hud.textColor / .bgColor / .fontSize / .visible
+menuWindow.x / .y / .width / .height       player menu window (save/history/gallery/... pages)
+titleScreen.x / .y / .width / .height      title screen container (Spec 21)
+titleScreen.bgColor / .bgOpacity           base color when no title art is bound
+titleScreen.titleColor / .titleFontSize / .titleFontFamily
+titleScreen.buttonBgColor / .buttonTextColor / .buttonHoverColor
+titleScreen.buttonRadius / .buttonFontSize
+stage.fontFamily                           global font (may reference manifest.fonts families)
+```
+
+**Geometry semantics**: the origin is the stage top-left corner; `x`/`y` are the part's top-left corner, `width`/`height` its size, all in stage-coordinate px (i.e. the `content/meta.json` stage coordinate system). Numeric `lineHeight` / `padding` tokens are px.
+
+**Draggable parts (`layout-parts-v1`)**: a renderer declares the `layout-parts-v1` capability in its manifest when Studio stage dragging is supported. Each draggable part must (1) be positioned and sized entirely by its geometry tokens (absolute positioning in stage coordinates, with defaults when tokens are missing), and (2) carry `data-ui-part="<partName>"` on its root element, one-to-one with the token key prefix (`dialogueBox.x` ↔ `data-ui-part="dialogueBox"`). A part must NOT carry `data-ui-part` unless its layout is fully token-driven, otherwise drag values and visuals diverge. The bundled default renderer marks `dialogueBox`, `nameBox`, `choiceBox`, `hud`, `menuWindow`, and `titleScreen` this way (dragging `menuWindow` repositions every player-menu page at once; `hud.x`/`.y` stay unset until the first drag, which switches the HUD from its built-in top-right anchor to explicit coordinates; `titleScreen` is only visible while the title screen is shown).
+
+**uiHint channel**: hosts (Studio scene fixtures, CLI `renderer-snapshot`) may set `window.__VIBEGAL_FIXTURE_UI__ = { panel?: "<id>", screen?: "title" | "story" }` before mounting the renderer. Renderers may read it once as their initial UI state: `save` / `history` / `settings` open the corresponding panel, and `gallery-cg` / `gallery-replay` / `gallery-music` / `gallery-endings` open the Gallery page tabs. `screen` selects the initial screen for renderers with a title gate (Spec 21): `"title"` shows the title screen, `"story"` skips it; carrying a valid `panel` also implies story. Without the global, behavior is the renderer's real-launch default (the bundled default renderer shows its title screen). Read it defensively (`typeof window === "undefined"` guard plus structural validation).
+
+## Title Screen (Optional, Spec 21)
+
+The bundled default renderer implements a title screen (开始游戏 / 继续游戏 / 读取存档 / 设置) as renderer-internal React state — the engine and this contract v1 are unchanged, and third-party renderers may implement their own or ignore the conventions below.
+
+**Title art and BGM (`uiSkins.<id>.assets`)**: the uiSkin `assets` record is a binding table of semantic slot keys to project asset ids from the manifest registries. The default renderer consumes two keys: `titleBackground` (an id from `manifest.backgrounds`, rendered as full-stage title art; missing/unresolvable → fall back to the `titleScreen.bgColor` base color) and `titleBgm` (an id from `manifest.audio.bgm`, looped while the title screen is shown and stopped when the story starts, where `bgm` instructions take over). The skin selection rule is the same as for tokens (`"default"` first, first-entry fallback with a warning).
+
+**Title menu hooks**: the default renderer's title buttons carry `data-title-action="start|continue|load|settings"` so hosts and smoke tests can drive the gate. 继续游戏 loads the slot with the latest `updatedAt` (including `quick`/`auto:*` slots); the in-game System panel offers 回到标题, which switches back to the title screen without resetting the player.
 
 ## NovelState
 
@@ -253,7 +294,7 @@ vibegal-cli renderer-snapshot . --out .galstudio/snapshots --format json
 
 `renderer-check` reports `renderer_typecheck_failed` / `renderer_compile_failed` diagnostics with file, line, and column. If node or the bundled exporter is unavailable, it degrades to a `renderer_compile_skipped` warning and keeps the static-check result.
 
-`renderer-snapshot` mounts the renderer with deterministic fixture states derived from the project manifest — `dialogue`, `narration`, `choice`, and `sprites` (multi-sprite) — using the same runtime services contract as the Studio preview, then drives headless Chrome/Chromium (`VIBEGAL_SMOKE_BROWSER` overrides the executable). It writes `<rendererId>-<sceneId>.png` files plus a `.vibegal-snapshot/` debug directory (HTML/bundle/scenes.json) into the `--out` directory, and reports per-scene `ok` / `warning` / `error` in JSON. Runtime render crashes surface as structured scene errors, so an external Agent can iterate: edit renderer → snapshot → read the PNGs and errors.
+`renderer-snapshot` mounts the renderer with deterministic fixture states derived from the project manifest — `dialogue`, `narration`, `choice`, `sprites` (multi-sprite), seven player-panel scenes, and a `title` scene (Spec 21) — using the same runtime services contract as the Studio preview, then drives headless Chrome/Chromium (`VIBEGAL_SMOKE_BROWSER` overrides the executable). It writes `<rendererId>-<sceneId>.png` files plus a `.vibegal-snapshot/` debug directory (HTML/bundle/scenes.json) into the `--out` directory, and reports per-scene `ok` / `warning` / `error` in JSON. Runtime render crashes surface as structured scene errors, so an external Agent can iterate: edit renderer → snapshot → read the PNGs and errors. Each scene's browser screenshot is capped at 45s by default; set `VIBEGAL_SNAPSHOT_BROWSER_TIMEOUT_SECS` to raise the cap on slow machines.
 
 ## Non-Goals / Not Guaranteed
 

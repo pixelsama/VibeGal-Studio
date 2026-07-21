@@ -11,7 +11,7 @@
  *
  * 几何语义：舞台左上角原点，x/y = 部件左上角，单位 = 舞台坐标 px
  * （默认值按 1280×720 舞台标定）。可拖拽部件（data-ui-part）：
- * dialogueBox / nameBox / choiceBox / hud / menuWindow。
+ * dialogueBox / nameBox / choiceBox / hud / menuWindow / titleScreen。
  */
 import { useMemo } from "react";
 import type { Manifest } from "@vibegal/engine";
@@ -87,6 +87,25 @@ export interface MenuWindowTokens {
   height: number;
 }
 
+export interface TitleScreenTokens {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** null = 内置磨砂白面板底（含 backdrop 模糊）；设置后替换为纯色（或配合 bgOpacity） */
+  bgColor: string | null;
+  /** 0..1，仅在与 bgColor 搭配时生效（color-mix） */
+  bgOpacity: number | null;
+  titleColor: string;
+  titleFontSize: number;
+  titleFontFamily: string;
+  buttonBgColor: string;
+  buttonTextColor: string;
+  buttonHoverColor: string;
+  buttonRadius: number;
+  buttonFontSize: number;
+}
+
 export interface UiTokens {
   dialogueBox: DialogueBoxTokens;
   nameBox: NameBoxTokens;
@@ -94,6 +113,7 @@ export interface UiTokens {
   choiceButton: ChoiceButtonTokens;
   hud: HudTokens;
   menuWindow: MenuWindowTokens;
+  titleScreen: TitleScreenTokens;
   stageFontFamily: string;
 }
 
@@ -106,6 +126,8 @@ export interface UiTokens {
  * - 选项区：舞台上中部 480px 宽竖列（y=170），按钮是磨砂白胶囊。
  * - HUD：右上角胶囊条（右缘 16 / 顶 14）；x/y token 缺省 = 锚定模式。
  * - 菜单窗口：1060×640，居中偏上（110, 40）。
+ * - 标题画面（Spec 21）：400×420 居中面板（440, 150），磨砂白 + 大标题 +
+ *   四个胶囊按钮；按钮悬停 = 樱粉底白字。
  * - lineHeight：23px × 1.8 = 41.4px。
  */
 export const DEFAULT_UI_TOKENS: UiTokens = {
@@ -162,6 +184,22 @@ export const DEFAULT_UI_TOKENS: UiTokens = {
     width: 1060,
     height: 640,
   },
+  titleScreen: {
+    x: 440,
+    y: 150,
+    width: 400,
+    height: 420,
+    bgColor: null,
+    bgOpacity: null,
+    titleColor: palette.ink,
+    titleFontSize: 40,
+    titleFontFamily: SANS_FONT,
+    buttonBgColor: "rgba(255, 255, 255, 0.9)",
+    buttonTextColor: palette.ink,
+    buttonHoverColor: palette.accent,
+    buttonRadius: 14,
+    buttonFontSize: 16,
+  },
   stageFontFamily: SANS_FONT,
 };
 
@@ -214,14 +252,30 @@ function tokenPadding(tokens: TokenMap, key: string, fallback: string): string {
   return fallback;
 }
 
-function selectSkinTokens(manifest: Manifest): TokenMap {
+/**
+ * skin 选择（已定点规则，tokens 与 assets 共用）：取 id 为 "default" 的 uiSkin；
+ * 注册表没有 "default" 时回退到第一个条目并 console.warn；两者都没有 → null。
+ */
+function selectUiSkin(manifest: Manifest): { tokens?: TokenMap; assets?: Record<string, string> } | null {
   const skins = manifest.uiSkins ?? {};
   const preferred = skins["default"];
-  if (preferred) return preferred.tokens ?? {};
+  if (preferred) return preferred;
   const firstId = Object.keys(skins)[0];
-  if (!firstId) return {};
+  if (!firstId) return null;
   console.warn(`[vibegal] manifest.uiSkins 缺少 "default" 皮肤，回退到第一个条目 "${firstId}"。`);
-  return skins[firstId].tokens ?? {};
+  return skins[firstId];
+}
+
+function selectSkinTokens(manifest: Manifest): TokenMap {
+  return selectUiSkin(manifest)?.tokens ?? {};
+}
+
+/**
+ * uiSkin assets 槽位（Spec 21 §6 资产约定）：语义槽位键（如 titleBackground /
+ * titleBgm）→ manifest 注册表资产 id 的绑定表。skin 选择规则与 tokens 一致。
+ */
+export function resolveUiSkinAssets(manifest: Manifest): Record<string, string> {
+  return selectUiSkin(manifest)?.assets ?? {};
 }
 
 export function resolveUiTokens(manifest: Manifest): UiTokens {
@@ -282,6 +336,22 @@ export function resolveUiTokens(manifest: Manifest): UiTokens {
       y: tokenNumber(tokens, "menuWindow.y", defaults.menuWindow.y),
       width: tokenNumber(tokens, "menuWindow.width", defaults.menuWindow.width),
       height: tokenNumber(tokens, "menuWindow.height", defaults.menuWindow.height),
+    },
+    titleScreen: {
+      x: tokenNumber(tokens, "titleScreen.x", defaults.titleScreen.x),
+      y: tokenNumber(tokens, "titleScreen.y", defaults.titleScreen.y),
+      width: tokenNumber(tokens, "titleScreen.width", defaults.titleScreen.width),
+      height: tokenNumber(tokens, "titleScreen.height", defaults.titleScreen.height),
+      bgColor: tokenStringOrNull(tokens, "titleScreen.bgColor"),
+      bgOpacity: tokenNumberOrNull(tokens, "titleScreen.bgOpacity"),
+      titleColor: tokenString(tokens, "titleScreen.titleColor", defaults.titleScreen.titleColor),
+      titleFontSize: tokenNumber(tokens, "titleScreen.titleFontSize", defaults.titleScreen.titleFontSize),
+      titleFontFamily: tokenString(tokens, "titleScreen.titleFontFamily", defaults.titleScreen.titleFontFamily),
+      buttonBgColor: tokenString(tokens, "titleScreen.buttonBgColor", defaults.titleScreen.buttonBgColor),
+      buttonTextColor: tokenString(tokens, "titleScreen.buttonTextColor", defaults.titleScreen.buttonTextColor),
+      buttonHoverColor: tokenString(tokens, "titleScreen.buttonHoverColor", defaults.titleScreen.buttonHoverColor),
+      buttonRadius: tokenNumber(tokens, "titleScreen.buttonRadius", defaults.titleScreen.buttonRadius),
+      buttonFontSize: tokenNumber(tokens, "titleScreen.buttonFontSize", defaults.titleScreen.buttonFontSize),
     },
     stageFontFamily: tokenString(tokens, "stage.fontFamily", defaults.stageFontFamily),
   };

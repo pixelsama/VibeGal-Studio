@@ -74,4 +74,23 @@ describe("FixtureFileSchema", () => {
         .success,
     ).toBe(false);
   });
+
+  it("uiHint.screen 接受 title/story，可单独声明或与 panel 共存（Spec 21 §4）", () => {
+    const titleOnly = FixtureFileSchema.parse({ state: minimalState(), uiHint: { screen: "title" } });
+    expect(titleOnly.uiHint).toEqual({ screen: "title" });
+
+    const storyWithPanel = FixtureFileSchema.parse({
+      state: minimalState(),
+      uiHint: { panel: "save", screen: "story" },
+    });
+    expect(storyWithPanel.uiHint).toEqual({ panel: "save", screen: "story" });
+
+    expect(
+      FixtureFileSchema.safeParse({ state: minimalState(), uiHint: { screen: "menu" } }).success,
+    ).toBe(false);
+    // panel 与 screen 都缺失的空 uiHint 拒绝
+    expect(
+      FixtureFileSchema.safeParse({ state: minimalState(), uiHint: {} }).success,
+    ).toBe(false);
+  });
 });

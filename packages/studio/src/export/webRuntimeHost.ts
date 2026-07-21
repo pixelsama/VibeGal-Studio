@@ -476,6 +476,12 @@ export async function runWebRuntimeUiBehaviorSmoke(
   sessionStorage.removeItem(UI_SMOKE_PHASE_KEY);
   const services = runtime.rendererProps().runtime;
   if (!services) throw new Error("Default renderer UI smoke requires runtime services.");
+  // 标题门（Spec 21）：重载后同样先落在标题画面，点「开始游戏」回剧情。
+  await clickUiButton('[data-title-action="start"]');
+  await waitForCondition(
+    () => document.querySelector('[data-ui-part="titleScreen"]') == null,
+    "title screen did not close after start (second phase)",
+  );
   await waitForCondition(
     async () => (await services.save.listSlots()).some((slot) => slot.slotId === "quick"),
     "quick save did not persist across reload",
@@ -526,6 +532,20 @@ async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokeP
   const services = runtime.rendererProps().runtime;
   if (!services) throw new Error("Default renderer UI smoke requires runtime services.");
   const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
+  // 标题门（Spec 21 §7）：真实启动先呈现标题画面——先断言「开始游戏」出现并
+  // 点击，再做 stage-click 推进断言，标题门从 smoke 的破坏者变成被测路径。
+  await clickUiButton('[data-title-action="start"]');
+  await waitForCondition(
+    () => document.querySelector('[data-ui-part="titleScreen"]') == null,
+    "title screen did not close after start",
+  );
+  // start 推进首行后打字机仍在走字（typedLen 持续变化）；等首行完整显示，
+  // 保证后续"失败 quick-load 不改状态"等对比以稳定快照为基准。
+  await waitForCondition(() => {
+    const state = runtime.getState();
+    const text = state.dialogue ?? state.narration;
+    return text != null && text.fullyRevealed;
+  }, "title start did not reach a fully revealed story line");
   await verifyDefaultPlayerLayouts(stage, false);
   const initialState = JSON.stringify(runtime.getState());
 

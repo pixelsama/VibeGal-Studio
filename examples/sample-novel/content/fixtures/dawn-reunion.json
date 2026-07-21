@@ -68,5 +68,8 @@
       "replay": [],
       "endings": []
     }
+  },
+  "uiHint": {
+    "screen": "story"
   }
 }

@@ -97,13 +97,14 @@ describe("fixtureSceneIdFromPath", () => {
 });
 
 describe("fixtureScenesForPreview", () => {
-  it("内置场景（4 剧情 + 7 面板）在前，项目自定义 fixtures 归一化后接在后面", () => {
+  it("内置场景（4 剧情 + 7 面板 + 1 标题页）在前，项目自定义 fixtures 归一化后接在后面", () => {
     const scenes = fixtureScenesForPreview(project);
-    expect(scenes).toHaveLength(12);
+    expect(scenes).toHaveLength(13);
     expect(scenes.map((scene) => scene.id)).toEqual([
       "dialogue", "narration", "choice", "sprites",
       "save", "history", "settings",
       "gallery-cg", "gallery-replay", "gallery-music", "gallery-endings",
+      "title",
       "dawn-reunion",
     ]);
     const custom = scenes.at(-1)!;
@@ -115,7 +116,7 @@ describe("fixtureScenesForPreview", () => {
 
   it("项目无 fixtures 时只有内置场景", () => {
     const { fixtures: _fixtures, ...withoutFixtures } = project;
-    expect(fixtureScenesForPreview(withoutFixtures)).toHaveLength(11);
+    expect(fixtureScenesForPreview(withoutFixtures)).toHaveLength(12);
   });
 });
 
@@ -186,12 +187,28 @@ describe("SceneFixtureView", () => {
     expect(props.runtime?.gallery.listCg().map((entry) => entry.id)).toEqual(["cg_rooftop"]);
   });
 
-  it("无 uiHint 的场景：渲染期间不触碰 uiHint 全局（注入是父组件事件处理器的职责）", () => {
+  it("挂载期间保证 uiHint 全局 = 本场景 hint（Spec 21：标题门需要逐场景注入）", () => {
+    const withHint: FixtureScene = {
+      id: "title",
+      title: "标题画面",
+      state: minimalState(),
+      uiHint: { screen: "title" },
+    };
+    renderToStaticMarkup(
+      <SceneFixtureView project={project} renderer={probeRenderer([])} scene={withHint} />,
+    );
+    const target = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
+    expect(target.__VIBEGAL_FIXTURE_UI__).toEqual({ screen: "title" });
+  });
+
+  it("无 uiHint 的场景：挂载期间全局保持缺省（等价 story 之外的标题门退化）", () => {
+    // 残留旧 hint 会被本场景清除（无 hint = 删除全局）
+    const target = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
+    target.__VIBEGAL_FIXTURE_UI__ = { panel: "save" };
     const scene: FixtureScene = { id: "dialogue", title: "对话", state: minimalState() };
     renderToStaticMarkup(
       <SceneFixtureView project={project} renderer={probeRenderer([])} scene={scene} />,
     );
-    const target = window as { __VIBEGAL_FIXTURE_UI__?: unknown };
     expect(target.__VIBEGAL_FIXTURE_UI__).toBeUndefined();
   });
 });

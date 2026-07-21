@@ -486,6 +486,135 @@ fn validate_assets_reports_missing_expanded_registry_files() {
 }
 
 #[test]
+fn validate_assets_resolves_uiskin_title_convention_asset_ids() {
+    let dir = unique_temp_dir("validate-assets-uiskin-ids");
+    // Spec 21 §6：titleBackground/titleBgm 的 value 是 manifest 注册表资产 id
+    // （backgrounds / audio.bgm），不是 content 相对路径。
+    write_asset_project(
+        &dir,
+        r#"{
+            "characters":{},
+            "backgrounds":{"ocean_dawn":"assets/backgrounds/ocean_dawn.svg"},
+            "audio":{"bgm":{"bgm_main":"assets/audio/bgm/bgm_main.mp3"},"sfx":{},"voice":{}},
+            "uiSkins":{"default":{"assets":{"titleBackground":"ocean_dawn","titleBgm":"bgm_main"}}}
+        }"#,
+        &[
+            "assets/backgrounds/ocean_dawn.svg",
+            "assets/audio/bgm/bgm_main.mp3",
+        ],
+    );
+
+    let content_root = dir.join("content").canonicalize().unwrap();
+    let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+    let issues = validate_assets_for_project(&content_root, &manifest);
+    assert!(
+        issues.is_empty(),
+        "约定 id 命中注册表且文件存在时应无问题（含 duplicate_asset_ref）: {issues:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn validate_assets_flags_unknown_uiskin_title_convention_id() {
+    let dir = unique_temp_dir("validate-assets-uiskin-unknown-id");
+    write_asset_project(
+        &dir,
+        r#"{
+            "characters":{},
+            "backgrounds":{"ocean_dawn":"assets/backgrounds/ocean_dawn.svg"},
+            "audio":{"bgm":{"bgm_main":"assets/audio/bgm/bgm_main.mp3"},"sfx":{},"voice":{}},
+            "uiSkins":{"default":{"assets":{"titleBackground":"missing_bg","titleBgm":"missing_bgm"}}}
+        }"#,
+        &[
+            "assets/backgrounds/ocean_dawn.svg",
+            "assets/audio/bgm/bgm_main.mp3",
+        ],
+    );
+
+    let content_root = dir.join("content").canonicalize().unwrap();
+    let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+    let issues = validate_assets_for_project(&content_root, &manifest);
+
+    let unknown: Vec<_> = issues
+        .iter()
+        .filter(|issue| issue.code == "unknown_asset_id")
+        .collect();
+    assert_eq!(unknown.len(), 2, "两个约定键的未知 id 都应报错: {issues:?}");
+    assert!(
+        unknown
+            .iter()
+            .all(|issue| issue.severity == GraphIssueSeverity::Error)
+    );
+    let json_paths: Vec<_> = unknown
+        .iter()
+        .filter_map(|issue| issue.json_path.as_deref())
+        .collect();
+    assert!(json_paths.contains(&"$.uiSkins.default.assets.titleBackground"));
+    assert!(json_paths.contains(&"$.uiSkins.default.assets.titleBgm"));
+    assert!(
+        !issues.iter().any(|issue| issue.code == "missing_asset"),
+        "未知 id 不应退化为按路径检查的 missing_asset: {issues:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn validate_assets_flags_missing_file_behind_uiskin_title_convention_id() {
+    let dir = unique_temp_dir("validate-assets-uiskin-missing-file");
+    // 约定 id 命中注册表，但注册表指向的文件不在磁盘上：
+    // missing_asset 必须指向解析后的真实路径，jsonPath 指向约定键。
+    write_asset_project(
+        &dir,
+        r#"{
+            "characters":{},
+            "backgrounds":{"ocean_dawn":"assets/backgrounds/ocean_dawn.svg"},
+            "audio":{"bgm":{"bgm_main":"assets/audio/bgm/bgm_main.mp3"},"sfx":{},"voice":{}},
+            "uiSkins":{"default":{"assets":{"titleBackground":"ocean_dawn","titleBgm":"bgm_main"}}}
+        }"#,
+        &[],
+    );
+
+    let content_root = dir.join("content").canonicalize().unwrap();
+    let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+    let issues = validate_assets_for_project(&content_root, &manifest);
+
+    let skin_missing: Vec<_> = issues
+        .iter()
+        .filter(|issue| issue.code == "missing_asset")
+        .filter(|issue| {
+            issue
+                .json_path
+                .as_deref()
+                .is_some_and(|path| path.starts_with("$.uiSkins."))
+        })
+        .collect();
+    assert_eq!(
+        skin_missing.len(),
+        2,
+        "两个约定键解析出的文件缺失都应报 missing_asset: {issues:?}"
+    );
+    let background = skin_missing
+        .iter()
+        .find(|issue| issue.json_path.as_deref() == Some("$.uiSkins.default.assets.titleBackground"))
+        .expect("titleBackground 的 missing_asset 应存在");
+    assert_eq!(
+        background.file.as_deref(),
+        Some("content/assets/backgrounds/ocean_dawn.svg"),
+        "missing_asset 应指向解析后的真实路径: {background:?}"
+    );
+    let bgm = skin_missing
+        .iter()
+        .find(|issue| issue.json_path.as_deref() == Some("$.uiSkins.default.assets.titleBgm"))
+        .expect("titleBgm 的 missing_asset 应存在");
+    assert_eq!(
+        bgm.file.as_deref(),
+        Some("content/assets/audio/bgm/bgm_main.mp3"),
+        "missing_asset 应指向解析后的真实路径: {bgm:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn open_project_includes_asset_report() {
     let dir = unique_temp_dir("open-asset-report");
     write_asset_project(

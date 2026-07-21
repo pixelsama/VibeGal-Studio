@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createInMemoryRuntimeServices,
   createInitialState,
@@ -47,24 +47,38 @@ function runtime(): RuntimeServices {
   return createInMemoryRuntimeServices({ getState: createInitialState });
 }
 
-function renderStage(state: NovelState, manifest: Manifest): string {
-  return renderToStaticMarkup(
-    <Stage
-      state={state}
-      manifest={manifest}
-      contentBase="./content"
-      stage={{ width: 1280, height: 720 }}
-      controls={{
-        advance: vi.fn(),
-        choose: vi.fn(),
-        setAutoPlay: vi.fn(),
-        setSkipMode: vi.fn(),
-        rollbackTo: vi.fn(),
-        restart: vi.fn(),
-      }}
-      runtime={runtime()}
-    />,
-  );
+/**
+ * SSR 挂载 Stage。剧情 UI 断言一律注入 `{ screen: "story" }`（Spec 21：无 uiHint
+ * 全局 = 真实启动 = 标题门）。uiHint === null 表示完全不设置全局（真实启动）。
+ */
+function renderStage(state: NovelState, manifest: Manifest, uiHint?: unknown): string {
+  const globalScope = globalThis as { window?: unknown };
+  const hadWindow = "window" in globalScope;
+  const previous = globalScope.window;
+  if (uiHint === null) delete globalScope.window;
+  else globalScope.window = { __VIBEGAL_FIXTURE_UI__: uiHint ?? { screen: "story" } };
+  try {
+    return renderToStaticMarkup(
+      <Stage
+        state={state}
+        manifest={manifest}
+        contentBase="./content"
+        stage={{ width: 1280, height: 720 }}
+        controls={{
+          advance: vi.fn(),
+          choose: vi.fn(),
+          setAutoPlay: vi.fn(),
+          setSkipMode: vi.fn(),
+          rollbackTo: vi.fn(),
+          restart: vi.fn(),
+        }}
+        runtime={runtime()}
+      />,
+    );
+  } finally {
+    if (hadWindow) globalScope.window = previous;
+    else delete globalScope.window;
+  }
 }
 
 describe("resolveUiTokens", () => {
@@ -293,29 +307,23 @@ describe("default renderer ui tokens rendering", () => {
   });
 
   it("rendersTheMenuWindowPartWithBuiltinGeometryAndOverridesItWithTokens", () => {
-    const globalScope = globalThis as { window?: unknown };
-    globalScope.window = { __VIBEGAL_FIXTURE_UI__: { panel: "save" } };
-    try {
-      const legacy = renderStage(createInitialState(), baseManifest());
-      expect(legacy).toContain('data-ui-part="menuWindow"');
-      expect(legacy).toContain("left:110px");
-      expect(legacy).toContain("top:40px");
-      expect(legacy).toContain("width:1060px");
-      expect(legacy).toContain("height:640px");
+    const legacy = renderStage(createInitialState(), baseManifest(), { panel: "save" });
+    expect(legacy).toContain('data-ui-part="menuWindow"');
+    expect(legacy).toContain("left:110px");
+    expect(legacy).toContain("top:40px");
+    expect(legacy).toContain("width:1060px");
+    expect(legacy).toContain("height:640px");
 
-      const themed = renderStage(createInitialState(), manifestWithTokens({
-        "menuWindow.x": 60,
-        "menuWindow.y": 24,
-        "menuWindow.width": 1160,
-        "menuWindow.height": 672,
-      }));
-      expect(themed).toContain("left:60px");
-      expect(themed).toContain("top:24px");
-      expect(themed).toContain("width:1160px");
-      expect(themed).toContain("height:672px");
-    } finally {
-      delete globalScope.window;
-    }
+    const themed = renderStage(createInitialState(), manifestWithTokens({
+      "menuWindow.x": 60,
+      "menuWindow.y": 24,
+      "menuWindow.width": 1160,
+      "menuWindow.height": 672,
+    }), { panel: "save" });
+    expect(themed).toContain("left:60px");
+    expect(themed).toContain("top:24px");
+    expect(themed).toContain("width:1160px");
+    expect(themed).toContain("height:672px");
   });
 
   it("appliesStageFontFamilyToTheStageRoot", () => {
@@ -335,37 +343,134 @@ describe("default renderer ui tokens rendering", () => {
 });
 
 describe("fixture ui hint", () => {
-  const globalScope = globalThis as { window?: unknown };
-
-  afterEach(() => {
-    delete globalScope.window;
-  });
-
   it("opensTheRequestedMenuPageOnMount", () => {
-    globalScope.window = { __VIBEGAL_FIXTURE_UI__: { panel: "save" } };
-    const html = renderStage(createInitialState(), baseManifest());
+    const html = renderStage(createInitialState(), baseManifest(), { panel: "save" });
     expect(html).toContain('data-player-menu="save"');
   });
 
   it("mapsGalleryPagesToTheirMenuPages", () => {
-    globalScope.window = { __VIBEGAL_FIXTURE_UI__: { panel: "gallery-music" } };
-    const html = renderStage(createInitialState(), baseManifest());
+    const html = renderStage(createInitialState(), baseManifest(), { panel: "gallery-music" });
     expect(html).toContain('data-player-menu="music"');
   });
 
   it("ignoresUnknownOrMalformedHints", () => {
-    globalScope.window = { __VIBEGAL_FIXTURE_UI__: { panel: "not-a-panel" } };
-    expect(renderStage(createInitialState(), baseManifest())).not.toContain("data-player-menu=");
+    expect(renderStage(createInitialState(), baseManifest(), { panel: "not-a-panel", screen: "story" }))
+      .not.toContain("data-player-menu=");
+    expect(renderStage(createInitialState(), baseManifest(), "save")).not.toContain("data-player-menu=");
+    expect(renderStage(createInitialState(), baseManifest(), { screen: "story" }))
+      .not.toContain("data-player-menu=");
+  });
+});
 
-    globalScope.window = { __VIBEGAL_FIXTURE_UI__: "save" };
-    expect(renderStage(createInitialState(), baseManifest())).not.toContain("data-player-menu=");
-
-    globalScope.window = {};
-    expect(renderStage(createInitialState(), baseManifest())).not.toContain("data-player-menu=");
+describe("title gate（Spec 21 §4 uiHint 语义表）", () => {
+  it("无 uiHint 全局（真实启动）→ 标题画面，不渲染剧情 UI", () => {
+    const html = renderStage(dialogueState(), baseManifest(), null);
+    expect(html).toContain('data-ui-part="titleScreen"');
+    expect(html).toContain('data-player-screen="title"');
+    expect(html).toContain('data-title-action="start"');
+    expect(html).not.toContain('data-ui-part="dialogueBox"');
+    expect(html).not.toContain("data-player-action=");
   });
 
-  it("keepsAllPanelsClosedWhenNoHintExists", () => {
-    const html = renderStage(createInitialState(), baseManifest());
-    expect(html).not.toContain("data-player-menu=");
+  it("{ screen: \"title\" } → 标题画面（fixture 预览标题页）", () => {
+    const html = renderStage(dialogueState(), baseManifest(), { screen: "title" });
+    expect(html).toContain('data-ui-part="titleScreen"');
+    expect(html).not.toContain('data-ui-part="dialogueBox"');
+  });
+
+  it("{ screen: \"story\" } → 跳过标题门直进剧情", () => {
+    const html = renderStage(dialogueState(), baseManifest(), { screen: "story" });
+    expect(html).toContain('data-ui-part="dialogueBox"');
+    expect(html).not.toContain('data-ui-part="titleScreen"');
+  });
+
+  it("携带 panel → 跳过标题门并预开面板（现状语义不变）", () => {
+    const html = renderStage(dialogueState(), baseManifest(), { panel: "history" });
+    expect(html).toContain('data-player-menu="history"');
+    expect(html).toContain('data-ui-part="dialogueBox"');
+    expect(html).not.toContain('data-ui-part="titleScreen"');
+  });
+
+  it("非法结构 → 按真实启动退化为标题画面", () => {
+    expect(renderStage(dialogueState(), baseManifest(), { panel: "not-a-panel" }))
+      .toContain('data-ui-part="titleScreen"');
+    expect(renderStage(dialogueState(), baseManifest(), {}))
+      .toContain('data-ui-part="titleScreen"');
+  });
+
+  it("标题页：无存档时「继续/读档」禁用，标题取 manifest.name 回退默认文案", () => {
+    const html = renderStage(createInitialState(), baseManifest(), { screen: "title" });
+    expect(html).toContain("未命名作品");
+    expect(html).toContain("开始游戏");
+    expect(html).toContain("继续游戏");
+    expect(html).toContain("读取存档");
+    expect(html).toContain("设置");
+    // 内存 runtime 初始无存档：继续/读档禁用
+    const continueButton = html.match(/<button[^>]*data-title-action="continue"[^>]*>/)?.[0] ?? "";
+    const loadButton = html.match(/<button[^>]*data-title-action="load"[^>]*>/)?.[0] ?? "";
+    expect(continueButton).toContain("disabled");
+    expect(loadButton).toContain("disabled");
+    expect(html).toContain("暂无存档");
+    // 开始/设置始终可用
+    const startButton = html.match(/<button[^>]*data-title-action="start"[^>]*>/)?.[0] ?? "";
+    expect(startButton).not.toContain("disabled");
+  });
+
+  it("标题页几何与配色由 titleScreen.* token 驱动，缺失回退内置默认", () => {
+    const legacy = renderStage(createInitialState(), baseManifest(), { screen: "title" });
+    const container = legacy.match(/<div[^>]*data-ui-part="titleScreen"[^>]*>/)?.[0] ?? "";
+    expect(container).toContain("left:440px");
+    expect(container).toContain("top:150px");
+    expect(container).toContain("width:400px");
+    expect(container).toContain("height:420px");
+    // 内置磨砂白面板 + 墨色标题
+    expect(container).toContain("background:rgba(255, 255, 255, 0.86)");
+    expect(legacy).toContain("color:#3a3f55");
+    expect(legacy).toContain("font-size:40px");
+
+    const themed = renderStage(createInitialState(), manifestWithTokens({
+      "titleScreen.x": 100,
+      "titleScreen.y": 80,
+      "titleScreen.width": 600,
+      "titleScreen.height": 500,
+      "titleScreen.bgColor": "#112233",
+      "titleScreen.bgOpacity": 0.5,
+      "titleScreen.titleColor": "#ff0000",
+      "titleScreen.titleFontSize": 56,
+      "titleScreen.buttonBgColor": "#101010",
+      "titleScreen.buttonTextColor": "#eeeeee",
+      "titleScreen.buttonHoverColor": "#ff00ff",
+      "titleScreen.buttonRadius": 8,
+      "titleScreen.buttonFontSize": 18,
+    }), { screen: "title" });
+    const themedContainer = themed.match(/<div[^>]*data-ui-part="titleScreen"[^>]*>/)?.[0] ?? "";
+    expect(themedContainer).toContain("left:100px");
+    expect(themedContainer).toContain("top:80px");
+    expect(themedContainer).toContain("width:600px");
+    expect(themedContainer).toContain("height:500px");
+    expect(themedContainer).toContain("background:color-mix(in srgb, #112233 50%, transparent)");
+    expect(themed).toContain("color:#ff0000");
+    expect(themed).toContain("font-size:56px");
+    expect(themed).toContain("background:#101010");
+    expect(themed).toContain("color:#eeeeee");
+    expect(themed).toContain("border-radius:8px");
+    expect(themed).toContain("font-size:18px");
+    expect(themed).toContain("#ff00ff");
+  });
+
+  it("uiSkin assets.titleBackground 解析为整舞台标题美术（id → manifest.backgrounds 路径）", () => {
+    const manifest: Manifest = {
+      ...baseManifest(),
+      backgrounds: { title_art: "bg/title.png" },
+      uiSkins: { default: { assets: { titleBackground: "title_art" }, tokens: {} } },
+    };
+    const html = renderStage(createInitialState(), manifest, { screen: "title" });
+    expect(html).toContain("bg/title.png");
+    // 未注册到 backgrounds 的 id 静默忽略
+    const broken: Manifest = {
+      ...baseManifest(),
+      uiSkins: { default: { assets: { titleBackground: "missing" }, tokens: {} } },
+    };
+    expect(renderStage(createInitialState(), broken, { screen: "title" })).not.toContain("<img");
   });
 });
