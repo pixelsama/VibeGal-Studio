@@ -540,11 +540,9 @@ fn validate_assets_flags_unknown_uiskin_title_convention_id() {
         .filter(|issue| issue.code == "unknown_asset_id")
         .collect();
     assert_eq!(unknown.len(), 2, "两个约定键的未知 id 都应报错: {issues:?}");
-    assert!(
-        unknown
-            .iter()
-            .all(|issue| issue.severity == GraphIssueSeverity::Error)
-    );
+    assert!(unknown
+        .iter()
+        .all(|issue| issue.severity == GraphIssueSeverity::Error));
     let json_paths: Vec<_> = unknown
         .iter()
         .filter_map(|issue| issue.json_path.as_deref())
@@ -595,7 +593,9 @@ fn validate_assets_flags_missing_file_behind_uiskin_title_convention_id() {
     );
     let background = skin_missing
         .iter()
-        .find(|issue| issue.json_path.as_deref() == Some("$.uiSkins.default.assets.titleBackground"))
+        .find(|issue| {
+            issue.json_path.as_deref() == Some("$.uiSkins.default.assets.titleBackground")
+        })
         .expect("titleBackground 的 missing_asset 应存在");
     assert_eq!(
         background.file.as_deref(),

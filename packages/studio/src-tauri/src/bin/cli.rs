@@ -6787,10 +6787,7 @@ mod tests {
                 assert!(plist.contains("<string>APPL</string>"));
                 assert!(bundle.join("Contents/MacOS").join(product).is_file());
                 assert!(bundle.join("Contents/Resources/game/index.html").is_file());
-                assert_eq!(
-                    web_dist,
-                    format!("{product}.app/Contents/Resources/game")
-                );
+                assert_eq!(web_dist, format!("{product}.app/Contents/Resources/game"));
             }
         }
         std::env::remove_var("VIBEGAL_ELECTRON_DIST");
