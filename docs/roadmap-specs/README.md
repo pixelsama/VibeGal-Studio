@@ -2,7 +2,9 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-当前没有仍在规划或开发中的 roadmap spec。
+当前仍在规划或开发中的 roadmap spec：
+
+- [Spec 22 — Branch, Ending, and Variable Runtime Completion（分支、结局与变量完整化）](./22-branch-ending-variable-runtime-completion.spec.md)
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
