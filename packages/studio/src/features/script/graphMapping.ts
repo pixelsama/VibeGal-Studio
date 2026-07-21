@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { GraphIssue, GraphReport, GraphNode, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphIssue, GraphReport, GraphNode, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 
 export const NODE_TYPE = "galNode";
 
@@ -11,6 +11,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   status: GraphNodeStatus;
   incoming: number;
   outgoing: number;
+  badges: string[];
 }
 
 /** graph node -> React Flow node */
@@ -18,6 +19,7 @@ export function mapGraphToFlow(
   graph: ProjectGraph,
   graphReport?: GraphReport,
   nodeEntries?: NodeEntry[],
+  manifest?: Manifest,
 ): { nodes: Node<FlowNodeData, typeof NODE_TYPE>[]; edges: Edge[] } {
   const duplicateNodeIds = collectDuplicateNodeIds(graphReport);
   const suspiciousEdgeIds = new Set(
@@ -33,6 +35,15 @@ export function mapGraphToFlow(
     const hasFile = nodeEntries == null ? true : entry?.data != null;
     const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
     const baseStatus = deriveGraphNodeStatus(graph, node.id, { hasFile, duplicateNodeIds });
+    const endingIds = Object.entries(manifest?.unlocks?.endings ?? {})
+      .filter(([, ending]) => ending.nodeId === node.id)
+      .map(([id]) => id);
+    const badges = [
+      ...(node.id === graph.entryNodeId ? ["起点"] : []),
+      ...(outgoing === 0 ? ["图终点"] : []),
+      ...(outgoing >= 2 ? ["分支"] : []),
+      ...endingIds.map((id) => `正式结局：${id}`),
+    ];
     return {
       id: node.id,
       type: NODE_TYPE,
@@ -44,6 +55,7 @@ export function mapGraphToFlow(
         status: baseStatus,
         incoming,
         outgoing,
+        badges,
         ...(duplicateNodeIds.has(node.id) ? { duplicateNodeId: true } : {}),
       },
     };

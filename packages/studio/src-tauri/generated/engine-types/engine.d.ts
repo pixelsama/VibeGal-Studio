@@ -65,9 +65,11 @@ import type { ComponentType } from "react";
 
   export type BgmInstr = { t: "bgm"; id: string; fade: number; loop: boolean; };
 
-  export type Chapter = ({ t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "set"; key: string; value: string | number | boolean | null; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; })[];
+  export type Chapter = ({ t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; } | { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; } | { t: "completeEnding"; id: string; endingId: string; })[];
 
   export type CharInstr = { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; };
+
+  export type CompleteEndingInstr = { t: "completeEnding"; id: string; endingId: string; };
 
   export interface DebugService {
     inspectState(): NovelState;
@@ -75,7 +77,7 @@ import type { ComponentType } from "react";
     jumpTo(point: StoryPointId): void;
   }
 
-  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; };
+  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; };
 
   export type EffectInstr = { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; };
 
@@ -87,7 +89,7 @@ import type { ComponentType } from "react";
     listEndings(): Array<{ id: string; title: string; nodeId?: string }>;
   }
 
-  export type GlobalPersistentRecord = { schemaVersion: 1; projectId: string; readText: { nodeId: string; instructionId: string; textHash: string; }[]; unlockedCg: string[]; unlockedMusic: string[]; unlockedReplays: string[]; unlockedEndings: string[]; playthroughCount: number; };
+  export type GlobalPersistentRecord = { schemaVersion: 2; projectId: string; readText: { nodeId: string; instructionId: string; textHash: string; }[]; unlockedCg: string[]; unlockedMusic: string[]; unlockedReplays: string[]; unlockedEndings: string[]; playthroughCount: number; globalVars: Record<string, string | number | boolean | null>; lastEndingId: string | null; settledEndings: Record<string, Record<string, { completedAt: string; }>>; appliedGlobalEffects: Record<string, string[]>; };
 
   export type GraphEdgeData = { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; };
 
@@ -118,6 +120,7 @@ import type { ComponentType } from "react";
     settingsFallback?: Pick<RuntimeSettingsRecord, "textSpeedCps" | "autoAdvanceMs">;
     audio?: Partial<RuntimeAudioBridge>;
     manifest?: Manifest;
+    variables?: VariableRegistry;
     media?: Partial<MediaService>;
     onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
     startReplay?: (nodeId: string) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
@@ -128,9 +131,9 @@ import type { ComponentType } from "react";
     jumpTo?: (point: StoryPointId) => void;
   }
 
-  export type Instruction = { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "set"; key: string; value: string | number | boolean | null; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; };
+  export type Instruction = { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; } | { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; ms?: number | undefined; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; } | { t: "completeEnding"; id: string; endingId: string; };
 
-  export type InstructionType = "bg" | "bgm" | "sfx" | "voice" | "char" | "say" | "narrate" | "set" | "wait" | "effect" | "transition" | "pause" | "unlock" | "showCg" | "playVideo";
+  export type InstructionType = "bg" | "bgm" | "sfx" | "voice" | "char" | "say" | "narrate" | "set" | "wait" | "effect" | "transition" | "pause" | "unlock" | "showCg" | "playVideo" | "completeEnding";
 
   export type Manifest = { characters: Record<string, { name: string; color: string; sprites: Record<string, string>; }>; backgrounds: Record<string, string>; audio: { bgm: Record<string, string>; sfx: Record<string, string>; voice: Record<string, string>; }; cg: Record<string, { path: string; name?: string | undefined; tags?: string[] | undefined; thumbnail?: string | undefined; group?: string | undefined; unlockId?: string | undefined; }>; videos: Record<string, { path: string; name?: string | undefined; tags?: string[] | undefined; thumbnail?: string | undefined; poster?: string | undefined; skippable?: boolean | undefined; }>; fonts: Record<string, { path: string; family: string; weight?: string | undefined; style?: string | undefined; }>; uiSkins: Record<string, { assets: Record<string, string>; name?: string | undefined; tokens?: Record<string, string | number> | undefined; }>; animationAtlases: Record<string, { image: string; json?: string | undefined; frameWidth?: number | undefined; frameHeight?: number | undefined; }>; unlocks: { cg: Record<string, { assetId: string; title?: string | undefined; }>; music: Record<string, { audioId: string; title?: string | undefined; }>; replay: Record<string, { nodeId: string; title?: string | undefined; }>; endings: Record<string, { title: string; nodeId?: string | undefined; }>; }; };
 
@@ -226,9 +229,17 @@ import type { ComponentType } from "react";
     getUnlocks(): UnlockState;
     unlock(kind: UnlockKind, id: string): Promise<void>;
     resetGlobalProgress(): Promise<void>;
+    getGlobalVars(): Record<string, string | number | boolean | null>;
+    applyGlobalEffect(input: { playthroughId: string; effectKey: string; key: string; value: string | number | boolean | null }): Promise<{ applied: boolean }>;
+    completeEnding(input: { playthroughId: string; endingId: string }): Promise<{ settled: boolean }>;
   }
 
   export type PlayVideoInstr = { t: "playVideo"; id: string; skippable?: boolean | undefined; };
+
+  export interface ProgressService {
+    getSummary(): { playthroughCount: number; lastEndingId: string | null; currentPlaythroughEndingIds: string[] };
+    subscribe(listener: () => void): () => void;
+  }
 
   export type ProjectGraphData = { version: number; entryNodeId: string; nodes: { id: string; file: string; position: { x: number; y: number; }; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; }[]; };
 
@@ -294,6 +305,7 @@ import type { ComponentType } from "react";
   export interface RuntimeLoadWarning {
     code: string;
     message: string;
+    variableName?: string;
     storyPoint?: StoryPointId;
     nodeId?: string;
   }
@@ -309,9 +321,9 @@ import type { ComponentType } from "react";
     writeSettings(projectId: string, record: RuntimeSettingsRecord): Promise<void>;
   }
 
-  export type RuntimePersistenceErrorCode = "runtime_record_future_version" | "runtime_record_invalid" | "runtime_save_slot_not_found";
+  export type RuntimePersistenceErrorCode = "missing_ending_ref" | "runtime_record_future_version" | "runtime_record_invalid" | "runtime_save_slot_not_found";
 
-  export type RuntimeRecordKind = "saveSlot" | "global" | "settings";
+  export type RuntimeRecordKind = "global" | "saveSlot" | "settings";
 
   export interface RuntimeRestoreResult {
     warnings: RuntimeLoadWarning[];
@@ -328,6 +340,7 @@ import type { ComponentType } from "react";
     save: SaveService;
     history: HistoryService;
     persistent: PersistentService;
+    progress: ProgressService;
     settings: RuntimeSettingsService;
     audio: AudioService;
     gallery: GalleryService;
@@ -337,14 +350,14 @@ import type { ComponentType } from "react";
     debug?: DebugService;
   }
 
-  export type RuntimeSettingsRecord = { schemaVersion: 1; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; };
+  export type RuntimeSettingsRecord = { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; };
 
   export interface RuntimeSettingsService {
     getSettings(): RuntimeSettingsRecord;
     updateSettings(patch: Partial<RuntimeSettingsRecord>): Promise<void>;
   }
 
-  export type RuntimeSnapshot = { currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; };
+  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; };
 
   export interface RuntimeStatusNotice {
     id: number;
@@ -379,10 +392,10 @@ import type { ComponentType } from "react";
     delete(slotId: string): Promise<void>;
     quickSave(): Promise<void>;
     quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }>;
-    autoSave(reason: "node" | "choice" | "manual"): Promise<void>;
+    autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
   }
 
-  export type SaveSlotRecord = { schemaVersion: 1; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; })[]; checkpoint: { currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; label?: string | undefined; preview?: { text?: string | undefined; background?: string | null | undefined; } | undefined; };
+  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; label?: string | undefined; preview?: { text?: string | undefined; background?: string | null | undefined; } | undefined; };
 
   export interface SaveSlotSummary {
     slotId: string;
@@ -398,7 +411,7 @@ import type { ComponentType } from "react";
 
   export type SerializableSprite = { id: string; pos: string; expr: string; };
 
-  export type SetInstr = { t: "set"; key: string; value: string | number | boolean | null; };
+  export type SetInstr = { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; };
 
   export type SfxInstr = { t: "sfx"; id: string; };
 
@@ -429,6 +442,10 @@ import type { ComponentType } from "react";
     endings: string[];
   }
 
+  export type VariableDeclaration = { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; description?: string | undefined; };
+
+  export type VariableRegistry = { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; description?: string | undefined; }>; };
+
   export type VoiceInstr = { t: "voice"; id: string; };
 
   export type WaitInstr = { t: "wait"; ms: number; id?: string | undefined; };
@@ -437,11 +454,11 @@ import type { ComponentType } from "react";
 
   export const createInitialState: () => NovelState;
 
-  export const defaultRuntimeSettings: () => { schemaVersion: 1; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; };
+  export const defaultRuntimeSettings: () => { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; };
 
   export const resolveAsset: (contentBase: string, rel: string) => string;
 
-  export const resolveRuntimeSettings: (settings: { schemaVersion: 1; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }, fallback?: Pick<Required<{ schemaVersion: 1; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }>, "autoAdvanceMs" | "textSpeedCps">) => { schemaVersion: 1; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; } & Required<Pick<{ schemaVersion: 1; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }, "autoAdvanceMs" | "textSpeedCps">>;
+  export const resolveRuntimeSettings: (settings: { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }, fallback?: Pick<Required<{ schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }>, "autoAdvanceMs" | "textSpeedCps">) => { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; } & Required<Pick<{ schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }, "autoAdvanceMs" | "textSpeedCps">>;
 
   export const validateRendererManifestContract: (raw: unknown) => RendererManifestIssue[];
 

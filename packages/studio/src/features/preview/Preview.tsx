@@ -34,7 +34,18 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
   const [previewMode, setPreviewMode] = useState<PreviewMode>(initialPreviewMode);
   const fixtureScenes = useMemo(() => fixtureScenesForPreview(project), [project]);
   const [fixtureSceneId, setFixtureSceneId] = useState<string | null>(null);
+  const [debugNodeId, setDebugNodeId] = useState(project.graph?.entryNodeId ?? "");
+  const [debugInstructionId, setDebugInstructionId] = useState("");
+  const [debugVariables, setDebugVariables] = useState<Record<string, string | number | boolean | null>>(() =>
+    Object.fromEntries(Object.entries(project.content.variables?.variables ?? {}).map(([name, declaration]) => [name, declaration.default])),
+  );
   const activeFixtureScene = fixtureScenes.find((scene) => scene.id === fixtureSceneId) ?? fixtureScenes[0] ?? null;
+  const debugNode = project.graph?.nodes.find((node) => node.id === debugNodeId);
+  const debugInstructions = project.nodes?.find((entry) => entry.relPath === debugNode?.file)?.data;
+  const stableInstructions = Array.isArray(debugInstructions) ? debugInstructions.filter((instruction) => {
+    const item = instruction as { t?: string; id?: string };
+    return typeof item.id === "string" && ["say", "narrate", "wait", "pause", "completeEnding"].includes(item.t ?? "");
+  }) as Array<{ t: string; id: string }> : [];
 
   // uiHint 必须在渲染层重挂载之前写入全局（渲染层只在挂载初始化期读一次），
   // 因此所有模式/场景切换入口都先 setFixtureUiHintGlobal 再 setState。
@@ -103,6 +114,27 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
               ))}
             </select>
           )}
+          {!fixtureMode && (
+            <>
+              <select aria-label="调试起点" style={sceneSelectStyle} value={debugNodeId} onChange={(event) => { setDebugNodeId(event.target.value); setDebugInstructionId(""); }}>
+                {project.graph?.nodes.map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}
+              </select>
+              <select aria-label="调试指令" style={sceneSelectStyle} value={debugInstructionId} onChange={(event) => setDebugInstructionId(event.target.value)}>
+                <option value="">节点开头</option>
+                {stableInstructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.id}</option>)}
+              </select>
+              {Object.entries(project.content.variables?.variables ?? {}).map(([name, declaration]) => <input
+                key={name}
+                aria-label={`调试变量 ${name}`}
+                style={sceneSelectStyle}
+                type={declaration.type === "number" ? "number" : "text"}
+                value={String(debugVariables[name] ?? "null")}
+                onChange={(event) => setDebugVariables((current) => ({ ...current, [name]: parseDebugVariable(event.target.value, declaration.type, declaration.nullable) }))}
+              />)}
+              <button type="button" onClick={() => debugNodeId && player.startDebugSession(debugNodeId, debugVariables, debugInstructionId || undefined)}>启动调试</button>
+              <button type="button" onClick={() => setDebugVariables(Object.fromEntries(Object.entries(project.content.variables?.variables ?? {}).map(([name, declaration]) => [name, declaration.default])))}>重置注入值</button>
+            </>
+          )}
         </div>
         <div style={stageMountStyle}>
           {fixtureMode ? (
@@ -117,9 +149,16 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
       </div>
       {/* 场景快照模式下检视器显示 fixture state：场景快照是设计视角的只读巡检，
           侧栏本来就是 state 检视器，隐藏反而丢掉对 fixture state 的核对面。 */}
-      <RuntimeStateInspector state={fixtureMode ? activeFixtureScene.state : player.state} />
+      <RuntimeStateInspector state={fixtureMode ? activeFixtureScene.state : player.state} registry={project.content.variables} onVariableChange={fixtureMode ? undefined : player.setDebugVariable} onResetVariables={fixtureMode ? undefined : player.resetDebugVariables} />
     </div>
   );
+}
+
+function parseDebugVariable(raw: string, type: "string" | "number" | "boolean", nullable: boolean) {
+  if (nullable && raw === "null") return null;
+  if (type === "number") return Number(raw);
+  if (type === "boolean") return raw === "true";
+  return raw;
 }
 
 function Centered({ children, mono }: { children: React.ReactNode; mono?: boolean }) {

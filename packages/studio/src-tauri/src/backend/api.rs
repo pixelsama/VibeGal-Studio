@@ -4,7 +4,7 @@ use super::model::ProjectData;
 pub use super::mutation::SaveNodeResult;
 
 pub use super::identity::{
-    assign_missing_story_point_ids, generate_story_point_id, is_story_point_instruction,
+    assign_missing_persistent_effect_ids, assign_missing_story_point_ids, generate_story_point_id, is_story_point_instruction,
     AssignedInstructionId, InstructionIdentityAssignment, InstructionIdentityContext,
     InstructionIdentityError,
 };

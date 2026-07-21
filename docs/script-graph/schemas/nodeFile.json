@@ -283,6 +283,11 @@
             "type": "string",
             "const": "set"
           },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
           "key": {
             "type": "string",
             "minLength": 1
@@ -302,13 +307,17 @@
                 "type": "null"
               }
             ]
+          },
+          "expr": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
           "t",
-          "key",
-          "value"
+          "key"
         ],
+        "additionalProperties": false,
         "x-vibegal": {}
       },
       {
@@ -532,6 +541,44 @@
               ],
               "idField": "id",
               "missingCode": "missing_video_ref"
+            }
+          ]
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "completeEnding"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
+          "endingId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "t",
+          "id",
+          "endingId"
+        ],
+        "additionalProperties": false,
+        "x-vibegal": {
+          "storyPoint": true,
+          "references": [
+            {
+              "kind": "registry",
+              "registryPath": [
+                "unlocks",
+                "endings"
+              ],
+              "idField": "endingId",
+              "missingCode": "missing_ending_ref"
             }
           ]
         }

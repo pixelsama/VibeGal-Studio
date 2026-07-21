@@ -1,4 +1,4 @@
-import type { NovelState } from "@vibegal/engine";
+import type { NovelState, VariableRegistry } from "@vibegal/engine";
 
 interface RuntimeStateInspectorProps {
   state: NovelState;
@@ -8,6 +8,9 @@ interface RuntimeStateInspectorProps {
    * bottom = 嵌入沉底折叠面板：无标题/边框，标题交给外层 BottomSheet。
    */
   dock?: "right" | "bottom";
+  onVariableChange?: (name: string, value: string | number | boolean | null) => void;
+  onResetVariables?: () => void;
+  registry?: VariableRegistry;
 }
 
 /** 预览尚未产生任何可见状态（背景/角色/音频/变量全空）时为 true。 */
@@ -22,7 +25,7 @@ export function isRuntimeStateEmpty(state: NovelState): boolean {
     && Object.keys(state.vars).length === 0;
 }
 
-export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right" }: RuntimeStateInspectorProps) {
+export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right", onVariableChange, onResetVariables, registry }: RuntimeStateInspectorProps) {
   const dockedBottom = dock === "bottom";
   const frameStyle = dockedBottom ? bottomDockPanelStyle : panelStyle;
   const title = dockedBottom ? null : <div style={titleStyle}>Runtime</div>;
@@ -53,15 +56,39 @@ export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right" 
           label="Sprites"
           value={state.sprites.length > 0 ? state.sprites.map((sprite) => `${sprite.id}:${sprite.expr}@${sprite.pos}`).join(", ") : "无"}
         />
-        <Field
-          label="Vars"
-          value={Object.keys(state.vars).length > 0 ? JSON.stringify(state.vars, null, 2) : "{}"}
-          mono
-          multiline
-        />
+        <div style={fieldStyle}><div style={labelStyle}>Variables</div>
+          {(["run", "global", "legacy", "system"] as const).map((group) => {
+            const entries = Object.entries(state.vars).filter(([name]) => variableGroup(name, registry) === group);
+            if (entries.length === 0) return null;
+            return <section key={group}><strong>{group} variables</strong>
+              {entries.map(([name, value]) => {
+                const declaration = registry?.variables[name];
+                const type = declaration?.type ?? (value === null ? "null" : typeof value);
+                return <label key={name} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <span>{name}<small style={{ display: "block" }}>{type}{declaration ? ` · default ${String(declaration.default)}` : " · runtime"}</small></span>
+                  <input disabled={!onVariableChange || group === "system"} value={value == null ? "null" : String(value)} onChange={(event) => onVariableChange?.(name, parseTypedValue(event.target.value, value))} />
+                </label>;
+              })}
+            </section>;
+          })}
+          {onResetVariables && <button type="button" onClick={onResetVariables}>重置变量</button>}
+        </div>
       </div>
     </aside>
   );
+}
+
+function variableGroup(name: string, registry?: VariableRegistry): "run" | "global" | "legacy" | "system" {
+  if (name.startsWith("system.")) return "system";
+  const declaration = registry?.variables[name];
+  return declaration ? declaration.scope ?? "run" : "legacy";
+}
+
+function parseTypedValue(raw: string, previous: string | number | boolean | null) {
+  if (previous === null) return raw === "null" ? null : raw;
+  if (typeof previous === "boolean") return raw === "true";
+  if (typeof previous === "number") return Number(raw);
+  return raw;
 }
 
 function Field({ label, value, mono = false, multiline = false }: { label: string; value: string; mono?: boolean; multiline?: boolean }) {

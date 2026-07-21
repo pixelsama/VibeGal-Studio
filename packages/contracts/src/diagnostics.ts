@@ -1,6 +1,6 @@
 /** Stable, product-owned diagnostics and semantic rules exported alongside schemas. */
 export type DiagnosticSeverity = "error" | "warn";
-export type DiagnosticSource = "node" | "graph" | "manifest" | "meta" | "contract";
+export type DiagnosticSource = "node" | "graph" | "manifest" | "meta" | "variables" | "contract";
 
 export interface ContractDiagnostic {
   severity: DiagnosticSeverity;
@@ -27,7 +27,22 @@ export const contractDiagnostics = {
   missing_unlock_ref: { severity: "error", source: "node" },
   missing_cg_ref: { severity: "error", source: "node" },
   missing_video_ref: { severity: "error", source: "node" },
+  missing_ending_ref: { severity: "error", source: "node" },
+  duplicate_persistent_effect_id: { severity: "error", source: "node" },
+  invalid_assignment_expression: { severity: "error", source: "node" },
+  global_effect_missing_id: { severity: "error", source: "node" },
   graph_invalid_structure: { severity: "error", source: "graph" },
+  invalid_edge_condition: { severity: "error", source: "graph" },
+  auto_default_edge_not_last: { severity: "error", source: "graph" },
+  missing_replay_node_ref: { severity: "error", source: "manifest" },
+  missing_ending_node_ref: { severity: "error", source: "manifest" },
+  ending_node_has_outgoing: { severity: "warn", source: "manifest" },
+  missing_ending_completion: { severity: "warn", source: "manifest" },
+  variables_invalid: { severity: "error", source: "variables" },
+  reserved_variable_name: { severity: "error", source: "variables" },
+  variable_default_type_mismatch: { severity: "error", source: "variables" },
+  undeclared_variable: { severity: "warn", source: "variables" },
+  variable_write_type_mismatch: { severity: "error", source: "variables" },
   manifest_not_object: { severity: "error", source: "manifest" },
   manifest_invalid_audio: { severity: "error", source: "manifest" },
   manifest_invalid_structure: { severity: "error", source: "manifest" },
@@ -42,7 +57,7 @@ export const contractDiagnostics = {
 
 export type DiagnosticCode = keyof typeof contractDiagnostics;
 
-export type ContractDocumentName = "nodeFile" | "graph" | "manifest" | "meta";
+export type ContractDocumentName = "nodeFile" | "graph" | "manifest" | "meta" | "variables";
 
 export type StructuralPathOverride = {
   code: DiagnosticCode;
@@ -82,6 +97,13 @@ export const contractStructuralPolicies = {
         code: "meta_invalid_timing",
         exact: ["$.typingSpeedCps", "$.autoAdvanceMs", "$.chapterGapMs"],
       },
+    ],
+  },
+  variables: {
+    defaultCode: "variables_invalid",
+    pathOverrides: [
+      { code: "reserved_variable_name", prefixes: ["$.variables.system"] },
+      { code: "variable_default_type_mismatch", prefixes: ["$.variables"], exact: [] },
     ],
   },
 } as const satisfies Record<ContractDocumentName, ContractStructuralPolicy>;
@@ -137,6 +159,7 @@ export const instructionPolicies = {
   unlock: { references: [{ kind: "registryByDiscriminator", discriminatorField: "kind", idField: "id", registryPath: ["unlocks"], registryByValue: { cg: ["cg"], music: ["music"], replay: ["replay"], endings: ["endings"] }, missingCode: "missing_unlock_ref" }] },
   showCg: { references: [{ kind: "registry", registryPath: ["cg"], idField: "id", missingCode: "missing_cg_ref" }] },
   playVideo: { references: [{ kind: "registry", registryPath: ["videos"], idField: "id", missingCode: "missing_video_ref" }] },
+  completeEnding: { storyPoint: true, references: [{ kind: "registry", registryPath: ["unlocks", "endings"], idField: "endingId", missingCode: "missing_ending_ref" }] },
 } as const satisfies Record<string, InstructionPolicy>;
 
 export function diagnosticDefinition(code: DiagnosticCode): ContractDiagnostic {

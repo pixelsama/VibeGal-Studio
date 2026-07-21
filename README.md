@@ -47,6 +47,7 @@ my-game/
 ```
 
 - `content/graph.json` 与 `content/nodes/*.json` 是剧情的唯一来源。
+- `content/variables.json` 声明 run/global 变量；正式结局由 manifest registry + `completeEnding` 结算，图终点不自动等于正式结局。
 - `renderers/<id>/index.tsx` 定义玩家界面和呈现方式。
 - `.galstudio/` 为外部工具提供 schema 与项目契约说明。
 - 外部编辑器或 Agent 修改文件后，Studio 会通过原生文件监听自动刷新。

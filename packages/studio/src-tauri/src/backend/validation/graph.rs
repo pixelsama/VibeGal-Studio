@@ -129,6 +129,21 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
                 edge_id: Some(edge.id.clone()),
             });
         }
+        if edge.mode == "auto" {
+            if let Some(condition) = edge.condition.as_deref().filter(|value| !value.trim().is_empty()) {
+                if let Err(message) = super::expression::parse_expression(condition) {
+                    issues.push(GraphIssue {
+                        severity: GraphIssueSeverity::Error,
+                        code: "invalid_edge_condition".to_string(),
+                        message,
+                        file: Some("content/graph.json".to_string()),
+                        json_path: Some(format!("$.edges[{index}].condition")),
+                        node_id: Some(edge.from.clone()),
+                        edge_id: Some(edge.id.clone()),
+                    });
+                }
+            }
+        }
     }
 
     for (node_id, outgoing) in &outgoing_edges {
@@ -200,6 +215,17 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
                     json_path: Some("$.edges".to_string()),
                     node_id: Some(node_id.clone()),
                     edge_id: None,
+                });
+            } else if default_edges == 1 && outgoing.last().is_some_and(|(_, edge)| edge.condition.as_deref().is_some_and(|value| !value.trim().is_empty())) {
+                let (edge_index, edge) = outgoing.iter().find(|(_, edge)| edge.condition.as_deref().map(str::trim).unwrap_or("").is_empty()).unwrap();
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Error,
+                    code: "auto_default_edge_not_last".to_string(),
+                    message: format!("节点 {node_id} 的默认自动边必须位于最后"),
+                    file: Some("content/graph.json".to_string()),
+                    json_path: Some(format!("$.edges[{edge_index}]")),
+                    node_id: Some(node_id.clone()),
+                    edge_id: Some(edge.id.clone()),
                 });
             } else if outgoing.len() > 1 && default_edges == 0 {
                 issues.push(GraphIssue {

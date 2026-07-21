@@ -24,6 +24,7 @@ static NODE_VALIDATORS: OnceLock<std::collections::HashMap<String, jsonschema::V
 static GRAPH_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 static MANIFEST_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 static META_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
+static VARIABLES_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 
 pub(crate) fn validate_schema(kind: ContractSchemaKind, value: &Value) -> Vec<ContractViolation> {
     if kind == ContractSchemaKind::NodeFile {
@@ -115,6 +116,7 @@ fn validator(kind: ContractSchemaKind) -> &'static jsonschema::Validator {
         ContractSchemaKind::Graph => &GRAPH_VALIDATOR,
         ContractSchemaKind::Manifest => &MANIFEST_VALIDATOR,
         ContractSchemaKind::Meta => &META_VALIDATOR,
+        ContractSchemaKind::Variables => &VARIABLES_VALIDATOR,
     };
     slot.get_or_init(|| compile(schema(kind)))
 }

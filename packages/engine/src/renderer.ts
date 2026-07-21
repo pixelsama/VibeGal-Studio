@@ -7,7 +7,8 @@
  */
 import type { ComponentType } from "react";
 import type { NovelState } from "./state";
-import type { Manifest, Meta } from "./types";
+import type { Manifest, Meta, VariableRegistry } from "./types";
+import { variableDefaults } from "./variables";
 import {
   RuntimePersistenceError,
   RUNTIME_RECORD_SCHEMA_VERSION,
@@ -71,7 +72,7 @@ export interface SaveService {
   delete(slotId: string): Promise<void>;
   quickSave(): Promise<void>;
   quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }>;
-  autoSave(reason: "node" | "choice" | "manual"): Promise<void>;
+  autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
 }
 
 export interface BacklogEntry {
@@ -103,6 +104,14 @@ export interface PersistentService {
   getUnlocks(): UnlockState;
   unlock(kind: UnlockKind, id: string): Promise<void>;
   resetGlobalProgress(): Promise<void>;
+  getGlobalVars(): Record<string, string | number | boolean | null>;
+  applyGlobalEffect(input: { playthroughId: string; effectKey: string; key: string; value: string | number | boolean | null }): Promise<{ applied: boolean }>;
+  completeEnding(input: { playthroughId: string; endingId: string }): Promise<{ settled: boolean }>;
+}
+
+export interface ProgressService {
+  getSummary(): { playthroughCount: number; lastEndingId: string | null; currentPlaythroughEndingIds: string[] };
+  subscribe(listener: () => void): () => void;
 }
 
 export interface RuntimeSettingsService {
@@ -166,6 +175,7 @@ export interface RuntimeServices {
   save: SaveService;
   history: HistoryService;
   persistent: PersistentService;
+  progress: ProgressService;
   settings: RuntimeSettingsService;
   audio: AudioService;
   gallery: GalleryService;
@@ -272,6 +282,7 @@ export interface InMemoryRuntimeServicesOptions {
   settingsFallback?: Pick<RuntimeSettingsRecord, "textSpeedCps" | "autoAdvanceMs">;
   audio?: Partial<RuntimeAudioBridge>;
   manifest?: Manifest;
+  variables?: VariableRegistry;
   media?: Partial<MediaService>;
   onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
   startReplay?: (nodeId: string) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
@@ -310,6 +321,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
     options.initialGlobalPersistent ?? createDefaultGlobalPersistentRecord(projectId),
     projectId,
   );
+  const globalDefaults = variableDefaults(options.variables, "global");
   const readText = new Map<string, ReadTextKey>(
     initialGlobal.readText.map((key) => [readKeyId(key), { ...key }]),
   );
@@ -330,6 +342,11 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
   const statusNotices: RuntimeStatusNotice[] = [];
   const statusListeners = new Set<() => void>();
   let mutationQueue = Promise.resolve();
+  let globalRecord = {
+    ...initialGlobal,
+    globalVars: { ...globalDefaults, ...initialGlobal.globalVars },
+  };
+  const progressListeners = new Set<() => void>();
   const mutate = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = mutationQueue.then(operation, operation);
     mutationQueue = result.then(() => undefined, () => undefined);
@@ -436,9 +453,13 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
       getReadStatus(key) {
         return readText.has(readKeyId(key));
       },
+      getGlobalVars() {
+        return { ...globalRecord.globalVars };
+      },
       async markRead(key) {
         readText.set(readKeyId(key), { ...key });
-        await persistenceAdapter.writeGlobal(projectId, currentGlobalRecord(projectId, readText, unlocks));
+        globalRecord = currentGlobalRecord(globalRecord, readText, unlocks);
+        await persistenceAdapter.writeGlobal(projectId, globalRecord);
       },
       getUnlocks() {
         return {
@@ -450,7 +471,8 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
       },
       async unlock(kind, id) {
         unlocks[kind].add(id);
-        await persistenceAdapter.writeGlobal(projectId, currentGlobalRecord(projectId, readText, unlocks));
+        globalRecord = currentGlobalRecord(globalRecord, readText, unlocks);
+        await persistenceAdapter.writeGlobal(projectId, globalRecord);
       },
       async resetGlobalProgress() {
         readText.clear();
@@ -459,8 +481,58 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         unlocks.replay.clear();
         unlocks.ending.clear();
         unlocks.endings.clear();
-        await persistenceAdapter.writeGlobal(projectId, createDefaultGlobalPersistentRecord(projectId));
+        globalRecord = createDefaultGlobalPersistentRecord(projectId, globalDefaults);
+        await persistenceAdapter.writeGlobal(projectId, globalRecord);
+        progressListeners.forEach((listener) => listener());
       },
+      async applyGlobalEffect(input) {
+        return mutate(async () => {
+          const applied = new Set(globalRecord.appliedGlobalEffects[input.playthroughId] ?? []);
+          if (applied.has(input.effectKey)) return { applied: false };
+          applied.add(input.effectKey);
+          const nextRecord = {
+            ...currentGlobalRecord(globalRecord, readText, unlocks),
+            globalVars: { ...globalRecord.globalVars, [input.key]: input.value },
+            appliedGlobalEffects: { ...globalRecord.appliedGlobalEffects, [input.playthroughId]: [...applied] },
+          };
+          await persistenceAdapter.writeGlobal(projectId, nextRecord);
+          globalRecord = nextRecord;
+          return { applied: true };
+        });
+      },
+      async completeEnding(input) {
+        return mutate(async () => {
+          if (options.manifest && !options.manifest.unlocks?.endings?.[input.endingId]) {
+            throw new RuntimePersistenceError(
+              "missing_ending_ref",
+              `Ending "${input.endingId}" is not registered in the manifest.`,
+            );
+          }
+          const settled = globalRecord.settledEndings[input.playthroughId]?.[input.endingId];
+          if (settled) return { settled: false };
+          const endings = { ...(globalRecord.settledEndings[input.playthroughId] ?? {}), [input.endingId]: { completedAt: now() } };
+          const nextUnlocks = cloneUnlockSets(unlocks);
+          nextUnlocks.endings.add(input.endingId);
+          const nextRecord = {
+            ...currentGlobalRecord(globalRecord, readText, nextUnlocks),
+            playthroughCount: globalRecord.playthroughCount + 1,
+            lastEndingId: input.endingId,
+            settledEndings: { ...globalRecord.settledEndings, [input.playthroughId]: endings },
+          };
+          await persistenceAdapter.writeGlobal(projectId, nextRecord);
+          globalRecord = nextRecord;
+          unlocks.endings.add(input.endingId);
+          progressListeners.forEach((listener) => listener());
+          return { settled: true };
+        });
+      },
+    },
+    progress: {
+      getSummary() {
+        const current = Object.keys(globalRecord.settledEndings[options.createSnapshot?.().playthroughId ?? ""] ?? {});
+        return { playthroughCount: globalRecord.playthroughCount, lastEndingId: globalRecord.lastEndingId, currentPlaythroughEndingIds: current };
+      },
+      subscribe(listener) { progressListeners.add(listener); return () => progressListeners.delete(listener); },
     },
     settings: {
       getSettings() {
@@ -622,18 +694,32 @@ function mergeSettings(current: RuntimeSettingsRecord, patch: Partial<RuntimeSet
 }
 
 function currentGlobalRecord(
-  projectId: string,
+  current: GlobalPersistentRecord,
   readText: Map<string, ReadTextKey>,
   unlocks: Record<UnlockKind, Set<string>>,
 ) {
   return migrateGlobalPersistentRecord({
     schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
-    projectId,
+    projectId: current.projectId,
     readText: Array.from(readText.values()).map((key) => ({ ...key })),
     unlockedCg: Array.from(unlocks.cg),
     unlockedMusic: Array.from(unlocks.music),
     unlockedReplays: Array.from(unlocks.replay),
     unlockedEndings: Array.from(new Set([...unlocks.ending, ...unlocks.endings])),
-    playthroughCount: 0,
-  }, projectId);
+    playthroughCount: current.playthroughCount,
+    globalVars: current.globalVars,
+    lastEndingId: current.lastEndingId,
+    settledEndings: current.settledEndings,
+    appliedGlobalEffects: current.appliedGlobalEffects,
+  }, current.projectId);
+}
+
+function cloneUnlockSets(unlocks: Record<UnlockKind, Set<string>>): Record<UnlockKind, Set<string>> {
+  return {
+    cg: new Set(unlocks.cg),
+    music: new Set(unlocks.music),
+    replay: new Set(unlocks.replay),
+    ending: new Set(unlocks.ending),
+    endings: new Set(unlocks.endings),
+  };
 }

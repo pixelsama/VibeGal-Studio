@@ -64,6 +64,9 @@ pub(crate) fn save_file(
             contracts::ContractSchemaKind::Manifest => {
                 return save_manifest(project_path, value, expected_revision);
             }
+            contracts::ContractSchemaKind::Variables => {
+                return save_variables(project_path, value, expected_revision);
+            }
             _ => validate_write_contract(schema, &value, label)?,
         }
     }
@@ -116,27 +119,55 @@ pub(crate) fn save_node(
 
     let assignment = assign_missing_story_point_ids(
         &instructions,
-        &InstructionIdentityContext::new(project_rel_path.clone(), node_id),
+        &InstructionIdentityContext::new(project_rel_path.clone(), node_id.clone()),
     )
     .map_err(|error| format!("instruction ID assignment failed: {error}"))?;
+    let variables = if content_root.path().join("variables.json").is_file() {
+        content_root.read_control_json("variables.json")?
+    } else {
+        serde_json::json!({ "version": 1, "variables": {} })
+    };
+    let normalized_node = assign_missing_persistent_effect_ids(assignment.node, &variables, &project_rel_path, &node_id);
     validate_write_contract(
         contracts::ContractSchemaKind::NodeFile,
-        &assignment.node,
+        &normalized_node,
         "节点内容",
     )?;
-    write_json(&node_path, &assignment.node)?;
+    write_json(&node_path, &normalized_node)?;
     let revision = project_root
         .revision(&project_rel_path)?
         .ok_or_else(|| format!("failed to read saved node revision: {project_rel_path}"))?;
-    let serialized_text = serde_json::to_string_pretty(&assignment.node)
+    let serialized_text = serde_json::to_string_pretty(&normalized_node)
         .map_err(|error| format!("serialize saved node failed: {error}"))?;
 
     Ok(SaveNodeResult {
-        instructions: assignment.node,
+        instructions: normalized_node,
         serialized_text,
         revision,
         assigned: assignment.assigned,
     })
+}
+
+fn assign_missing_persistent_effect_ids(
+    node: serde_json::Value,
+    variables: &serde_json::Value,
+    file: &str,
+    node_id: &str,
+) -> serde_json::Value {
+    let globals = variables.get("variables").and_then(serde_json::Value::as_object);
+    let mut instructions = node.as_array().cloned().unwrap_or_default();
+    for (index, instruction) in instructions.iter_mut().enumerate() {
+        let persistent = instruction.get("t").and_then(serde_json::Value::as_str) == Some("completeEnding")
+            || (instruction.get("t").and_then(serde_json::Value::as_str) == Some("set")
+                && instruction.get("key").and_then(serde_json::Value::as_str).and_then(|key| globals.and_then(|items| items.get(key))).and_then(|declaration| declaration.get("scope")).and_then(serde_json::Value::as_str) == Some("global"));
+        if !persistent || instruction.get("id").and_then(serde_json::Value::as_str).is_some_and(|id| !id.is_empty()) { continue; }
+        let seed = format!("{file}:{node_id}:{index}:{}", instruction.get("t").and_then(serde_json::Value::as_str).unwrap_or("effect"));
+        use sha2::{Digest, Sha256};
+        let digest = format!("{:x}", Sha256::digest(seed.as_bytes()));
+        let id = format!("pe_{}", &digest[..16]);
+        instruction.as_object_mut().expect("validated instruction object").insert("id".to_string(), serde_json::Value::String(id));
+    }
+    serde_json::Value::Array(instructions)
 }
 
 /// 保存 content/graph.json。节点文件生命周期由 save_file/delete_file 单独管理。
@@ -203,6 +234,8 @@ fn write_contract_for_path(
         Some((contracts::ContractSchemaKind::Manifest, "manifest"))
     } else if path == Path::new("content/meta.json") {
         Some((contracts::ContractSchemaKind::Meta, "meta"))
+    } else if path == Path::new("content/variables.json") {
+        Some((contracts::ContractSchemaKind::Variables, "variables"))
     } else if is_node_file_path(rel_path) {
         Some((contracts::ContractSchemaKind::NodeFile, "节点内容"))
     } else {
@@ -429,6 +462,19 @@ pub(crate) fn save_manifest(
     let manifest_path = content_root.resolve_write_target("manifest.json")?;
     write_json(&manifest_path, &manifest)?;
     project_root.revision("content/manifest.json")
+}
+
+pub(crate) fn save_variables(
+    project_path: String,
+    variables: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<Option<FileRevision>, String> {
+    validate_write_contract(contracts::ContractSchemaKind::Variables, &variables, "variables")?;
+    let project_root = ProjectRoot::open(Path::new(&project_path))?;
+    let content_root = project_root.content_root()?;
+    ensure_expected_revision(project_root.path(), "content/variables.json", expected_revision)?;
+    write_json(&content_root.resolve_write_target("variables.json")?, &variables)?;
+    project_root.revision("content/variables.json")
 }
 
 pub(crate) fn save_project_meta(

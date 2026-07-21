@@ -1,7 +1,7 @@
-import type { Meta, Manifest, Instruction, ProjectGraphData, GraphEdgeData } from "./types";
+import type { Meta, Manifest, Instruction, ProjectGraphData, GraphEdgeData, VariableRegistry } from "./types";
 import type { NovelState } from "./state";
 import { createInitialState } from "./state";
-import { applyInstruction, advanceTyping, revealFully, buildInitialState, type InterpreterDeps } from "./interpreter";
+import { applyInstruction, advanceTyping, revealFully, buildInitialState, evaluateAssignmentExpression, RuntimeAssignmentError, type InterpreterDeps } from "./interpreter";
 import { decideGraphRoute } from "./graphRouting";
 import { runtimeEffectFromInstruction, type RuntimeEffectHandler } from "./runtimeEffect";
 import {
@@ -17,7 +17,9 @@ import {
   type RuntimeSnapshot,
   type SaveSlotRecord,
   type StoryPointId,
+  createPlaythroughId,
 } from "./runtimeContract";
+import { assertVariableValue, effectiveVariables, variableDefaults } from "./variables";
 import type { BacklogEntry, SkipMode } from "./renderer";
 
 export interface GraphPlayerPersistentBridge {
@@ -31,6 +33,9 @@ export interface GraphPlayerDeps extends InterpreterDeps {
   replayVoice?: (voiceId: string) => void;
   onRuntimeEffect?: RuntimeEffectHandler;
   onStableCheckpoint?: (event: GraphPlayerStableCheckpointEvent) => void;
+  onEndingCommitted?: () => void | Promise<void>;
+  variables?: VariableRegistry;
+  globalState?: () => { vars: Record<string, string | number | boolean | null>; playthroughCount: number; lastEndingId: string | null };
 }
 
 export interface PlaybackTiming {
@@ -46,6 +51,13 @@ export interface GraphPlayerStableCheckpointEvent {
 export interface GraphPlayerNode {
   id: string;
   instructions: Instruction[];
+}
+
+export interface DebugSessionOptions {
+  nodeId: string;
+  instructionId?: string;
+  variableOverrides?: Record<string, string | number | boolean | null>;
+  suppressPersistentEffects: true;
 }
 
 type Listener = (state: NovelState) => void;
@@ -72,10 +84,16 @@ export class GraphNovelPlayer {
   private skipTimer: ReturnType<typeof setTimeout> | null = null;
   private skipBudget = 0;
   private routeError: string | null = null;
+  private playthroughId = createPlaythroughId();
+
+  getRouteError(): string | null {
+    return this.routeError;
+  }
   private playbackTiming: PlaybackTiming;
   private lastNodeCheckpointId: string | null = null;
   private pendingChoiceCheckpoint = false;
   private suppressStableCheckpoints = false;
+  private persistentBarrier = false;
 
   private typingTimer: ReturnType<typeof setTimeout> | null = null;
   private waitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -113,6 +131,7 @@ export class GraphNovelPlayer {
     this.ip = 0;
     const total = this.currentInstructions().length;
     this.state = buildInitialState(0, total);
+    this.state.vars = this.initialEffectiveVariables();
     this.emit();
   }
 
@@ -177,10 +196,14 @@ export class GraphNovelPlayer {
   }
 
   createSnapshot(): RuntimeSnapshot {
-    return createRuntimeSnapshot(this.state, {
+    const runVars = Object.fromEntries(Object.entries(this.state.vars).filter(([name]) => {
+      if (name.startsWith("system.")) return false;
+      return (this.deps.variables?.variables[name]?.scope ?? "run") === "run";
+    }));
+    return createRuntimeSnapshot({ ...this.state, vars: runVars }, {
       currentNodeId: this.currentNodeId ?? "entry",
       currentStoryPoint: this.getCurrentStoryPoint(),
-    });
+    }, this.playthroughId);
   }
 
   restoreSnapshot(snapshot: RuntimeSnapshot): RuntimeRestoreResult {
@@ -194,6 +217,7 @@ export class GraphNovelPlayer {
 
   restoreFromSave(record: SaveSlotRecord): RuntimeRestoreResult {
     const slot = migrateSaveSlotRecord(record);
+    this.playthroughId = slot.checkpoint.playthroughId;
     this.decisions = slot.decisions.map(cloneDecisionEvent);
     const result = this.restoreSnapshot(slot.checkpoint);
     if (result.warnings.length === 0 || !this.graph || slot.decisions.length === 0) {
@@ -253,6 +277,38 @@ export class GraphNovelPlayer {
     return { warnings: [] };
   }
 
+  startDebugSession(options: DebugSessionOptions): RuntimeRestoreResult {
+    if (!this.instructionsByNodeId.has(options.nodeId)) {
+      return { warnings: [{ code: "node_not_found", message: `Debug node "${options.nodeId}" no longer exists.`, nodeId: options.nodeId }] };
+    }
+    this.clearTimers();
+    this.suppressStableCheckpoints = options.suppressPersistentEffects;
+    this.playthroughId = `debug:${createPlaythroughId()}`;
+    this.restoreToNodeStart(options.nodeId);
+    this.suppressStableCheckpoints = true;
+    this.state = { ...this.state, vars: { ...this.initialEffectiveVariables(), ...options.variableOverrides } };
+    if (options.instructionId) {
+      const result = this.applyStoryPoint({ nodeId: options.nodeId, instructionId: options.instructionId }, this.state);
+      this.suppressStableCheckpoints = true;
+      this.emit();
+      return result;
+    }
+    this.emit();
+    return { warnings: [] };
+  }
+
+  setDebugVariable(name: string, value: string | number | boolean | null): void {
+    if (!this.playthroughId.startsWith("debug:") || name.startsWith("system.")) return;
+    this.state = { ...this.state, vars: { ...this.state.vars, [name]: value } };
+    this.emit();
+  }
+
+  resetDebugVariables(): void {
+    if (!this.playthroughId.startsWith("debug:")) return;
+    this.state = { ...this.state, vars: this.initialEffectiveVariables() };
+    this.emit();
+  }
+
   rollbackToHistoryEntry(entryId: string): RuntimeRestoreResult {
     const entry = this.backlog.find((item) => item.id === entryId);
     if (!entry) {
@@ -308,6 +364,7 @@ export class GraphNovelPlayer {
   }
 
   advance() {
+    if (this.persistentBarrier) return;
     if (this.state.flags.isWaiting) return;
     if (this.state.choice) return;
     if (!this.isCurrentTextDone()) {
@@ -337,6 +394,7 @@ export class GraphNovelPlayer {
 
   restart() {
     if (!this.graph) return;
+    this.playthroughId = createPlaythroughId();
     this.loadGraph(this.graph, Array.from(this.instructionsByNodeId, ([id, instructions]) => ({ id, instructions })));
   }
 
@@ -362,7 +420,7 @@ export class GraphNovelPlayer {
 
     for (let index = 0; index < clamped; index += 1) {
       const instruction = instructions[index];
-      nextState = applyInstruction(nextState, instruction, this.deps);
+      nextState = this.applyRuntimeInstruction(nextState, instruction);
       if (isStableInstruction(instruction)) lastStable = { instruction, index };
     }
 
@@ -408,7 +466,12 @@ export class GraphNovelPlayer {
     const index = this.ip;
     const instr = this.currentInstructions()[index];
     this.ip += 1;
-    this.state = applyInstruction(this.state, instr, this.deps);
+    try {
+      this.state = this.applyRuntimeInstruction(this.state, instr);
+    } catch (error) {
+      this.stopOnAssignmentError(error, index);
+      return;
+    }
     this.trackInstructionSideEffects(instr);
     this.emitRuntimeEffect(instr);
     this.updateCurrentStoryPoint(instr, index, false);
@@ -486,9 +549,14 @@ export class GraphNovelPlayer {
       const index = this.ip;
       const instr = instructions[index];
       this.ip += 1;
-      this.state = applyInstruction(this.state, instr, this.deps);
+      try {
+        this.state = this.applyRuntimeInstruction(this.state, instr);
+      } catch (error) {
+        this.stopOnAssignmentError(error, index);
+        return;
+      }
       this.trackInstructionSideEffects(instr);
-      this.emitRuntimeEffect(instr);
+      if (this.emitRuntimeEffect(instr, index, routeDepth)) return;
       this.state.flags.progress.current = this.ip;
       this.emit();
 
@@ -645,10 +713,88 @@ export class GraphNovelPlayer {
     for (const listener of this.listeners) listener(this.state);
   }
 
-  private emitRuntimeEffect(instr: Instruction) {
-    const effect = runtimeEffectFromInstruction(instr);
-    if (!effect) return;
-    void this.deps.onRuntimeEffect?.(effect);
+  private emitRuntimeEffect(instr: Instruction, index?: number, routeDepth = 0): boolean {
+    if (this.suppressStableCheckpoints) return false;
+    const effect = instr.t === "set" && (this.deps.variables?.variables[instr.key]?.scope ?? "run") === "global"
+      ? {
+          type: "globalSet" as const,
+          id: instr.id ?? "",
+          key: instr.key,
+          value: "expr" in instr && instr.expr != null ? evaluateAssignmentExpression(instr.expr, this.state.vars) : instr.value ?? null,
+          nodeId: this.currentNodeId ?? undefined,
+          playthroughId: this.playthroughId,
+        }
+      : runtimeEffectFromInstruction(instr);
+    if (!effect) return false;
+    const enriched = effect.type === "completeEnding"
+      ? { ...effect, nodeId: this.currentNodeId ?? undefined, playthroughId: this.playthroughId }
+      : effect;
+    const result = this.deps.onRuntimeEffect?.(enriched);
+    if ((effect.type === "completeEnding" || effect.type === "globalSet") && result instanceof Promise) {
+      this.persistentBarrier = true;
+      void result.then(() => {
+        this.persistentBarrier = false;
+        this.refreshPersistentVariableView();
+        if (index != null) this.updateCurrentStoryPoint(instr, index);
+        if (instr.t === "completeEnding") {
+          void Promise.resolve(this.deps.onEndingCommitted?.()).catch(() => undefined);
+        }
+        this.stepNext(routeDepth);
+      }).catch((error) => {
+        this.persistentBarrier = false;
+        this.routeError = `runtime_persistent_effect_failed: ${error instanceof Error ? error.message : String(error)}`;
+        this.emit();
+      });
+      return true;
+    }
+    return false;
+  }
+
+  private applyRuntimeInstruction(state: NovelState, instr: Instruction): NovelState {
+    if (instr.t !== "set") return applyInstruction(state, instr, this.deps);
+    const declaration = this.deps.variables?.variables[instr.key];
+    const value = "expr" in instr && instr.expr != null
+      ? evaluateAssignmentExpression(instr.expr, state.vars)
+      : instr.value ?? null;
+    try {
+      assertVariableValue(instr.key, value, declaration);
+    } catch (error) {
+      throw new RuntimeAssignmentError(error instanceof Error ? error.message : String(error));
+    }
+    if ((declaration?.scope ?? "run") === "global") {
+      if (!instr.id) throw new Error(`global set ${instr.key} 缺少稳定 id`);
+      return state;
+    }
+    return { ...state, vars: { ...state.vars, [instr.key]: value } };
+  }
+
+  private stopOnAssignmentError(error: unknown, instructionIndex: number) {
+    this.ip = instructionIndex;
+    this.routeError = `${error instanceof RuntimeAssignmentError ? error.code : "runtime_assignment_failed"}: ${error instanceof Error ? error.message : String(error)}`;
+    this.clearAuto();
+    this.stopSkip();
+    this.emit();
+  }
+
+  private initialEffectiveVariables() {
+    const global = this.deps.globalState?.() ?? { vars: {}, playthroughCount: 0, lastEndingId: null };
+    return effectiveVariables({
+      run: { ...this.legacyVariableDefaults(), ...variableDefaults(this.deps.variables, "run") },
+      global: { ...variableDefaults(this.deps.variables, "global"), ...global.vars },
+      playthroughCount: global.playthroughCount,
+      lastEndingId: global.lastEndingId,
+    });
+  }
+
+  private refreshPersistentVariableView() {
+    const global = this.deps.globalState?.();
+    if (!global) return;
+    const run = Object.fromEntries(Object.entries(this.state.vars).filter(([name]) => {
+      if (name.startsWith("system.")) return false;
+      return (this.deps.variables?.variables[name]?.scope ?? "run") === "run";
+    }));
+    this.state = { ...this.state, vars: effectiveVariables({ run, global: global.vars, playthroughCount: global.playthroughCount, lastEndingId: global.lastEndingId }) };
+    this.emit();
   }
 
   private trackInstructionSideEffects(instr: Instruction) {
@@ -666,7 +812,9 @@ export class GraphNovelPlayer {
       return { warnings };
     }
 
-    const baseState = this.stateFromSnapshot(snapshot);
+    const normalized = this.normalizeSavedRunVariables(snapshot.vars);
+    warnings.push(...normalized.warnings);
+    const baseState = this.stateFromSnapshot(snapshot, normalized.vars);
     if (snapshot.currentStoryPoint) {
       const result = this.applyStoryPoint(snapshot.currentStoryPoint, baseState);
       warnings.push(...result.warnings);
@@ -722,17 +870,26 @@ export class GraphNovelPlayer {
       ? createReadTextKey({ ...point, text: instr.text })
       : null;
     this.ip = index + 1;
-    this.state = applyInstruction(baseState, instr, this.deps);
+    this.state = this.applyRuntimeInstruction(baseState, instr);
     if (instr.t === "say" || instr.t === "narrate") this.state = revealFully(this.state);
     if (instr.t === "wait") this.state = { ...this.state, flags: { ...this.state.flags, isWaiting: false } };
     this.state = this.withRestoredProgress(this.state, index + 1, instructions.length);
     return { warnings: [] };
   }
 
-  private stateFromSnapshot(snapshot: RuntimeSnapshot): NovelState {
+  private stateFromSnapshot(
+    snapshot: RuntimeSnapshot,
+    runVars: Record<string, string | number | boolean | null>,
+  ): NovelState {
+    const global = this.deps.globalState?.() ?? { vars: {}, playthroughCount: 0, lastEndingId: null };
     return {
       ...createInitialState(),
-      vars: { ...snapshot.vars },
+      vars: effectiveVariables({
+        run: runVars,
+        global: { ...variableDefaults(this.deps.variables, "global"), ...global.vars },
+        playthroughCount: global.playthroughCount,
+        lastEndingId: global.lastEndingId,
+      }),
       background: snapshot.background,
       sprites: snapshot.sprites.map((sprite, index) => ({
         id: sprite.id,
@@ -755,6 +912,45 @@ export class GraphNovelPlayer {
         progress: { current: 0, total: this.instructionsByNodeId.get(snapshot.currentNodeId)?.length ?? 0 },
       },
     };
+  }
+
+  private legacyVariableDefaults(): Record<string, null> {
+    const declarations = this.deps.variables?.variables ?? {};
+    const names = new Set<string>();
+    for (const instructions of this.instructionsByNodeId.values()) {
+      for (const instruction of instructions) {
+        if (instruction.t === "set" && !declarations[instruction.key] && !instruction.key.startsWith("system.")) {
+          names.add(instruction.key);
+        }
+      }
+    }
+    return Object.fromEntries([...names].map((name) => [name, null]));
+  }
+
+  private normalizeSavedRunVariables(
+    saved: Record<string, string | number | boolean | null>,
+  ): { vars: Record<string, string | number | boolean | null>; warnings: RuntimeLoadWarning[] } {
+    const vars = { ...this.legacyVariableDefaults(), ...variableDefaults(this.deps.variables, "run") };
+    const warnings: RuntimeLoadWarning[] = [];
+    for (const [name, value] of Object.entries(saved)) {
+      const declaration = this.deps.variables?.variables[name];
+      if (!declaration) {
+        vars[name] = value;
+        continue;
+      }
+      if ((declaration.scope ?? "run") !== "run") continue;
+      try {
+        assertVariableValue(name, value, declaration);
+        vars[name] = value;
+      } catch {
+        warnings.push({
+          code: "variable_value_incompatible",
+          message: `Saved value for variable "${name}" no longer matches its declaration; the default was restored.`,
+          variableName: name,
+        });
+      }
+    }
+    return { vars, warnings };
   }
 
   private withRestoredProgress(state: NovelState, current: number, total: number): NovelState {
@@ -934,6 +1130,7 @@ function getInstructionStoryPointId(instr: Instruction, index: number): string |
     case "narrate":
     case "wait":
     case "pause":
+    case "completeEnding":
       return instr.id ?? (index >= 0 ? `index:${index}` : null);
     default:
       return null;

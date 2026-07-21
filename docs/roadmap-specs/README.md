@@ -2,9 +2,7 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-当前仍在规划或开发中的 roadmap spec：
-
-- [Spec 22 — Branch, Ending, and Variable Runtime Completion（分支、结局与变量完整化）](./22-branch-ending-variable-runtime-completion.spec.md)
+当前没有仍在规划或开发中的 roadmap spec。
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
@@ -28,3 +26,4 @@
 - [Spec 19 — Creator-Facing Vocabulary & Preview/Appearance IA（创作者词汇与预览/外观信息架构）](./archive/19-creator-facing-vocabulary-ia.spec.md)
 - [Spec 20 — Stable Instruction Identity Workflow（稳定指令身份工作流）](./archive/20-stable-instruction-identity-workflow.spec.md)
 - [Spec 21 — Title Screen（标题画面 / 游戏主界面）](./archive/21-title-screen.spec.md)
+- [Spec 22 — Branch, Ending, and Variable Runtime Completion（分支、结局与变量完整化）](./archive/22-branch-ending-variable-runtime-completion.spec.md)

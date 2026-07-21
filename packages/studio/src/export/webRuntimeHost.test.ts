@@ -87,7 +87,7 @@ describe("web export runtime host", () => {
 
   it("webRuntimeDefaultsMatchTheContractsSettingsDefaults", () => {
     expect(defaultRuntimeSettings()).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
     });
   });

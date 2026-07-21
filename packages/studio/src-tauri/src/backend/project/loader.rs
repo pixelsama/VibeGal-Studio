@@ -152,6 +152,12 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let content_root = project_root.content_root()?;
     let manifest = content_root.read_control_json("manifest.json")?;
     let meta_json = content_root.read_control_json("meta.json")?;
+    let variables_path = content_root.path().join("variables.json");
+    let variables = if variables_path.is_file() {
+        content_root.read_control_json("variables.json")?
+    } else {
+        serde_json::json!({ "version": 1, "variables": {} })
+    };
 
     let renderer_ids = list_renderer_ids(project_path);
     let project_revision = project_root.revision("gal.project.json")?;
@@ -159,6 +165,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let graph_revision = project_root.revision("content/graph.json")?;
     let manifest_revision = project_root.revision("content/manifest.json")?;
     let meta_revision = project_root.revision("content/meta.json")?;
+    let variables_revision = project_root.revision("content/variables.json")?;
     let mut node_revisions = HashMap::new();
     for node in &nodes {
         node_revisions.insert(
@@ -185,9 +192,18 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let (fixtures, fixture_issues) = load_project_fixtures(&content_root);
 
     // 全局聚合：图结构 + 节点内容 + 资产 + manifest 结构问题汇总成一个报告
-    let node_issues = validate_node_contents(&graph, &nodes, &manifest);
+    let node_issues = validate_node_contents_with_variables(&graph, &nodes, &manifest, &variables);
     let manifest_issues = validate_manifest_structure(&manifest);
     let meta_issues = validate_meta_structure(&meta_json);
+    let variable_issues = contracts::validate_schema(contracts::ContractSchemaKind::Variables, &variables)
+        .into_iter().map(|issue| ProjectIssue {
+            severity: issue.severity, source: "variables".to_string(), code: issue.code,
+            message: issue.message, file: Some("content/variables.json".to_string()),
+            json_path: Some(issue.json_path), node_id: None, edge_id: None,
+        });
+    let manifest_node_issues = validate_manifest_node_references(&manifest, &graph);
+    let completion_issues = validate_ending_completions(&manifest, &nodes);
+    let condition_variable_issues = validate_condition_variables(&variables, &graph, &nodes);
     // 单 skin 收敛（Spec 19 §4.4）：多套 uiSkins 只提示不迁移
     let ui_skin_issues = validate_ui_skin_convergence(&manifest);
     let mut project_issues: Vec<ProjectIssue> = vec![];
@@ -206,6 +222,10 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     );
     project_issues.extend(manifest_issues);
     project_issues.extend(meta_issues);
+    project_issues.extend(variable_issues);
+    project_issues.extend(manifest_node_issues);
+    project_issues.extend(completion_issues);
+    project_issues.extend(condition_variable_issues);
     project_issues.extend(ui_skin_issues);
     project_issues.extend(fixture_issues);
     project_issues.sort_by(|a, b| {
@@ -230,6 +250,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         content: ProjectContent {
             manifest,
             meta: meta_json,
+            variables,
         },
         renderer_ids,
         project_revision,
@@ -237,6 +258,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         nodes: Some(nodes),
         graph_revision,
         manifest_revision,
+        variables_revision,
         meta_revision,
         node_revisions: Some(node_revisions),
         fixtures: Some(fixtures),
@@ -244,6 +266,73 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         asset_report: Some(asset_report),
         project_report: Some(project_report),
     })
+}
+
+fn validate_manifest_node_references(manifest: &serde_json::Value, graph: &super::super::model::ProjectGraph) -> Vec<ProjectIssue> {
+    let nodes = graph.nodes.iter().map(|node| node.id.as_str()).collect::<std::collections::HashSet<_>>();
+    let outgoing = graph.edges.iter().map(|edge| edge.from.as_str()).collect::<std::collections::HashSet<_>>();
+    let mut issues = vec![];
+    for (registry, missing_code) in [("replay", "missing_replay_node_ref"), ("endings", "missing_ending_node_ref")] {
+        let Some(entries) = manifest.pointer(&format!("/unlocks/{registry}")).and_then(serde_json::Value::as_object) else { continue };
+        for (id, entry) in entries {
+            let Some(node_id) = entry.get("nodeId").and_then(serde_json::Value::as_str) else { continue };
+            if !nodes.contains(node_id) {
+                issues.push(ProjectIssue { severity: GraphIssueSeverity::Error, source: "manifest".to_string(), code: missing_code.to_string(), message: format!("{registry} {id} 引用了不存在的节点 {node_id}"), file: Some("content/manifest.json".to_string()), json_path: Some(format!("$.unlocks.{registry}.{id}.nodeId")), node_id: Some(node_id.to_string()), edge_id: None });
+            } else if registry == "endings" && outgoing.contains(node_id) {
+                issues.push(ProjectIssue { severity: GraphIssueSeverity::Warn, source: "manifest".to_string(), code: "ending_node_has_outgoing".to_string(), message: format!("结局 {id} 关联的节点仍有出口"), file: Some("content/manifest.json".to_string()), json_path: Some(format!("$.unlocks.endings.{id}.nodeId")), node_id: Some(node_id.to_string()), edge_id: None });
+            }
+        }
+    }
+    issues
+}
+
+fn validate_ending_completions(manifest: &serde_json::Value, nodes: &[super::super::model::NodeEntry]) -> Vec<ProjectIssue> {
+    let registered = manifest.pointer("/unlocks/endings").and_then(serde_json::Value::as_object);
+    let mut completion_ids = std::collections::HashSet::new();
+    for entry in nodes {
+        for instruction in entry.data.as_ref().and_then(serde_json::Value::as_array).into_iter().flatten() {
+            if instruction.get("t").and_then(serde_json::Value::as_str) != Some("completeEnding") { continue; }
+            let ending_id = instruction.get("endingId").and_then(serde_json::Value::as_str).unwrap_or("");
+            completion_ids.insert(ending_id.to_string());
+        }
+    }
+    registered.into_iter().flatten().filter(|(id, _)| !completion_ids.contains(*id)).map(|(id, _)| ProjectIssue { severity: GraphIssueSeverity::Warn, source: "manifest".to_string(), code: "missing_ending_completion".to_string(), message: format!("正式结局 {id} 没有 completeEnding 结算点"), file: Some("content/manifest.json".to_string()), json_path: Some(format!("$.unlocks.endings.{id}")), node_id: None, edge_id: None }).collect()
+}
+
+fn validate_condition_variables(
+    variables: &serde_json::Value,
+    graph: &super::super::model::ProjectGraph,
+    nodes: &[super::super::model::NodeEntry],
+) -> Vec<ProjectIssue> {
+    let declared = variables.get("variables").and_then(serde_json::Value::as_object);
+    let write_sites = nodes.iter()
+        .flat_map(|entry| entry.data.as_ref().and_then(serde_json::Value::as_array).into_iter().flatten())
+        .filter(|instruction| instruction.get("t").and_then(serde_json::Value::as_str) == Some("set"))
+        .filter_map(|instruction| instruction.get("key").and_then(serde_json::Value::as_str))
+        .collect::<std::collections::HashSet<_>>();
+    let mut issues = vec![];
+    for (index, edge) in graph.edges.iter().enumerate() {
+        if edge.mode != "auto" { continue; }
+        let Some(condition) = edge.condition.as_deref().filter(|value| !value.trim().is_empty()) else { continue };
+        let Ok(reads) = parse_expression(condition) else { continue };
+        for name in reads {
+            if name.starts_with("system.")
+                || declared.is_some_and(|items| items.contains_key(&name))
+                || write_sites.contains(name.as_str())
+            { continue; }
+            issues.push(ProjectIssue {
+                severity: GraphIssueSeverity::Warn,
+                source: "variables".to_string(),
+                code: "undeclared_variable".to_string(),
+                message: format!("条件读取了未声明且没有写入点的变量 {name}"),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some(format!("$.edges[{index}].condition")),
+                node_id: Some(edge.from.clone()),
+                edge_id: Some(edge.id.clone()),
+            });
+        }
+    }
+    issues
 }
 
 fn project_issue_source_order(source: &str) -> u8 {
@@ -257,6 +346,7 @@ fn project_issue_source_order(source: &str) -> u8 {
         _ => 6,
     }
 }
+use super::super::contracts;
 use super::super::fs::{read_json, ContentRoot, ProjectRoot};
 use super::super::model::{
     AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, ProjectContent, ProjectData,
@@ -264,7 +354,8 @@ use super::super::model::{
 };
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_manifest_structure,
-    validate_meta_structure, validate_node_contents, validate_ui_skin_convergence,
+    parse_expression, validate_meta_structure, validate_node_contents_with_variables,
+    validate_ui_skin_convergence,
 };
 use super::{legacy_chapter_layout_issues, load_project_graph_data};
 use std::collections::HashMap;

@@ -303,6 +303,15 @@ pub(crate) fn save_manifest(
 }
 
 #[tauri::command]
+pub(crate) fn save_variables(
+    project_path: String,
+    variables: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<Option<FileRevision>, String> {
+    mutation::save_variables(project_path, variables, expected_revision)
+}
+
+#[tauri::command]
 pub(crate) fn load_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
     settings_service::load(&resources::settings_path(&app_handle)?)
 }

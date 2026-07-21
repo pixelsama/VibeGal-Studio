@@ -40,6 +40,7 @@ pub(crate) fn run() {
             super::commands::delete_asset,
             super::commands::read_asset_preview_data_url,
             super::commands::save_manifest,
+            super::commands::save_variables,
             super::commands::load_app_settings,
             super::commands::save_app_settings,
             super::commands::build_desktop_game,

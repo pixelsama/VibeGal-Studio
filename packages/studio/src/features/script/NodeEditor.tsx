@@ -875,6 +875,7 @@ export function NodeEditor({
     <ScenarioInspector
       selection={scenarioSelection}
       manifest={project.content.manifest}
+      variables={project.content.variables}
       diagnostics={diagnostics}
       onReplaceInstruction={(instruction) => applyScenarioText(
         replaceScenarioSelectionInstruction(text, scenarioSelection, instruction),

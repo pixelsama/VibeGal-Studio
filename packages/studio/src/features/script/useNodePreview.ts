@@ -132,6 +132,7 @@ export function useNodePreview(
   runtimeRef.current ??= createInMemoryRuntimeServices({
     getState: () => playerRef.current?.getState() ?? stateRef.current,
     manifest: manifest ?? EMPTY_MANIFEST,
+    variables: project.content.variables,
     audio: {
       replayVoice: () => audioRef.current?.replayVoice(),
       playMusic: (audioId, options) => audioRef.current?.playMusic(audioId, options),
@@ -156,5 +157,11 @@ export function useNodePreview(
     runtime: runtimeRef.current,
   });
 
-  return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps, media, closeMedia, skipVideo };
+  return {
+    state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter,
+    rendererProps, media, closeMedia, skipVideo,
+    startDebugSession: () => {},
+    setDebugVariable: () => {},
+    resetDebugVariables: () => {},
+  };
 }

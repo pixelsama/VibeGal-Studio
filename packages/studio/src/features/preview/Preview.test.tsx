@@ -47,6 +47,9 @@ vi.mock("./useProjectPlayer", () => ({
       media: null,
       closeMedia: () => {},
       skipVideo: () => {},
+      startDebugSession: () => {},
+      setDebugVariable: () => {},
+      resetDebugVariables: () => {},
     };
   },
 }));
@@ -86,6 +89,7 @@ const project: ProjectData = {
       unlocks: { cg: {}, music: {}, replay: {}, endings: {} },
     },
     meta: {},
+    variables: { version: 1, variables: { affection: { type: "number", default: 0, nullable: false, scope: "run" } } },
   },
   rendererIds: ["default"],
   fixtures: [
@@ -107,14 +111,18 @@ describe("Preview 场景快照", () => {
     delete (globalThis as { window?: unknown }).window;
   });
 
-  it("剧情播放模式（默认）：player 驱动，工具条不含场景下拉，行为与现状一致", () => {
+  it("剧情播放模式（默认）：player 驱动，只显示调试起点而不显示场景下拉", () => {
     const html = renderToStaticMarkup(<Preview project={project} rendererId="default" />);
 
     expect(html).toContain("剧情模式台词");
     expect(html).toContain("剧情播放");
     expect(html).toContain("场景快照");
     expect(html).not.toContain("场景刷");
-    expect(html).not.toContain("<select");
+    expect(html).toContain('aria-label="调试起点"');
+    expect(html).toContain('aria-label="调试指令"');
+    expect(html).toContain('aria-label="调试变量 affection"');
+    expect(html).toContain("启动调试");
+    expect(html).not.toContain('aria-label="场景"');
     expect(html).not.toContain("海平线上的第一缕光");
   });
 

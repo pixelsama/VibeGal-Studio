@@ -218,6 +218,18 @@ fn validate_graph_warns_auto_without_default_edge() {
 }
 
 #[test]
+fn validate_graph_rejects_invalid_condition_and_default_before_condition() {
+    let mut graph = choice_branch_graph();
+    graph.edges = vec![
+        auto_edge("fallback", "start", "stay", None),
+        auto_edge("bad", "start", "leave", Some("affection >")),
+    ];
+    let issues = validate_graph(&graph, &present_node_entries(&graph));
+    assert!(issues.iter().any(|issue| issue.code == "invalid_edge_condition" && issue.edge_id.as_deref() == Some("bad")));
+    assert!(issues.iter().any(|issue| issue.code == "auto_default_edge_not_last" && issue.edge_id.as_deref() == Some("fallback")));
+}
+
+#[test]
 fn route_analysis_finds_unreachable_nodes() {
     let graph = ProjectGraph {
         version: 1,

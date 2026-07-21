@@ -123,10 +123,11 @@ export function SceneFixtureView({ project, renderer, scene }: SceneFixtureViewP
       createInMemoryRuntimeServices({
         getState: () => scene.state,
         manifest,
+        variables: project.content.variables,
         initialGlobalPersistent: fixturePersistentToGlobal(scene.persistent),
         initialBacklog: scene.backlog,
       }),
-    [scene, manifest],
+    [scene, manifest, project.content.variables],
   );
 
   // uiHint 注入（Spec 21：标题门使"无注入"从"面板不预开"升级为"卡标题页"）：

@@ -19,6 +19,7 @@ pub struct ProjectListItem {
 pub struct ProjectContent {
     pub manifest: serde_json::Value,
     pub meta: serde_json::Value,
+    pub variables: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -247,6 +248,8 @@ pub struct ProjectData {
     pub graph_revision: Option<FileRevision>,
     #[serde(rename = "manifestRevision", skip_serializing_if = "Option::is_none")]
     pub manifest_revision: Option<FileRevision>,
+    #[serde(rename = "variablesRevision", skip_serializing_if = "Option::is_none")]
+    pub variables_revision: Option<FileRevision>,
     #[serde(rename = "metaRevision", skip_serializing_if = "Option::is_none")]
     pub meta_revision: Option<FileRevision>,
     #[serde(rename = "nodeRevisions", skip_serializing_if = "Option::is_none")]

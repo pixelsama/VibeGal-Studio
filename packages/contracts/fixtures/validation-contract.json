@@ -17,7 +17,8 @@
         { "t": "pause", "id": "pause-1" },
         { "t": "unlock", "kind": "cg", "id": "ending" },
         { "t": "showCg", "id": "ending" },
-        { "t": "playVideo", "id": "opening" }
+        { "t": "playVideo", "id": "opening" },
+        { "t": "completeEnding", "id": "complete-ending", "endingId": "ending" }
       ],
       "issues": []
     },

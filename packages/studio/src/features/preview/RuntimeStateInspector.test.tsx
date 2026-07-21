@@ -58,4 +58,15 @@ describe("RuntimeStateInspector", () => {
     expect(html).not.toContain("Runtime");
     expect(html).not.toContain("border-left");
   });
+
+  it("groups declared run, global, legacy, and system variables", () => {
+    const state = { ...createInitialState(), vars: { affection: 3, route_done: true, legacy: "x", "system.playthroughCount": 2 } };
+    const registry = { version: 1 as const, variables: {
+      affection: { type: "number" as const, default: 0, nullable: false, scope: "run" as const },
+      route_done: { type: "boolean" as const, default: false, nullable: false, scope: "global" as const },
+    } };
+    const html = renderToStaticMarkup(createElement(RuntimeStateInspector, { state, registry }));
+    for (const group of ["run variables", "global variables", "legacy variables", "system variables"]) expect(html).toContain(group);
+    expect(html).toContain("number · default 0");
+  });
 });

@@ -1,7 +1,7 @@
 /**
  * 项目相关类型 —— studio 与 Rust 后端之间的数据契约。
  */
-import type { Manifest as EngineManifest } from "@vibegal/engine";
+import type { Manifest as EngineManifest, VariableRegistry } from "@vibegal/engine";
 import type { Instruction } from "@vibegal/engine";
 
 /** gal.project.json 的结构 */
@@ -208,6 +208,7 @@ export interface ProjectData {
     /** manifest.json，结构由 engine 的 ManifestSchema 定义；这里窄化为 Manifest */
     manifest: Manifest;
     meta: unknown;
+    variables: VariableRegistry;
   };
   /** 项目内可用的渲染层 id 列表（= renderers/ 子目录名） */
   rendererIds: string[];
@@ -219,6 +220,7 @@ export interface ProjectData {
   nodes?: NodeEntry[];
   graphRevision?: FileRevision;
   manifestRevision?: FileRevision;
+  variablesRevision?: FileRevision;
   /** content/meta.json 的 revision，用于项目全局设置写入冲突检测 */
   metaRevision?: FileRevision;
   nodeRevisions?: Record<string, FileRevision | null>;

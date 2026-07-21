@@ -3,19 +3,20 @@
   "generatorVersion": 1,
   "zodVersion": "4.4.3",
   "sourceSha256": {
-    "src/schema.ts": "17c0ac18d9fdcd1e3caf434104f162835edfcfa9e436df8eabaf52b0277f0c47",
-    "src/diagnostics.ts": "a05bd821e37bc3269f33902b395c69efa22c1293e9e762416033c3c5d08e81c5",
+    "src/schema.ts": "768bf88b9b1cde6802b3f9ec8a2f4002a84c608e55253f5533365699f78679df",
+    "src/diagnostics.ts": "c29670728e36078b42cc25e1704ee4d528001230c9d09b70e0ac01f4e11864b2",
     "src/fixtures.ts": "0f13210537f7debc9940f8ef5423fdcdd318ca353bd00c3b9660dbc0ffb2e271",
-    "src/schemaExport.ts": "99d4f17b51e703daec51ec389adf234b67d14cbe55bf6b0d924a37c8298209e7",
+    "src/schemaExport.ts": "4bb5581a542685fc4c52ec728418eb36c4af2d21fe931eeb532e36ddb811efab",
     "scripts/generate-contracts.ts": "70950ba39d5cd15e9ba4b836a72d568fc5b98bc693340d62b561a5818fee79fc",
     "package.json": "df5acaac0b6f9f1d1aee7758d14b118d61b6f8ab246e504be2dbe13e3d61fb3f"
   },
   "artifactSha256": {
-    "nodeFile.schema.json": "8378670f66bfc20f1ee983beb8927d7a87b1a0ea232a9df38dfe76171d28753e",
+    "nodeFile.schema.json": "93b3e104ab6358055af73232194103e3a00e875a933bc673d723b54743568a67",
     "graph.schema.json": "8a593237d24a4510930bc41c9b3ffc28fe991c8a9170e974d46f725703a9ae9a",
     "manifest.schema.json": "a96e46e82aa581597b372806f2d27522fe5069883c075552826bf080d91f25b7",
     "meta.schema.json": "04b94a6153bc11bb010b483cbf209fb89cef979bc94b014d3a471ad0610b8ca5",
+    "variables.schema.json": "b1a522eae67c3ea285ba90e9ee3d15001c4ff2dc371bfb7b500717828b500a84",
     "fixture.schema.json": "d602022250899ec442dccbf776b33cb20a518ea0056e87bdb440db5fc9c23921",
-    "diagnostics.json": "d24cd17a33cdeb3af8ee4cd92e9016139786d6d48b4863dda12e88b4e72012b7"
+    "diagnostics.json": "e159e464ba26d05c7d203af279bbebf29266de603752c00a027e24de861d388b"
   }
 }

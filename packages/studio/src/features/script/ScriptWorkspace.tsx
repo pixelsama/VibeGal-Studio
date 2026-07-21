@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { deleteFile, saveFile, saveGraph, saveGraphPositions } from "../../lib/tauri";
+import { deleteFile, saveFile, saveGraph, saveGraphPositions, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
 import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
@@ -31,6 +31,8 @@ import { findNode, findNodeData } from "./graphMapping";
 import { RevisionedProjectMutationQueue } from "../../lib/projectMutation";
 import { preventUnloadWhenDirty } from "./unsavedChanges";
 import "@xyflow/react/dist/style.css";
+import { endingsForNode, insertEndingCompletion, registerEnding, unregisterEnding, upsertEnding } from "./endingRegistry";
+import { referencesAffectedByNodeDeletion } from "./nodeReferences";
 
 interface Props {
   project: ProjectData;
@@ -392,8 +394,12 @@ export function ScriptWorkspace({
       nodes.length === 1
         ? `节点「${nodes[0].title}」`
         : `${nodes.length} 个节点`;
+    const affected = referencesAffectedByNodeDeletion(project.content.manifest, uniqueIds);
+    const referenceWarning = affected.length > 0
+      ? `\n受影响的登记引用：${affected.map((item) => `${item.registry}:${item.id}`).join("、")}。这些 manifest 条目不会自动删除，保存后校验会标出它们。`
+      : "";
     setConfirm({
-      message: `确定删除${label}？节点文件也会被删除。`,
+      message: `确定删除${label}？节点文件也会被删除。${referenceWarning}`,
       onConfirm: () => void performDeleteNodes(uniqueIds),
     });
   };
@@ -532,6 +538,46 @@ export function ScriptWorkspace({
     void persistGraph(nextState.graph);
   };
 
+  const handleManageEnding = (nodeId: string) => {
+    const linked = endingsForNode(project.content.manifest, nodeId);
+    setPrompt({
+      title: linked.length > 0 ? `关联结局：${linked.map(([id]) => id).join(", ")}` : "登记为正式结局",
+      label: "结局 ID（标题默认使用节点标题）",
+      initialValue: linked[0]?.[0] ?? "",
+      onConfirm: (id) => {
+        if (linked.some(([existing]) => existing === id)) return;
+        try {
+          const next = registerEnding(project.content.manifest, { id, title: findNode(graph, nodeId)?.title ?? id, nodeId });
+          void saveManifest(project.path, next, project.manifestRevision).then(() => { setGraphStatus("结局登记已保存"); onSaved(); }).catch((error) => setGraphStatus(`结局登记失败: ${error instanceof Error ? error.message : String(error)}`));
+        } catch (error) { setGraphStatus(`结局登记失败: ${error instanceof Error ? error.message : String(error)}`); }
+      },
+    });
+  };
+  const handleVariablesChange = (variables: typeof project.content.variables) => {
+    void saveVariables(project.path, variables, project.variablesRevision).then(() => { setGraphStatus("变量声明已保存"); onSaved(); }).catch((error) => setGraphStatus(`变量保存失败: ${error instanceof Error ? error.message : String(error)}`));
+  };
+  const handleEditEnding = (endingId: string) => {
+    const ending = project.content.manifest.unlocks.endings[endingId];
+    if (!ending) return;
+    setPrompt({ title: `编辑结局 ${endingId}`, label: "标题", initialValue: ending.title, onConfirm: (title) => {
+      const next = upsertEnding(project.content.manifest, { id: endingId, title, nodeId: ending.nodeId });
+      void saveManifest(project.path, next, project.manifestRevision).then(onSaved).catch((error) => setGraphStatus(`结局更新失败: ${error instanceof Error ? error.message : String(error)}`));
+    } });
+  };
+  const handleUnregisterEnding = (endingId: string) => {
+    setConfirm({ message: `取消登记结局 ${endingId}？剧情中的 unlock/completeEnding 指令不会自动删除。`, danger: true, onConfirm: () => {
+      void saveManifest(project.path, unregisterEnding(project.content.manifest, endingId), project.manifestRevision).then(onSaved).catch((error) => setGraphStatus(`取消登记失败: ${error instanceof Error ? error.message : String(error)}`));
+    } });
+  };
+  const handleInsertEndingCompletion = (nodeId: string, endingId: string) => {
+    const node = findNode(graph, nodeId);
+    if (!node) return;
+    const data = findNodeData(project.nodes, node.file);
+    if (!Array.isArray(data)) return;
+    const next = insertEndingCompletion(data as never[], endingId);
+    void saveNode(project.path, node.file, next, project.nodeRevisions?.[node.file]).then(onSaved).catch((error) => setGraphStatus(`插入结算失败: ${error instanceof Error ? error.message : String(error)}`));
+  };
+
   // Phase 9：自动排布（确定性分层）后一次性落盘
   const handleAutoLayout = () => {
     const nextState = applyGraphCommand(graphHistory, { kind: "autoLayout" });
@@ -637,6 +683,7 @@ export function ScriptWorkspace({
                   graph={graph}
                   graphReport={graphReport}
                   nodeEntries={project.nodes}
+                  manifest={project.content.manifest}
                   selectedNodeId={selectedNodeId}
                   selectedEdgeId={selectedEdgeId}
                   canUndo={graphHistory.canUndo}
@@ -655,6 +702,7 @@ export function ScriptWorkspace({
                   onCreateSuccessor={handleCreateSuccessor}
                   onRenameNode={handleRenameNodeDialog}
                   onSetEntry={handleSetEntry}
+                  onManageEnding={handleManageEnding}
                   onAutoLayout={handleAutoLayout}
                 />
               </div>
@@ -687,11 +735,20 @@ export function ScriptWorkspace({
                     onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
                     onSetEntry={handleSetEntry}
                     saving={savingGraph}
+                    variables={project.content.variables}
+                    manifest={project.content.manifest}
+                    onRegisterEnding={handleManageEnding}
+                    onEditEnding={handleEditEnding}
+                    onUnregisterEnding={handleUnregisterEnding}
+                    onInsertEndingCompletion={handleInsertEndingCompletion}
                   />
                 ) : (
                   <GraphAnalysisPanel
                     graph={graph}
                     nodeEntries={project.nodes}
+                    manifest={project.content.manifest}
+                    registry={project.content.variables}
+                    onRegistryChange={handleVariablesChange}
                     onSelectNode={handleSelect}
                     onSelectEdge={handleSelectEdge}
                   />

@@ -8,6 +8,7 @@ export interface GraphCanvasNodeData extends Record<string, unknown> {
   status: GraphNodeStatus;
   incoming: number;
   outgoing: number;
+  badges?: string[];
   duplicateNodeId?: boolean;
   hasContent?: boolean;
 }
@@ -48,6 +49,9 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
         <span style={titleStyle}>{data.title}</span>
       </div>
       <div style={metaStyle}>{data.fileId}</div>
+      {data.badges && data.badges.length > 0 && (
+        <div style={badgeRowStyle}>{data.badges.map((badge) => <span key={badge} style={semanticBadgeStyle}>{badge}</span>)}</div>
+      )}
       <div style={statusRowStyle}>
         <span style={{ ...statusDotStyle, background: status.dot }} />
         <span style={{ color: status.text }}>{status.label}</span>
@@ -100,6 +104,9 @@ const metaStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   wordBreak: "break-all",
 };
+
+const badgeRowStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: "var(--space-1)", marginTop: "var(--space-2)" };
+const semanticBadgeStyle: React.CSSProperties = { padding: "2px 6px", borderRadius: "var(--radius-pill)", background: "var(--bg-active)", color: "var(--accent-bright)", fontSize: "var(--text-xs)" };
 
 const statusRowStyle: React.CSSProperties = {
   display: "flex",

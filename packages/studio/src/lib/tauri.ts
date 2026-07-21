@@ -19,6 +19,7 @@ import type {
   SaveNodeResult,
   ProjectMeta,
 } from "./types";
+import type { VariableRegistry } from "@vibegal/engine";
 
 /** 弹出「选择文件夹」对话框，返回用户选的绝对路径 */
 export async function pickDirectory(): Promise<string | null> {
@@ -218,6 +219,15 @@ export async function saveManifest(
   expectedRevision?: FileRevision | null,
 ): Promise<FileRevision | null> {
   return invoke<FileRevision | null>("save_manifest", withExpectedRevision({ projectPath, manifest }, expectedRevision));
+}
+
+/** 保存 content/variables.json，使用独立 revision 防止覆盖外部修改。 */
+export async function saveVariables(
+  projectPath: string,
+  variables: VariableRegistry,
+  expectedRevision?: FileRevision | null,
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_variables", withExpectedRevision({ projectPath, variables }, expectedRevision));
 }
 
 // ──────────────────────────────────────────────

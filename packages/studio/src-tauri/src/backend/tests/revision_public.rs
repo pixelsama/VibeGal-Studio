@@ -159,7 +159,7 @@ fn public_project_and_issue_json_field_names_remain_stable() {
     );
     assert_eq!(
         keys(&project_json["content"]),
-        BTreeSet::from(["manifest", "meta"].map(str::to_string))
+        BTreeSet::from(["manifest", "meta", "variables"].map(str::to_string))
     );
 
     let issue_json = serde_json::to_value(ProjectIssue {

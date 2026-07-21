@@ -275,7 +275,7 @@ describe("fixturePersistentToGlobal", () => {
       "proj-1",
     );
     expect(record).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: "proj-1",
       readText: [],
       unlockedCg: ["a", "b"],
@@ -283,6 +283,10 @@ describe("fixturePersistentToGlobal", () => {
       unlockedReplays: [],
       unlockedEndings: ["e"],
       playthroughCount: 0,
+      globalVars: {},
+      lastEndingId: null,
+      settledEndings: {},
+      appliedGlobalEffects: {},
     });
     expect(() => GlobalPersistentRecordSchema.parse(record)).not.toThrow();
   });

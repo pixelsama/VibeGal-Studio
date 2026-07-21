@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProjectGraph } from "../../lib/types";
-import { NodeInspector } from "./NodeInspector";
+import { commitConditionDraft, moveEdge, moveEdgeById, NodeInspector, orderDefaultAutoEdgeLast } from "./NodeInspector";
 
 const graph: ProjectGraph = {
   version: 1,
@@ -34,5 +34,27 @@ describe("NodeInspector graph exits", () => {
     expect(html).toContain("去左边");
     expect(html).toContain("左线");
     expect(html).not.toContain("节点播放完后");
+  });
+
+  it("reorders outgoing edges without changing their identity", () => {
+    const moved = moveEdge(graph.edges, 1, -1);
+    expect(moved.map((edge) => edge.id)).toEqual(["start__right", "start__left"]);
+    expect(moved[0]).toMatchObject(graph.edges[1]);
+  });
+
+  it("keeps invalid condition drafts local until they parse", () => {
+    expect(commitConditionDraft("affection >")).toEqual({ ok: false, message: expect.any(String) });
+    expect(commitConditionDraft("affection >= 3")).toEqual({ ok: true, condition: "affection >= 3" });
+    expect(commitConditionDraft("   ")).toEqual({ ok: true, condition: null });
+  });
+
+  it("uses the same ordering model for drag and keeps the default auto edge last", () => {
+    const auto = [
+      { ...graph.edges[0], mode: "auto" as const, condition: null },
+      { ...graph.edges[1], mode: "auto" as const, condition: "affection >= 3" },
+    ];
+    expect(orderDefaultAutoEdgeLast(auto).map((edge) => edge.id)).toEqual(["start__right", "start__left"]);
+    expect(moveEdgeById(graph.edges, "start__right", "start__left").map((edge) => edge.id))
+      .toEqual(moveEdge(graph.edges, 1, -1).map((edge) => edge.id));
   });
 });

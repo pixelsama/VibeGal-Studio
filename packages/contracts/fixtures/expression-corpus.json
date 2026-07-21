@@ -1,0 +1,11 @@
+{
+  "valid": [
+    { "source": "has_key", "reads": ["has_key"] },
+    { "source": "score + bonus * 2 >= 10 && has_key", "reads": ["bonus", "has_key", "score"] },
+    { "source": "!(route == \"bad\") || system.playthroughCount > 0", "reads": ["route", "system.playthroughCount"] },
+    { "source": "-offset + 5 / 2", "reads": ["offset"] },
+    { "source": "legacy-route == true", "reads": ["legacy-route"] },
+    { "source": "score - bonus", "reads": ["bonus", "score"] }
+  ],
+  "invalid": ["", "score +", "globalThis.alert(1)", "route = \"a\"", "[1, 2]", "score ** 2"]
+}

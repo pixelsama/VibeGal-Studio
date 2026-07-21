@@ -1,6 +1,6 @@
 # Spec 22 — Branch, Ending, and Variable Runtime Completion（分支、结局与变量完整化）
 
-> 状态：规划中，待按阶段实施与主审。
+> 状态：已实施并归档（2026-07-21 完成 P0-P2、需求矩阵核验与全量门禁；实施记录见第 18 节）。
 > 基线：`7d6eae6`。
 > 前置：[Spec 06 — Persistent Runtime Save And Restore](./archive/06-persistent-runtime-save-and-restore.spec.md)、[Spec 08 — Studio Authoring Analysis UX](./archive/08-studio-authoring-analysis-ux.spec.md)、[Spec 09 — Unlock Media Replay Runtime](./archive/09-unlock-media-replay-runtime.spec.md)、[Spec 12 — Contract-Driven Rust Validation And Backend Modularization](./archive/12-contract-driven-rust-validation-and-backend-modularization.spec.md)、[Spec 21 — Title Screen](./archive/21-title-screen.spec.md)。
 > 目标：在不引入节点类型、插件节点或通用脚本 VM 的前提下，把现有 graph-first 架构扩展为可可靠创作、调试和发布多分支、多结局、变量驱动及多周目 Galgame 的完整闭环。
@@ -78,33 +78,33 @@ graph terminal             manifest ending              completeEnding
 
 以下 ID 是本 spec 的稳定验收索引。实施时测试名可以按项目惯例调整，但每项需求必须有可执行验证。
 
-| ID | 优先级 | 受保护需求 | 最小可执行验证 |
+| ID | 优先级 | 受保护需求 | 已通过的可执行验证 |
 | --- | --- | --- | --- |
-| P0-R1 | P0 | TS Engine、Rust backend 和 CLI 对条件语法的接受/拒绝结果一致 | 共享 condition corpus 同时跑 TS/Rust；CLI JSON 返回 `invalid_edge_condition` |
-| P0-R2 | P0 | 非法条件在运行时成为显式 route error，不再静默 false | `graphPlayerStopsOnInvalidAutoCondition` |
-| P0-R3 | P0 | `auto` 默认边至多一条且必须最后 | backend/CLI + graph editor tests |
-| P0-R4 | P0 | replay/ending `nodeId` 必须引用现存 graph node | manifest cross-reference tests |
-| P0-R5 | P0 | 条件错误可在对应边输入框就地显示并定位 | `nodeInspectorShowsConditionDiagnostic` |
-| P0-R6 | P0 | Studio 能登记、修改、取消正式结局，且不静默覆盖 manifest/node 外部修改 | revision conflict + partial failure tests |
-| P0-R7 | P0 | UI 明确区分图终点和正式结局 | graph mapping/render tests |
-| P0-R8 | P0 | 路线分析以正式结局 ID 为主，并单列未登记终点 | route coverage tests |
-| P1-R1 | P1 | 项目可声明变量类型、默认值和说明；旧项目缺文件仍可打开 | variables schema/load compatibility tests |
-| P1-R2 | P1 | 新 run 在进入入口前得到 run 变量默认值 | `graphPlayerInitializesDeclaredRunVariables` |
-| P1-R3 | P1 | 变量写入表单保留明确类型，不再猜测字符串 | scenario inspector tests |
-| P1-R4 | P1 | 条件构建器提供变量补全、类型约束和 raw fallback | builder parser/formatter/component tests |
-| P1-R5 | P1 | 作者可调整同一节点分支顺序，键盘操作与拖拽结果一致 | outgoing edge reorder tests |
-| P1-R6 | P1 | 给定模拟变量时显示每条 auto 边的 true/false/error、实际胜出边和被遮蔽边 | condition preview tests |
-| P1-R7 | P1 | 可从指定节点以临时变量启动预览；调试值不写项目和玩家持久化 | preview/debug isolation tests |
-| P1-R8 | P1 | Runtime Inspector 用类型化表格显示变量并可临时改值/重置 | inspector interaction tests |
-| P2-R1 | P2 | `set` 支持有限、安全、确定性的表达式赋值 | expression parse/eval corpus + interpreter tests |
-| P2-R2 | P2 | 表达式类型错误、缺变量和除零产生结构化 runtime error | assignment failure tests |
-| P2-R3 | P2 | run/global 变量遵循各自的新游戏、存档、读档语义 | persistence matrix tests |
-| P2-R4 | P2 | global 写入在同一 playthrough 内按稳定 effect ID 幂等 | load-before-effect replay test |
-| P2-R5 | P2 | `completeEnding` 对同一 playthrough + ending 只结算一次；读取分歧前存档仍可结算另一 ending | completion idempotency + branch-save tests |
-| P2-R6 | P2 | 新游戏产生新 playthrough ID，读档恢复原 ID，replay 不产生结算 | run identity + replay tests |
-| P2-R7 | P2 | `playthroughCount`、last ending 和 global vars 正确迁移、保存且不会被固定归零 | runtime record migration tests |
-| P2-R8 | P2 | 路线矩阵对每个正式结局输出 reachable/unreachable/unknown，预算耗尽不得误报 unreachable | abstract route analysis tests |
-| P2-R9 | P2 | CLI 对所有确定性错误给机器可读 issue；高级不确定分析不阻断 validate | CLI exit-code/JSON tests |
+| P0-R1 | P0 | TS Engine、Rust backend 和 CLI 对条件语法的接受/拒绝结果一致 | `packages/engine/src/expressionCorpus.test.ts`；Rust `matches_shared_expression_corpus`；CLI validate tests |
+| P0-R2 | P0 | 非法条件在运行时成为显式 route error，不再静默 false | Engine `graphPlayerStopsOnInvalidAutoCondition` |
+| P0-R3 | P0 | `auto` 默认边至多一条且必须最后 | Rust `validate_graph_rejects_invalid_condition_and_default_before_condition`；Studio `NodeInspector.test.tsx` |
+| P0-R4 | P0 | replay/ending `nodeId` 必须引用现存 graph node | Rust `open_project_validates_replay_and_ending_node_references` |
+| P0-R5 | P0 | 条件错误可在对应边输入框就地显示并定位 | `NodeInspector.test.tsx`（非法草稿本地保留）；Rust edge-level diagnostic tests |
+| P0-R6 | P0 | Studio 能登记、修改、取消正式结局，且不静默覆盖 manifest/node 外部修改 | `endingRegistry.test.ts`；`revision_public.rs`；两步保存分别使用 manifest/node revision |
+| P0-R7 | P0 | UI 明确区分图终点和正式结局 | `graphMapping.test.ts`（独立 semantic badges） |
+| P0-R8 | P0 | 路线分析以正式结局 ID 为主，并单列未登记终点 | `routeAnalysis.test.ts`（registry ID + unregistered terminal） |
+| P1-R1 | P1 | 项目可声明变量类型、默认值和说明；旧项目缺文件仍可打开 | Contracts schema tests；Rust initializer/loader/revision tests |
+| P1-R2 | P1 | 新 run 在进入入口前得到 run 变量默认值 | Engine `graphPlayerInitializesDeclaredRunVariables` |
+| P1-R3 | P1 | 变量写入表单保留明确类型，不再猜测字符串 | `VariableWorkbench.test.ts`；scenario editor tests |
+| P1-R4 | P1 | 条件构建器提供变量补全、类型约束和 raw fallback | `ConditionBuilder.test.tsx`；expression parser/formatter tests |
+| P1-R5 | P1 | 作者可调整同一节点分支顺序，键盘操作与拖拽结果一致 | `NodeInspector.test.tsx`（move/drag 共用模型） |
+| P1-R6 | P1 | 给定模拟变量时显示每条 auto 边的 true/false/error、实际胜出边和被遮蔽边 | Node Inspector preview + Engine condition-result tests |
+| P1-R7 | P1 | 可从指定节点以临时变量启动预览；调试值不写项目和玩家持久化 | Engine `debugSessionInjectsVariablesAndSuppressesPersistentEffects`；`Preview.test.tsx` |
+| P1-R8 | P1 | Runtime Inspector 用类型化表格显示变量并可临时改值/重置 | `RuntimeStateInspector.test.tsx`；GraphPlayer debug variable tests |
+| P2-R1 | P2 | `set` 支持有限、安全、确定性的表达式赋值 | shared expression corpus；Engine expression/interpreter/scenario tests |
+| P2-R2 | P2 | 表达式类型错误、缺变量和除零产生结构化 runtime error | Engine expression failures + declared assignment failure tests |
+| P2-R3 | P2 | run/global 变量遵循各自的新游戏、存档、读档语义 | GraphPlayer snapshot/default/legacy tests；renderer persistence tests |
+| P2-R4 | P2 | global 写入在同一 playthrough 内按稳定 effect ID 幂等 | Engine `appliesGlobalEffectsIdempotentlyWithinAPlaythrough` + failure rollback test |
+| P2-R5 | P2 | `completeEnding` 对同一 playthrough + ending 只结算一次；读取分歧前存档仍可结算另一 ending | Engine `settlesEachEndingOncePerPlaythroughButAllowsAnotherEnding` |
+| P2-R6 | P2 | 新游戏产生新 playthrough ID，读档恢复原 ID，replay 不产生结算 | runtime contract deterministic migration + GraphPlayer restart/replay/debug tests |
+| P2-R7 | P2 | `playthroughCount`、last ending 和 global vars 正确迁移、保存且不会被固定归零 | `runtimeContract.test.ts`；renderer progress/reset-default tests |
+| P2-R8 | P2 | 路线矩阵对每个正式结局输出 reachable/unreachable/unknown，预算耗尽不得误报 unreachable | `routeAnalysis.test.ts`（entry/choice columns、expr propagation、budget unknown） |
+| P2-R9 | P2 | CLI 对所有确定性错误给机器可读 issue；高级不确定分析不阻断 validate | CLI validate JSON/exit-code tests；Rust aggregate diagnostic tests |
 
 ## 5. 交付阶段与依赖顺序
 
@@ -911,3 +911,23 @@ pnpm -r build
 7. `completeEnding`、普通 unlock 和图终点三种语义在数据、Runtime 和 UI 中均清楚区分；
 8. 路线矩阵对无法证明的结果诚实返回 `unknown`；
 9. 项目自描述 schema/文档、CLI、Studio、Web 与 Desktop export 对同一契约达成一致。
+
+## 18. 实施记录与收敛说明
+
+2026-07-21 完成实施、审计与归档。最终保持了第 2 节的架构边界：节点仍统一指向 `Instruction[]`，没有引入节点类型、插件执行器或通用脚本 VM；图终点、正式结局、普通 unlock 与 `completeEnding` 保持四种独立语义。
+
+落地结果：
+
+- Contracts 新增 `content/variables.json`、表达式 `set`、`completeEnding`、稳定 diagnostics 和 TS/Rust 共用 expression corpus；项目初始化、自描述 schema 与 CLI 嵌入契约同步。
+- Engine 完成有限表达式求值、显式 route/assignment error、run/global/system 有效变量视图、runtime record v2、稳定 playthrough identity、持久副作用 barrier/幂等、结局结算与 progress service；旧变量与 v1 record 具备确定性兼容路径。
+- Rust backend/CLI 完成条件/default 顺序、manifest node 引用、变量/表达式/结局/持久 ID 校验，`save_variables` revision 写入与 `instruction-ids assign` 的 global set/completeEnding 闭环。
+- Studio 完成条件本地草稿、可视化逻辑组、拖拽/键盘排序、模拟命中预览、结局登记与结算插入、变量工作台、指定节点/指令/变量调试、分组 Runtime Inspector，以及正式结局路线矩阵和未登记终点列表。
+- Web/Desktop 共用 runtime record v2 与变量 registry；默认 Renderer 三份镜像、生成 engine types、schema/docs 均通过无漂移检查。
+
+有意采用的实现收敛：
+
+- 路线分析首版实现常量传播、表达式 set、first-match 与预算三态；没有引入 SAT/SMT 或通用区间求解。任何不支持或预算耗尽仍返回 `unknown`。
+- 结局登记与结算指令写入保持两个独立 revisioned action，不伪装成跨文件原子事务；第一步成功、第二步失败时 UI 保留登记并报告可重试错误。
+- 分支拖拽与上下移动复用同一纯排序模型；default auto edge 始终规范到末尾。
+
+归档门禁：Contracts 36、Engine 134、Studio 694、Rust library 200、CLI 75、其余 Rust integration 19 项均通过；`check:schemas`、`check:engine-types`、`check:renderer-template`、`check:doc-contract`、`pnpm -r build` 与 `git diff --check` 通过。

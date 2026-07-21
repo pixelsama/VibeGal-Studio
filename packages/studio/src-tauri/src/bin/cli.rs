@@ -888,7 +888,7 @@ fn preflight_identity_assignment(
                 .file(format!("content/{}", graph_node.file))
             })?;
         let file = format!("content/{}", graph_node.file.replace('\\', "/"));
-        let assignment = app_lib::assign_missing_story_point_ids(
+        let mut assignment = app_lib::assign_missing_story_point_ids(
             node,
             &app_lib::InstructionIdentityContext::new(&file, &graph_node.id),
         )
@@ -900,6 +900,15 @@ fn preflight_identity_assignment(
             )
             .file(&file)
         })?;
+        let persistent = app_lib::assign_missing_persistent_effect_ids(
+            &assignment.node,
+            &project.content.variables,
+            &app_lib::InstructionIdentityContext::new(&file, &graph_node.id),
+        ).map_err(|error| {
+            CliOperationError::new("instruction_id_assignment_failed", error.to_string(), "preflight").file(&file)
+        })?;
+        assignment.node = persistent.node;
+        assignment.assigned.extend(persistent.assigned);
         planned.push(PlannedNodeAssignment {
             node_file: graph_node.file.clone(),
             revision: serde_json::to_value(revision).expect("file revision must serialize"),
@@ -5495,6 +5504,33 @@ mod tests {
             0,
             "assign followed by validate should produce a clean project"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn instruction_id_assignment_reports_and_saves_global_set_ids() {
+        let root = unique_temp_dir("cli-assign-global-set-id");
+        make_project(
+            &root,
+            Some(r#"{"version":1,"entryNodeId":"start","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}}],"edges":[]}"#),
+        );
+        write_text(
+            &root.join("content/variables.json"),
+            r#"{"version":1,"variables":{"route_complete":{"type":"boolean","default":false,"scope":"global"}}}"#,
+        );
+        write_text(
+            &root.join("content/nodes/start.json"),
+            r#"[{"t":"set","key":"route_complete","value":true}]"#,
+        );
+
+        let assigned = assign_instruction_ids(root.to_string_lossy().as_ref(), None, false).unwrap();
+
+        assert_eq!(assigned.assigned_count, 1);
+        assert_eq!(assigned.changed_files[0].assigned[0].json_path, "$[0].id");
+        let saved: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join("content/nodes/start.json")).unwrap(),
+        ).unwrap();
+        assert!(saved[0]["id"].as_str().is_some_and(|id| !id.is_empty()));
         let _ = fs::remove_dir_all(root);
     }
 

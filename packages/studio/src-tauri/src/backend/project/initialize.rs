@@ -13,6 +13,7 @@ pub(crate) fn ensure_initialization_targets_available(
         project_path.join("content/manifest.json"),
         project_path.join("content/meta.json"),
         project_path.join("content/graph.json"),
+        project_path.join("content/variables.json"),
         project_path.join("content/nodes/start.json"),
         project_path.join("AGENTS.md"),
         project_path.join(".galstudio/README.md"),
@@ -25,6 +26,7 @@ pub(crate) fn ensure_initialization_targets_available(
         project_path.join(".galstudio/schemas/manifest.json"),
         project_path.join(".galstudio/schemas/meta.json"),
         project_path.join(".galstudio/schemas/fixture.json"),
+        project_path.join(".galstudio/schemas/variables.json"),
     ] {
         ensure_can_create_file(&path)?;
     }
@@ -131,6 +133,10 @@ pub(crate) fn initialize_project_root(
             }],
             "edges": []
         }),
+    )?;
+    write_json(
+        &project_path.join("content/variables.json"),
+        &serde_json::json!({ "version": 1, "variables": {} }),
     )?;
     let initial_node = assign_missing_story_point_ids(
         &serde_json::json!([{ "t": "narrate", "text": "新的故事从这里开始。" }]),

@@ -6,6 +6,7 @@ import {
   createRuntimeSnapshot,
   createSaveSlotRecord,
   createInMemoryRuntimePersistenceAdapter,
+  migrateGlobalPersistentRecord,
   migrateSaveSlotRecord,
   replayDecisionLogToNodeId,
 } from "./runtimeContract";
@@ -140,5 +141,21 @@ describe("runtime contract", () => {
     expect(() => migrateSaveSlotRecord({ schemaVersion: 999, projectId: "project-a" })).toThrow(
       expect.objectContaining({ code: "runtime_record_future_version" }),
     );
+  });
+
+  it("migrates v1 runtime records deterministically to v2", () => {
+    const checkpoint = createRuntimeSnapshot(createInitialState(), { currentNodeId: "start", currentStoryPoint: null });
+    const legacy = { ...createSaveSlotRecord({ projectId: "project-a", now: "2026-01-01T00:00:00Z", checkpoint }), schemaVersion: 1 };
+    delete (legacy.checkpoint as Partial<typeof legacy.checkpoint>).playthroughId;
+    const first = migrateSaveSlotRecord(legacy);
+    const second = migrateSaveSlotRecord(legacy);
+    expect(first.schemaVersion).toBe(2);
+    expect(first.checkpoint.playthroughId).toBe(second.checkpoint.playthroughId);
+
+    expect(migrateGlobalPersistentRecord({
+      schemaVersion: 1,
+      projectId: "project-a",
+      readText: [], unlockedCg: [], unlockedMusic: [], unlockedEndings: [], playthroughCount: 3,
+    })).toMatchObject({ schemaVersion: 2, playthroughCount: 3, globalVars: {}, lastEndingId: null });
   });
 });

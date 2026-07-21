@@ -178,7 +178,7 @@ export function customSceneFromFixture(json: unknown, fallbackId: string): Fixtu
  * createInMemoryRuntimeServices 的 initialGlobalPersistent；无 persistent
  * 时返回 undefined，让引擎自己落默认值。
  *
- * schemaVersion 与引擎 RUNTIME_RECORD_SCHEMA_VERSION 对齐（当前为 1）：
+ * schemaVersion 与引擎 RUNTIME_RECORD_SCHEMA_VERSION 对齐（当前为 2）：
  * 本文件不能 value import，漂移时 GlobalPersistentRecord 类型会在这里报错。
  */
 export function fixturePersistentToGlobal(
@@ -187,7 +187,7 @@ export function fixturePersistentToGlobal(
 ): GlobalPersistentRecord | undefined {
   if (!persistent) return undefined;
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     projectId,
     readText: [],
     unlockedCg: [...persistent.unlock.cg],
@@ -195,6 +195,10 @@ export function fixturePersistentToGlobal(
     unlockedReplays: [...persistent.unlock.replay],
     unlockedEndings: [...persistent.unlock.endings],
     playthroughCount: 0,
+    globalVars: {},
+    lastEndingId: null,
+    settledEndings: {},
+    appliedGlobalEffects: {},
   };
 }
 

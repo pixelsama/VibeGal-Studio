@@ -45,6 +45,9 @@ export interface ProjectPlayerResult {
   media: RuntimeMediaState;
   closeMedia: () => void;
   skipVideo: () => void;
+  startDebugSession: (nodeId: string, variableOverrides?: PreviewInitialVars, instructionId?: string) => void;
+  setDebugVariable: (name: string, value: string | number | boolean | null) => void;
+  resetDebugVariables: () => void;
 }
 
 export interface ProjectRendererPropsInput {
@@ -215,12 +218,23 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       player = new GraphNovelPlayer({
         meta: validated.meta as Meta,
         manifest: validated.manifest as Manifest,
+        variables: project.content.variables,
         onRuntimeEffect: (effect) => {
           if (effect.type === "unlock") {
             void runtimeRef.current?.persistent.unlock(effect.kind, effect.id);
+          } else if (effect.type === "completeEnding" && effect.playthroughId) {
+            return runtimeRef.current?.persistent.completeEnding({ playthroughId: effect.playthroughId, endingId: effect.endingId }).then(() => undefined);
+          } else if (effect.type === "globalSet" && effect.playthroughId && effect.nodeId) {
+            return runtimeRef.current?.persistent.applyGlobalEffect({
+              playthroughId: effect.playthroughId,
+              effectKey: `${effect.nodeId}:${effect.id}`,
+              key: effect.key,
+              value: effect.value,
+            }).then(() => undefined);
           } else {
             setMedia(runtimeMediaFromEffect(effect, validated.manifest as Manifest, contentDirAbs));
           }
+          return undefined;
         },
         persistent: {
           getReadStatus: (key) => runtimeRef.current?.persistent.getReadStatus(key) ?? false,
@@ -236,6 +250,14 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
             });
           });
         },
+        onEndingCommitted: () => runtimeRef.current?.save.autoSave("ending").catch((autoSaveError) => {
+          runtimeRef.current?.status?.report({ level: "warning", code: "ending_auto_save_failed", message: autoSaveError instanceof Error ? autoSaveError.message : String(autoSaveError) });
+        }),
+        globalState: () => ({
+          vars: runtimeRef.current?.persistent.getGlobalVars() ?? {},
+          playthroughCount: runtimeRef.current?.progress.getSummary().playthroughCount ?? 0,
+          lastEndingId: runtimeRef.current?.progress.getSummary().lastEndingId ?? null,
+        }),
       });
       const activeSettings = runtimeRef.current?.settings.getSettings();
       player.setPlaybackTiming({
@@ -292,6 +314,9 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const skipVideo = useCallback(() => {
     setMedia((current) => current?.type === "video" && current.skippable ? null : current);
   }, []);
+  const startDebugSession = useCallback((nodeId: string, variableOverrides: PreviewInitialVars = {}, instructionId?: string) => {
+    playerRef.current?.startDebugSession({ nodeId, variableOverrides, instructionId, suppressPersistentEffects: true });
+  }, []);
 
   const contentBase = `${project.path}/content`;
   const stage = readStageResolution(project.content.meta);
@@ -312,6 +337,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     },
     getState: () => playerRef.current?.getState() ?? stateRef.current,
     manifest: project.content.manifest ?? EMPTY_MANIFEST,
+    variables: project.content.variables,
     createSnapshot: () => playerRef.current?.createSnapshot() ?? createInitialRuntimeSnapshot(stateRef.current),
     restoreFromSave: (record) => playerRef.current?.restoreFromSave(record) ?? { warnings: [] },
     decisionLog: () => playerRef.current?.getDecisionLog() ?? [],
@@ -346,5 +372,10 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     runtime: runtimeRef.current,
   });
 
-  return { state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter, rendererProps, media, closeMedia, skipVideo };
+  return {
+    state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter,
+    rendererProps, media, closeMedia, skipVideo, startDebugSession,
+    setDebugVariable: (name, value) => playerRef.current?.setDebugVariable(name, value),
+    resetDebugVariables: () => playerRef.current?.resetDebugVariables(),
+  };
 }

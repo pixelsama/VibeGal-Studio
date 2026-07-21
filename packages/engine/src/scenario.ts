@@ -151,7 +151,17 @@ export function parseScenarioLine(line: string): ParsedLine {
         const valueRaw = parts.slice(2).join(" ");
         if (!key) return { ok: false, message: "@set 需要变量名。" };
         if (!valueRaw) return { ok: false, message: "@set 需要变量值。" };
+        if (parts[2] === "=") {
+          const expr = parts.slice(3).join(" ").trim();
+          if (!expr) return { ok: false, message: "@set 表达式不能为空。" };
+          return { ok: true, instruction: { t: "set", key, expr } as Instruction };
+        }
         return { ok: true, instruction: { t: "set", key, value: parseScenarioValue(valueRaw) } as Instruction };
+      }
+      case "@completeEnding": {
+        const endingId = parts[1];
+        if (!endingId) return { ok: false, message: "@completeEnding 需要结局 ID。" };
+        return { ok: true, instruction: { t: "completeEnding", endingId } as Instruction };
       }
       case "@effect": {
         const type = parts[1];
@@ -236,6 +246,7 @@ export function isStoryPointInstruction(instruction: Pick<Instruction, "t">): bo
 }
 
 export function withoutStoryPointId(instruction: Instruction): Instruction {
+  if (instruction.t === "completeEnding") return { t: "completeEnding", endingId: instruction.endingId } as Instruction;
   if (!isStoryPointInstruction(instruction) || !("id" in instruction)) return instruction;
   const projected = { ...instruction } as Instruction & { id?: string };
   delete projected.id;
@@ -259,7 +270,11 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
     case "narrate":
       return instruction.text;
     case "set":
-      return `@set ${instruction.key} ${formatScenarioValue(instruction.value)}`;
+      return "expr" in instruction && instruction.expr != null
+        ? `@set ${instruction.key} = ${instruction.expr}`
+        : `@set ${instruction.key} ${formatScenarioValue(instruction.value ?? null)}`;
+    case "completeEnding":
+      return `@completeEnding ${instruction.endingId}`;
     case "unlock":
       return `@unlock ${instruction.kind} ${instruction.id}`;
     case "showCg":

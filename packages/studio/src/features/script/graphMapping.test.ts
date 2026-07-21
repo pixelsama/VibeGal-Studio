@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphIssue, NodeEntry, ProjectGraph } from "../../lib/types";
+import { EMPTY_MANIFEST } from "../../lib/types";
 import {
   NODE_TYPE,
   collectDuplicateNodeIds,
@@ -70,6 +71,16 @@ describe("graphMapping", () => {
     const entryIds = flow.nodes.filter((node) => node.data.isEntry).map((node) => node.id);
 
     expect(entryIds).toEqual(["prologue"]);
+  });
+
+  it("shows terminal and registered-ending badges independently", () => {
+    const manifest = { ...EMPTY_MANIFEST, unlocks: { ...EMPTY_MANIFEST.unlocks, endings: {
+      true_end: { title: "True", nodeId: "first-meeting" },
+    } } };
+    const flow = mapGraphToFlow(sampleGraph, undefined, undefined, manifest);
+    const ending = flow.nodes.find((node) => node.id === "first-meeting")!;
+    expect(ending.data.badges).toContain("图终点");
+    expect(ending.data.badges).toContain("正式结局：true_end");
   });
 
   it("mapGraphToFlow maps edges with smoothstep type", () => {

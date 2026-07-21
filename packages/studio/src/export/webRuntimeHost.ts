@@ -28,6 +28,8 @@ import {
   type RuntimePersistenceAdapter,
   type RuntimeServices,
   type RuntimeSettingsRecord,
+  type VariableRegistry,
+  VariableRegistrySchema,
 } from "@vibegal/engine";
 import { RuntimeMediaOverlay, runtimeMediaFromEffect, type RuntimeMediaState } from "../features/preview/RuntimeMediaOverlay";
 
@@ -76,6 +78,7 @@ export interface WebRuntimePlayerOptions {
   projectId?: string;
   storage?: RuntimeStorageAdapter;
   initialSettings?: RuntimeSettingsRecord;
+  variables?: VariableRegistry;
 }
 
 export const VIBEGAL_BUILD_SCHEMA_VERSION = 1;
@@ -273,6 +276,11 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
   const player = new GraphNovelPlayer({
     meta: content.meta as Meta,
     manifest: content.manifest as Manifest,
+    variables: options.variables,
+    globalState: () => {
+      const record = storage.readGlobalSync?.(projectId);
+      return { vars: record?.globalVars ?? {}, playthroughCount: record?.playthroughCount ?? 0, lastEndingId: record?.lastEndingId ?? null };
+    },
     persistent: {
       getReadStatus: (key) => runtimeServices?.persistent.getReadStatus(key) ?? false,
       markRead: (key) => runtimeServices?.persistent.markRead(key),
@@ -281,9 +289,19 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     onRuntimeEffect: (effect) => {
       if (effect.type === "unlock") {
         void runtimeServices?.persistent.unlock(effect.kind, effect.id);
+      } else if (effect.type === "completeEnding" && effect.playthroughId) {
+        return runtimeServices?.persistent.completeEnding({ playthroughId: effect.playthroughId, endingId: effect.endingId }).then(() => undefined);
+      } else if (effect.type === "globalSet" && effect.playthroughId && effect.nodeId) {
+        return runtimeServices?.persistent.applyGlobalEffect({
+          playthroughId: effect.playthroughId,
+          effectKey: `${effect.nodeId}:${effect.id}`,
+          key: effect.key,
+          value: effect.value,
+        }).then(() => undefined);
       } else {
         publishMedia(runtimeMediaFromEffect(effect, content.manifest as Manifest, options.contentBase));
       }
+      return undefined;
     },
     onStableCheckpoint: (event) => {
       void runtimeServices?.save.autoSave(event.reason).catch((autoSaveError) => {
@@ -294,6 +312,9 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
         });
       });
     },
+    onEndingCommitted: () => runtimeServices?.save.autoSave("ending").catch((autoSaveError) => {
+      runtimeServices.status?.report({ level: "warning", code: "ending_auto_save_failed", message: autoSaveError instanceof Error ? autoSaveError.message : String(autoSaveError) });
+    }),
   });
   player.setPlaybackTiming({
     textSpeedCps: settings.textSpeedCps,
@@ -343,6 +364,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     storage,
     initialGlobal: storage.readGlobalSync?.(projectId),
     manifest: content.manifest as Manifest,
+    variables: options.variables,
     createSnapshot: () => player.createSnapshot(),
     restoreFromSave: (record) => player.restoreFromSave(record),
     decisionLog: () => player.getDecisionLog(),
@@ -806,6 +828,7 @@ function createWebRuntimeServices(options: {
   storage?: RuntimeStorageAdapter;
   initialGlobal?: GlobalPersistentRecord;
   manifest: Manifest;
+  variables?: VariableRegistry;
   createSnapshot: () => ReturnType<GraphNovelPlayer["createSnapshot"]>;
   restoreFromSave: GraphNovelPlayer["restoreFromSave"];
   decisionLog: GraphNovelPlayer["getDecisionLog"];
@@ -825,6 +848,7 @@ function createWebRuntimeServices(options: {
     persistenceAdapter: options.storage,
     initialGlobalPersistent: options.initialGlobal,
     manifest: options.manifest,
+    variables: options.variables,
     createSnapshot: options.createSnapshot,
     restoreFromSave: options.restoreFromSave,
     decisionLog: options.decisionLog,
@@ -887,7 +911,9 @@ async function loadExportedContent(basePath: string) {
     id: node.id,
     instructions: await fetchJson<Instruction[]>(joinBasePath(basePath, `content/${node.file}`)),
   })));
-  return { graph, meta, manifest, nodes };
+  let variables: VariableRegistry = { version: 1, variables: {} };
+  try { variables = VariableRegistrySchema.parse(await fetchJson<unknown>(joinBasePath(basePath, "content/variables.json"))); } catch { /* Old exports have no registry. */ }
+  return { graph, meta, manifest, nodes, variables };
 }
 
 function mountRuntime(root: Root, runtime: WebRuntimePlayer, rendererManifest: RendererManifest) {

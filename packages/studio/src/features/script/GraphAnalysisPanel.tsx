@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
+import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { VariableRegistry } from "@vibegal/engine";
+import { analyzeEndingRouteMatrix, collectUnregisteredTerminals } from "./routeAnalysis";
+import { VariableWorkbench } from "./VariableWorkbench";
 import { analyzeGraphVariables, buildRouteCoverage } from "./variableAnalysis";
 
 interface GraphAnalysisPanelProps {
@@ -7,12 +10,17 @@ interface GraphAnalysisPanelProps {
   nodeEntries?: NodeEntry[];
   onSelectNode: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
+  manifest?: Manifest;
+  registry?: VariableRegistry;
+  onRegistryChange?: (registry: VariableRegistry) => void;
 }
 
-export function GraphAnalysisPanel({ graph, nodeEntries, onSelectNode, onSelectEdge }: GraphAnalysisPanelProps) {
+export function GraphAnalysisPanel({ graph, nodeEntries, onSelectNode, onSelectEdge, manifest, registry, onRegistryChange }: GraphAnalysisPanelProps) {
   const coverage = useMemo(() => buildRouteCoverage(graph), [graph]);
   const analysis = useMemo(() => analyzeGraphVariables(graph, nodeEntries), [graph, nodeEntries]);
   const [query, setQuery] = useState("");
+  const endingMatrix = useMemo(() => manifest ? analyzeEndingRouteMatrix({ graph, nodes: nodeEntries, manifest, variables: registry }) : null, [graph, nodeEntries, manifest, registry]);
+  const unregisteredTerminals = useMemo(() => manifest ? collectUnregisteredTerminals(graph, manifest) : [], [graph, manifest]);
 
   const variables = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -32,6 +40,24 @@ export function GraphAnalysisPanel({ graph, nodeEntries, onSelectNode, onSelectE
             <StatCard label="结局" value={coverage.endingNodes} />
             <StatCard label="孤立" value={coverage.orphanNodes} />
           </div>
+          {endingMatrix && endingMatrix.rows.length > 0 && (
+            <div style={listStyle}>
+              <div style={sectionTitleStyle}>Ending Route Matrix</div>
+              <div style={{ display: "grid", gridTemplateColumns: `minmax(120px, 1fr) repeat(${endingMatrix.columns.length}, minmax(80px, 1fr))`, gap: 4 }}>
+                <strong>正式结局</strong>
+                {endingMatrix.columns.map((column) => <strong key={column.id}>{column.title}</strong>)}
+                {endingMatrix.rows.flatMap((row) => [
+                  <span key={`${row.endingId}:title`}>{row.endingId} · {row.title}</span>,
+                  ...row.cells.map((cell, index) => <button key={`${row.endingId}:${endingMatrix.columns[index].id}`} type="button"
+                    title={cell.witness ? `路径：${cell.witness.join(" -> ")}` : cell.reason}>{cell.reachability}</button>),
+                ])}
+              </div>
+            </div>
+          )}
+          {unregisteredTerminals.length > 0 && <div style={listStyle}>
+            <div style={sectionTitleStyle}>可达但未登记的图终点</div>
+            {unregisteredTerminals.map((terminal) => <button key={terminal.nodeId} type="button" style={parseIssueStyle} onClick={() => onSelectNode(terminal.nodeId)}>{terminal.title} · {terminal.nodeId}</button>)}
+          </div>}
           {coverage.choiceBranches.length > 0 && (
             <div style={listStyle}>
               <div style={sectionTitleStyle}>Choice Branches</div>
@@ -59,6 +85,8 @@ export function GraphAnalysisPanel({ graph, nodeEntries, onSelectNode, onSelectE
             </div>
           )}
         </section>
+
+        {registry && <section style={sectionStyle}><div style={sectionTitleStyle}>Variable Workbench</div><VariableWorkbench registry={registry} graph={graph} nodes={nodeEntries} onChange={onRegistryChange} /></section>}
 
         <section style={sectionStyle}>
           <div style={sectionHeaderStyle}>

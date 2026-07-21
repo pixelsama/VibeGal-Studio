@@ -10,6 +10,7 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 - `content/nodes/*.json` are node script files. Each node file is an `Instruction[]` JSON array, not an object wrapper.
 - `content/manifest.json` defines character, background, and audio ids used by instructions.
 - `content/meta.json` stores global playback settings and the fixed stage size.
+- `content/variables.json` declares typed run/global variables, defaults, scopes, and descriptions.
 - `content/fixtures/*.json` are custom preview scenes. Each file is one scene: a required `state` (NovelState snapshot), optional `title`, `persistent.unlock` id lists, and `uiHint.panel`. Validate against `.galstudio/schemas/fixture.json`.
 - `renderers/<id>/index.tsx` is a renderer layer entry file.
 
@@ -23,6 +24,8 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 - Do not write `choice` instructions inside node files. Branching lives on graph outgoing edges.
 - Graph edges use `mode`: `linear` for a single automatic next node, `choice` for player-visible options, and `auto` for variable-condition routing.
 - `choice` edges must provide `label`; `auto` edges may provide `condition` and should include one default edge with no condition.
+- The `auto` default edge must be last. Conditions and `set` expressions use the finite scalar grammar documented by the schemas; arbitrary JavaScript is forbidden.
+- Graph terminals and registered endings are different. Register endings in `manifest.unlocks.endings`; use `completeEnding` to settle a playthrough. Plain `unlock endings` does not increment playthrough count.
 - If `content/graph.json` is missing, report a `missing_graph` issue rather than synthesizing legacy chapters.
 - Do not use absolute paths, parent-directory traversal, or Windows drive paths in project data.
 
@@ -41,7 +44,7 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 
 ## Validation
 
-Story-point instructions (`say`, `narrate`, `wait`, and `pause`) use a stable `id` for saves,
+Story-point instructions (`say`, `narrate`, `wait`, `pause`, and `completeEnding`) use a stable `id` for saves,
 read history, rollback, and precise tooling references. The ID is machine-managed:
 
 - Preserve every existing non-empty story-point ID when editing or moving content.
@@ -239,6 +242,7 @@ Local JSON Schema snapshots are in `.galstudio/schemas/`:
 - `manifest.json` validates `content/manifest.json`.
 - `meta.json` validates `content/meta.json`.
 - `fixture.json` validates each `content/fixtures/*.json` file.
+- `variables.json` validates `content/variables.json`.
 
 These files are copied from the VibeGal-Studio product at project initialization time.
 
@@ -315,7 +319,7 @@ pub(crate) const PROJECT_REACT_DTS: &str =
 pub(crate) const PROJECT_TSCONFIG_JSON: &str =
     include_str!("../../../../templates/project-tsconfig.json");
 
-pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 5] = [
+pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 6] = [
     (
         "graph.json",
         include_str!("../../../generated/contracts/graph.schema.json"),
@@ -336,10 +340,14 @@ pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 5] = [
         "fixture.json",
         include_str!("../../../generated/contracts/fixture.schema.json"),
     ),
+    (
+        "variables.json",
+        include_str!("../../../generated/contracts/variables.schema.json"),
+    ),
 ];
 
 /// 项目自描述文件全集（相对路径 → 内容）。
-const SELF_DESCRIPTION_FILES: [(&str, &str); 11] = [
+const SELF_DESCRIPTION_FILES: [(&str, &str); 12] = [
     ("AGENTS.md", PROJECT_AGENTS_MD),
     (".galstudio/README.md", PROJECT_README_MD),
     (
@@ -360,6 +368,7 @@ const SELF_DESCRIPTION_FILES: [(&str, &str); 11] = [
     ),
     (".galstudio/schemas/meta.json", PROJECT_SCHEMA_FILES[3].1),
     (".galstudio/schemas/fixture.json", PROJECT_SCHEMA_FILES[4].1),
+    (".galstudio/schemas/variables.json", PROJECT_SCHEMA_FILES[5].1),
 ];
 
 /// 初始化时写入整套自描述文件（调用方已确认不会覆盖既有文件）。

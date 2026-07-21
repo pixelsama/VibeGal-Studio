@@ -640,3 +640,81 @@ fn open_project_returns_empty_fixtures_when_directory_is_absent() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn open_project_reports_undeclared_condition_reads_without_a_write_site() {
+    let root = unique_temp_dir("undeclared-condition-read");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "nodes": [
+                { "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } },
+                { "id": "end", "file": "nodes/end.json", "position": { "x": 1, "y": 0 } }
+            ],
+            "edges": [{ "id": "route", "from": "start", "to": "end", "mode": "auto", "condition": "missing_flag == true" }]
+        }),
+        &[("nodes/start.json", serde_json::json!([])), ("nodes/end.json", serde_json::json!([]))],
+    );
+    write_json(&project.join("content/variables.json"), &serde_json::json!({ "version": 1, "variables": {} })).unwrap();
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let issues = opened.project_report.unwrap().project_issues;
+    assert!(issues.iter().any(|issue| issue.code == "undeclared_variable" && issue.edge_id.as_deref() == Some("route")));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn open_project_reports_every_missing_ending_completion_reference() {
+    let root = unique_temp_dir("all-missing-ending-refs");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } }],
+            "edges": []
+        }),
+        &[("nodes/start.json", serde_json::json!([
+            { "t": "completeEnding", "id": "first", "endingId": "missing_a" },
+            { "t": "completeEnding", "id": "second", "endingId": "missing_b" }
+        ]))],
+    );
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let count = opened.project_report.unwrap().project_issues.iter()
+        .filter(|issue| issue.code == "missing_ending_ref")
+        .count();
+    assert_eq!(count, 2);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn open_project_validates_replay_and_ending_node_references() {
+    let root = unique_temp_dir("manifest-node-references");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1, "entryNodeId": "start",
+            "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } }],
+            "edges": []
+        }),
+        &[("nodes/start.json", serde_json::json!([]))],
+    );
+    write_json(&project.join("content/manifest.json"), &serde_json::json!({
+        "characters": {}, "backgrounds": {}, "audio": { "bgm": {}, "sfx": {}, "voice": {} },
+        "unlocks": {
+            "replay": { "scene": { "nodeId": "missing" } },
+            "endings": { "true_end": { "title": "True", "nodeId": "missing" } }
+        }
+    })).unwrap();
+
+    let issues = open_project_inner(project.to_string_lossy().as_ref()).unwrap().project_report.unwrap().project_issues;
+    assert!(issues.iter().any(|issue| issue.code == "missing_replay_node_ref"));
+    assert!(issues.iter().any(|issue| issue.code == "missing_ending_node_ref"));
+    let _ = fs::remove_dir_all(root);
+}

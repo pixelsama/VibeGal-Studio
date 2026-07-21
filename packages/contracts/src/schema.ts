@@ -76,10 +76,22 @@ export const VariableValueSchema = z.union([
   z.null(),
 ]);
 
-export const SetInstruction = z.object({
+export const SetInstruction = z.strictObject({
   t: z.literal("set"),
+  id: StableInstructionIdSchema.optional(),
   key: z.string().min(1),
-  value: VariableValueSchema,
+  value: VariableValueSchema.optional(),
+  expr: z.string().min(1).optional(),
+}).superRefine((instruction, context) => {
+  const hasValue = Object.prototype.hasOwnProperty.call(instruction, "value");
+  const hasExpression = Object.prototype.hasOwnProperty.call(instruction, "expr");
+  if (hasValue === hasExpression) {
+    context.addIssue({
+      code: "custom",
+      path: hasValue ? ["expr"] : ["value"],
+      message: "set 指令必须且只能提供 value 或 expr 之一",
+    });
+  }
 }).meta({ "x-vibegal": instructionPolicies.set });
 
 export const WaitInstruction = z.object({
@@ -123,6 +135,12 @@ export const PlayVideoInstruction = z.object({
   skippable: z.boolean().optional(),
 }).meta({ "x-vibegal": instructionPolicies.playVideo });
 
+export const CompleteEndingInstruction = z.strictObject({
+  t: z.literal("completeEnding"),
+  id: StableInstructionIdSchema,
+  endingId: z.string().min(1),
+}).meta({ "x-vibegal": instructionPolicies.completeEnding });
+
 export const InstructionSchema = z.discriminatedUnion("t", [
   BgInstruction,
   BgmInstruction,
@@ -139,6 +157,7 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   UnlockInstruction,
   ShowCgInstruction,
   PlayVideoInstruction,
+  CompleteEndingInstruction,
 ]);
 
 export const ChapterSchema = z.array(InstructionSchema);
@@ -300,4 +319,34 @@ export const ProjectGraphSchema = z.object({
   entryNodeId: z.string(), // 空串 = 未设置入口
   nodes: z.array(GraphNodeSchema).default([]),
   edges: z.array(GraphEdgeSchema).default([]),
+});
+
+// Project-level variable declarations. Runtime state remains scalar-only and
+// scope is explicit so save slots never accidentally capture global progress.
+export const VariableDeclarationSchema = z.strictObject({
+  type: z.enum(["string", "number", "boolean"]),
+  default: VariableValueSchema,
+  nullable: z.boolean().default(false),
+  scope: z.enum(["run", "global"]).default("run"),
+  description: z.string().optional(),
+}).superRefine((declaration, context) => {
+  if (declaration.default === null) {
+    if (!declaration.nullable) {
+      context.addIssue({ code: "custom", path: ["default"], message: "只有 nullable 变量可使用 null 默认值" });
+    }
+    return;
+  }
+  if (typeof declaration.default !== declaration.type) {
+    context.addIssue({ code: "custom", path: ["default"], message: "变量默认值与声明类型不匹配" });
+  }
+});
+
+const VariableNameSchema = z.string().regex(
+  /^(?!system\.)(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/,
+  "变量名必须是点号分隔的标识符，且不能使用 system. 前缀",
+);
+
+export const VariableRegistrySchema = z.strictObject({
+  version: z.literal(1),
+  variables: z.record(VariableNameSchema, VariableDeclarationSchema).default({}),
 });

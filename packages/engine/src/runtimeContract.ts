@@ -3,12 +3,13 @@ import { VariableValueSchema } from "./schema";
 import type { ProjectGraphData } from "./types";
 import type { NovelState } from "./state";
 
-export const RUNTIME_RECORD_SCHEMA_VERSION = 1;
+export const RUNTIME_RECORD_SCHEMA_VERSION = 2;
 
 export type RuntimePersistenceErrorCode =
   | "runtime_record_future_version"
   | "runtime_record_invalid"
-  | "runtime_save_slot_not_found";
+  | "runtime_save_slot_not_found"
+  | "missing_ending_ref";
 
 export class RuntimePersistenceError extends Error {
   constructor(
@@ -24,6 +25,7 @@ export class RuntimePersistenceError extends Error {
 export interface RuntimeLoadWarning {
   code: string;
   message: string;
+  variableName?: string;
   storyPoint?: StoryPointId;
   nodeId?: string;
 }
@@ -57,6 +59,7 @@ export const SerializableBgmSchema = z.strictObject({
 export type SerializableBgm = z.infer<typeof SerializableBgmSchema>;
 
 export const RuntimeSnapshotSchema = z.strictObject({
+  playthroughId: z.string().min(1),
   currentNodeId: z.string().min(1),
   currentStoryPoint: StoryPointIdSchema.nullable(),
   vars: z.record(z.string(), VariableValueSchema),
@@ -113,6 +116,10 @@ export const GlobalPersistentRecordSchema = z.strictObject({
   unlockedReplays: z.array(z.string()).default([]),
   unlockedEndings: z.array(z.string()),
   playthroughCount: z.number().int().nonnegative(),
+  globalVars: z.record(z.string(), VariableValueSchema).default({}),
+  lastEndingId: z.string().nullable().default(null),
+  settledEndings: z.record(z.string(), z.record(z.string(), z.strictObject({ completedAt: z.string().min(1) }))).default({}),
+  appliedGlobalEffects: z.record(z.string(), z.array(z.string())).default({}),
 });
 export type GlobalPersistentRecord = z.infer<typeof GlobalPersistentRecordSchema>;
 
@@ -149,7 +156,10 @@ export interface RuntimeStorageLike {
   removeItem(key: string): void;
 }
 
-export function createDefaultGlobalPersistentRecord(projectId: string): GlobalPersistentRecord {
+export function createDefaultGlobalPersistentRecord(
+  projectId: string,
+  globalVars: Record<string, string | number | boolean | null> = {},
+): GlobalPersistentRecord {
   return {
     schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
     projectId,
@@ -159,6 +169,10 @@ export function createDefaultGlobalPersistentRecord(projectId: string): GlobalPe
     unlockedReplays: [],
     unlockedEndings: [],
     playthroughCount: 0,
+    globalVars,
+    lastEndingId: null,
+    settledEndings: {},
+    appliedGlobalEffects: {},
   };
 }
 
@@ -200,8 +214,10 @@ export function createReadTextKey(input: StoryPointId & { text: string }): ReadT
 export function createRuntimeSnapshot(
   state: NovelState,
   position: Pick<RuntimeSnapshot, "currentNodeId" | "currentStoryPoint">,
+  playthroughId = createPlaythroughId(),
 ): RuntimeSnapshot {
   return RuntimeSnapshotSchema.parse({
+    playthroughId,
     currentNodeId: position.currentNodeId,
     currentStoryPoint: position.currentStoryPoint,
     vars: state.vars,
@@ -241,7 +257,8 @@ export function createSaveSlotRecord(input: {
 
 export function migrateSaveSlotRecord(raw: unknown): SaveSlotRecord {
   assertSupportedRuntimeRecord(raw, "save slot");
-  const parsed = SaveSlotRecordSchema.safeParse(raw);
+  const migrated = migrateV1SaveSlot(raw);
+  const parsed = SaveSlotRecordSchema.safeParse(migrated);
   if (!parsed.success) {
     throw new RuntimePersistenceError("runtime_record_invalid", "Invalid save slot record.", parsed.error.issues);
   }
@@ -251,7 +268,17 @@ export function migrateSaveSlotRecord(raw: unknown): SaveSlotRecord {
 export function migrateGlobalPersistentRecord(raw: unknown, projectId?: string): GlobalPersistentRecord {
   if (raw == null) return createDefaultGlobalPersistentRecord(projectId ?? "project");
   assertSupportedRuntimeRecord(raw, "global persistent");
-  const parsed = GlobalPersistentRecordSchema.safeParse(raw);
+  const record = raw as Record<string, unknown>;
+  const migrated = record.schemaVersion === 1 ? {
+    ...record,
+    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
+    unlockedReplays: record.unlockedReplays ?? [],
+    globalVars: {},
+    lastEndingId: null,
+    settledEndings: {},
+    appliedGlobalEffects: {},
+  } : raw;
+  const parsed = GlobalPersistentRecordSchema.safeParse(migrated);
   if (!parsed.success) {
     throw new RuntimePersistenceError("runtime_record_invalid", "Invalid global persistent record.", parsed.error.issues);
   }
@@ -261,11 +288,49 @@ export function migrateGlobalPersistentRecord(raw: unknown, projectId?: string):
 export function migrateRuntimeSettingsRecord(raw: unknown): RuntimeSettingsRecord {
   if (raw == null) return createDefaultRuntimeSettingsRecord();
   assertSupportedRuntimeRecord(raw, "runtime settings");
-  const parsed = RuntimeSettingsRecordSchema.safeParse(raw);
+  const record = raw as Record<string, unknown>;
+  const parsed = RuntimeSettingsRecordSchema.safeParse(record.schemaVersion === 1
+    ? { ...record, schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION }
+    : raw);
   if (!parsed.success) {
     throw new RuntimePersistenceError("runtime_record_invalid", "Invalid runtime settings record.", parsed.error.issues);
   }
   return parsed.data;
+}
+
+export function createPlaythroughId(seed?: string): string {
+  if (seed) return `run:${stableHash(seed)}`;
+  const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `run:${random}`;
+}
+
+function migrateV1SaveSlot(raw: unknown): unknown {
+  const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+  if (record?.schemaVersion !== 1) return raw;
+  const checkpoint = record.checkpoint && typeof record.checkpoint === "object"
+    ? record.checkpoint as Record<string, unknown>
+    : {};
+  const playthroughId = createPlaythroughId(`${String(record.projectId)}:${String(record.createdAt)}`);
+  const migrateSnapshot = (snapshot: unknown) => snapshot && typeof snapshot === "object"
+    ? { ...(snapshot as Record<string, unknown>), playthroughId }
+    : snapshot;
+  const decisions = Array.isArray(record.decisions)
+    ? record.decisions.map((event) => event && typeof event === "object" && (event as { type?: unknown }).type === "checkpoint"
+      ? { ...(event as Record<string, unknown>), snapshot: migrateSnapshot((event as { snapshot?: unknown }).snapshot) }
+      : event)
+    : record.decisions;
+  return {
+    ...record,
+    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
+    checkpoint: { ...checkpoint, playthroughId },
+    decisions,
+  };
+}
+
+function stableHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of value) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193); }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 export function createInMemoryRuntimePersistenceAdapter(): RuntimePersistenceAdapter {

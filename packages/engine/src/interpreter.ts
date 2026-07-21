@@ -13,6 +13,7 @@ import type { Instruction, Manifest } from "./types";
 // Manifest 仅作为 InterpreterDeps 的类型来源使用
 import type { NovelState, ActiveSprite, Speaker, PendingEffect, PendingTransition } from "./state";
 import { createInitialState } from "./state";
+import { evaluateExpressionValue, parseExpression } from "./expression";
 
 /** 自增序号，给特效/转场/音效一个唯一 id，组件用它判断「是不是新的，要不要播」。 */
 let seqCounter = 0;
@@ -136,10 +137,15 @@ export function applyInstruction(
 
     // ── 变量：线性写入，供 graph 自动出口条件读取 ───────────
     case "set":
+      {
+        const value = "expr" in instr && instr.expr != null
+          ? evaluateAssignmentExpression(instr.expr, state.vars)
+          : instr.value ?? null;
       return {
         ...state,
-        vars: { ...state.vars, [instr.key]: instr.value },
+        vars: { ...state.vars, [instr.key]: value },
       };
+      }
 
     // ── 音频线索（不在这里播放，只改状态；播放由 player/组件负责） ──
     case "bgm":
@@ -190,6 +196,7 @@ export function applyInstruction(
     case "unlock":
     case "showCg":
     case "playVideo":
+    case "completeEnding":
       return state;
 
     default: {
@@ -198,6 +205,24 @@ export function applyInstruction(
       void _exhaustive;
       return state;
     }
+  }
+}
+
+export class RuntimeAssignmentError extends Error {
+  readonly code = "runtime_assignment_failed";
+}
+
+export function evaluateAssignmentExpression(
+  source: string,
+  vars: Record<string, string | number | boolean | null>,
+): string | number | boolean | null {
+  try {
+    const result = evaluateExpressionValue(parseExpression(source), vars);
+    if (!result.ok) throw new RuntimeAssignmentError(result.message);
+    return result.value;
+  } catch (error) {
+    if (error instanceof RuntimeAssignmentError) throw error;
+    throw new RuntimeAssignmentError(error instanceof Error ? error.message : String(error));
   }
 }
 

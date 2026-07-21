@@ -4,6 +4,7 @@ mod asset;
 mod data;
 mod graph;
 mod node;
+mod expression;
 
 pub(crate) use asset::validate_assets;
 pub(crate) use data::{
@@ -11,4 +12,7 @@ pub(crate) use data::{
     validate_ui_skin_convergence,
 };
 pub(crate) use graph::validate_graph;
+pub(crate) use expression::parse_expression;
+#[cfg(test)]
 pub(crate) use node::validate_node_contents;
+pub(crate) use node::validate_node_contents_with_variables;

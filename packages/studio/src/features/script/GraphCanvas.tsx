@@ -16,7 +16,7 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import type { GraphReport, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphReport, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
@@ -29,6 +29,7 @@ interface GraphCanvasProps {
   graph: ProjectGraph;
   graphReport?: GraphReport;
   nodeEntries?: NodeEntry[];
+  manifest?: Manifest;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   canUndo?: boolean;
@@ -52,6 +53,7 @@ interface GraphCanvasProps {
   onRenameNode?: (id: string) => void;
   /** Phase 7：节点右键 - 设为入口。 */
   onSetEntry?: (id: string) => void;
+  onManageEnding?: (id: string) => void;
   /** Phase 7：空白右键 - 自动排布。 */
   onAutoLayout?: () => void;
 }
@@ -69,6 +71,7 @@ export function GraphCanvas({
   graph,
   graphReport,
   nodeEntries,
+  manifest,
   selectedNodeId,
   selectedEdgeId,
   canUndo = false,
@@ -87,6 +90,7 @@ export function GraphCanvas({
   onCreateSuccessor,
   onRenameNode,
   onSetEntry,
+  onManageEnding,
   onAutoLayout,
 }: GraphCanvasProps) {
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<GraphCanvasFlowNode, Edge> | null>(null);
@@ -97,7 +101,7 @@ export function GraphCanvas({
   const colorMode = useResolvedTheme();
 
   const flow = useMemo(() => {
-    const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries);
+    const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries, manifest);
 
     const nodes: GraphCanvasFlowNode[] = baseFlow.nodes.map((node) => {
       return {
@@ -126,7 +130,7 @@ export function GraphCanvas({
     });
 
     return { nodes, edges };
-  }, [graph, graphReport, nodeEntries, selectedEdgeId, selectedNodeId]);
+  }, [graph, graphReport, nodeEntries, manifest, selectedEdgeId, selectedNodeId]);
 
   useEffect(() => {
     setFlowNodes(flow.nodes);
@@ -219,6 +223,10 @@ export function GraphCanvas({
     }
     if (onSetEntry && node.id !== graph.entryNodeId) {
       items.push({ key: "set-entry", label: "设为入口节点", onSelect: () => onSetEntry(node.id) });
+    }
+    if (onManageEnding) {
+      const registered = Object.values(manifest?.unlocks.endings ?? {}).some((ending) => ending.nodeId === node.id);
+      items.push({ key: "ending", label: registered ? "管理关联结局…" : "登记为结局…", onSelect: () => onManageEnding(node.id) });
     }
     items.push({
       key: "delete",

@@ -34,7 +34,7 @@ type ConfirmAction =
   | { kind: "restart" };
 
 const fallbackSettings: RuntimeSettingsRecord = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   textSpeedCps: 30,
   autoAdvanceMs: 1_200,
   volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },

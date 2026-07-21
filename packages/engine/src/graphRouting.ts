@@ -1,6 +1,6 @@
 import type { GraphEdgeData } from "./types";
 import type { NovelState } from "./state";
-import { evaluateExpression, parseExpression } from "./expression";
+import { evaluateExpressionValue, parseExpression, truthy } from "./expression";
 
 export type GraphRouteMode = "linear" | "choice" | "auto";
 export type GraphRouteValue = string | number | boolean | null;
@@ -41,7 +41,9 @@ export function decideGraphRoute(
   }
 
   for (const edge of outgoingEdges) {
-    if (evaluateGraphCondition(edge.condition ?? null, state.vars)) {
+    const result = evaluateGraphConditionResult(edge.condition ?? null, state.vars);
+    if (!result.ok) return { kind: "error", message: `自动分支条件无效（${edge.id}）：${result.message}` };
+    if (result.value) {
       return { kind: "target", edge };
     }
   }
@@ -53,11 +55,26 @@ export function evaluateGraphCondition(
   condition: string | null | undefined,
   vars: Record<string, GraphRouteValue>,
 ): boolean {
+  const result = evaluateGraphConditionResult(condition, vars);
+  return result.ok ? result.value : false;
+}
+
+export type ConditionEvaluationResult =
+  | { ok: true; value: boolean }
+  | { ok: false; code: "invalid_condition"; message: string };
+
+export function evaluateGraphConditionResult(
+  condition: string | null | undefined,
+  vars: Record<string, GraphRouteValue>,
+): ConditionEvaluationResult {
   const source = condition?.trim();
-  if (!source) return true;
+  if (!source) return { ok: true, value: true };
   try {
-    return evaluateExpression(parseExpression(source), vars);
-  } catch {
-    return false;
+    const result = evaluateExpressionValue(parseExpression(source), vars);
+    return result.ok
+      ? { ok: true, value: truthy(result.value) }
+      : { ok: false, code: "invalid_condition", message: result.message };
+  } catch (error) {
+    return { ok: false, code: "invalid_condition", message: error instanceof Error ? error.message : String(error) };
   }
 }

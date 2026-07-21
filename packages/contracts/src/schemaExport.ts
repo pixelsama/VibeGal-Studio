@@ -1,14 +1,15 @@
 import { z } from "zod";
-import { ChapterSchema, ManifestSchema, MetaSchema, ProjectGraphSchema } from "./schema";
+import { ChapterSchema, ManifestSchema, MetaSchema, ProjectGraphSchema, VariableRegistrySchema } from "./schema";
 import { FixtureFileSchema } from "./fixtures";
 
-export type SchemaName = "nodeFile" | "graph" | "manifest" | "meta" | "fixture";
+export type SchemaName = "nodeFile" | "graph" | "manifest" | "meta" | "variables" | "fixture";
 
 export const SCHEMAS: Record<SchemaName, z.ZodType> = {
   nodeFile: ChapterSchema,
   graph: ProjectGraphSchema,
   manifest: ManifestSchema,
   meta: MetaSchema,
+  variables: VariableRegistrySchema,
   fixture: FixtureFileSchema,
 };
 

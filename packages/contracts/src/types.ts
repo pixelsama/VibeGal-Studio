@@ -24,6 +24,9 @@ import type {
   UnlockInstruction,
   ShowCgInstruction,
   PlayVideoInstruction,
+  CompleteEndingInstruction,
+  VariableRegistrySchema,
+  VariableDeclarationSchema,
   ProjectGraphSchema,
   GraphNodeSchema,
   GraphEdgeSchema,
@@ -40,6 +43,8 @@ export type GraphPosition = z.infer<typeof GraphPositionSchema>;
 export type GraphNodeData = z.infer<typeof GraphNodeSchema>;
 export type GraphEdgeData = z.infer<typeof GraphEdgeSchema>;
 export type ProjectGraphData = z.infer<typeof ProjectGraphSchema>;
+export type VariableRegistry = z.infer<typeof VariableRegistrySchema>;
+export type VariableDeclaration = z.infer<typeof VariableDeclarationSchema>;
 
 // 便于在 interpreter 的 switch 里精确收窄
 export type BgInstr = z.infer<typeof BgInstruction>;
@@ -57,6 +62,7 @@ export type PauseInstr = z.infer<typeof PauseInstruction>;
 export type UnlockInstr = z.infer<typeof UnlockInstruction>;
 export type ShowCgInstr = z.infer<typeof ShowCgInstruction>;
 export type PlayVideoInstr = z.infer<typeof PlayVideoInstruction>;
+export type CompleteEndingInstr = z.infer<typeof CompleteEndingInstruction>;
 
 // 运行时指令的判别 tag
 export type InstructionType = Instruction["t"];

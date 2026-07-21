@@ -101,6 +101,95 @@ describe("renderer contract", () => {
     });
   });
 
+  it("settlesEachEndingOncePerPlaythroughButAllowsAnotherEnding", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "p",
+      getState: createInitialState,
+      persistenceAdapter: adapter,
+      now: () => "2026-01-01T00:00:00Z",
+      manifest: {
+        characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} },
+        unlocks: { cg: {}, music: {}, replay: {}, endings: { true: { title: "True" }, bad: { title: "Bad" } } },
+      },
+    });
+
+    await expect(runtime.persistent.completeEnding({ playthroughId: "run-a", endingId: "true" })).resolves.toEqual({ settled: true });
+    await expect(runtime.persistent.completeEnding({ playthroughId: "run-a", endingId: "true" })).resolves.toEqual({ settled: false });
+    await expect(runtime.persistent.completeEnding({ playthroughId: "run-a", endingId: "bad" })).resolves.toEqual({ settled: true });
+
+    expect(runtime.progress.getSummary()).toMatchObject({ playthroughCount: 2, lastEndingId: "bad" });
+    expect((await adapter.readGlobal("p")).settledEndings["run-a"]).toHaveProperty("true");
+  });
+
+  it("rejects completion IDs absent from the manifest", async () => {
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "p",
+      getState: createInitialState,
+      manifest: {
+        characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} },
+        unlocks: { cg: {}, music: {}, replay: {}, endings: { true: { title: "True" } } },
+      },
+    });
+
+    await expect(runtime.persistent.completeEnding({ playthroughId: "run-a", endingId: "missing" }))
+      .rejects.toMatchObject({ code: "missing_ending_ref" });
+    expect(runtime.progress.getSummary().playthroughCount).toBe(0);
+  });
+
+  it("resetGlobalProgressRestoresDeclaredGlobalDefaults", async () => {
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "p",
+      getState: createInitialState,
+      variables: {
+        version: 1,
+        variables: { route_completed: { type: "boolean", default: false, scope: "global" } },
+      },
+    });
+    await runtime.persistent.applyGlobalEffect({
+      playthroughId: "run-a", effectKey: "start:mark", key: "route_completed", value: true,
+    });
+
+    await runtime.persistent.resetGlobalProgress();
+
+    expect(runtime.persistent.getGlobalVars()).toEqual({ route_completed: false });
+    expect(runtime.progress.getSummary()).toMatchObject({ playthroughCount: 0, lastEndingId: null });
+  });
+
+  it("appliesGlobalEffectsIdempotentlyWithinAPlaythrough", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const runtime = createInMemoryRuntimeServices({ projectId: "p", getState: createInitialState, persistenceAdapter: adapter });
+    const effect = { playthroughId: "run-a", effectKey: "start:reward", key: "score", value: 10 };
+    await expect(runtime.persistent.applyGlobalEffect(effect)).resolves.toEqual({ applied: true });
+    await expect(runtime.persistent.applyGlobalEffect(effect)).resolves.toEqual({ applied: false });
+    expect((await adapter.readGlobal("p")).globalVars.score).toBe(10);
+  });
+
+  it("does not publish persistent effects when the global write fails", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    vi.spyOn(adapter, "writeGlobal").mockRejectedValueOnce(new Error("disk full"));
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "p",
+      getState: createInitialState,
+      persistenceAdapter: adapter,
+      manifest: {
+        characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} },
+        unlocks: { cg: {}, music: {}, replay: {}, endings: { true: { title: "True" } } },
+      },
+    });
+
+    await expect(runtime.persistent.completeEnding({ playthroughId: "run-a", endingId: "true" }))
+      .rejects.toThrow("disk full");
+    expect(runtime.progress.getSummary()).toMatchObject({ playthroughCount: 0, lastEndingId: null });
+    expect(runtime.persistent.getUnlocks().endings).toEqual([]);
+
+    vi.spyOn(adapter, "writeGlobal").mockRejectedValueOnce(new Error("disk full again"));
+    await expect(runtime.persistent.applyGlobalEffect({
+      playthroughId: "run-a", effectKey: "start:score", key: "score", value: 10,
+    })).rejects.toThrow("disk full again");
+    expect(runtime.persistent.getGlobalVars()).not.toHaveProperty("score");
+  });
+
   it("galleryServiceListsUnlockedCg", async () => {
     const runtime = createInMemoryRuntimeServices({
       getState: createInitialState,

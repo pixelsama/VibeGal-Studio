@@ -9,6 +9,7 @@ import {
 import { ResourcePicker } from "../assets/ResourcePicker";
 import { BottomSheet } from "../common/BottomSheet";
 import type { Manifest } from "../../lib/types";
+import type { VariableRegistry } from "@vibegal/engine";
 
 export type ScenarioSelectionKind =
   | "empty"
@@ -27,6 +28,7 @@ export type ScenarioSelectionKind =
   | "unlock"
   | "showCg"
   | "playVideo"
+  | "completeEnding"
   | "invalid";
 
 export interface ScenarioSelection {
@@ -155,11 +157,13 @@ export function ScenarioInspector({
   manifest,
   diagnostics,
   onReplaceInstruction,
+  variables,
 }: {
   selection: ScenarioSelection;
   manifest: Manifest;
   diagnostics: ScenarioDiagnostic[];
   onReplaceInstruction: (instruction: Instruction) => void;
+  variables?: VariableRegistry;
 }) {
   const instruction = selection.instruction;
 
@@ -262,17 +266,20 @@ export function ScenarioInspector({
           />
         </InspectorPanel>
       );
-    case "set":
+    case "set": {
+      const declaration = variables?.variables[instruction.key];
+      const expressionMode = instruction.expr != null;
       return (
         <InspectorPanel title="变量">
-          <TextField label="变量名" value={instruction.key} onChange={(key) => onReplaceInstruction({ ...instruction, key })} />
-          <TextField
-            label="变量值"
-            value={formatVariableValue(instruction.value)}
-            onChange={(value) => onReplaceInstruction({ ...instruction, value: parseVariableValue(value) })}
-          />
+          {variables ? <label><span>变量名</span><select value={instruction.key} onChange={(event) => onReplaceInstruction({ ...instruction, key: event.target.value })}>{Object.keys(variables.variables).map((name) => <option key={name}>{name}</option>)}</select></label> : <TextField label="变量名" value={instruction.key} onChange={(key) => onReplaceInstruction({ ...instruction, key })} />}
+          <EnumField label="赋值方式" value={expressionMode ? "expr" : "literal"} options={["literal", "expr"]} optionLabels={{ literal: "类型化值", expr: "表达式" }} onChange={(mode) => onReplaceInstruction(mode === "expr" ? { t: "set", key: instruction.key, id: instruction.id, expr: "0" } : { t: "set", key: instruction.key, id: instruction.id, value: declaration?.default ?? null })} />
+          {expressionMode ? <TextField label="赋值表达式" value={instruction.expr ?? ""} onChange={(expr) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, expr })} />
+            : declaration?.type === "boolean" ? <EnumField label="变量值" value={String(instruction.value)} options={["true", "false"]} onChange={(value) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, value: value === "true" })} />
+              : declaration?.type === "number" ? <NumberField label="变量值" value={typeof instruction.value === "number" ? instruction.value : 0} onChange={(value) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, value })} />
+                : <TextField label="变量值" value={typeof instruction.value === "string" ? instruction.value : ""} onChange={(value) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, value })} />}
         </InspectorPanel>
       );
+    }
     case "bgm":
       return (
         <InspectorPanel title="背景音乐">
@@ -401,6 +408,13 @@ export function ScenarioInspector({
           />
         </InspectorPanel>
       );
+    case "completeEnding":
+      return (
+        <InspectorPanel title="正式结局结算">
+          <TextField label="结局 ID" value={instruction.endingId} onChange={(endingId) => onReplaceInstruction({ ...instruction, endingId })} />
+          <div style={mutedTextStyle}>结算会解锁结局，并在当前 playthrough 首次达成时增加周目计数。</div>
+        </InspectorPanel>
+      );
     default:
       // 当前 switch 已覆盖全部指令类型；保留兜底以防未来新增指令类型时没有表单。
       return (
@@ -487,20 +501,6 @@ function lineNumberAtOffset(text: string, cursorOffset: number): number {
 
 function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, "\n").split("\n");
-}
-
-function parseVariableValue(raw: string): string | number | boolean | null {
-  const value = raw.trim();
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (value === "null") return null;
-  const numberValue = Number(value);
-  if (Number.isFinite(numberValue) && value !== "") return numberValue;
-  return value;
-}
-
-function formatVariableValue(value: string | number | boolean | null): string {
-  return value == null ? "null" : String(value);
 }
 
 const layoutStyle: CSSProperties = {

@@ -81,6 +81,46 @@ pub fn assign_missing_story_point_ids(
     assign_missing_story_point_ids_with_generator(node, context, &mut generator)
 }
 
+pub fn assign_missing_persistent_effect_ids(
+    node: &Value,
+    variables: &Value,
+    context: &InstructionIdentityContext,
+) -> Result<InstructionIdentityAssignment, InstructionIdentityError> {
+    let Some(instructions) = node.as_array() else {
+        return Err(InstructionIdentityError::NodeMustBeArray);
+    };
+    let declarations = variables.get("variables").and_then(Value::as_object);
+    let mut normalized = instructions.clone();
+    let mut assigned = vec![];
+    let mut occupied = instructions.iter()
+        .filter_map(|instruction| instruction.get("id").and_then(Value::as_str))
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect::<HashSet<_>>();
+    let mut generator = || format!("pe_{}", uuid::Uuid::new_v4());
+
+    for (index, instruction) in normalized.iter_mut().enumerate() {
+        let is_global_set = instruction.get("t").and_then(Value::as_str) == Some("set")
+            && instruction.get("key").and_then(Value::as_str)
+                .and_then(|key| declarations.and_then(|items| items.get(key)))
+                .and_then(|declaration| declaration.get("scope"))
+                .and_then(Value::as_str) == Some("global");
+        if !is_global_set || !needs_assignment(instruction) { continue; }
+        let id = generate_unique_id(&mut generator, &occupied)?;
+        occupied.insert(id.clone());
+        instruction.as_object_mut().expect("set instructions are objects")
+            .insert("id".to_string(), Value::String(id.clone()));
+        assigned.push(AssignedInstructionId {
+            file: context.file.clone(),
+            node_id: context.node_id.clone(),
+            json_path: format!("$[{index}].id"),
+            id,
+        });
+    }
+
+    Ok(InstructionIdentityAssignment { node: Value::Array(normalized), assigned })
+}
+
 pub fn assign_missing_story_point_ids_with_generator<G: InstructionIdGenerator>(
     node: &Value,
     context: &InstructionIdentityContext,

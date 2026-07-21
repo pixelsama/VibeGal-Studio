@@ -10,6 +10,7 @@ pub(crate) enum ContractSchemaKind {
     Graph,
     Manifest,
     Meta,
+    Variables,
 }
 
 impl ContractSchemaKind {
@@ -19,6 +20,7 @@ impl ContractSchemaKind {
             Self::Graph => "graph.schema.json",
             Self::Manifest => "manifest.schema.json",
             Self::Meta => "meta.schema.json",
+            Self::Variables => "variables.schema.json",
         }
     }
 
@@ -28,6 +30,7 @@ impl ContractSchemaKind {
             Self::Graph => include_str!("../../../generated/contracts/graph.schema.json"),
             Self::Manifest => include_str!("../../../generated/contracts/manifest.schema.json"),
             Self::Meta => include_str!("../../../generated/contracts/meta.schema.json"),
+            Self::Variables => include_str!("../../../generated/contracts/variables.schema.json"),
         }
     }
 
@@ -37,6 +40,7 @@ impl ContractSchemaKind {
             Self::Graph => "graph",
             Self::Manifest => "manifest",
             Self::Meta => "meta",
+            Self::Variables => "variables",
         }
     }
 }
@@ -92,6 +96,7 @@ static NODE_SCHEMA: OnceLock<Value> = OnceLock::new();
 static GRAPH_SCHEMA: OnceLock<Value> = OnceLock::new();
 static MANIFEST_SCHEMA: OnceLock<Value> = OnceLock::new();
 static META_SCHEMA: OnceLock<Value> = OnceLock::new();
+static VARIABLES_SCHEMA: OnceLock<Value> = OnceLock::new();
 static NODE_BRANCHES: OnceLock<HashMap<String, Value>> = OnceLock::new();
 static CONTRACT_METADATA: OnceLock<ContractMetadata> = OnceLock::new();
 
@@ -101,6 +106,7 @@ pub(crate) fn schema(kind: ContractSchemaKind) -> &'static Value {
         ContractSchemaKind::Graph => &GRAPH_SCHEMA,
         ContractSchemaKind::Manifest => &MANIFEST_SCHEMA,
         ContractSchemaKind::Meta => &META_SCHEMA,
+        ContractSchemaKind::Variables => &VARIABLES_SCHEMA,
     };
     slot.get_or_init(|| {
         serde_json::from_str(kind.raw())
@@ -211,7 +217,7 @@ fn contract_metadata() -> &'static ContractMetadata {
                 assert!(
                     matches!(
                         definition.source.as_str(),
-                        "node" | "graph" | "manifest" | "meta" | "contract"
+                        "node" | "graph" | "manifest" | "meta" | "variables" | "contract"
                     ),
                     "diagnostic {code} has invalid source {}",
                     definition.source
@@ -226,7 +232,7 @@ fn contract_metadata() -> &'static ContractMetadata {
             })
             .collect::<HashMap<_, _>>();
 
-        let expected_policies = ["nodeFile", "graph", "manifest", "meta"]
+        let expected_policies = ["nodeFile", "graph", "manifest", "meta", "variables"]
             .into_iter()
             .collect::<HashSet<_>>();
         assert_eq!(
@@ -235,7 +241,7 @@ fn contract_metadata() -> &'static ContractMetadata {
                 .map(String::as_str)
                 .collect::<HashSet<_>>(),
             expected_policies,
-            "embedded structural policy set must cover exactly four product documents"
+            "embedded structural policy set must cover every product document"
         );
         for (name, policy) in &raw.structural_policies {
             assert_diagnostic_exists(&diagnostics, &policy.default_code, name);

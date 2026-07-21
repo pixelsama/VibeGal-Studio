@@ -221,6 +221,21 @@ describe("GraphNovelPlayer routing", () => {
     player.dispose();
   });
 
+  it("graphPlayerStopsOnInvalidAutoCondition", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(
+      { ...baseGraph, edges: [
+        { id: "bad", from: "start", to: "stay", mode: "auto", label: null, condition: "affection >" },
+        { id: "fallback", from: "start", to: "leave", mode: "auto", label: null, condition: null },
+      ] },
+      [{ id: "start", instructions: [] }],
+    );
+    player.advance();
+    expect(player.getRouteError()).toContain("自动分支条件无效");
+    expect(player.getCurrentNodeId()).toBe("start");
+    player.dispose();
+  });
+
   it("graphPlayerRestoresCheckpointSnapshot", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(
@@ -334,6 +349,76 @@ describe("GraphNovelPlayer routing", () => {
     expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "unlock", kind: "cg", id: "cg_rooftop" });
     expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "showCg", id: "cg_001" });
     expect(onRuntimeEffect).toHaveBeenCalledWith({ type: "playVideo", id: "op", skippable: true });
+    player.dispose();
+  });
+
+  it("debugSessionInjectsVariablesAndSuppressesPersistentEffects", () => {
+    const onRuntimeEffect = vi.fn();
+    const player = new GraphNovelPlayer({ manifest, meta, onRuntimeEffect });
+    player.loadGraph(baseGraph, [{ id: "start", instructions: [{ t: "completeEnding", id: "finish", endingId: "true_end" }] }]);
+    expect(player.startDebugSession({ nodeId: "start", variableOverrides: { affection: 9 }, suppressPersistentEffects: true })).toEqual({ warnings: [] });
+    player.advance();
+    expect(player.getState().vars.affection).toBe(9);
+    expect(onRuntimeEffect).not.toHaveBeenCalled();
+  });
+
+  it("rejects assignment values that violate a declared variable type", () => {
+    const player = new GraphNovelPlayer({
+      manifest,
+      meta,
+      variables: {
+        version: 1,
+        variables: { affection: { type: "number", default: 0, scope: "run" } },
+      },
+    });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [{ t: "set", key: "affection", value: "high" }],
+    }]);
+
+    expect(() => player.advance()).not.toThrow();
+    expect(player.getState().vars.affection).toBe(0);
+    expect(player.getRouteError()).toContain("runtime_assignment_failed");
+    player.dispose();
+  });
+
+  it("initializes legacy variables with write sites to null before their first write", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [{ t: "set", key: "legacy_flag", value: true }],
+    }]);
+
+    expect(player.getState().vars.legacy_flag).toBeNull();
+    player.dispose();
+  });
+
+  it("graphPlayerInitializesDeclaredRunVariables", () => {
+    const player = new GraphNovelPlayer({
+      manifest, meta,
+      variables: { version: 1, variables: { affection: { type: "number", default: 3, scope: "run" } } },
+    });
+    player.loadGraph(baseGraph, [{ id: "start", instructions: [] }]);
+    expect(player.getState().vars.affection).toBe(3);
+    player.dispose();
+  });
+
+  it("falls back to declared defaults when saved values no longer match the registry", () => {
+    const player = new GraphNovelPlayer({
+      manifest,
+      meta,
+      variables: {
+        version: 1,
+        variables: { affection: { type: "number", default: 2, scope: "run" } },
+      },
+    });
+    player.loadGraph(baseGraph, [{ id: "start", instructions: [] }]);
+    const snapshot = { ...player.createSnapshot(), vars: { affection: "old", legacy: true } };
+
+    expect(player.restoreSnapshot(snapshot).warnings).toEqual([
+      expect.objectContaining({ code: "variable_value_incompatible", variableName: "affection" }),
+    ]);
+    expect(player.getState().vars).toMatchObject({ affection: 2, legacy: true });
     player.dispose();
   });
 });

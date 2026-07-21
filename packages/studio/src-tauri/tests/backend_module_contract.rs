@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 33] = [
+const COMMAND_NAMES: [&str; 34] = [
     "list_projects",
     "open_project",
     "create_project",
@@ -29,6 +29,7 @@ const COMMAND_NAMES: [&str; 33] = [
     "delete_asset",
     "read_asset_preview_data_url",
     "save_manifest",
+    "save_variables",
     "load_app_settings",
     "save_app_settings",
     "build_desktop_game",
@@ -57,7 +58,7 @@ const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 33] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 34] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("create_project", &["parentDir", "name"]),
@@ -111,6 +112,10 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 33] = [
     (
         "save_manifest",
         &["projectPath", "manifest", "expectedRevision"],
+    ),
+    (
+        "save_variables",
+        &["projectPath", "variables", "expectedRevision"],
     ),
     ("load_app_settings", &[]),
     ("save_app_settings", &["settings"]),
