@@ -151,6 +151,42 @@ fn doctor_uses_vibegal_node_and_reports_missing_components_as_fields() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn doctor_reports_resolved_worker_paths_on_stderr() {
+    let root = unique_temp_dir();
+    fs::create_dir_all(&root).unwrap();
+    let web_worker = root.join("web-worker.mjs");
+    let desktop_worker = root.join("desktop-worker.mjs");
+    fs::write(&web_worker, "// web worker").unwrap();
+    fs::write(&desktop_worker, "// desktop worker").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
+        .args(["doctor", "--format", "json"])
+        .env("VIBEGAL_EXPORT_WORKER", &web_worker)
+        .env("VIBEGAL_DESKTOP_WORKER", &desktop_worker)
+        .output()
+        .expect("doctor must report resolved worker paths");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(&format!(
+            "[vibegal-cli] VIBEGAL_EXPORT_WORKER resolved to {}",
+            web_worker.display()
+        )),
+        "missing web worker resolution in stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "[vibegal-cli] VIBEGAL_DESKTOP_WORKER resolved to {}",
+            desktop_worker.display()
+        )),
+        "missing desktop worker resolution in stderr: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn run_validate(project: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_vibegal-cli"))
         .args([

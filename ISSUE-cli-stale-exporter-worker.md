@@ -1,5 +1,9 @@
 # [Bug] CLI worker 解析顺序会命中 `target/debug/exporter/` 陈旧副本，打进过时的 Web 载荷
 
+> 状态：已于 2026-07-21 修复。debug CLI 现在优先解析仓库 `scripts/` worker，
+> release 分发布局的候选顺序保持不变；解析成功时会在 stderr 输出实际命中路径。
+> 回归测试覆盖 debug 优先级与成功路径日志。
+
 ## 环境
 
 - OS：macOS（Apple Silicon, darwin arm64）

@@ -1867,18 +1867,23 @@ fn resolve_worker_path(
 ) -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var(env_var) {
         let path = PathBuf::from(path);
-        return path
+        let resolved = path
             .is_file()
             .then_some(path)
-            .ok_or_else(|| format!("{env_var} 指向的导出器不存在"));
+            .ok_or_else(|| format!("{env_var} 指向的导出器不存在"))?;
+        eprintln!("[vibegal-cli] {env_var} resolved to {}", resolved.display());
+        return Ok(resolved);
     }
 
-    let mut candidates =
-        worker_path_candidates(std::env::current_exe().ok().as_deref(), relative_path);
+    let mut candidates = Vec::new();
     if cfg!(debug_assertions) {
         candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(debug_relative));
     }
-    candidates
+    candidates.extend(worker_path_candidates(
+        std::env::current_exe().ok().as_deref(),
+        relative_path,
+    ));
+    let resolved = candidates
         .iter()
         .find(|candidate| candidate.is_file())
         .cloned()
@@ -1891,7 +1896,9 @@ fn resolve_worker_path(
                     .collect::<Vec<_>>()
                     .join(", ")
             )
-        })
+        })?;
+    eprintln!("[vibegal-cli] {env_var} resolved to {}", resolved.display());
+    Ok(resolved)
 }
 
 fn build_worker_path() -> Result<PathBuf, String> {
@@ -7299,6 +7306,39 @@ mod tests {
         assert!(snapshot_candidates.contains(&PathBuf::from(
             "/Applications/VibeGal-Studio.app/Contents/Resources/exporter/packages/studio/scripts/renderer-snapshot.mjs"
         )));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn debug_cli_prefers_repository_worker_over_executable_relative_copy() {
+        let root = unique_temp_dir("cli-worker-resolution");
+        let repository_worker = root.join("repository-worker.mjs");
+        write_text(&repository_worker, "// current repository worker");
+
+        let executable = std::env::current_exe().expect("test executable path should resolve");
+        let executable_dir = executable
+            .parent()
+            .expect("test executable should have a parent");
+        let relative_path = format!(
+            "stale-worker-{}.mjs",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let stale_worker = executable_dir.join(&relative_path);
+        write_text(&stale_worker, "// stale packaged worker");
+
+        let selected = resolve_worker_path(
+            "VIBEGAL_TEST_WORKER_OVERRIDE_UNSET",
+            &relative_path,
+            repository_worker.to_string_lossy().as_ref(),
+        )
+        .expect("a worker candidate should resolve");
+
+        let _ = fs::remove_file(stale_worker);
+        let _ = fs::remove_dir_all(root);
+        assert_eq!(selected, repository_worker);
     }
 
     #[test]
