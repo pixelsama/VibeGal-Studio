@@ -1,17 +1,20 @@
 {
   "version": 1,
   "entryNodeId": "prologue",
+  "chapters": [{ "id": "chapter_1", "title": "第一章" }],
   "nodes": [
     {
       "id": "prologue",
       "title": "序章",
       "file": "nodes/prologue.json",
+      "chapterId": "chapter_1",
       "position": { "x": 120, "y": 120 }
     },
     {
       "id": "awakening",
       "title": "苏醒",
       "file": "nodes/awakening.json",
+      "chapterId": "chapter_1",
       "position": { "x": 520, "y": 180 }
     }
   ],

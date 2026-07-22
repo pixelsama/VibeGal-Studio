@@ -22,7 +22,7 @@ const graph: ProjectGraph = {
   nodes: [
     { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "prologue" },
     { id: "choice", title: "抉择", file: "nodes/choice.json", position: { x: 240, y: 0 }, chapterId: "route" },
-    { id: "ending", title: "结束", file: "nodes/ending.json", position: { x: 480, y: 0 } },
+    { id: "ending", title: "结束", file: "nodes/ending.json", position: { x: 480, y: 0 }, chapterId: "route" },
   ],
   edges: [
     { id: "start__choice", from: "start", to: "choice", mode: "linear", label: null, condition: null },
@@ -50,42 +50,57 @@ describe("chapter editing", () => {
     expect(reordered.edges).toEqual(graph.edges);
   });
 
-  it("deletes only chapter metadata and leaves its nodes unassigned", () => {
+  it("does not delete a chapter while it still owns nodes", () => {
     const next = deleteChapter(graph, "route");
 
-    expect(next.chapters?.map((chapter) => chapter.id)).toEqual(["prologue"]);
-    expect(next.nodes.map((node) => node.id)).toEqual(["start", "choice", "ending"]);
-    expect(next.nodes.find((node) => node.id === "choice")).not.toHaveProperty("chapterId");
+    expect(next).toBe(graph);
+  });
+
+  it("does not delete the final chapter even when it is empty", () => {
+    const onlyChapter = {
+      ...graph,
+      chapters: [{ id: "prologue", title: "序章" }],
+      nodes: graph.nodes.filter((node) => node.chapterId === "prologue"),
+      edges: [],
+    };
+
+    expect(deleteChapter({ ...onlyChapter, nodes: [] }, "prologue")).toEqual({ ...onlyChapter, nodes: [] });
+  });
+
+  it("deletes an empty chapter and keeps all node ownership intact", () => {
+    const next = deleteChapter({
+      ...graph,
+      chapters: [...graph.chapters, { id: "empty", title: "空章节" }],
+    }, "empty");
+
+    expect(next.chapters.map((chapter) => chapter.id)).toEqual(["prologue", "route"]);
+    expect(next.nodes).toEqual(graph.nodes);
     expect(next.edges).toEqual(graph.edges);
   });
 
-  it("assigns or unassigns a node without touching other graph data", () => {
-    const assigned = setNodeChapter(graph, "ending", "route");
-    expect(assigned.nodes[2].chapterId).toBe("route");
-
-    const unassigned = setNodeChapter(assigned, "ending", null);
-    expect(unassigned.nodes[2]).not.toHaveProperty("chapterId");
-    expect(unassigned.edges).toEqual(graph.edges);
+  it("moves a node only to an existing chapter", () => {
+    const assigned = setNodeChapter(graph, "ending", "prologue");
+    expect(assigned.nodes[2].chapterId).toBe("prologue");
+    expect(setNodeChapter(assigned, "ending", "missing")).toBe(assigned);
   });
 });
 
 describe("chapter canvas scope", () => {
   it("shows every node in all scope and only assigned nodes in chapter scope", () => {
     expect([...nodeIdsForChapterScope(graph, { kind: "all" })]).toEqual(["start", "choice", "ending"]);
-    expect([...nodeIdsForChapterScope(graph, { kind: "chapter", chapterId: "route" })]).toEqual(["choice"]);
-    expect([...nodeIdsForChapterScope(graph, { kind: "unassigned" })]).toEqual(["ending"]);
+    expect([...nodeIdsForChapterScope(graph, { kind: "chapter", chapterId: "route" })]).toEqual(["choice", "ending"]);
   });
 
-  it("resolves a selected node to its chapter or the unassigned scope", () => {
+  it("resolves a selected node to its chapter", () => {
     expect(chapterScopeForNode(graph, "choice")).toEqual({ kind: "chapter", chapterId: "route" });
-    expect(chapterScopeForNode(graph, "ending")).toEqual({ kind: "unassigned" });
+    expect(chapterScopeForNode(graph, "ending")).toEqual({ kind: "chapter", chapterId: "route" });
   });
 
   it("filters only the authoring view and hides edges with an endpoint outside the scope", () => {
     const scoped = graphForChapterScope(graph, { kind: "chapter", chapterId: "route" });
 
-    expect(scoped.nodes.map((node) => node.id)).toEqual(["choice"]);
-    expect(scoped.edges).toEqual([]);
+    expect(scoped.nodes.map((node) => node.id)).toEqual(["choice", "ending"]);
+    expect(scoped.edges).toEqual([graph.edges[1]]);
     expect(graph.nodes).toHaveLength(3);
     expect(graph.edges).toHaveLength(2);
   });

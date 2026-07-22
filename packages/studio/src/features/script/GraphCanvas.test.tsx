@@ -54,8 +54,9 @@ afterEach(() => {
 const graph: ProjectGraph = {
   version: 1,
   entryNodeId: "start",
+  chapters: [{ id: "opening", title: "第一章" }],
   nodes: [
-    { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
+    { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
   ],
   edges: [],
 };

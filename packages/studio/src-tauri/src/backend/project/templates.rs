@@ -18,7 +18,7 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 
 - Linear stories are represented as graph nodes connected by edges.
 - Add a node by writing `content/nodes/<id>.json`, then adding a matching item to `content/graph.json` under `nodes`.
-- Optional graph `chapters[]` and `nodes[].chapterId` fields organize the editor only; they do not replace graph traversal or node files.
+- Every graph has at least one `chapters[]` entry, and every node must reference one through `nodes[].chapterId`. Chapters organize the editor only; they do not replace graph traversal or node files.
 - Node `file` values are relative to `content/`, for example `nodes/start.json`.
 - VibeGal-Studio's node editor may show Scenario DSL text, but project files still persist node content as `Instruction[]` JSON.
 - `pause` is a valid instruction for a pure visual story-frame stop. `wait` is a timed wait; `pause` waits for player input.
@@ -171,7 +171,7 @@ renderers/
 
 `content/graph.json` is the required script entry point. Each graph node points to a node file through `nodes[].file`, relative to `content/`.
 
-Optional `chapters[]` and `nodes[].chapterId` fields organize large graphs in Studio. They are editor metadata only: runtime traversal still follows the complete `nodes` and `edges` arrays. Removing a chapter should keep its nodes and only remove their `chapterId` values.
+`chapters[]` and `nodes[].chapterId` organize large graphs in Studio. Every graph must have at least one chapter, and every node must reference an existing chapter. They are editor metadata only: runtime traversal still follows the complete `nodes` and `edges` arrays. Only empty chapters may be removed, and the final chapter cannot be removed.
 
 If `content/graph.json` is missing, VibeGal-Studio still opens the project with an empty graph and a `missing_graph` issue. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized.
 
@@ -183,11 +183,13 @@ Minimal graph:
 {
   "version": 1,
   "entryNodeId": "start",
+  "chapters": [{ "id": "chapter_1", "title": "第一章" }],
   "nodes": [
     {
       "id": "start",
       "title": "开始",
       "file": "nodes/start.json",
+      "chapterId": "chapter_1",
       "position": { "x": 120, "y": 120 }
     }
   ],

@@ -13,10 +13,11 @@ import {
 const baseGraph: ProjectGraph = {
   version: 1,
   entryNodeId: "start",
+  chapters: [{ id: "opening", title: "序章" }],
   nodes: [
-    { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
-    { id: "middle", title: "Middle", file: "nodes/middle.json", position: { x: 240, y: 0 } },
-    { id: "ending", title: "Ending", file: "nodes/ending.json", position: { x: 480, y: 0 } },
+    { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
+    { id: "middle", title: "Middle", file: "nodes/middle.json", position: { x: 240, y: 0 }, chapterId: "opening" },
+    { id: "ending", title: "Ending", file: "nodes/ending.json", position: { x: 480, y: 0 }, chapterId: "opening" },
   ],
   edges: [
     { id: "start__middle", from: "start", to: "middle", mode: "linear", label: null, condition: null },
@@ -29,12 +30,15 @@ const revision = makeGraphRevisionToken({ relPath: "content/graph.json", mtimeMs
 describe("graphHistory", () => {
   it("tracks chapter organization commands in the same undo stack", () => {
     let state = createGraphHistoryState(baseGraph, revision);
-    state = applyGraphCommand(state, { kind: "addChapter", id: "opening", title: "序章" });
-    state = applyGraphCommand(state, { kind: "setNodeChapter", nodeId: "start", chapterId: "opening" });
+    state = applyGraphCommand(state, { kind: "addChapter", id: "route", title: "分支章" });
+    state = applyGraphCommand(state, { kind: "setNodeChapter", nodeId: "start", chapterId: "route" });
 
-    expect(state.graph.chapters).toEqual([{ id: "opening", title: "序章" }]);
-    expect(state.graph.nodes[0].chapterId).toBe("opening");
-    expect(undoGraphHistory(state).graph.nodes[0]).not.toHaveProperty("chapterId");
+    expect(state.graph.chapters).toEqual([
+      { id: "opening", title: "序章" },
+      { id: "route", title: "分支章" },
+    ]);
+    expect(state.graph.nodes[0].chapterId).toBe("route");
+    expect(undoGraphHistory(state).graph.nodes[0].chapterId).toBe("opening");
   });
 
   it("undoRedoGraphCommandRestoresPreviousGraph", () => {
@@ -46,6 +50,7 @@ describe("graphHistory", () => {
       title: "Bonus",
       file: "nodes/bonus.json",
       position: { x: 720, y: 0 },
+      chapterId: "opening",
     });
     state = applyGraphCommand(state, { kind: "connect", from: "ending", to: "bonus" });
     state = applyGraphCommand(state, { kind: "renameNode", nodeId: "middle", title: "Mid" });

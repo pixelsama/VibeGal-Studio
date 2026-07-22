@@ -41,7 +41,10 @@ fn empty_project_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: String::new(),
-        chapters: vec![],
+        chapters: vec![GraphChapter {
+            id: "chapter_1".to_string(),
+            title: "第一章".to_string(),
+        }],
         nodes: vec![],
         edges: vec![],
     }
@@ -158,10 +161,10 @@ fn project_graph_from_valid_json(
                                 .and_then(serde_json::Value::as_f64)
                                 .expect("graph projection has defaulted position.y"),
                         },
-                        chapter_id: node
-                            .get("chapterId")
-                            .and_then(serde_json::Value::as_str)
-                            .map(str::to_string),
+                        chapter_id: node["chapterId"]
+                            .as_str()
+                            .expect("validated graph node chapterId")
+                            .to_string(),
                     }
                 })
                 .collect::<Vec<_>>()

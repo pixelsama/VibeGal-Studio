@@ -73,14 +73,14 @@ renderers/
 | --- | --- | --- |
 | `version` | root | 当前为 `1`。 |
 | `entryNodeId` | root | 入口节点 id。空字符串表示未设置入口。 |
-| `chapters` | root | 可选的编辑章节列表。只组织 Studio 画布，不改变运行时遍历。 |
+| `chapters` | root | 必需且非空的编辑章节列表。只组织 Studio 画布，不改变运行时遍历。 |
 | `nodes` | root | 图节点数组。 |
 | `edges` | root | 图边数组。 |
 | `id` | node | 节点稳定标识，建议使用文件名友好的 kebab-case 或 snake_case。 |
 | `title` | node | UI 中显示的节点标题。 |
 | `file` | node | 相对 `content/` 的节点文件路径，如 `nodes/prologue.json`。 |
 | `position` | node | 画布坐标，单位为 px，形如 `{ "x": 120, "y": 180 }`。 |
-| `chapterId` | node | 可选章节归属，必须引用 `chapters[].id`；缺省表示未分章。 |
+| `chapterId` | node | 必需的章节归属，必须引用 `chapters[].id`。 |
 | `id` | edge | 边稳定标识，推荐 `<from>__<to>`。 |
 | `from` / `to` | edge | 起点和终点节点 id。 |
 | `mode` | edge | `linear` / `choice` / `auto`。旧图缺省按 `linear` 处理。 |

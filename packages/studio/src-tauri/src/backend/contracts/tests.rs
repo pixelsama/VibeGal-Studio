@@ -145,7 +145,8 @@ fn rust_default_projection_matches_contracts_corpus() {
 fn validation_does_not_mutate_raw_input() {
     let input = json!({
         "entryNodeId": "start",
-        "nodes": [{ "id": "start", "file": "nodes/start.json" }]
+        "chapters": [{ "id": "chapter_1", "title": "第一章" }],
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "chapterId": "chapter_1" }]
     });
     let before = input.clone();
 

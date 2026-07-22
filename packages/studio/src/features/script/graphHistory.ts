@@ -36,7 +36,7 @@ export type GraphCommand =
   | { kind: "renameChapter"; chapterId: string; title: string }
   | { kind: "moveChapter"; chapterId: string; offset: -1 | 1 }
   | { kind: "deleteChapter"; chapterId: string }
-  | { kind: "setNodeChapter"; nodeId: string; chapterId: string | null }
+  | { kind: "setNodeChapter"; nodeId: string; chapterId: string }
   | { kind: "autoLayout" }
   | { kind: "replaceOutgoingEdges"; nodeId: string; edges: GraphEdge[] };
 

@@ -177,6 +177,7 @@ pub(crate) fn save_graph(
     expected_revision: Option<serde_json::Value>,
 ) -> Result<Option<FileRevision>, String> {
     validate_write_contract(contracts::ContractSchemaKind::Graph, &graph, "graph")?;
+    validate_graph_chapter_references(&graph)?;
     let project_root = ProjectRoot::open(Path::new(&project_path))?;
     let content_root = project_root.content_root()?;
     ensure_expected_revision(project_root.path(), "content/graph.json", expected_revision)?;
@@ -192,6 +193,26 @@ pub(crate) fn save_graph(
     let graph_path = content_root.resolve_write_target("graph.json")?;
     write_json(&graph_path, &graph)?;
     project_root.revision("content/graph.json")
+}
+
+fn validate_graph_chapter_references(graph: &serde_json::Value) -> Result<(), String> {
+    let chapter_ids = graph["chapters"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|chapter| chapter["id"].as_str())
+        .collect::<std::collections::HashSet<_>>();
+    for (index, node) in graph["nodes"].as_array().into_iter().flatten().enumerate() {
+        let chapter_id = node["chapterId"]
+            .as_str()
+            .expect("validated graph node chapterId");
+        if !chapter_ids.contains(chapter_id) {
+            return Err(format!(
+                "graph 不符合内容契约（$.nodes[{index}].chapterId missing_chapter_ref）"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_write_contract(

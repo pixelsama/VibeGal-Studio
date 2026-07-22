@@ -129,7 +129,9 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert_eq!(opened.renderer_ids, vec!["default".to_string()]);
     let graph = opened.graph.expect("新项目应有 graph.json");
     assert_eq!(graph.entry_node_id, "start");
-    assert!(graph.chapters.is_empty());
+    assert_eq!(graph.chapters.len(), 1);
+    assert_eq!(graph.chapters[0].title, "第一章");
+    assert_eq!(graph.nodes[0].chapter_id, "chapter_1");
     assert_eq!(graph.nodes[0].file, "nodes/start.json");
     let start_node = opened
         .nodes

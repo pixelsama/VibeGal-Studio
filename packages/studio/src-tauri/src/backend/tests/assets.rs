@@ -751,7 +751,7 @@ fn open_project_aggregates_project_report() {
     );
     write_text(
         &dir.join("content/graph.json"),
-        r#"{"version":1,"entryNodeId":"ghost","nodes":[{"id":"a","title":"A","file":"nodes/a.json","position":{"x":0,"y":0}}],"edges":[]}"#,
+        r#"{"version":1,"entryNodeId":"ghost","chapters":[{"id":"chapter_1","title":"第一章"}],"nodes":[{"id":"a","title":"A","file":"nodes/a.json","chapterId":"chapter_1","position":{"x":0,"y":0}}],"edges":[]}"#,
     );
     write_text(&dir.join("content/nodes/a.json"), "[]");
 

@@ -38,8 +38,9 @@ vi.mock("../../lib/tauri", () => ({
 const graph: ProjectGraph = {
   version: 1,
   entryNodeId: "prologue",
+  chapters: [{ id: "opening", title: "序章" }],
   nodes: [
-    { id: "prologue", title: "序章", file: "nodes/prologue.json", position: { x: 0, y: 0 } },
+    { id: "prologue", title: "序章", file: "nodes/prologue.json", position: { x: 0, y: 0 }, chapterId: "opening" },
   ],
   edges: [],
 };
@@ -74,7 +75,7 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("aria-label=\"故事结构\"");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("序章");
-    expect(html).toContain("全部流程");
+    expect(html).toContain("全局视图");
   });
 
 });
@@ -98,7 +99,7 @@ describe("graph position patch", () => {
       ...graph,
       nodes: [
         { ...graph.nodes[0], position: { x: 24, y: 48 } },
-        { id: "external", title: "External", file: "nodes/external.json", position: { x: 9, y: 9 } },
+        { id: "external", title: "External", file: "nodes/external.json", position: { x: 9, y: 9 }, chapterId: "opening" },
       ],
     };
 

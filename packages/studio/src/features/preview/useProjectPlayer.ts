@@ -211,7 +211,13 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       // 用引擎的校验器解析项目数据（应用 Zod 默认值 + 引用检查）
       const content = buildProjectPreviewContent(project);
       const validated = validateContent(content);
-      const graph = ProjectGraphSchema.parse(project.graph ?? { version: 1, entryNodeId: "", nodes: [], edges: [] });
+      const graph = ProjectGraphSchema.parse(project.graph ?? {
+        version: 1,
+        entryNodeId: "",
+        chapters: [{ id: "chapter_1", title: "第一章" }],
+        nodes: [],
+        edges: [],
+      });
       const contentDirAbs = `${project.path}/content`;
 
       const chapters = validated.chapters as Instruction[][];

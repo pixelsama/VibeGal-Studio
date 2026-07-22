@@ -18,24 +18,28 @@ import {
 const sampleGraph: ProjectGraph = {
   version: 1,
   entryNodeId: "node",
+  chapters: [{ id: "opening", title: "第一章" }],
   nodes: [
     {
       id: "node",
       title: "Node",
       file: "nodes/node.json",
       position: { x: 100, y: 120 },
+      chapterId: "opening",
     },
     {
       id: "node_2",
       title: "Node 2",
       file: "nodes/node_2.json",
       position: { x: 360, y: 120 },
+      chapterId: "opening",
     },
     {
       id: "ending",
       title: "Ending",
       file: "nodes/ending.json",
       position: { x: 620, y: 120 },
+      chapterId: "opening",
     },
   ],
   edges: [
@@ -59,6 +63,7 @@ describe("graphEditing", () => {
       title: "New Node",
       file: "nodes/new-node.json",
       position: { x: 40, y: 60 },
+      chapterId: "opening",
     });
     expect(sampleGraph.nodes).toHaveLength(3);
   });
@@ -68,10 +73,10 @@ describe("graphEditing", () => {
       id: "chapter-node",
       title: "Chapter Node",
       file: "nodes/chapter-node.json",
-      chapterId: "chapter_1",
+      chapterId: "opening",
     });
 
-    expect(next.nodes.at(-1)?.chapterId).toBe("chapter_1");
+    expect(next.nodes.at(-1)?.chapterId).toBe("opening");
   });
 
   it("removeNode removes node and its edges", () => {
@@ -244,7 +249,8 @@ describe("duplicateNode", () => {
     const nested: ProjectGraph = {
       version: 1,
       entryNodeId: "a",
-      nodes: [{ id: "a", title: "A", file: "nodes/act1/a.json", position: { x: 0, y: 0 } }],
+      chapters: [{ id: "opening", title: "第一章" }],
+      nodes: [{ id: "a", title: "A", file: "nodes/act1/a.json", position: { x: 0, y: 0 }, chapterId: "opening" }],
       edges: [],
     };
     const { newNode } = duplicateNode(nested, "a");

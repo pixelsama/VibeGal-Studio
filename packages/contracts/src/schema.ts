@@ -303,7 +303,7 @@ export const GraphNodeSchema = z.object({
   title: z.string().optional(),
   file: z.string().min(1), // 相对 content 根，如 "nodes/prologue.json"
   position: GraphPositionSchema,
-  chapterId: z.string().min(1).optional(),
+  chapterId: z.string().min(1),
 });
 
 export const GraphChapterSchema = z.object({
@@ -323,9 +323,20 @@ export const GraphEdgeSchema = z.object({
 export const ProjectGraphSchema = z.object({
   version: z.number().int().nonnegative().max(4_294_967_295).default(1),
   entryNodeId: z.string(), // 空串 = 未设置入口
-  chapters: z.array(GraphChapterSchema).default([]),
+  chapters: z.array(GraphChapterSchema).min(1),
   nodes: z.array(GraphNodeSchema).default([]),
   edges: z.array(GraphEdgeSchema).default([]),
+}).superRefine((graph, context) => {
+  const chapterIds = new Set(graph.chapters.map((chapter) => chapter.id));
+  graph.nodes.forEach((node, index) => {
+    if (!chapterIds.has(node.chapterId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["nodes", index, "chapterId"],
+        message: `节点引用了不存在的章节 ${node.chapterId}`,
+      });
+    }
+  });
 });
 
 // Project-level variable declarations. Runtime state remains scalar-only and

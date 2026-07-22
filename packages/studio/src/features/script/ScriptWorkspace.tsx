@@ -64,6 +64,7 @@ export type ScriptWorkspaceLocation =
 const EMPTY_GRAPH = {
   version: 1,
   entryNodeId: "",
+  chapters: [{ id: "chapter_1", title: "第一章" }],
   nodes: [],
   edges: [],
 } satisfies ProjectGraph;
@@ -366,7 +367,7 @@ export function ScriptWorkspace({
         title: id,
         file,
         position: position ?? defaultPosition(scopedGraph),
-        chapterId: chapterScope.kind === "chapter" ? chapterScope.chapterId : undefined,
+        chapterId: chapterScope.kind === "chapter" ? chapterScope.chapterId : graph.chapters[0].id,
       });
       const next = nextState.graph;
       setGraphHistory(nextState);
@@ -403,11 +404,11 @@ export function ScriptWorkspace({
     void persistGraph(nextState.graph);
   };
 
-  const handleSetNodeChapter = (id: string, chapterId: string | null) => {
+  const handleSetNodeChapter = (id: string, chapterId: string) => {
     const nextState = applyGraphCommand(graphHistory, { kind: "setNodeChapter", nodeId: id, chapterId });
     if (nextState === graphHistory) return;
     setGraphHistory(nextState);
-    setChapterScope(chapterId ? { kind: "chapter", chapterId } : { kind: "unassigned" });
+    setChapterScope({ kind: "chapter", chapterId });
     void persistGraph(nextState.graph);
   };
 
@@ -416,7 +417,7 @@ export function ScriptWorkspace({
     setPrompt({
       title: "新建章节",
       label: "章节名称",
-      initialValue: `第 ${(graph.chapters?.length ?? 0) + 1} 章`,
+      initialValue: `第 ${graph.chapters.length + 1} 章`,
       onConfirm: (value) => {
         const title = value.trim();
         if (!title) return;
@@ -431,7 +432,7 @@ export function ScriptWorkspace({
   };
 
   const handleRenameChapter = (chapterId: string) => {
-    const chapter = graph.chapters?.find((candidate) => candidate.id === chapterId);
+    const chapter = graph.chapters.find((candidate) => candidate.id === chapterId);
     if (!chapter) return;
     setPrompt({
       title: "重命名章节",
@@ -456,19 +457,27 @@ export function ScriptWorkspace({
   };
 
   const handleDeleteChapter = (chapterId: string) => {
-    const chapter = graph.chapters?.find((candidate) => candidate.id === chapterId);
+    const chapter = graph.chapters.find((candidate) => candidate.id === chapterId);
     if (!chapter) return;
     const nodeCount = graph.nodes.filter((node) => node.chapterId === chapterId).length;
+    if (graph.chapters.length === 1) {
+      setGraphStatus("项目必须保留至少一个章节");
+      return;
+    }
+    if (nodeCount > 0) {
+      setGraphStatus(`请先将「${chapter.title}」中的 ${nodeCount} 个节点移动到其他章节`);
+      return;
+    }
     const deletingActiveChapter = chapterScope.kind === "chapter" && chapterScope.chapterId === chapterId;
     setConfirm({
-      message: `删除章节「${chapter.title}」？其中 ${nodeCount} 个节点会保留并移入“未分章”。`,
+      message: `删除空章节「${chapter.title}」？`,
       confirmLabel: "删除章节",
       danger: true,
       onConfirm: () => {
         const nextState = applyGraphCommand(graphHistory, { kind: "deleteChapter", chapterId });
         setGraphHistory(nextState);
         if (deletingActiveChapter) {
-          setChapterScope(nodeCount > 0 ? { kind: "unassigned" } : { kind: "all" });
+          setChapterScope({ kind: "all" });
           setSelectedEdgeId(null);
         }
         void persistGraph(nextState.graph);
@@ -782,7 +791,7 @@ export function ScriptWorkspace({
                   </Button>
                   <span style={scopeIndicatorStyle}>
                     <Layers3 size={14} />
-                    {chapterScope.kind === "all" ? "全部流程" : chapterScope.kind === "unassigned" ? "未分章" : graph.chapters?.find((chapter) => chapter.id === chapterScope.chapterId)?.title ?? "章节"}
+                    {chapterScope.kind === "all" ? "全局视图" : graph.chapters.find((chapter) => chapter.id === chapterScope.chapterId)?.title ?? "章节"}
                   </span>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (

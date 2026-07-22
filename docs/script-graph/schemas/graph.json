@@ -12,7 +12,7 @@
       "type": "string"
     },
     "chapters": {
-      "default": [],
+      "minItems": 1,
       "type": "array",
       "items": {
         "type": "object",
@@ -73,7 +73,8 @@
         },
         "required": [
           "id",
-          "file"
+          "file",
+          "chapterId"
         ]
       }
     },
@@ -136,6 +137,7 @@
     }
   },
   "required": [
-    "entryNodeId"
+    "entryNodeId",
+    "chapters"
   ]
 }

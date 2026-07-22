@@ -58,14 +58,15 @@
       "schema": "graph",
       "input": {
         "entryNodeId": "start",
-        "nodes": [{ "id": "start", "file": "nodes/start.json" }],
+        "chapters": [{ "id": "chapter_1", "title": "第一章" }],
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "chapterId": "chapter_1" }],
         "edges": [{ "id": "loop", "from": "start", "to": "start" }]
       },
       "expected": {
         "version": 1,
         "entryNodeId": "start",
-        "chapters": [],
-        "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } }],
+        "chapters": [{ "id": "chapter_1", "title": "第一章" }],
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 }, "chapterId": "chapter_1" }],
         "edges": [{ "id": "loop", "from": "start", "to": "start", "mode": "linear", "label": null, "condition": null }]
       }
     },

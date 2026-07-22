@@ -45,18 +45,16 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
     }
 
     for (index, node) in graph.nodes.iter().enumerate() {
-        if let Some(chapter_id) = node.chapter_id.as_deref() {
-            if !seen_chapter_ids.contains(chapter_id) {
-                issues.push(GraphIssue {
-                    severity: GraphIssueSeverity::Warn,
-                    code: "missing_chapter_ref".to_string(),
-                    message: format!("节点「{}」引用了不存在的章节 {}", node.title, chapter_id),
-                    file: Some("content/graph.json".to_string()),
-                    json_path: Some(format!("$.nodes[{index}].chapterId")),
-                    node_id: Some(node.id.clone()),
-                    edge_id: None,
-                });
-            }
+        if !seen_chapter_ids.contains(&node.chapter_id) {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Error,
+                code: "missing_chapter_ref".to_string(),
+                message: format!("节点「{}」引用了不存在的章节 {}", node.title, node.chapter_id),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some(format!("$.nodes[{index}].chapterId")),
+                node_id: Some(node.id.clone()),
+                edge_id: None,
+            });
         }
         let missing_file = nodes_data
             .get(index)

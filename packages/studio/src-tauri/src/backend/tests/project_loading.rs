@@ -121,8 +121,8 @@ fn open_project_loads_graph_chapter_metadata_without_changing_flow() {
 
     assert_eq!(graph.chapters.len(), 2);
     assert_eq!(graph.chapters[1].title, "分支章");
-    assert_eq!(graph.nodes[0].chapter_id.as_deref(), Some("opening"));
-    assert_eq!(graph.nodes[1].chapter_id.as_deref(), Some("route"));
+    assert_eq!(graph.nodes[0].chapter_id, "opening");
+    assert_eq!(graph.nodes[1].chapter_id, "route");
     assert_eq!(graph.edges[0].from, "start");
     assert_eq!(graph.edges[0].to, "choice");
     let _ = fs::remove_dir_all(&root);

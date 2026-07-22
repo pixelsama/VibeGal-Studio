@@ -5,11 +5,12 @@ import { autoLayoutGraph } from "./graphLayout";
 const makeGraph = (overrides: Partial<ProjectGraph> = {}): ProjectGraph => ({
   version: 1,
   entryNodeId: "a",
+  chapters: [{ id: "chapter_1", title: "第一章" }],
   nodes: [
-    { id: "a", title: "A", file: "nodes/a.json", position: { x: 0, y: 0 } },
-    { id: "b", title: "B", file: "nodes/b.json", position: { x: 0, y: 0 } },
-    { id: "c", title: "C", file: "nodes/c.json", position: { x: 0, y: 0 } },
-    { id: "d", title: "D", file: "nodes/d.json", position: { x: 0, y: 0 } },
+    { id: "a", title: "A", file: "nodes/a.json", position: { x: 0, y: 0 }, chapterId: "chapter_1" },
+    { id: "b", title: "B", file: "nodes/b.json", position: { x: 0, y: 0 }, chapterId: "chapter_1" },
+    { id: "c", title: "C", file: "nodes/c.json", position: { x: 0, y: 0 }, chapterId: "chapter_1" },
+    { id: "d", title: "D", file: "nodes/d.json", position: { x: 0, y: 0 }, chapterId: "chapter_1" },
   ],
   edges: [
     { id: "a__b", from: "a", to: "b", condition: null },
@@ -87,7 +88,7 @@ describe("autoLayoutGraph", () => {
   });
 
   it("does not crash on empty graph", () => {
-    const empty: ProjectGraph = { version: 1, entryNodeId: "", nodes: [], edges: [] };
+    const empty: ProjectGraph = { version: 1, entryNodeId: "", chapters: [{ id: "chapter_1", title: "第一章" }], nodes: [], edges: [] };
     expect(autoLayoutGraph(empty)).toEqual(empty);
   });
 

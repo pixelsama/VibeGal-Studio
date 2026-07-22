@@ -125,11 +125,12 @@ pub(crate) fn initialize_project_root(
         &serde_json::json!({
             "version": 1,
             "entryNodeId": "start",
-            "chapters": [],
+            "chapters": [{ "id": "chapter_1", "title": "第一章" }],
             "nodes": [{
                 "id": "start",
                 "title": "开始",
                 "file": "nodes/start.json",
+                "chapterId": "chapter_1",
                 "position": { "x": 120, "y": 120 }
             }],
             "edges": []

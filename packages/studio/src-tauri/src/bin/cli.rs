@@ -5140,7 +5140,27 @@ mod tests {
             r#"{"title":"T","typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500}"#,
         );
         if let Some(graph) = graph_json {
-            write_text(&root.join("content/graph.json"), graph);
+            let mut graph: serde_json::Value = serde_json::from_str(graph).unwrap();
+            if let Some(graph) = graph.as_object_mut() {
+                graph.entry("chapters").or_insert_with(|| {
+                    serde_json::json!([{ "id": "chapter_1", "title": "第一章" }])
+                });
+                if let Some(nodes) = graph
+                    .get_mut("nodes")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    for node in nodes {
+                        if let Some(node) = node.as_object_mut() {
+                            node.entry("chapterId")
+                                .or_insert_with(|| serde_json::json!("chapter_1"));
+                        }
+                    }
+                }
+            }
+            write_text(
+                &root.join("content/graph.json"),
+                &serde_json::to_string(&graph).unwrap(),
+            );
         }
     }
 
@@ -5487,7 +5507,7 @@ mod tests {
         );
         write_text(
             &root.join("content/graph.json"),
-            r#"{"version":1,"entryNodeId":"start","nodes":[{"id":"start","title":"Start","file":"nodes/start.json","position":{"x":0,"y":0}},{"id":"end","title":"End","file":"nodes/end.json","position":{"x":200,"y":0}}],"edges":[{"id":"start-end","from":"start","to":"end","mode":"linear"}]}"#,
+            r#"{"version":1,"entryNodeId":"start","chapters":[{"id":"chapter_1","title":"第一章"}],"nodes":[{"id":"start","title":"Start","file":"nodes/start.json","chapterId":"chapter_1","position":{"x":0,"y":0}},{"id":"end","title":"End","file":"nodes/end.json","chapterId":"chapter_1","position":{"x":200,"y":0}}],"edges":[{"id":"start-end","from":"start","to":"end","mode":"linear"}]}"#,
         );
 
         assert_eq!(

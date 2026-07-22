@@ -68,7 +68,11 @@ pub(crate) fn write_graph_project(
     nodes: &[(&str, serde_json::Value)],
 ) {
     write_minimal_project(project);
-    write_json(&project.join("content/graph.json"), &graph_json).unwrap();
+    write_json(
+        &project.join("content/graph.json"),
+        &with_required_test_chapter(graph_json),
+    )
+    .unwrap();
     for (rel_path, data) in nodes {
         write_json(&project.join("content").join(rel_path), data).unwrap();
     }
@@ -80,10 +84,32 @@ pub(crate) fn write_graph_project_with_files(
     node_files: &[(&str, &str)],
 ) {
     write_minimal_project(project);
-    write_json(&project.join("content/graph.json"), &graph_json).unwrap();
+    write_json(
+        &project.join("content/graph.json"),
+        &with_required_test_chapter(graph_json),
+    )
+    .unwrap();
     for (rel_path, text) in node_files {
         write_text(&project.join("content").join(rel_path), text);
     }
+}
+
+pub(crate) fn with_required_test_chapter(mut graph: serde_json::Value) -> serde_json::Value {
+    let Some(object) = graph.as_object_mut() else {
+        return graph;
+    };
+    object
+        .entry("chapters")
+        .or_insert_with(|| serde_json::json!([{ "id": "chapter_1", "title": "第一章" }]));
+    if let Some(nodes) = object.get_mut("nodes").and_then(serde_json::Value::as_array_mut) {
+        for node in nodes {
+            if let Some(node) = node.as_object_mut() {
+                node.entry("chapterId")
+                    .or_insert_with(|| serde_json::json!("chapter_1"));
+            }
+        }
+    }
+    graph
 }
 
 pub(crate) fn write_renderer_project(project: &Path) {
@@ -120,9 +146,10 @@ pub(crate) fn graph_input(node_file: &str, title: &str) -> serde_json::Value {
     serde_json::json!({
         "version": 1,
         "entryNodeId": "prologue",
+        "chapters": [{ "id": "chapter_1", "title": "第一章" }],
         "nodes": [
-            { "id": "prologue", "title": title, "file": node_file, "position": { "x": 120.0, "y": 180.0 } },
-            { "id": "ending", "title": "Ending", "file": "nodes/ending.json", "position": { "x": 380.0, "y": 180.0 } }
+            { "id": "prologue", "title": title, "file": node_file, "chapterId": "chapter_1", "position": { "x": 120.0, "y": 180.0 } },
+            { "id": "ending", "title": "Ending", "file": "nodes/ending.json", "chapterId": "chapter_1", "position": { "x": 380.0, "y": 180.0 } }
         ],
         "edges": [{ "id": "prologue__ending", "from": "prologue", "to": "ending", "mode": "linear", "label": null, "condition": null }]
     })
@@ -134,7 +161,7 @@ pub(crate) fn graph_node(id: &str, file: &str) -> GraphNode {
         title: id.to_string(),
         file: file.to_string(),
         position: GraphPosition { x: 0.0, y: 0.0 },
-        chapter_id: None,
+        chapter_id: "chapter_1".to_string(),
     }
 }
 
@@ -211,7 +238,7 @@ pub(crate) fn one_node_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
-        chapters: vec![],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
         nodes: vec![graph_node("start", "nodes/start.json")],
         edges: vec![],
     }
@@ -221,7 +248,7 @@ pub(crate) fn valid_project_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "prologue".to_string(),
-        chapters: vec![],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
         nodes: vec![
             graph_node("prologue", "nodes/prologue.json"),
             graph_node("ending", "nodes/ending.json"),
@@ -245,7 +272,7 @@ pub(crate) fn choice_branch_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
-        chapters: vec![],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("stay", "nodes/stay.json"),
@@ -262,7 +289,7 @@ pub(crate) fn cyclic_graph_without_ending() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
-        chapters: vec![],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("loop_a", "nodes/loop_a.json"),

@@ -66,11 +66,12 @@ function runtimeGraph(edges: ProjectGraphData["edges"]): ProjectGraphData {
   return {
     version: 1,
     entryNodeId: "start",
+    chapters: [{ id: "chapter_1", title: "第一章" }],
     nodes: [
-      { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
-      { id: "middle", title: "Middle", file: "nodes/middle.json", position: { x: 200, y: 0 } },
-      { id: "left", title: "Left", file: "nodes/left.json", position: { x: 200, y: 100 } },
-      { id: "right", title: "Right", file: "nodes/right.json", position: { x: 200, y: 200 } },
+      { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "chapter_1" },
+      { id: "middle", title: "Middle", file: "nodes/middle.json", position: { x: 200, y: 0 }, chapterId: "chapter_1" },
+      { id: "left", title: "Left", file: "nodes/left.json", position: { x: 200, y: 100 }, chapterId: "chapter_1" },
+      { id: "right", title: "Right", file: "nodes/right.json", position: { x: 200, y: 200 }, chapterId: "chapter_1" },
     ],
     edges,
   };

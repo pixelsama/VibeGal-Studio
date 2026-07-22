@@ -122,8 +122,8 @@ pub struct GraphNode {
     pub title: String,
     pub file: String,
     pub position: GraphPosition,
-    #[serde(rename = "chapterId", skip_serializing_if = "Option::is_none")]
-    pub chapter_id: Option<String>,
+    #[serde(rename = "chapterId")]
+    pub chapter_id: String,
 }
 
 #[derive(Serialize, Clone)]

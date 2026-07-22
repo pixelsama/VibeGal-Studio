@@ -56,6 +56,35 @@ fn save_graph_overwrites_existing_graph_json() {
 }
 
 #[test]
+fn save_graph_rejects_node_chapter_references_that_do_not_exist() {
+    let root = unique_temp_dir("save-graph-chapter-reference");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    write_text(&project.join("content/nodes/start.json"), "[]");
+
+    let result = save_graph(
+        project.to_string_lossy().into_owned(),
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "chapters": [{ "id": "opening", "title": "第一章" }],
+            "nodes": [{
+                "id": "start",
+                "file": "nodes/start.json",
+                "chapterId": "missing",
+                "position": { "x": 0, "y": 0 }
+            }],
+            "edges": []
+        }),
+        None,
+    );
+
+    assert!(result.is_err());
+    assert!(!project.join("content/graph.json").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn write_json_is_atomic_enough_for_valid_json() {
     let root = unique_temp_dir("save-graph-atomic-json");
     let project = root.join("project");
@@ -153,7 +182,7 @@ fn save_graph_positions_preserves_external_nodes() {
         .unwrap();
     write_json(
         &project.join("content/graph.json"),
-        &serde_json::json!({
+        &with_required_test_chapter(serde_json::json!({
             "version": 1,
             "entryNodeId": "a",
             "nodes": [
@@ -165,7 +194,7 @@ fn save_graph_positions_preserves_external_nodes() {
                 { "id": "a__b", "from": "a", "to": "b", "condition": null },
                 { "id": "b__c", "from": "b", "to": "c", "condition": null }
             ]
-        }),
+        })),
     )
     .unwrap();
 

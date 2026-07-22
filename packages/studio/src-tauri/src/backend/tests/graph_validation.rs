@@ -87,7 +87,7 @@ fn validate_graph_flags_duplicate_chapter_ids() {
 #[test]
 fn validate_graph_flags_missing_node_chapter_reference() {
     let mut graph = valid_project_graph();
-    graph.nodes[0].chapter_id = Some("missing".to_string());
+    graph.nodes[0].chapter_id = "missing".to_string();
 
     let issues = validate_graph(&graph, &present_node_entries(&graph));
 
@@ -95,7 +95,7 @@ fn validate_graph_flags_missing_node_chapter_reference() {
         .iter()
         .find(|issue| issue.code == "missing_chapter_ref")
         .expect("missing chapter reference should be reported");
-    assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+    assert_eq!(issue.severity, GraphIssueSeverity::Error);
     assert_eq!(issue.node_id.as_deref(), Some("prologue"));
     assert_eq!(issue.json_path.as_deref(), Some("$.nodes[0].chapterId"));
 }

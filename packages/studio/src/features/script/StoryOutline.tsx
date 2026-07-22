@@ -34,11 +34,9 @@ export function StoryOutline({
   onDeleteChapter,
 }: StoryOutlineProps) {
   const [query, setQuery] = useState("");
-  const chapters = graph.chapters ?? [];
-  const unassigned = graph.nodes.filter((node) => !node.chapterId);
+  const chapters = graph.chapters;
   const visibleNodes = graph.nodes.filter((node) => {
     if (scope.kind === "all") return true;
-    if (scope.kind === "unassigned") return !node.chapterId;
     return node.chapterId === scope.chapterId;
   });
   const searchResults = useMemo(
@@ -72,7 +70,7 @@ export function StoryOutline({
       {!searching && <div style={chapterListStyle}>
         <ScopeButton
           active={scope.kind === "all"}
-          title="全部流程"
+          title="全局视图"
           count={graph.nodes.length}
           onClick={() => onScopeChange({ kind: "all" })}
         />
@@ -94,20 +92,17 @@ export function StoryOutline({
               <SmallAction label={`重命名章节 ${chapter.title}`} onClick={() => onRenameChapter(chapter.id)}>
                 <Pencil size={12} />
               </SmallAction>
-              <SmallAction label={`删除章节 ${chapter.title}`} danger onClick={() => onDeleteChapter(chapter.id)}>
+              <SmallAction
+                label={`删除章节 ${chapter.title}`}
+                disabled={chapters.length === 1 || graph.nodes.some((node) => node.chapterId === chapter.id)}
+                danger
+                onClick={() => onDeleteChapter(chapter.id)}
+              >
                 <Trash2 size={12} />
               </SmallAction>
             </div>
           </div>
         ))}
-        {(unassigned.length > 0 || chapters.length > 0) && (
-          <ScopeButton
-            active={scope.kind === "unassigned"}
-            title="未分章"
-            count={unassigned.length}
-            onClick={() => onScopeChange({ kind: "unassigned" })}
-          />
-        )}
       </div>}
 
       <div style={nodeSectionStyle}>
@@ -187,9 +182,8 @@ function SmallAction({ label, disabled, danger, onClick, children }: {
 }
 
 function scopeLabel(graph: ProjectGraph, scope: ChapterScope): string {
-  if (scope.kind === "all") return "全部流程";
-  if (scope.kind === "unassigned") return "未分章";
-  return graph.chapters?.find((chapter) => chapter.id === scope.chapterId)?.title ?? "章节";
+  if (scope.kind === "all") return "全局视图";
+  return graph.chapters.find((chapter) => chapter.id === scope.chapterId)?.title ?? "章节";
 }
 
 const panelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 };

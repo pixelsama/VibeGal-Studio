@@ -14,13 +14,13 @@ const graph: ProjectGraph = {
   nodes: [
     { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "prologue" },
     { id: "turn", title: "分岔", file: "nodes/turn.json", position: { x: 200, y: 0 }, chapterId: "choice" },
-    { id: "loose", title: "待整理", file: "nodes/loose.json", position: { x: 400, y: 0 } },
+    { id: "finale", title: "尾声", file: "nodes/finale.json", position: { x: 400, y: 0 }, chapterId: "choice" },
   ],
   edges: [],
 };
 
 describe("StoryOutline", () => {
-  it("shows ordered chapters, counts, all-nodes, and unassigned navigation", () => {
+  it("shows a global view and ordered chapters without an unassigned bucket", () => {
     const html = renderToStaticMarkup(createElement(StoryOutline, {
       graph,
       scope: { kind: "chapter", chapterId: "choice" },
@@ -34,10 +34,10 @@ describe("StoryOutline", () => {
     }));
 
     expect(html).toContain("故事结构");
-    expect(html).toContain("全部流程");
+    expect(html).toContain("全局视图");
     expect(html).toContain("序章");
     expect(html).toContain("黎明抉择");
-    expect(html).toContain("未分章");
+    expect(html).not.toContain("未分章");
     expect(html).toContain('aria-current="true"');
     expect(html).toContain('aria-label="新建章节"');
     expect(html).toContain('aria-label="搜索故事"');

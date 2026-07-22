@@ -163,7 +163,8 @@
       "schema": "graph",
       "input": {
         "entryNodeId": "start",
-        "nodes": [{ "id": "start", "file": "nodes/start.json" }],
+        "chapters": [{ "id": "chapter_1", "title": "第一章" }],
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "chapterId": "chapter_1" }],
         "edges": [],
         "extension": true
       },
@@ -172,7 +173,7 @@
     {
       "id": "graph.invalid.version-over-u32",
       "schema": "graph",
-      "input": { "version": 4294967296, "entryNodeId": "", "nodes": [], "edges": [] },
+      "input": { "version": 4294967296, "entryNodeId": "", "chapters": [{ "id": "chapter_1", "title": "第一章" }], "nodes": [], "edges": [] },
       "issues": [
         { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.version" }
       ]
@@ -180,7 +181,7 @@
     {
       "id": "graph.invalid.missing-entry-node-id",
       "schema": "graph",
-      "input": { "nodes": [], "edges": [] },
+      "input": { "chapters": [{ "id": "chapter_1", "title": "第一章" }], "nodes": [], "edges": [] },
       "issues": [
         { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.entryNodeId" }
       ]
@@ -190,6 +191,7 @@
       "schema": "graph",
       "input": {
         "entryNodeId": "",
+        "chapters": [{ "id": "chapter_1", "title": "第一章" }],
         "nodes": [],
         "edges": [{ "id": "a-b", "from": "a", "to": "b", "mode": "manual" }]
       },

@@ -7,10 +7,11 @@ import { commitConditionDraft, moveEdge, moveEdgeById, NodeInspector, orderDefau
 const graph: ProjectGraph = {
   version: 1,
   entryNodeId: "start",
+  chapters: [{ id: "opening", title: "序章" }],
   nodes: [
-    { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 } },
-    { id: "left", title: "左线", file: "nodes/left.json", position: { x: 200, y: -60 } },
-    { id: "right", title: "右线", file: "nodes/right.json", position: { x: 200, y: 60 } },
+    { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
+    { id: "left", title: "左线", file: "nodes/left.json", position: { x: 200, y: -60 }, chapterId: "opening" },
+    { id: "right", title: "右线", file: "nodes/right.json", position: { x: 200, y: 60 }, chapterId: "opening" },
   ],
   edges: [
     { id: "start__left", from: "start", to: "left", mode: "choice", label: "去左边", condition: null },
@@ -52,7 +53,7 @@ describe("NodeInspector graph exits", () => {
     expect(html).toContain("所属章节");
     expect(html).toContain("序章");
     expect(html).toContain("分支章");
-    expect(html).toContain("未分章");
+    expect(html).not.toContain("未分章");
   });
 
   it("shows multi-exit branch controls in graph view instead of the text editor", () => {

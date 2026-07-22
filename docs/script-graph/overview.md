@@ -83,7 +83,7 @@ content/
 
 `graph.json` 是项目剧本入口。节点文件由 `graph.nodes[].file` 引用，路径相对 `content/`。
 
-大型流程可以在同一份 `graph.json` 中用可选的 `chapters[]` 与 `nodes[].chapterId` 做编辑分组。章节筛选只改变 Studio 当前画布范围；播放、校验与导出始终消费完整图。它与旧 `content/meta.json` `chapters` / `content/chapters/` 模型无关。
+大型流程在同一份 `graph.json` 中用 `chapters[]` 与 `nodes[].chapterId` 做编辑分组。项目至少有一个章节，每个节点必须属于一个已声明章节。章节筛选只改变 Studio 当前画布范围；播放、校验与导出始终消费完整图。它与旧 `content/meta.json` `chapters` / `content/chapters/` 模型无关。
 
 新建/初始化项目会生成项目内 `AGENTS.md`、`.galstudio/README.md` 和 `.galstudio/schemas/*.json`。这些文件是给外部 Agent 与人工工具看的自描述交付物；打开旧项目时不会自动补写，避免静默修改用户文件。
 

@@ -21,18 +21,18 @@ Runtime traversal continues to use the complete graph and node files exactly as 
 }
 ```
 
-- `chapters` is an ordered, optional graph-level list and defaults to an empty list.
-- `nodes[].chapterId` is optional. A missing value means the node is unassigned.
+- `chapters` is an ordered, required graph-level list with at least one entry.
+- `nodes[].chapterId` is required and must reference a declared chapter.
 - Chapter ids must be unique. A node chapter id must reference a declared chapter.
-- Old graphs without chapter metadata remain valid and open in the all-nodes view.
+- Graphs without chapter metadata are contract-invalid.
 
 ## Authoring Behavior
 
-- The story-structure sidebar lists all chapters in graph order, plus all-nodes and unassigned views.
+- The story-structure sidebar lists all chapters in graph order plus the global view.
 - Selecting a chapter limits the canvas to its nodes and edges whose two endpoints are visible.
 - The complete graph remains available for validation, analysis, persistence, and runtime playback.
-- Authors can create, rename, reorder, and delete chapters.
-- Deleting a chapter keeps its nodes and removes only their `chapterId` assignment.
+- Authors can create, rename, reorder, and delete empty non-final chapters.
+- A chapter that owns nodes must have those nodes moved before deletion.
 - Authors can move a selected node between chapters from the node inspector.
 - Nodes created in a chapter are assigned to it. Duplicates and successors inherit their source chapter.
 
@@ -40,11 +40,11 @@ Runtime traversal continues to use the complete graph and node files exactly as 
 
 | Requirement | Executable verification |
 | --- | --- |
-| Old graph compatibility and schema defaults | `packages/contracts/src/validation.test.ts` default-projection corpus |
+| Required chapters and node ownership | `packages/contracts/src/graphSchema.test.ts` |
 | Chapter metadata survives backend loading | `packages/studio/src-tauri/src/backend/tests/project_loading.rs` |
 | Invalid chapter ids/references surface as graph issues | `packages/studio/src-tauri/src/backend/tests/graph_validation.rs` |
-| Chapter CRUD does not delete nodes | `packages/studio/src/features/script/chapterEditing.test.ts` |
+| Chapter deletion cannot orphan nodes or remove the final chapter | `packages/studio/src/features/script/chapterEditing.test.ts` |
 | New, duplicate, and successor nodes inherit chapter context | `packages/studio/src/features/script/graphEditing.test.ts` |
 | Chapter canvas filtering hides cross-scope edges only in the view | `packages/studio/src/features/script/chapterEditing.test.ts` |
-| Story-structure sidebar exposes chapter and unassigned navigation | `packages/studio/src/features/script/StoryOutline.test.tsx` |
+| Story-structure sidebar exposes global and chapter navigation only | `packages/studio/src/features/script/StoryOutline.test.tsx` |
 | Node inspector supports chapter assignment | `packages/studio/src/features/script/NodeInspector.test.tsx` |

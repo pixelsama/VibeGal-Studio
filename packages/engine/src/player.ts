@@ -19,15 +19,17 @@ export interface PlayerDeps extends InterpreterDeps {
 type Listener = (state: NovelState) => void;
 
 const LINEAR_NODE_ID = "__linear__";
+const LINEAR_CHAPTER_ID = "__linear_chapter__";
 const LINEAR_GRAPH: ProjectGraphData = {
   version: 1,
   entryNodeId: LINEAR_NODE_ID,
-  chapters: [],
+  chapters: [{ id: LINEAR_CHAPTER_ID, title: "Linear story" }],
   nodes: [{
     id: LINEAR_NODE_ID,
     title: "Linear story",
     file: "nodes/__linear__.json",
     position: { x: 0, y: 0 },
+    chapterId: LINEAR_CHAPTER_ID,
   }],
   edges: [],
 };
