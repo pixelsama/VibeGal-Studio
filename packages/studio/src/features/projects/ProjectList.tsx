@@ -5,10 +5,18 @@
  * 进入入口页就直接列出其中的项目，点一下即可打开。
  */
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, FolderOpen, Plus, Settings as SettingsIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { createProject, initializeProject, listProjects, openProject, pickDirectory } from "../../lib/tauri";
 import type { ProjectData, ProjectListItem } from "../../lib/types";
-import { loadWorkspaceDir, saveWorkspaceDir, sortProjectsByName } from "../../lib/workspaceProjects";
+import {
+  loadRecentProjects,
+  loadWorkspaceDir,
+  rememberRecentProject,
+  removeRecentProject,
+  saveWorkspaceDir,
+  sortProjectsByName,
+  type RecentProject,
+} from "../../lib/workspaceProjects";
 import { getDesktopPlatform } from "../../lib/platform";
 import { Button, IconButton } from "../common/Button";
 import { ConfirmDialog } from "../common/Dialogs";
@@ -60,6 +68,12 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   } | null>(null);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(() => loadWorkspaceDir());
   const [workspaceProjects, setWorkspaceProjects] = useState<ProjectListItem[] | null>(null);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => loadRecentProjects());
+
+  const completeOpen = useCallback((project: ProjectData) => {
+    setRecentProjects(rememberRecentProject(project));
+    onOpen(project);
+  }, [onOpen]);
 
   const openDirectory = useCallback(async (dir: string) => {
     const target = dir.trim();
@@ -72,7 +86,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     try {
       const resolution = await resolveProjectDirectory(target);
       if (resolution.kind === "project") {
-        onOpen(resolution.project);
+        completeOpen(resolution.project);
       } else if (resolution.kind === "contained") {
         setContainedTarget({ path: resolution.path, projects: resolution.projects });
       } else {
@@ -83,21 +97,33 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     } finally {
       setLoading(false);
     }
-  }, [onOpen]);
+  }, [completeOpen]);
+
+  const openRecentProject = useCallback(async (path: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      completeOpen(await openProject(path));
+    } catch (openError) {
+      setError(String(openError));
+    } finally {
+      setLoading(false);
+    }
+  }, [completeOpen]);
 
   const confirmInitialize = useCallback(async () => {
     if (!initTarget) return;
     setLoading(true);
     setError(null);
     try {
-      onOpen(await initializeProject(initTarget));
+      completeOpen(await initializeProject(initTarget));
     } catch (initError) {
       setError(String(initError));
     } finally {
       setLoading(false);
       setInitTarget(null);
     }
-  }, [initTarget, onOpen]);
+  }, [completeOpen, initTarget]);
 
   // 工作区目录变化（含启动时读到的记忆值）→ 扫描其中的项目
   useEffect(() => {
@@ -149,7 +175,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setLoading(true);
     setError(null);
     try {
-      onOpen(await createProject(newProjectParent, projectName));
+      completeOpen(await createProject(newProjectParent, projectName));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -193,7 +219,21 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
 
         {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
 
-        {workspaceDir ? (
+        <section style={recentSectionStyle}>
+          <div style={sectionHeadingStyle}>最近打开</div>
+          {recentProjects.length === 0 ? (
+            <div style={recentEmptyStyle}>打开或新建项目后会显示在这里。</div>
+          ) : (
+            <RecentProjectList
+              items={recentProjects}
+              disabled={loading}
+              onOpen={(path) => void openRecentProject(path)}
+              onRemove={(path) => setRecentProjects(removeRecentProject(path))}
+            />
+          )}
+        </section>
+
+        {workspaceDir && (
           <section style={workspaceSectionStyle}>
             <div style={workspaceHeaderStyle}>
               <span style={workspaceLabelStyle}>工作区</span>
@@ -219,18 +259,6 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
               />
             )}
           </section>
-        ) : (
-          <EmptyState
-            icon={FolderOpen}
-            title="还没有打开的项目"
-            description="选择一个项目目录打开（目录还不是项目时会先询问是否初始化），或选择一个工作区目录自动列出其中的项目。"
-            action={
-              <>
-                <Button variant="secondary" onClick={handlePickProject} disabled={loading}>打开项目…</Button>
-                <Button variant="primary" onClick={handleNew} disabled={loading}>新建项目</Button>
-              </>
-            }
-          />
         )}
       </section>
 
@@ -366,6 +394,59 @@ export function WorkspaceProjectList({
   );
 }
 
+export function RecentProjectList({
+  items,
+  disabled = false,
+  onOpen,
+  onRemove,
+}: {
+  items: RecentProject[];
+  disabled?: boolean;
+  onOpen: (path: string) => void;
+  onRemove: (path: string) => void;
+}) {
+  return (
+    <ul style={projectListStyle}>
+      {items.map((item) => (
+        <li key={item.path} style={recentProjectListItemStyle}>
+          <button
+            type="button"
+            className="gs-list-row"
+            style={recentProjectOpenStyle}
+            disabled={disabled}
+            onClick={() => onOpen(item.path)}
+          >
+            <span style={projectNameStyle}>{item.name}</span>
+            <span style={projectPathStyle}>{item.path}</span>
+            <span style={recentTimeStyle}>最后打开：{formatRecentProjectOpenedAt(item.lastOpenedAt)}</span>
+          </button>
+          <IconButton
+            aria-label="从最近打开中移除"
+            title="从最近打开中移除"
+            disabled={disabled}
+            onClick={() => onRemove(item.path)}
+            style={recentRemoveStyle}
+          >
+            <X size={15} />
+          </IconButton>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function formatRecentProjectOpenedAt(value: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
+}
+
 const pageStyle: React.CSSProperties = {
   padding: "var(--space-12) var(--space-16)",
   maxWidth: 900,
@@ -390,6 +471,21 @@ const workspaceSectionStyle: React.CSSProperties = {
   background: "var(--bg-inset)",
   border: "1px solid var(--border)",
   borderRadius: "var(--radius-md)",
+};
+const recentSectionStyle: React.CSSProperties = { marginBottom: "var(--space-5)" };
+const sectionHeadingStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  marginBottom: "var(--space-3)",
+};
+const recentEmptyStyle: React.CSSProperties = {
+  padding: "var(--space-4)",
+  background: "var(--bg-inset)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
 };
 const workspaceHeaderStyle: React.CSSProperties = {
   display: "flex",
@@ -420,8 +516,20 @@ const projectListStyle: React.CSSProperties = {
   gap: "var(--space-2)",
 };
 const projectListItemStyle: React.CSSProperties = { display: "block" };
+const recentProjectListItemStyle: React.CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "stretch",
+};
+const recentProjectOpenStyle: React.CSSProperties = { paddingRight: "var(--space-12)" };
 const projectNameStyle: React.CSSProperties = { fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-bright)" };
 const projectPathStyle: React.CSSProperties = { fontSize: "var(--text-sm)", color: "var(--text-muted)", wordBreak: "break-all" };
+const recentTimeStyle: React.CSSProperties = { fontSize: "var(--text-xs)", color: "var(--text-muted)" };
+const recentRemoveStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "var(--space-2)",
+  right: "var(--space-2)",
+};
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,

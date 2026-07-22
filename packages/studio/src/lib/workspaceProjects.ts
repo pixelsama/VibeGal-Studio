@@ -13,6 +13,14 @@ export interface WorkspaceDirStorage {
 }
 
 export const WORKSPACE_DIR_STORAGE_KEY = "vibegal.workspaceDir.v1";
+export const RECENT_PROJECTS_STORAGE_KEY = "vibegal.recentProjects.v1";
+export const MAX_RECENT_PROJECTS = 10;
+
+export interface RecentProject {
+  path: string;
+  name: string;
+  lastOpenedAt: string;
+}
 
 export function loadWorkspaceDir(storage = browserLocalStorage()): string | null {
   if (!storage) return null;
@@ -35,6 +43,57 @@ export function saveWorkspaceDir(dir: string, storage = browserLocalStorage()): 
   }
 }
 
+export function loadRecentProjects(storage = browserLocalStorage()): RecentProject[] {
+  if (!storage) return [];
+
+  try {
+    const raw = storage.getItem(RECENT_PROJECTS_STORAGE_KEY);
+    if (!raw) return [];
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+
+    const seenPaths = new Set<string>();
+    return value
+      .filter(isRecentProject)
+      .sort((a, b) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt))
+      .filter((item) => {
+        if (seenPaths.has(item.path)) return false;
+        seenPaths.add(item.path);
+        return true;
+      })
+      .slice(0, MAX_RECENT_PROJECTS);
+  } catch {
+    return [];
+  }
+}
+
+export function rememberRecentProject(
+  project: ProjectListItem,
+  openedAt = new Date(),
+  storage = browserLocalStorage(),
+): RecentProject[] {
+  const item: RecentProject = {
+    path: project.path,
+    name: project.meta.name,
+    lastOpenedAt: openedAt.toISOString(),
+  };
+  const next = [
+    item,
+    ...loadRecentProjects(storage).filter((recent) => recent.path !== item.path),
+  ].slice(0, MAX_RECENT_PROJECTS);
+  saveRecentProjects(next, storage);
+  return next;
+}
+
+export function removeRecentProject(
+  path: string,
+  storage = browserLocalStorage(),
+): RecentProject[] {
+  const next = loadRecentProjects(storage).filter((item) => item.path !== path);
+  saveRecentProjects(next, storage);
+  return next;
+}
+
 /** 项目列表按显示名排序（同名按路径兜底），不改动入参数组。 */
 export function sortProjectsByName(items: ProjectListItem[]): ProjectListItem[] {
   return [...items].sort(
@@ -48,4 +107,25 @@ function browserLocalStorage(): WorkspaceDirStorage | null {
   } catch {
     return null;
   }
+}
+
+function saveRecentProjects(items: RecentProject[], storage: WorkspaceDirStorage | null): void {
+  if (!storage) return;
+
+  try {
+    storage.setItem(RECENT_PROJECTS_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Recent-project history must never block opening or creating a project.
+  }
+}
+
+function isRecentProject(value: unknown): value is RecentProject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Partial<RecentProject>;
+  return typeof item.path === "string"
+    && item.path.trim().length > 0
+    && typeof item.name === "string"
+    && item.name.trim().length > 0
+    && typeof item.lastOpenedAt === "string"
+    && Number.isFinite(Date.parse(item.lastOpenedAt));
 }

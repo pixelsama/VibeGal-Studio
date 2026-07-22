@@ -1,12 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ContainedProjectsDialog,
+  formatRecentProjectOpenedAt,
   ProjectList,
+  RecentProjectList,
   WorkspaceProjectList,
   resolveProjectDirectory,
 } from "./ProjectList";
 import type { ProjectData, ProjectListItem } from "../../lib/types";
+import {
+  RECENT_PROJECTS_STORAGE_KEY,
+  WORKSPACE_DIR_STORAGE_KEY,
+  type RecentProject,
+} from "../../lib/workspaceProjects";
 
 vi.mock("../../lib/tauri", () => ({
   createProject: vi.fn(),
@@ -22,14 +29,56 @@ function project(name: string, path: string): ProjectListItem {
 
 const openedProject = { path: "/ws/project" } as ProjectData;
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("ProjectList entry page", () => {
-  it("offers open/create/browse actions with guidance when no workspace is remembered", () => {
+  it("offers exactly one set of open/create/browse actions", () => {
     const html = renderToStaticMarkup(<ProjectList onOpen={() => {}} />);
 
-    expect(html).toContain("打开项目");
-    expect(html).toContain("新建项目");
-    expect(html).toContain("浏览工作区");
-    expect(html).toContain("工作区目录");
+    expect(html.match(/打开项目…/g)).toHaveLength(1);
+    expect(html.match(/>新建项目<\/button>/g)).toHaveLength(1);
+    expect(html.match(/浏览工作区…/g)).toHaveLength(1);
+    expect(html).toContain("最近打开");
+    expect(html).toContain("打开或新建项目后会显示在这里");
+    expect(html).not.toContain("还没有打开的项目");
+  });
+
+  it("shows recent projects and workspace projects as separate sections", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => {
+        if (key === WORKSPACE_DIR_STORAGE_KEY) return "/ws";
+        if (key === RECENT_PROJECTS_STORAGE_KEY) {
+          return JSON.stringify([recentProject("Recent", "/other/recent")]);
+        }
+        return null;
+      },
+      setItem: vi.fn(),
+    });
+
+    const html = renderToStaticMarkup(<ProjectList onOpen={() => {}} />);
+
+    expect(html).toContain("最近打开");
+    expect(html).toContain("Recent");
+    expect(html).toContain("工作区");
+    expect(html).toContain("/ws");
+  });
+});
+
+describe("RecentProjectList", () => {
+  it("shows project details, local opened time, and an independent remove button", () => {
+    const item = recentProject("Alpha", "/ws/alpha");
+    const html = renderToStaticMarkup(
+      <RecentProjectList items={[item]} onOpen={() => {}} onRemove={() => {}} />,
+    );
+
+    expect(html).toContain("Alpha");
+    expect(html).toContain("/ws/alpha");
+    expect(html).toContain("最后打开：");
+    expect(html).toContain('aria-label="从最近打开中移除"');
+    expect(html.match(/<button/g)).toHaveLength(2);
+    expect(formatRecentProjectOpenedAt(item.lastOpenedAt, "Asia/Shanghai")).toBe("2026/07/22 15:30");
   });
 });
 
@@ -111,3 +160,7 @@ describe("ContainedProjectsDialog", () => {
     expect(html).toContain("不会删除或覆盖现有文件");
   });
 });
+
+function recentProject(name: string, path: string): RecentProject {
+  return { name, path, lastOpenedAt: "2026-07-22T07:30:00.000Z" };
+}
