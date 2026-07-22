@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { ProjectGraph } from "../../lib/types";
+import type { Manifest, ProjectGraph } from "../../lib/types";
 import { commitConditionDraft, moveEdge, moveEdgeById, NodeInspector, orderDefaultAutoEdgeLast } from "./NodeInspector";
 
 const graph: ProjectGraph = {
@@ -19,6 +19,22 @@ const graph: ProjectGraph = {
 };
 
 describe("NodeInspector graph exits", () => {
+  it("renders a selected node when a legacy manifest has no unlock registry", () => {
+    const legacyManifest = {
+      characters: {},
+      backgrounds: {},
+      audio: { bgm: {}, sfx: {}, voice: {} },
+    } as unknown as Manifest;
+
+    expect(() => renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: "start",
+      manifest: legacyManifest,
+      onEnter: () => {},
+      onRename: () => {},
+    }))).not.toThrow();
+  });
+
   it("offers chapter assignment for the selected node", () => {
     const grouped = {
       ...graph,

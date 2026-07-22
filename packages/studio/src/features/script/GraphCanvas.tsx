@@ -239,7 +239,7 @@ export function GraphCanvas({
       items.push({ key: "set-entry", label: "设为入口节点", onSelect: () => onSetEntry(node.id) });
     }
     if (onManageEnding) {
-      const registered = Object.values(manifest?.unlocks.endings ?? {}).some((ending) => ending.nodeId === node.id);
+      const registered = Object.values(manifest?.unlocks?.endings ?? {}).some((ending) => ending.nodeId === node.id);
       items.push({ key: "ending", label: registered ? "管理关联结局…" : "登记为结局…", onSelect: () => onManageEnding(node.id) });
     }
     items.push({

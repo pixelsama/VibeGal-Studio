@@ -63,7 +63,7 @@ export function NodeInspector({
   const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
   const isEntry = node.id === graph.entryNodeId;
   const outgoingEdges = graph.edges.filter((edge) => edge.from === node.id).map(normalizeEdge);
-  const linkedEndings = Object.entries(manifest?.unlocks.endings ?? {}).filter(([, ending]) => ending.nodeId === node.id);
+  const linkedEndings = Object.entries(manifest?.unlocks?.endings ?? {}).filter(([, ending]) => ending.nodeId === node.id);
 
   return (
     <div style={panelStyle}>
