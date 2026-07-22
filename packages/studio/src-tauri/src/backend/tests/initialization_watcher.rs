@@ -45,6 +45,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     )
     .unwrap();
     assert!(graph_schema["properties"].get("entryNodeId").is_some());
+    assert!(graph_schema["properties"].get("chapters").is_some());
     assert!(graph_schema["properties"].get("nodes").is_some());
     let node_schema: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(project.join(".galstudio/schemas/nodeFile.json")).unwrap(),
@@ -67,6 +68,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     let agent_instructions = fs::read_to_string(project.join("AGENTS.md")).unwrap();
     assert!(agent_instructions.contains("content/graph.json"));
     assert!(agent_instructions.contains("content/nodes/*.json"));
+    assert!(agent_instructions.contains("nodes[].chapterId"));
     assert!(agent_instructions.contains("Instruction[]"));
     assert!(agent_instructions.contains("renderers/<id>/index.tsx"));
     assert!(agent_instructions.contains("vibegal-cli validate . --format json"));
@@ -86,6 +88,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(agent_instructions.contains("content/chapters/"));
     let project_readme = fs::read_to_string(project.join(".galstudio/README.md")).unwrap();
     assert!(project_readme.contains("content/graph.json"));
+    assert!(project_readme.contains("nodes[].chapterId"));
     assert!(project_readme.contains("missing_graph"));
     assert!(project_readme.contains("Legacy Chapters"));
     assert!(project_readme.contains("content/chapters/"));
@@ -126,6 +129,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert_eq!(opened.renderer_ids, vec!["default".to_string()]);
     let graph = opened.graph.expect("新项目应有 graph.json");
     assert_eq!(graph.entry_node_id, "start");
+    assert!(graph.chapters.is_empty());
     assert_eq!(graph.nodes[0].file, "nodes/start.json");
     let start_node = opened
         .nodes

@@ -42,12 +42,16 @@ renderers/
 {
   "version": 1,
   "entryNodeId": "prologue",
+  "chapters": [
+    { "id": "opening", "title": "序章" }
+  ],
   "nodes": [
     {
       "id": "prologue",
       "title": "序章",
       "file": "nodes/prologue.json",
-      "position": { "x": 120, "y": 180 }
+      "position": { "x": 120, "y": 180 },
+      "chapterId": "opening"
     }
   ],
   "edges": [
@@ -69,12 +73,14 @@ renderers/
 | --- | --- | --- |
 | `version` | root | 当前为 `1`。 |
 | `entryNodeId` | root | 入口节点 id。空字符串表示未设置入口。 |
+| `chapters` | root | 可选的编辑章节列表。只组织 Studio 画布，不改变运行时遍历。 |
 | `nodes` | root | 图节点数组。 |
 | `edges` | root | 图边数组。 |
 | `id` | node | 节点稳定标识，建议使用文件名友好的 kebab-case 或 snake_case。 |
 | `title` | node | UI 中显示的节点标题。 |
 | `file` | node | 相对 `content/` 的节点文件路径，如 `nodes/prologue.json`。 |
 | `position` | node | 画布坐标，单位为 px，形如 `{ "x": 120, "y": 180 }`。 |
+| `chapterId` | node | 可选章节归属，必须引用 `chapters[].id`；缺省表示未分章。 |
 | `id` | edge | 边稳定标识，推荐 `<from>__<to>`。 |
 | `from` / `to` | edge | 起点和终点节点 id。 |
 | `mode` | edge | `linear` / `choice` / `auto`。旧图缺省按 `linear` 处理。 |
@@ -87,6 +93,8 @@ renderers/
 - `choice`：同一节点所有 outgoing edges 都必须是 `choice`，且每条 edge 必须有非空 `label`。
 - `auto`：同一节点所有 outgoing edges 都必须是 `auto`，表达式按顺序匹配；建议保留一条 `condition: null` 的默认边。
 - 同一节点的 outgoing edges 不能混用 `linear` / `choice` / `auto`。
+- 删除章节时应保留节点和边，只移除对应节点的 `chapterId`。
+- 章节不是旧 `content/meta.json` 的 `chapters`，也不会创建 `content/chapters/` 文件。
 
 ## 节点文件
 

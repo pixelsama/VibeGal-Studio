@@ -91,9 +91,11 @@ import type { ComponentType } from "react";
 
   export type GlobalPersistentRecord = { schemaVersion: 2; projectId: string; readText: { nodeId: string; instructionId: string; textHash: string; }[]; unlockedCg: string[]; unlockedMusic: string[]; unlockedReplays: string[]; unlockedEndings: string[]; playthroughCount: number; globalVars: Record<string, string | number | boolean | null>; lastEndingId: string | null; settledEndings: Record<string, Record<string, { completedAt: string; }>>; appliedGlobalEffects: Record<string, string[]>; };
 
+  export type GraphChapterData = { id: string; title: string; };
+
   export type GraphEdgeData = { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; };
 
-  export type GraphNodeData = { id: string; file: string; position: { x: number; y: number; }; title?: string | undefined; };
+  export type GraphNodeData = { id: string; file: string; position: { x: number; y: number; }; title?: string | undefined; chapterId?: string | undefined; };
 
   export type GraphPosition = { x: number; y: number; };
 
@@ -241,7 +243,7 @@ import type { ComponentType } from "react";
     subscribe(listener: () => void): () => void;
   }
 
-  export type ProjectGraphData = { version: number; entryNodeId: string; nodes: { id: string; file: string; position: { x: number; y: number; }; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; }[]; };
+  export type ProjectGraphData = { version: number; entryNodeId: string; chapters: { id: string; title: string; }[]; nodes: { id: string; file: string; position: { x: number; y: number; }; title?: string | undefined; chapterId?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; }[]; };
 
   export const RENDERER_CONTRACT_VERSION: 1;
 

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GraphCanvas } from "./GraphCanvas";
+import { filterVisibleCanvasElements, GraphCanvas } from "./GraphCanvas";
 import type { ProjectGraph } from "../../lib/types";
 
 vi.mock("@xyflow/react", async () => {
@@ -12,11 +12,15 @@ vi.mock("@xyflow/react", async () => {
       connectOnClick,
       nodeClickDistance,
       colorMode,
+      nodes,
+      edges,
     }: {
       children?: React.ReactNode;
       connectOnClick?: boolean;
       nodeClickDistance?: number;
       colorMode?: string;
+      nodes?: unknown[];
+      edges?: unknown[];
     }) =>
       React.createElement(
         "div",
@@ -25,6 +29,8 @@ vi.mock("@xyflow/react", async () => {
           "data-connect-on-click": String(connectOnClick),
           "data-node-click-distance": nodeClickDistance,
           "data-color-mode": colorMode,
+          "data-node-count": nodes?.length ?? 0,
+          "data-edge-count": edges?.length ?? 0,
         },
         children,
       ),
@@ -110,5 +116,16 @@ describe("GraphCanvas", () => {
     const html = renderToStaticMarkup(<GraphCanvas {...baseProps} />);
 
     expect(html).toContain('data-color-mode="light"');
+  });
+
+  it("filters visible elements after full-graph status mapping", () => {
+    const elements = filterVisibleCanvasElements(
+      [{ id: "start", status: "normal" }, { id: "next", status: "ending" }],
+      [{ id: "start__next", source: "start", target: "next" }],
+      new Set(["start"]),
+    );
+
+    expect(elements.nodes).toEqual([{ id: "start", status: "normal" }]);
+    expect(elements.edges).toEqual([]);
   });
 });

@@ -111,11 +111,19 @@ pub struct GraphPosition {
 }
 
 #[derive(Serialize, Clone)]
+pub struct GraphChapter {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Serialize, Clone)]
 pub struct GraphNode {
     pub id: String,
     pub title: String,
     pub file: String,
     pub position: GraphPosition,
+    #[serde(rename = "chapterId", skip_serializing_if = "Option::is_none")]
+    pub chapter_id: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -133,6 +141,7 @@ pub struct ProjectGraph {
     pub version: u32,
     #[serde(rename = "entryNodeId")]
     pub entry_node_id: String,
+    pub chapters: Vec<GraphChapter>,
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
 }

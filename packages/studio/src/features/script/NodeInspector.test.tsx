@@ -19,6 +19,26 @@ const graph: ProjectGraph = {
 };
 
 describe("NodeInspector graph exits", () => {
+  it("offers chapter assignment for the selected node", () => {
+    const grouped = {
+      ...graph,
+      chapters: [{ id: "opening", title: "序章" }, { id: "route", title: "分支章" }],
+      nodes: graph.nodes.map((node) => node.id === "start" ? { ...node, chapterId: "opening" } : node),
+    };
+    const html = renderToStaticMarkup(createElement(NodeInspector, {
+      graph: grouped,
+      selectedNodeId: "start",
+      onEnter: () => {},
+      onRename: () => {},
+      onSetChapter: () => {},
+    }));
+
+    expect(html).toContain("所属章节");
+    expect(html).toContain("序章");
+    expect(html).toContain("分支章");
+    expect(html).toContain("未分章");
+  });
+
   it("shows multi-exit branch controls in graph view instead of the text editor", () => {
     const html = renderToStaticMarkup(createElement(NodeInspector, {
       graph,

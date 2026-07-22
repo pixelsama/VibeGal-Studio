@@ -143,6 +143,7 @@ describe("GraphNovelPlayer routing", () => {
   const baseGraph: ProjectGraphData = {
     version: 1,
     entryNodeId: "start",
+    chapters: [],
     nodes: [
       { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
       { id: "stay", title: "Stay", file: "nodes/stay.json", position: { x: 200, y: 0 } },

@@ -41,6 +41,7 @@ fn empty_project_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: String::new(),
+        chapters: vec![],
         nodes: vec![],
         edges: vec![],
     }
@@ -107,6 +108,26 @@ fn project_graph_from_valid_json(
         .expect("validated graph requires entryNodeId")
         .to_string();
 
+    let chapters = graph_raw
+        .get("chapters")
+        .and_then(serde_json::Value::as_array)
+        .map(|chapters| {
+            chapters
+                .iter()
+                .map(|chapter| GraphChapter {
+                    id: chapter["id"]
+                        .as_str()
+                        .expect("validated graph chapter id")
+                        .to_string(),
+                    title: chapter["title"]
+                        .as_str()
+                        .expect("validated graph chapter title")
+                        .to_string(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
     let graph_nodes = graph_raw
         .get("nodes")
         .and_then(serde_json::Value::as_array)
@@ -137,6 +158,10 @@ fn project_graph_from_valid_json(
                                 .and_then(serde_json::Value::as_f64)
                                 .expect("graph projection has defaulted position.y"),
                         },
+                        chapter_id: node
+                            .get("chapterId")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string),
                     }
                 })
                 .collect::<Vec<_>>()
@@ -198,6 +223,7 @@ fn project_graph_from_valid_json(
         ProjectGraph {
             version,
             entry_node_id,
+            chapters,
             nodes: graph_nodes,
             edges: graph_edges,
         },
@@ -207,5 +233,6 @@ fn project_graph_from_valid_json(
 use super::super::contracts;
 use super::super::fs::{read_json, ContentRoot};
 use super::super::model::{
-    GraphEdge, GraphIssue, GraphIssueSeverity, GraphNode, GraphPosition, NodeEntry, ProjectGraph,
+    GraphChapter, GraphEdge, GraphIssue, GraphIssueSeverity, GraphNode, GraphPosition, NodeEntry,
+    ProjectGraph,
 };

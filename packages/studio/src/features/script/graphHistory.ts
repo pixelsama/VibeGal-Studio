@@ -10,6 +10,7 @@ import {
   setEntryNode,
 } from "./graphEditing";
 import { autoLayoutGraph } from "./graphLayout";
+import { addChapter, deleteChapter, moveChapter, renameChapter, setNodeChapter } from "./chapterEditing";
 
 export type GraphCommand =
   | {
@@ -18,6 +19,7 @@ export type GraphCommand =
     title: string;
     file: string;
     position?: { x: number; y: number };
+    chapterId?: string;
   }
   | { kind: "removeNodes"; nodeIds: string[] }
   | {
@@ -30,6 +32,11 @@ export type GraphCommand =
   | { kind: "renameNode"; nodeId: string; title: string }
   | { kind: "moveNode"; nodeId: string; position: { x: number; y: number } }
   | { kind: "setEntryNode"; nodeId: string }
+  | { kind: "addChapter"; id: string; title: string }
+  | { kind: "renameChapter"; chapterId: string; title: string }
+  | { kind: "moveChapter"; chapterId: string; offset: -1 | 1 }
+  | { kind: "deleteChapter"; chapterId: string }
+  | { kind: "setNodeChapter"; nodeId: string; chapterId: string | null }
   | { kind: "autoLayout" }
   | { kind: "replaceOutgoingEdges"; nodeId: string; edges: GraphEdge[] };
 
@@ -145,6 +152,16 @@ function runGraphCommand(graph: ProjectGraph, command: GraphCommand): ProjectGra
       return moveNode(graph, command.nodeId, command.position);
     case "setEntryNode":
       return setEntryNode(graph, command.nodeId);
+    case "addChapter":
+      return addChapter(graph, { id: command.id, title: command.title });
+    case "renameChapter":
+      return renameChapter(graph, command.chapterId, command.title);
+    case "moveChapter":
+      return moveChapter(graph, command.chapterId, command.offset);
+    case "deleteChapter":
+      return deleteChapter(graph, command.chapterId);
+    case "setNodeChapter":
+      return setNodeChapter(graph, command.nodeId, command.chapterId);
     case "autoLayout":
       return autoLayoutGraph(graph);
     case "replaceOutgoingEdges":

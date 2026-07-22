@@ -28,6 +28,7 @@ import type {
   VariableRegistrySchema,
   VariableDeclarationSchema,
   ProjectGraphSchema,
+  GraphChapterSchema,
   GraphNodeSchema,
   GraphEdgeSchema,
   GraphPositionSchema,
@@ -41,6 +42,7 @@ export type Meta = z.infer<typeof MetaSchema>;
 // Phase 11：脚本图结构类型（供外部工具/Agent 校验）
 export type GraphPosition = z.infer<typeof GraphPositionSchema>;
 export type GraphNodeData = z.infer<typeof GraphNodeSchema>;
+export type GraphChapterData = z.infer<typeof GraphChapterSchema>;
 export type GraphEdgeData = z.infer<typeof GraphEdgeSchema>;
 export type ProjectGraphData = z.infer<typeof ProjectGraphSchema>;
 export type VariableRegistry = z.infer<typeof VariableRegistrySchema>;

@@ -5,13 +5,14 @@ const NEW_NODE_OFFSET = { x: 260, y: 120 };
 
 export function addNode(
   graph: ProjectGraph,
-  opts: { id: string; title: string; file: string; position?: { x: number; y: number } },
+  opts: { id: string; title: string; file: string; position?: { x: number; y: number }; chapterId?: string },
 ): ProjectGraph {
   const node: GraphNode = {
     id: opts.id,
     title: opts.title,
     file: opts.file,
     position: opts.position ?? defaultPosition(graph),
+    ...(opts.chapterId ? { chapterId: opts.chapterId } : {}),
   };
 
   return {
@@ -158,6 +159,7 @@ export function duplicateNode(
       x: source.position.x + 40,
       y: source.position.y + 60,
     },
+    ...(source.chapterId ? { chapterId: source.chapterId } : {}),
   };
 
   return { graph: { ...graph, nodes: [...graph.nodes, newNode] }, newNode };
@@ -185,6 +187,7 @@ export function createSuccessor(
       x: source.position.x + 260,
       y: source.position.y,
     },
+    ...(source.chapterId ? { chapterId: source.chapterId } : {}),
   };
   const nextGraph = connectNodes(
     { ...graph, nodes: [...graph.nodes, newNode] },

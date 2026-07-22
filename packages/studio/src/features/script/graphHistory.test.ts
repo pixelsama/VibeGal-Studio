@@ -27,6 +27,16 @@ const baseGraph: ProjectGraph = {
 const revision = makeGraphRevisionToken({ relPath: "content/graph.json", mtimeMs: 1, size: 10, sha256: "a" });
 
 describe("graphHistory", () => {
+  it("tracks chapter organization commands in the same undo stack", () => {
+    let state = createGraphHistoryState(baseGraph, revision);
+    state = applyGraphCommand(state, { kind: "addChapter", id: "opening", title: "序章" });
+    state = applyGraphCommand(state, { kind: "setNodeChapter", nodeId: "start", chapterId: "opening" });
+
+    expect(state.graph.chapters).toEqual([{ id: "opening", title: "序章" }]);
+    expect(state.graph.nodes[0].chapterId).toBe("opening");
+    expect(undoGraphHistory(state).graph.nodes[0]).not.toHaveProperty("chapterId");
+  });
+
   it("undoRedoGraphCommandRestoresPreviousGraph", () => {
     let state = createGraphHistoryState(baseGraph, revision);
 

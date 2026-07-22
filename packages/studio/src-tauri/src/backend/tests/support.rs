@@ -134,6 +134,7 @@ pub(crate) fn graph_node(id: &str, file: &str) -> GraphNode {
         title: id.to_string(),
         file: file.to_string(),
         position: GraphPosition { x: 0.0, y: 0.0 },
+        chapter_id: None,
     }
 }
 
@@ -210,6 +211,7 @@ pub(crate) fn one_node_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
+        chapters: vec![],
         nodes: vec![graph_node("start", "nodes/start.json")],
         edges: vec![],
     }
@@ -219,6 +221,7 @@ pub(crate) fn valid_project_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "prologue".to_string(),
+        chapters: vec![],
         nodes: vec![
             graph_node("prologue", "nodes/prologue.json"),
             graph_node("ending", "nodes/ending.json"),
@@ -242,6 +245,7 @@ pub(crate) fn choice_branch_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
+        chapters: vec![],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("stay", "nodes/stay.json"),
@@ -258,6 +262,7 @@ pub(crate) fn cyclic_graph_without_ending() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
+        chapters: vec![],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("loop_a", "nodes/loop_a.json"),

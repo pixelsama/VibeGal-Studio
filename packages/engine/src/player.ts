@@ -22,6 +22,7 @@ const LINEAR_NODE_ID = "__linear__";
 const LINEAR_GRAPH: ProjectGraphData = {
   version: 1,
   entryNodeId: LINEAR_NODE_ID,
+  chapters: [],
   nodes: [{
     id: LINEAR_NODE_ID,
     title: "Linear story",

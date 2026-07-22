@@ -57,7 +57,7 @@ const project: ProjectData = {
 };
 
 describe("ScriptWorkspace sidebar", () => {
-  it("keeps the node outline visible inside the expanded collapsible sidebar in graph view", () => {
+  it("keeps the story structure visible inside the expanded collapsible sidebar in graph view", () => {
     const html = renderToStaticMarkup(createElement(ScriptWorkspace, {
       project,
       rendererId: "default",
@@ -71,9 +71,10 @@ describe("ScriptWorkspace sidebar", () => {
       onSaved: () => {},
     }));
 
-    expect(html).toContain("aria-label=\"节点\"");
+    expect(html).toContain("aria-label=\"故事结构\"");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("序章");
+    expect(html).toContain("全部流程");
   });
 
 });

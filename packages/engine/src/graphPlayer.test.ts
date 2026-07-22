@@ -22,6 +22,7 @@ const meta: Meta = {
 const baseGraph: ProjectGraphData = {
   version: 1,
   entryNodeId: "start",
+  chapters: [],
   nodes: [
     { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
     { id: "left", title: "Left", file: "nodes/left.json", position: { x: 200, y: 0 } },

@@ -92,6 +92,43 @@ fn open_project_loads_graph_when_present() {
 }
 
 #[test]
+fn open_project_loads_graph_chapter_metadata_without_changing_flow() {
+    let root = unique_temp_dir("graph-chapters");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "chapters": [
+                { "id": "opening", "title": "序章" },
+                { "id": "route", "title": "分支章" }
+            ],
+            "nodes": [
+                { "id": "start", "file": "nodes/start.json", "chapterId": "opening", "position": { "x": 0, "y": 0 } },
+                { "id": "choice", "file": "nodes/choice.json", "chapterId": "route", "position": { "x": 200, "y": 0 } }
+            ],
+            "edges": [{ "id": "start__choice", "from": "start", "to": "choice" }]
+        }),
+        &[
+            ("nodes/start.json", serde_json::json!([])),
+            ("nodes/choice.json", serde_json::json!([])),
+        ],
+    );
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let graph = opened.graph.unwrap();
+
+    assert_eq!(graph.chapters.len(), 2);
+    assert_eq!(graph.chapters[1].title, "分支章");
+    assert_eq!(graph.nodes[0].chapter_id.as_deref(), Some("opening"));
+    assert_eq!(graph.nodes[1].chapter_id.as_deref(), Some("route"));
+    assert_eq!(graph.edges[0].from, "start");
+    assert_eq!(graph.edges[0].to, "choice");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn graph_projection_uses_contract_defaults_without_rewriting_raw_json() {
     let root = unique_temp_dir("graph-contract-defaults");
     let project = root.join("project");

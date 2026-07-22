@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Layers3, Plus } from "lucide-react";
 import { deleteFile, saveFile, saveGraph, saveGraphPositions, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
@@ -10,7 +10,7 @@ import { GraphCanvas } from "./GraphCanvas";
 import { GraphAnalysisPanel } from "./GraphAnalysisPanel";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
-import { NodeOutline } from "./NodeOutline";
+import { StoryOutline } from "./StoryOutline";
 import { ConfirmDialog, PromptDialog } from "../common/Dialogs";
 import {
   createSuccessor,
@@ -33,6 +33,14 @@ import { preventUnloadWhenDirty } from "./unsavedChanges";
 import "@xyflow/react/dist/style.css";
 import { endingsForNode, insertEndingCompletion, registerEnding, unregisterEnding, upsertEnding } from "./endingRegistry";
 import { referencesAffectedByNodeDeletion } from "./nodeReferences";
+import {
+  chapterScopeForNode,
+  generateChapterId,
+  graphForChapterScope,
+  isNodeInChapterScope,
+  normalizeChapterScope,
+  type ChapterScope,
+} from "./chapterEditing";
 
 interface Props {
   project: ProjectData;
@@ -141,6 +149,7 @@ export function ScriptWorkspace({
   const [inspectorTab, setInspectorTab] = useState<"node" | "analysis">("node");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [chapterScope, setChapterScope] = useState<ChapterScope>({ kind: "all" });
   const incomingGraph = useMemo(() => project.graph ?? EMPTY_GRAPH, [project.graph]);
   const incomingRevisionToken = useMemo(() => makeGraphRevisionToken(project.graphRevision), [project.graphRevision]);
   const graphReport = useMemo(() => project.graphReport ?? { graphIssues: [] }, [project.graphReport]);
@@ -164,11 +173,17 @@ export function ScriptWorkspace({
   );
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
+  const scopedGraph = useMemo(() => graphForChapterScope(graph, chapterScope), [chapterScope, graph]);
+  const visibleNodeIds = useMemo(() => new Set(scopedGraph.nodes.map((node) => node.id)), [scopedGraph.nodes]);
 
   useEffect(() => {
     setGraphHistory((current) => reconcileGraphHistory(current, incomingGraph, incomingRevisionToken));
     setGraphStatus("");
   }, [incomingGraph, incomingRevisionToken]);
+
+  useEffect(() => {
+    setChapterScope((current) => normalizeChapterScope(graph, current));
+  }, [graph]);
 
   useEffect(() => {
     graphMutationQueue.synchronizeRevision(project.graphRevision);
@@ -194,11 +209,14 @@ export function ScriptWorkspace({
     if (!focusRequest) return;
     if (focusRequest.nodeId && findNode(graph, focusRequest.nodeId)) {
       setSelectedNodeId(focusRequest.nodeId);
+      setChapterScope(chapterScopeForNode(graph, focusRequest.nodeId));
       setSelectedEdgeId(null);
       return;
     }
     if (focusRequest.edgeId && graph.edges.some((edge) => edge.id === focusRequest.edgeId)) {
-      setSelectedNodeId(graph.edges.find((edge) => edge.id === focusRequest.edgeId)?.from ?? null);
+      const sourceNodeId = graph.edges.find((edge) => edge.id === focusRequest.edgeId)?.from ?? null;
+      setSelectedNodeId(sourceNodeId);
+      setChapterScope({ kind: "all" });
       setSelectedEdgeId(focusRequest.edgeId);
     }
   }, [focusRequest, graph]);
@@ -306,13 +324,28 @@ export function ScriptWorkspace({
   );
 
   const handleSelect = (id: string) => {
+    if (!isNodeInChapterScope(graph, id, chapterScope)) {
+      setChapterScope(chapterScopeForNode(graph, id));
+    }
     setSelectedNodeId(id);
     setSelectedEdgeId(null);
   };
 
+  const handleChapterScopeChange = (scope: ChapterScope) => {
+    setChapterScope(scope);
+    setSelectedEdgeId(null);
+    if (selectedNodeId && !isNodeInChapterScope(graph, selectedNodeId, scope)) {
+      setSelectedNodeId(null);
+    }
+  };
+
   const handleSelectEdge = (id: string) => {
+    const sourceNodeId = graph.edges.find((edge) => edge.id === id)?.from ?? null;
+    if (!scopedGraph.edges.some((edge) => edge.id === id)) {
+      setChapterScope({ kind: "all" });
+    }
     setSelectedEdgeId(id);
-    setSelectedNodeId(graph.edges.find((edge) => edge.id === id)?.from ?? null);
+    setSelectedNodeId(sourceNodeId);
   };
 
   const handleEnter = (id: string) => {
@@ -332,7 +365,8 @@ export function ScriptWorkspace({
         id,
         title: id,
         file,
-        position: position ?? defaultPosition(graph),
+        position: position ?? defaultPosition(scopedGraph),
+        chapterId: chapterScope.kind === "chapter" ? chapterScope.chapterId : undefined,
       });
       const next = nextState.graph;
       setGraphHistory(nextState);
@@ -367,6 +401,79 @@ export function ScriptWorkspace({
     if (nextState === graphHistory) return;
     setGraphHistory(nextState);
     void persistGraph(nextState.graph);
+  };
+
+  const handleSetNodeChapter = (id: string, chapterId: string | null) => {
+    const nextState = applyGraphCommand(graphHistory, { kind: "setNodeChapter", nodeId: id, chapterId });
+    if (nextState === graphHistory) return;
+    setGraphHistory(nextState);
+    setChapterScope(chapterId ? { kind: "chapter", chapterId } : { kind: "unassigned" });
+    void persistGraph(nextState.graph);
+  };
+
+  const handleCreateChapter = () => {
+    const id = generateChapterId(graph);
+    setPrompt({
+      title: "新建章节",
+      label: "章节名称",
+      initialValue: `第 ${(graph.chapters?.length ?? 0) + 1} 章`,
+      onConfirm: (value) => {
+        const title = value.trim();
+        if (!title) return;
+        const nextState = applyGraphCommand(graphHistory, { kind: "addChapter", id, title });
+        setGraphHistory(nextState);
+        setChapterScope({ kind: "chapter", chapterId: id });
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        void persistGraph(nextState.graph);
+      },
+    });
+  };
+
+  const handleRenameChapter = (chapterId: string) => {
+    const chapter = graph.chapters?.find((candidate) => candidate.id === chapterId);
+    if (!chapter) return;
+    setPrompt({
+      title: "重命名章节",
+      label: "章节名称",
+      initialValue: chapter.title,
+      onConfirm: (value) => {
+        const title = value.trim();
+        if (!title) return;
+        const nextState = applyGraphCommand(graphHistory, { kind: "renameChapter", chapterId, title });
+        if (nextState === graphHistory) return;
+        setGraphHistory(nextState);
+        void persistGraph(nextState.graph);
+      },
+    });
+  };
+
+  const handleMoveChapter = (chapterId: string, offset: -1 | 1) => {
+    const nextState = applyGraphCommand(graphHistory, { kind: "moveChapter", chapterId, offset });
+    if (nextState === graphHistory) return;
+    setGraphHistory(nextState);
+    void persistGraph(nextState.graph);
+  };
+
+  const handleDeleteChapter = (chapterId: string) => {
+    const chapter = graph.chapters?.find((candidate) => candidate.id === chapterId);
+    if (!chapter) return;
+    const nodeCount = graph.nodes.filter((node) => node.chapterId === chapterId).length;
+    const deletingActiveChapter = chapterScope.kind === "chapter" && chapterScope.chapterId === chapterId;
+    setConfirm({
+      message: `删除章节「${chapter.title}」？其中 ${nodeCount} 个节点会保留并移入“未分章”。`,
+      confirmLabel: "删除章节",
+      danger: true,
+      onConfirm: () => {
+        const nextState = applyGraphCommand(graphHistory, { kind: "deleteChapter", chapterId });
+        setGraphHistory(nextState);
+        if (deletingActiveChapter) {
+          setChapterScope(nodeCount > 0 ? { kind: "unassigned" } : { kind: "all" });
+          setSelectedEdgeId(null);
+        }
+        void persistGraph(nextState.graph);
+      },
+    });
   };
 
   const handleMoveNode = (id: string, position: { x: number; y: number }) => {
@@ -644,19 +751,25 @@ export function ScriptWorkspace({
           <div style={graphLayoutStyle}>
             <div style={outlinePaneStyle}>
               <CollapsibleSidebar
-                title="节点"
+                title="故事结构"
                 collapsed={outlineCollapsed}
                 onCollapsedChange={onOutlineCollapsedChange}
                 expandedWidth={280}
-                collapsedLabel="节点"
+                collapsedLabel="章节"
               >
-                <NodeOutline
+                <StoryOutline
                   graph={graph}
                   nodeEntries={project.nodes}
                   manifest={project.content.manifest}
+                  scope={chapterScope}
                   selectedNodeId={selectedNodeId}
-                  onSelect={handleSelect}
+                  onScopeChange={handleChapterScopeChange}
+                  onSelectNode={handleSelect}
                   onSelectEdge={handleSelectEdge}
+                  onCreateChapter={handleCreateChapter}
+                  onRenameChapter={handleRenameChapter}
+                  onMoveChapter={handleMoveChapter}
+                  onDeleteChapter={handleDeleteChapter}
                 />
               </CollapsibleSidebar>
             </div>
@@ -667,6 +780,10 @@ export function ScriptWorkspace({
                     <Plus size={15} />
                     新建节点
                   </Button>
+                  <span style={scopeIndicatorStyle}>
+                    <Layers3 size={14} />
+                    {chapterScope.kind === "all" ? "全部流程" : chapterScope.kind === "unassigned" ? "未分章" : graph.chapters?.find((chapter) => chapter.id === chapterScope.chapterId)?.title ?? "章节"}
+                  </span>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
@@ -681,6 +798,7 @@ export function ScriptWorkspace({
                 </div>
                 <GraphCanvas
                   graph={graph}
+                  visibleNodeIds={visibleNodeIds}
                   graphReport={graphReport}
                   nodeEntries={project.nodes}
                   manifest={project.content.manifest}
@@ -732,6 +850,7 @@ export function ScriptWorkspace({
                     selectedNodeId={selectedNodeId}
                     onEnter={handleEnter}
                     onRename={handleRenameNode}
+                    onSetChapter={handleSetNodeChapter}
                     onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
                     onSetEntry={handleSetEntry}
                     saving={savingGraph}
@@ -808,6 +927,17 @@ const contentStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
   overflow: "hidden",
+};
+
+const scopeIndicatorStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "var(--space-1)",
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-pill)",
+  background: "var(--bg-panel)",
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
 };
 
 const graphLayoutStyle: React.CSSProperties = {

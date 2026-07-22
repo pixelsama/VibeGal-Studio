@@ -32,6 +32,7 @@ interface GraphCanvasProps {
   manifest?: Manifest;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  visibleNodeIds?: ReadonlySet<string>;
   canUndo?: boolean;
   canRedo?: boolean;
   onSelect: (id: string) => void;
@@ -67,6 +68,17 @@ interface CanvasMenuState {
   items: ContextMenuItem[];
 }
 
+export function filterVisibleCanvasElements<
+  TNode extends { id: string },
+  TEdge extends { source: string; target: string },
+>(nodes: TNode[], edges: TEdge[], visibleNodeIds?: ReadonlySet<string>): { nodes: TNode[]; edges: TEdge[] } {
+  if (!visibleNodeIds) return { nodes, edges };
+  return {
+    nodes: nodes.filter((node) => visibleNodeIds.has(node.id)),
+    edges: edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
+  };
+}
+
 export function GraphCanvas({
   graph,
   graphReport,
@@ -74,6 +86,7 @@ export function GraphCanvas({
   manifest,
   selectedNodeId,
   selectedEdgeId,
+  visibleNodeIds,
   canUndo = false,
   canRedo = false,
   onSelect,
@@ -102,8 +115,9 @@ export function GraphCanvas({
 
   const flow = useMemo(() => {
     const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries, manifest);
+    const visibleFlow = filterVisibleCanvasElements(baseFlow.nodes, baseFlow.edges, visibleNodeIds);
 
-    const nodes: GraphCanvasFlowNode[] = baseFlow.nodes.map((node) => {
+    const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => {
       return {
         ...node,
         selected: node.id === selectedNodeId,
@@ -114,7 +128,7 @@ export function GraphCanvas({
       };
     });
 
-    const edges = baseFlow.edges.map((edge) => {
+    const edges = visibleFlow.edges.map((edge) => {
       const suspicious = Boolean(edge.data?.suspicious);
       const selected = edge.id === selectedEdgeId;
       return {
@@ -130,7 +144,7 @@ export function GraphCanvas({
     });
 
     return { nodes, edges };
-  }, [graph, graphReport, nodeEntries, manifest, selectedEdgeId, selectedNodeId]);
+  }, [graph, graphReport, nodeEntries, manifest, selectedEdgeId, selectedNodeId, visibleNodeIds]);
 
   useEffect(() => {
     setFlowNodes(flow.nodes);

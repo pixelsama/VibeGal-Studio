@@ -46,6 +46,14 @@ export interface GraphNode {
   /** 相对 content 根，如 "nodes/prologue.json" */
   file: string;
   position: { x: number; y: number };
+  /** 可选的编辑分组；不影响运行时流程。 */
+  chapterId?: string;
+}
+
+/** graph.json 内的编辑章节，不是旧 content/chapters 文件模型。 */
+export interface GraphChapter {
+  id: string;
+  title: string;
 }
 
 /** 图边 */
@@ -62,6 +70,7 @@ export interface GraphEdge {
 export interface ProjectGraph {
   version: number;
   entryNodeId: string;
+  chapters?: GraphChapter[];
   nodes: GraphNode[];
   edges: GraphEdge[];
 }

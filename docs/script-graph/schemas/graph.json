@@ -11,6 +11,27 @@
     "entryNodeId": {
       "type": "string"
     },
+    "chapters": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      }
+    },
     "nodes": {
       "default": [],
       "type": "array",
@@ -44,6 +65,10 @@
                 "type": "number"
               }
             }
+          },
+          "chapterId": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [

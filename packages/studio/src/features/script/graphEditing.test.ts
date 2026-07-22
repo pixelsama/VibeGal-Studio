@@ -63,6 +63,17 @@ describe("graphEditing", () => {
     expect(sampleGraph.nodes).toHaveLength(3);
   });
 
+  it("addNode assigns the active chapter when provided", () => {
+    const next = addNode(sampleGraph, {
+      id: "chapter-node",
+      title: "Chapter Node",
+      file: "nodes/chapter-node.json",
+      chapterId: "chapter_1",
+    });
+
+    expect(next.nodes.at(-1)?.chapterId).toBe("chapter_1");
+  });
+
   it("removeNode removes node and its edges", () => {
     const result = removeNode(sampleGraph, "node_2");
 
@@ -207,13 +218,18 @@ describe("setEntryNode", () => {
 
 describe("duplicateNode", () => {
   it("creates a copy with new id/file and offset position", () => {
-    const { graph, newNode } = duplicateNode(sampleGraph, "node");
+    const grouped = {
+      ...sampleGraph,
+      nodes: sampleGraph.nodes.map((node) => node.id === "node" ? { ...node, chapterId: "opening" } : node),
+    };
+    const { graph, newNode } = duplicateNode(grouped, "node");
 
     expect(newNode).not.toBeNull();
     expect(newNode!.id).toBe("node_3");
     expect(newNode!.file).toBe("nodes/node_3.json");
     expect(newNode!.title).toBe("Node 副本");
     expect(newNode!.position).toEqual({ x: 100 + 40, y: 120 + 60 });
+    expect(newNode!.chapterId).toBe("opening");
     expect(graph.nodes).toHaveLength(sampleGraph.nodes.length + 1);
     expect(graph.nodes.at(-1)).toBe(newNode);
   });
@@ -240,12 +256,17 @@ describe("duplicateNode", () => {
 
 describe("createSuccessor", () => {
   it("creates a new node connected from source", () => {
-    const { graph, newNode } = createSuccessor(sampleGraph, "ending");
+    const grouped = {
+      ...sampleGraph,
+      nodes: sampleGraph.nodes.map((node) => node.id === "ending" ? { ...node, chapterId: "finale" } : node),
+    };
+    const { graph, newNode } = createSuccessor(grouped, "ending");
 
     expect(newNode).not.toBeNull();
     expect(newNode!.id).toBe("ending_2");
     expect(newNode!.file).toBe("nodes/ending_2.json");
     expect(newNode!.position).toEqual({ x: 620 + 260, y: 120 });
+    expect(newNode!.chapterId).toBe("finale");
     // 新增一条 ending -> ending_2 的边
     expect(graph.edges.at(-1)).toEqual({
       id: "ending__ending_2",

@@ -14,6 +14,7 @@ interface NodeInspectorProps {
   selectedNodeId: string | null;
   onEnter: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onSetChapter?: (id: string, chapterId: string | null) => void;
   onUpdateOutgoingEdges?: (nodeId: string, edges: GraphEdge[]) => void;
   onSetEntry?: (id: string) => void;
   saving?: boolean;
@@ -31,6 +32,7 @@ export function NodeInspector({
   selectedNodeId,
   onEnter,
   onRename,
+  onSetChapter,
   onUpdateOutgoingEdges,
   onSetEntry,
   saving = false,
@@ -98,6 +100,20 @@ export function NodeInspector({
           <Field label="入口" value={isEntry ? "是" : "否"} />
           <Field label="位置" value={`x ${node.position.x} / y ${node.position.y}`} mono />
           <Field label="连接" value={`入 ${incoming} / 出 ${outgoing}`} mono />
+          {(graph.chapters?.length ?? 0) > 0 && (
+            <label style={titleFieldStyle}>
+              <span style={fieldLabelStyle}>所属章节</span>
+              <select
+                value={node.chapterId ?? ""}
+                onChange={(event) => onSetChapter?.(node.id, event.target.value || null)}
+                disabled={saving || !onSetChapter}
+                style={titleInputStyle}
+              >
+                <option value="">未分章</option>
+                {graph.chapters?.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}
+              </select>
+            </label>
+          )}
         </section>
 
         <ExitSection

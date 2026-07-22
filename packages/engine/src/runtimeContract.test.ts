@@ -78,6 +78,7 @@ describe("runtime contract", () => {
     const graph: ProjectGraphData = {
       version: 1,
       entryNodeId: "start",
+      chapters: [],
       nodes: [
         { id: "start", file: "nodes/start.json", position: { x: 0, y: 0 } },
         { id: "stay", file: "nodes/stay.json", position: { x: 100, y: 0 } },

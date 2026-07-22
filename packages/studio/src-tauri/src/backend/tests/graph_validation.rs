@@ -61,6 +61,46 @@ fn validate_graph_flags_duplicate_node_ids() {
 }
 
 #[test]
+fn validate_graph_flags_duplicate_chapter_ids() {
+    let mut graph = valid_project_graph();
+    graph.chapters = vec![
+        GraphChapter {
+            id: "opening".to_string(),
+            title: "序章".to_string(),
+        },
+        GraphChapter {
+            id: "opening".to_string(),
+            title: "重复".to_string(),
+        },
+    ];
+
+    let issues = validate_graph(&graph, &present_node_entries(&graph));
+
+    let issue = issues
+        .iter()
+        .find(|issue| issue.code == "duplicate_chapter_id")
+        .expect("duplicate chapter id should be reported");
+    assert_eq!(issue.severity, GraphIssueSeverity::Error);
+    assert_eq!(issue.json_path.as_deref(), Some("$.chapters"));
+}
+
+#[test]
+fn validate_graph_flags_missing_node_chapter_reference() {
+    let mut graph = valid_project_graph();
+    graph.nodes[0].chapter_id = Some("missing".to_string());
+
+    let issues = validate_graph(&graph, &present_node_entries(&graph));
+
+    let issue = issues
+        .iter()
+        .find(|issue| issue.code == "missing_chapter_ref")
+        .expect("missing chapter reference should be reported");
+    assert_eq!(issue.severity, GraphIssueSeverity::Warn);
+    assert_eq!(issue.node_id.as_deref(), Some("prologue"));
+    assert_eq!(issue.json_path.as_deref(), Some("$.nodes[0].chapterId"));
+}
+
+#[test]
 fn validate_graph_flags_missing_entry_node() {
     let mut graph = valid_project_graph();
     graph.entry_node_id = "missing-entry".to_string();
@@ -234,6 +274,7 @@ fn route_analysis_finds_unreachable_nodes() {
     let graph = ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
+        chapters: vec![],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("ending", "nodes/ending.json"),

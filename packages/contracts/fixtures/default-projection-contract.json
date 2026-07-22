@@ -64,8 +64,26 @@
       "expected": {
         "version": 1,
         "entryNodeId": "start",
+        "chapters": [],
         "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } }],
         "edges": [{ "id": "loop", "from": "start", "to": "start", "mode": "linear", "label": null, "condition": null }]
+      }
+    },
+    {
+      "id": "graph.preserves.chapter-metadata",
+      "schema": "graph",
+      "input": {
+        "entryNodeId": "start",
+        "chapters": [{ "id": "opening", "title": "序章" }],
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "chapterId": "opening" }],
+        "edges": []
+      },
+      "expected": {
+        "version": 1,
+        "entryNodeId": "start",
+        "chapters": [{ "id": "opening", "title": "序章" }],
+        "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 }, "chapterId": "opening" }],
+        "edges": []
       }
     }
   ]
