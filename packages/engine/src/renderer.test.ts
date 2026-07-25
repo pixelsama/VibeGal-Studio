@@ -6,6 +6,7 @@ import {
   validateRendererManifestContract,
   type BacklogEntry,
   type HistoryService,
+  type RendererManifest,
   type RendererProps,
   type RuntimeSettingsRecord,
 } from "./renderer";
@@ -59,6 +60,58 @@ describe("renderer contract", () => {
         Component,
       }),
     ).toEqual([]);
+  });
+
+  it("rendererManifestAcceptsCreatorFacingAppearanceControlDescriptions", () => {
+    const manifest: RendererManifest = {
+      id: "custom",
+      name: "Custom",
+      contractVersion: RENDERER_CONTRACT_VERSION,
+      appearance: {
+        groups: [{
+          id: "caption",
+          label: "字幕框",
+          parts: ["caption"],
+          controls: [{
+            key: "caption.opacity",
+            label: "不透明度",
+            kind: "number",
+            min: 0,
+            max: 1,
+            step: 0.05,
+          }],
+        }],
+      },
+      Component,
+    };
+
+    expect(validateRendererManifestContract(manifest)).toEqual([]);
+    expect(manifest.appearance?.groups[0]).toEqual(expect.objectContaining({
+      id: "caption",
+      label: "字幕框",
+      parts: ["caption"],
+    }));
+  });
+
+  it("rendererManifestRejectsMalformedAppearanceControlDescriptions", () => {
+    expect(validateRendererManifestContract({
+      id: "custom",
+      name: "Custom",
+      contractVersion: RENDERER_CONTRACT_VERSION,
+      appearance: {
+        groups: [{
+          id: "caption",
+          label: "字幕框",
+          controls: [{ key: "caption.opacity", label: "不透明度", kind: "slider" }],
+        }],
+      },
+      Component,
+    })).toEqual([
+      expect.objectContaining({
+        level: "error",
+        code: "renderer_manifest_invalid",
+      }),
+    ]);
   });
 
   it("rendererManifestWarnsUnsupportedContractVersion", () => {

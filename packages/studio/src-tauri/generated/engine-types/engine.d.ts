@@ -249,6 +249,28 @@ import type { ComponentType } from "react";
 
   export type ReadTextKey = { nodeId: string; instructionId: string; textHash: string; };
 
+  export interface RendererAppearance {
+    groups: readonly RendererAppearanceGroup[];
+  }
+
+  export interface RendererAppearanceControl {
+    key: string;
+    label: string;
+    kind: RendererAppearanceControlKind;
+    min?: number;
+    max?: number;
+    step?: number;
+  }
+
+  export type RendererAppearanceControlKind = "number" | "text" | "color" | "checkbox" | "font";
+
+  export interface RendererAppearanceGroup {
+    id: string;
+    label: string;
+    parts?: readonly string[];
+    controls: readonly RendererAppearanceControl[];
+  }
+
   /** 每个渲染层目录必须导出的清单。 */
   export interface RendererManifest {
     /** 唯一 id，通常 = 目录名 */
@@ -259,6 +281,8 @@ import type { ComponentType } from "react";
     contractVersion: typeof RENDERER_CONTRACT_VERSION;
     /** Optional capability flags for later feature probing. */
     capabilities?: string[];
+    /** Optional creator-facing appearance controls consumed by Studio. */
+    appearance?: RendererAppearance;
     /** 描述（可选） */
     description?: string;
     /** 渲染层主组件 */
@@ -444,9 +468,9 @@ import type { ComponentType } from "react";
     endings: string[];
   }
 
-  export type VariableDeclaration = { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; description?: string | undefined; };
+  export type VariableDeclaration = { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; label?: string | undefined; description?: string | undefined; };
 
-  export type VariableRegistry = { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; description?: string | undefined; }>; };
+  export type VariableRegistry = { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; label?: string | undefined; description?: string | undefined; }>; };
 
   export type VoiceInstr = { t: "voice"; id: string; };
 

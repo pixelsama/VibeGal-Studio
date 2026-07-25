@@ -340,6 +340,27 @@ describe("default renderer ui tokens rendering", () => {
     expect(defaultRenderer.capabilities).toContain("player-ui-v1");
     expect(defaultRenderer.capabilities).toContain("gallery-ui-v1");
   });
+
+  it("declaresCreatorFacingAppearanceControlsForStudio", () => {
+    expect(defaultRenderer.appearance?.groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "dialogueBox",
+        label: "对话框",
+        parts: ["dialogueBox"],
+        controls: expect.arrayContaining([
+          expect.objectContaining({ key: "dialogueBox.bgColor", label: "背景色", kind: "color" }),
+          expect.objectContaining({ key: "dialogueBox.fontSize", label: "字号", kind: "number" }),
+        ]),
+      }),
+      expect.objectContaining({
+        id: "stage",
+        label: "舞台",
+        controls: expect.arrayContaining([
+          expect.objectContaining({ key: "stage.fontFamily", label: "全局字体", kind: "font" }),
+        ]),
+      }),
+    ]));
+  });
 });
 
 describe("fixture ui hint", () => {

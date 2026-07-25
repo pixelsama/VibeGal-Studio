@@ -13,6 +13,21 @@ import { AppearanceWorkspace } from "./AppearanceWorkspace";
 const rendererMock = vi.hoisted(() => ({
   trustRequired: false,
   capabilities: ["layout-parts-v1"] as string[] | undefined,
+  appearance: undefined as {
+    groups: Array<{
+      id: string;
+      label: string;
+      parts?: string[];
+      controls: Array<{
+        key: string;
+        label: string;
+        kind: "number" | "color" | "checkbox" | "font" | "text";
+        min?: number;
+        max?: number;
+        step?: number;
+      }>;
+    }>;
+  } | undefined,
 }));
 
 vi.mock("../../lib/tauri", () => ({
@@ -33,6 +48,7 @@ vi.mock("../preview/useRendererComponent", async () => {
         name: "Probe",
         contractVersion: 1,
         capabilities: rendererMock.capabilities,
+        appearance: rendererMock.appearance,
         Component: (props: RendererProps) =>
           React.createElement(
             "div",
@@ -68,6 +84,7 @@ describe("AppearanceWorkspace", () => {
   beforeEach(() => {
     rendererMock.trustRequired = false;
     rendererMock.capabilities = ["layout-parts-v1"];
+    rendererMock.appearance = undefined;
   });
 
   it("空态：项目无 uiSkins 时显示「启用外观编辑」，右侧宫格渲染全场景标题", () => {
@@ -132,6 +149,39 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("默认：18"); // dialogueBox.radius
     // 字体候选来自 manifest.fonts
     expect(html).toContain("Test Serif");
+  });
+
+  it("优先使用渲染层声明的外观控件生成创作者界面", () => {
+    rendererMock.appearance = {
+      groups: [{
+        id: "caption",
+        label: "字幕框",
+        parts: ["dialogueBox"],
+        controls: [{
+          key: "caption.opacity",
+          label: "字幕不透明度",
+          kind: "number",
+          min: 0,
+          max: 1,
+          step: 0.05,
+        }],
+      }],
+    };
+    const project = makeProject({
+      default: { name: "默认外观", assets: {}, tokens: { "caption.opacity": 0.7 } },
+    });
+
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />,
+    );
+
+    expect(html).toContain("字幕框");
+    expect(html).toContain("字幕不透明度");
+    expect(html).toContain('value="0.7"');
+    expect(html).toContain('min="0"');
+    expect(html).toContain('max="1"');
+    expect(html).toContain('step="0.05"');
+    expect(html).not.toContain('aria-label="对话框"');
   });
 
   it("顶部层级说明：点破外观依附于当前界面风格（Spec 19 §4.5）", () => {

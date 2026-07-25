@@ -16,6 +16,9 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
+          "label": {
+            "type": "string"
+          },
           "type": {
             "type": "string",
             "enum": [

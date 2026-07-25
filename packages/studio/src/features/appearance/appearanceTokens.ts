@@ -143,6 +143,57 @@ export interface TokenGroupDef {
   id: string;
   title: string;
   fields: TokenFieldDef[];
+  /** 渲染器显式声明的可见部件；未声明时保留 Studio 内置分组语义。 */
+  parts?: readonly string[];
+  /** 仅供 Studio 内部区分渲染器声明分组与旧版内置分组。 */
+  rendererDeclared?: boolean;
+}
+
+export interface RendererAppearanceGroupLike {
+  id: string;
+  label: string;
+  parts?: readonly string[];
+  controls: readonly {
+    key: string;
+    label: string;
+    kind: TokenFieldKind;
+    min?: number;
+    max?: number;
+    step?: number;
+  }[];
+}
+
+export function tokenGroupsFromRendererAppearance(groups: readonly RendererAppearanceGroupLike[] | undefined): TokenGroupDef[] {
+  if (!groups || groups.length === 0) return APPEARANCE_TOKEN_GROUPS;
+  return groups.map((group) => ({
+    id: group.id,
+    title: group.label,
+    parts: group.parts,
+    rendererDeclared: true,
+    fields: group.controls.map((control) => ({
+      key: control.key,
+      label: control.label,
+      kind: control.kind,
+      min: control.min,
+      max: control.max,
+      step: control.step,
+    })),
+  }));
+}
+
+export function tokenGroupsForRendererPart(
+  groups: TokenGroupDef[],
+  part: string | null,
+): TokenGroupDef[] {
+  if (part === null) return groups;
+  if (groups.some((group) => group.rendererDeclared)) {
+    const matching = groups.filter((group) => group.parts?.includes(part));
+    if (matching.length > 0) return matching;
+    return tokenGroupsForPart(part);
+  }
+  const matching = groups.filter((group) => group.id === part || group.fields.some((field) => field.key.startsWith(`${part}.`)));
+  if (matching.length > 0) return matching;
+  return tokenGroupsForPart(part);
 }
 
 export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [

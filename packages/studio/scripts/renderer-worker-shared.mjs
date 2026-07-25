@@ -186,19 +186,158 @@ export function unsupportedImportDiagnostics({ projectDir, rendererDir, renderer
   return diagnostics;
 }
 
+function isIdentifierStart(char) {
+  return char != null && /[A-Za-z_$]/.test(char);
+}
+
+function isIdentifierPart(char) {
+  return char != null && /[A-Za-z0-9_$]/.test(char);
+}
+
+function skipQuoted(source, start, quote) {
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source[index] === quote) return index + 1;
+    index += 1;
+  }
+  return source.length;
+}
+
+function findMatchingObjectEnd(source, start) {
+  let depth = 0;
+  let index = start;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === "'" || char === '"' || char === "`") {
+      index = skipQuoted(source, index, char);
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "/") {
+      const newline = source.indexOf("\n", index + 2);
+      index = newline < 0 ? source.length : newline + 1;
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2);
+      index = end < 0 ? source.length : end + 2;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function manifestObjectRange(source) {
+  const exportIndex = source.indexOf("export default");
+  if (exportIndex < 0) return null;
+  let index = exportIndex + "export default".length;
+  while (/\s/.test(source[index] ?? "")) index += 1;
+  if (source[index] === "{") {
+    const end = findMatchingObjectEnd(source, index);
+    return end == null ? null : { start: index, end };
+  }
+  const match = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(source.slice(index));
+  if (!match) return null;
+  const identifier = match[0];
+  const declarationPattern = new RegExp(
+    `\\b(?:const|let|var)\\s+${identifier}\\s*(?:\\:\\s*[^=;]+)?=\\s*\\{`,
+    "g",
+  );
+  let declaration;
+  for (const candidate of source.matchAll(declarationPattern)) {
+    if ((candidate.index ?? -1) >= exportIndex) break;
+    declaration = candidate;
+  }
+  if (!declaration) return null;
+  const start = (declaration.index ?? 0) + declaration[0].lastIndexOf("{");
+  const end = findMatchingObjectEnd(source, start);
+  return end == null ? null : { start, end };
+}
+
+function topLevelPropertyIndex(source, range, propertyName) {
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let index = range.start + 1;
+  while (index < range.end - 1) {
+    const char = source[index];
+    if (char === "'" || char === '"' || char === "`") {
+      index = skipQuoted(source, index, char);
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "/") {
+      const newline = source.indexOf("\n", index + 2);
+      index = newline < 0 ? range.end : newline + 1;
+      continue;
+    }
+    if (char === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2);
+      index = end < 0 ? range.end : end + 2;
+      continue;
+    }
+    if (braceDepth === 0 && bracketDepth === 0 && parenDepth === 0 && source.startsWith(propertyName, index)) {
+      const before = source[index - 1];
+      const after = source[index + propertyName.length];
+      if (!isIdentifierPart(before) && !isIdentifierPart(after)) {
+        let cursor = index + propertyName.length;
+        while (/\s/.test(source[cursor] ?? "")) cursor += 1;
+        if (source[cursor] === ":") return index;
+      }
+    }
+    if (char === "{") braceDepth += 1;
+    else if (char === "}") braceDepth -= 1;
+    else if (char === "[") bracketDepth += 1;
+    else if (char === "]") bracketDepth -= 1;
+    else if (char === "(") parenDepth += 1;
+    else if (char === ")") parenDepth -= 1;
+    index += 1;
+  }
+  return null;
+}
+
+function propertyValueStart(source, propertyIndex, propertyName) {
+  let index = propertyIndex + propertyName.length;
+  while (/\s/.test(source[index] ?? "")) index += 1;
+  if (source[index] !== ":") return null;
+  index += 1;
+  while (/\s/.test(source[index] ?? "")) index += 1;
+  return index;
+}
+
+function manifestPropertyIndex(source, propertyName) {
+  const range = manifestObjectRange(source);
+  return range == null ? null : topLevelPropertyIndex(source, range, propertyName);
+}
+
 function propertyIndex(source, propertyName) {
-  const match = new RegExp(`\\b${propertyName}\\s*:`).exec(source);
-  return match?.index ?? 0;
+  return manifestPropertyIndex(source, propertyName) ?? 0;
 }
 
 function firstStringProperty(source, propertyName) {
-  const match = new RegExp(`\\b${propertyName}\\s*:\\s*["']([^"']+)["']`).exec(source);
-  return match?.[1];
+  const index = manifestPropertyIndex(source, propertyName);
+  if (index == null) return undefined;
+  const valueStart = propertyValueStart(source, index, propertyName);
+  if (valueStart == null || !["'", '"'].includes(source[valueStart])) return undefined;
+  const end = skipQuoted(source, valueStart, source[valueStart]);
+  return source.slice(valueStart + 1, end - 1);
 }
 
 function firstNumberProperty(source, propertyName) {
-  const match = new RegExp(`\\b${propertyName}\\s*:\\s*(\\d+)`).exec(source);
-  return match ? Number(match[1]) : undefined;
+  const index = manifestPropertyIndex(source, propertyName);
+  if (index == null) return undefined;
+  const valueStart = propertyValueStart(source, index, propertyName);
+  if (valueStart == null) return undefined;
+  const match = /^\d+/.exec(source.slice(valueStart));
+  return match ? Number(match[0]) : undefined;
 }
 
 export function rendererManifestDiagnostics({ projectDir, rendererDir, rendererId }) {

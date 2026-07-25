@@ -2553,51 +2553,206 @@ fn renderer_import_allowed(specifier: &str) -> bool {
         || specifier.starts_with("file:")
 }
 
-fn find_string_property(source: &str, property: &str) -> Option<(String, u32)> {
-    for (index, line) in source.lines().enumerate() {
-        let Some(property_index) = line.find(property) else {
-            continue;
-        };
-        let after_property = &line[property_index + property.len()..];
-        let Some(colon_index) = after_property.find(':') else {
-            continue;
-        };
-        let after_colon = after_property[colon_index + 1..].trim_start();
-        let Some(quote) = after_colon.chars().next() else {
-            continue;
-        };
-        if quote != '"' && quote != '\'' {
+fn skip_quoted_source(source: &str, start: usize, quote: u8) -> usize {
+    let bytes = source.as_bytes();
+    let mut index = start.saturating_add(1);
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            index = index.saturating_add(2);
             continue;
         }
-        let value_start = quote.len_utf8();
-        let after_quote = &after_colon[value_start..];
-        let Some(end) = after_quote.find(quote) else {
-            continue;
-        };
-        return Some((after_quote[..end].to_string(), index as u32 + 1));
+        if bytes[index] == quote {
+            return index.saturating_add(1);
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+fn find_matching_source_brace(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 0i32;
+    let mut index = start;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\'' | b'"' | b'`' => {
+                index = skip_quoted_source(source, index, bytes[index]);
+                continue;
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                index = source[index + 2..]
+                    .find('\n')
+                    .map(|offset| index + 2 + offset + 1)
+                    .unwrap_or(bytes.len());
+                continue;
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                index = source[index + 2..]
+                    .find("*/")
+                    .map(|offset| index + 2 + offset + 2)
+                    .unwrap_or(bytes.len());
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
     }
     None
 }
 
-fn find_number_property(source: &str, property: &str) -> Option<(i64, u32)> {
-    for (index, line) in source.lines().enumerate() {
-        let Some(property_index) = line.find(property) else {
-            continue;
-        };
-        let after_property = &line[property_index + property.len()..];
-        let Some(colon_index) = after_property.find(':') else {
-            continue;
-        };
-        let after_colon = after_property[colon_index + 1..].trim_start();
-        let digits: String = after_colon
-            .chars()
-            .take_while(|ch| ch.is_ascii_digit())
-            .collect();
-        if let Ok(value) = digits.parse::<i64>() {
-            return Some((value, index as u32 + 1));
+fn manifest_object_range(source: &str) -> Option<(usize, usize)> {
+    let export_index = source.find("export default")?;
+    let bytes = source.as_bytes();
+    let mut index = export_index + "export default".len();
+    while bytes.get(index).is_some_and(|byte| byte.is_ascii_whitespace()) {
+        index += 1;
+    }
+
+    let start = if bytes.get(index) == Some(&b'{') {
+        index
+    } else {
+        let identifier_start = index;
+        while bytes.get(index).is_some_and(|byte| {
+            byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'$'
+        }) {
+            index += 1;
         }
+        if identifier_start == index {
+            return None;
+        }
+        let identifier = &source[identifier_start..index];
+        let declaration_start = source[..export_index]
+            .rfind(&format!("const {identifier}"))
+            .or_else(|| source[..export_index].rfind(&format!("let {identifier}")))
+            .or_else(|| source[..export_index].rfind(&format!("var {identifier}")))?;
+        let equals_index = source[declaration_start..export_index].find('=')? + declaration_start;
+        source[equals_index..export_index].find('{')? + equals_index
+    };
+
+    let end = find_matching_source_brace(source, start)?;
+    Some((start, end))
+}
+
+fn is_identifier_source_byte(byte: Option<&u8>) -> bool {
+    byte.is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'$')
+}
+
+fn find_top_level_manifest_property(source: &str, property: &str) -> Option<usize> {
+    let (start, end) = manifest_object_range(source)?;
+    let bytes = source.as_bytes();
+    let mut index = start + 1;
+    let mut brace_depth = 0i32;
+    let mut bracket_depth = 0i32;
+    let mut paren_depth = 0i32;
+
+    while index + 1 < end {
+        match bytes[index] {
+            b'\'' | b'"' | b'`' => {
+                index = skip_quoted_source(source, index, bytes[index]);
+                continue;
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                index = source[index + 2..]
+                    .find('\n')
+                    .map(|offset| index + 2 + offset + 1)
+                    .unwrap_or(end);
+                continue;
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                index = source[index + 2..]
+                    .find("*/")
+                    .map(|offset| index + 2 + offset + 2)
+                    .unwrap_or(end);
+                continue;
+            }
+            _ => {}
+        }
+
+        if brace_depth == 0
+            && bracket_depth == 0
+            && paren_depth == 0
+            && source[index..].starts_with(property)
+            && !is_identifier_source_byte(index.checked_sub(1).and_then(|position| bytes.get(position)))
+            && !is_identifier_source_byte(bytes.get(index + property.len()))
+        {
+            let mut cursor = index + property.len();
+            while cursor < end && bytes[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+            if bytes.get(cursor) == Some(&b':') {
+                return Some(index);
+            }
+        }
+
+        match bytes[index] {
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth -= 1,
+            b'[' => bracket_depth += 1,
+            b']' => bracket_depth -= 1,
+            b'(' => paren_depth += 1,
+            b')' => paren_depth -= 1,
+            _ => {}
+        }
+        index += 1;
     }
     None
+}
+
+fn property_value_start(source: &str, property_index: usize, property: &str) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut index = property_index + property.len();
+    while bytes.get(index).is_some_and(|byte| byte.is_ascii_whitespace()) {
+        index += 1;
+    }
+    if bytes.get(index) != Some(&b':') {
+        return None;
+    }
+    index += 1;
+    while bytes.get(index).is_some_and(|byte| byte.is_ascii_whitespace()) {
+        index += 1;
+    }
+    Some(index)
+}
+
+fn source_line(source: &str, byte_index: usize) -> u32 {
+    source[..byte_index.min(source.len())]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count() as u32
+        + 1
+}
+
+fn find_string_property(source: &str, property: &str) -> Option<(String, u32)> {
+    let property_index = find_top_level_manifest_property(source, property)?;
+    let value_start = property_value_start(source, property_index, property)?;
+    let bytes = source.as_bytes();
+    let quote = *bytes.get(value_start)?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+    let end = skip_quoted_source(source, value_start, quote);
+    Some((
+        source[value_start + 1..end.saturating_sub(1)].to_string(),
+        source_line(source, property_index),
+    ))
+}
+
+fn find_number_property(source: &str, property: &str) -> Option<(i64, u32)> {
+    let property_index = find_top_level_manifest_property(source, property)?;
+    let value_start = property_value_start(source, property_index, property)?;
+    let digits: String = source[value_start..]
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
+    let value = digits.parse::<i64>().ok()?;
+    Some((value, source_line(source, property_index)))
 }
 
 /// 经 node worker（--check-only）对渲染层做真实编译与类型检查。

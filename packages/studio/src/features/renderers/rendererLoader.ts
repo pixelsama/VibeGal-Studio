@@ -4,7 +4,7 @@
  * 用户项目目录可以在任意磁盘位置；dev server 的 /@fs allow-list 无法可靠覆盖。
  * 因此 dev/prod 都走 Tauri 文件读取 + esbuild-wasm 运行时编译。
  */
-import { RENDERER_CONTRACT_VERSION, type RendererManifest } from "@vibegal/engine";
+import { RENDERER_CONTRACT_VERSION, validateRendererManifestContract, type RendererManifest } from "@vibegal/engine";
 import { readRendererFiles } from "../../lib/tauri";
 import { compileRenderer } from "./runtimeCompiler";
 import {
@@ -93,6 +93,19 @@ function manifestDiagnostics(raw: unknown, rendererId: string, files: { path: st
       message: `Unsupported renderer contract version ${String(manifest.contractVersion)}; expected ${RENDERER_CONTRACT_VERSION}.`,
       file,
       ...findPropertyLocation(source, "contractVersion"),
+    });
+  }
+  const contractIssues = validateRendererManifestContract(raw);
+  for (const issue of contractIssues) {
+    if (issue.code === "renderer_contract_unsupported" && manifest.contractVersion !== RENDERER_CONTRACT_VERSION) continue;
+    diagnostics.push({
+      severity: issue.level,
+      code: issue.code,
+      rendererId,
+      step: "manifest",
+      message: issue.message,
+      file,
+      ...findPropertyLocation(source, issue.message.includes("appearance") ? "appearance" : "Component"),
     });
   }
   return diagnostics;

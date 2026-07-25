@@ -219,10 +219,34 @@ export interface RendererManifest {
   contractVersion: typeof RENDERER_CONTRACT_VERSION;
   /** Optional capability flags for later feature probing. */
   capabilities?: string[];
+  /** Optional creator-facing appearance controls consumed by Studio. */
+  appearance?: RendererAppearance;
   /** 描述（可选） */
   description?: string;
   /** 渲染层主组件 */
   Component: ComponentType<RendererProps>;
+}
+
+export type RendererAppearanceControlKind = "number" | "color" | "checkbox" | "font" | "text";
+
+export interface RendererAppearanceControl {
+  key: string;
+  label: string;
+  kind: RendererAppearanceControlKind;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface RendererAppearanceGroup {
+  id: string;
+  label: string;
+  parts?: readonly string[];
+  controls: readonly RendererAppearanceControl[];
+}
+
+export interface RendererAppearance {
+  groups: readonly RendererAppearanceGroup[];
 }
 
 export interface RendererManifestIssue {
@@ -256,6 +280,53 @@ export function validateRendererManifestContract(raw: unknown): RendererManifest
   }
   if (manifest.capabilities != null && (!Array.isArray(manifest.capabilities) || !manifest.capabilities.every((item) => typeof item === "string"))) {
     issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest capabilities must be a string array when present." });
+  }
+  if (manifest.appearance != null) {
+    const appearance = manifest.appearance;
+    if (!appearance || typeof appearance !== "object" || !Array.isArray((appearance as Record<string, unknown>).groups)) {
+      issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest appearance.groups must be an array when appearance is present." });
+    } else {
+      const groups = (appearance as { groups: unknown[] }).groups;
+      groups.forEach((group, groupIndex) => {
+        if (!group || typeof group !== "object") {
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex} must be an object.` });
+          return;
+        }
+        const record = group as Record<string, unknown>;
+        if (typeof record.id !== "string" || record.id.trim() === "" || typeof record.label !== "string" || record.label.trim() === "") {
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex} requires non-empty id and label.` });
+        }
+        if (record.parts != null && (!Array.isArray(record.parts) || !record.parts.every((part) => typeof part === "string" && part.trim() !== ""))) {
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex}.parts must be a string array when present.` });
+        }
+        if (!Array.isArray(record.controls)) {
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex}.controls must be an array.` });
+          return;
+        }
+        record.controls.forEach((control, controlIndex) => {
+          if (!control || typeof control !== "object") {
+            issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance control ${groupIndex}.${controlIndex} must be an object.` });
+            return;
+          }
+          const controlRecord = control as Record<string, unknown>;
+          const validKinds = ["number", "color", "checkbox", "font", "text"];
+          if (
+            typeof controlRecord.key !== "string"
+            || controlRecord.key.trim() === ""
+            || typeof controlRecord.label !== "string"
+            || controlRecord.label.trim() === ""
+            || !validKinds.includes(controlRecord.kind as string)
+          ) {
+            issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance control ${groupIndex}.${controlIndex} requires key, label and kind number|color|checkbox|font|text.` });
+          }
+          for (const field of ["min", "max", "step"]) {
+            if (controlRecord[field] != null && (typeof controlRecord[field] !== "number" || !Number.isFinite(controlRecord[field]))) {
+              issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance control ${groupIndex}.${controlIndex}.${field} must be a finite number when present.` });
+            }
+          }
+        });
+      });
+    }
   }
 
   return issues;

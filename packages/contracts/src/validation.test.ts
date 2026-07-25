@@ -112,6 +112,34 @@ describe("contract default projection corpus", () => {
       expect(SCHEMAS[testCase.schema].parse(testCase.input)).toEqual(testCase.expected);
     });
   }
+
+  it("variables preserve an optional creator-facing label without changing the stable identifier", () => {
+    expect(SCHEMAS.variables.parse({
+      version: 1,
+      variables: {
+        affection: {
+          label: "好感度",
+          type: "number",
+          default: 0,
+          nullable: false,
+          scope: "run",
+          description: "影响角色路线",
+        },
+      },
+    })).toEqual({
+      version: 1,
+      variables: {
+        affection: {
+          label: "好感度",
+          type: "number",
+          default: 0,
+          nullable: false,
+          scope: "run",
+          description: "影响角色路线",
+        },
+      },
+    });
+  });
 });
 
 function issueOrder(left: ExpectedIssue, right: ExpectedIssue): number {

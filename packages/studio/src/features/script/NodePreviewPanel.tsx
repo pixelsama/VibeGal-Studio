@@ -106,7 +106,7 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData, previewS
           <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
         </StageFrame>
       </div>
-      <BottomSheet title="Runtime" expandedHeight="min(300px, 60%)" defaultExpanded={false}>
+      <BottomSheet title="运行状态" expandedHeight="min(300px, 60%)" defaultExpanded={false}>
         <RuntimeStateInspector state={player.state} currentNodeLabel={`${node.title} (${node.id})`} dock="bottom" />
       </BottomSheet>
     </div>

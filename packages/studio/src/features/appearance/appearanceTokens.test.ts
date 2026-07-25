@@ -9,6 +9,8 @@ import {
   selectEditableSkinId,
   tokenDefaultPlaceholder,
   tokenGroupsForPart,
+  tokenGroupsForRendererPart,
+  tokenGroupsFromRendererAppearance,
   tokenVisibleChecked,
   visibleTokenEditValue,
   withDefaultUiSkin,
@@ -204,6 +206,27 @@ describe("tokenGroupsForPart", () => {
       "heroBanner.width",
       "heroBanner.height",
     ]);
+  });
+});
+
+describe("renderer-declared appearance groups", () => {
+  it("uses the renderer's explicit parts mapping instead of guessing from group ids or token prefixes", () => {
+    const groups = tokenGroupsFromRendererAppearance([{
+      id: "caption-style",
+      label: "字幕框",
+      parts: ["dialogueBox"],
+      controls: [{
+        key: "caption.opacity",
+        label: "字幕不透明度",
+        kind: "number",
+        min: 0,
+        max: 1,
+        step: 0.05,
+      }],
+    }]);
+
+    expect(tokenGroupsForRendererPart(groups, "dialogueBox").map((group) => group.id)).toEqual(["caption-style"]);
+    expect(tokenGroupsForRendererPart(groups, "nameBox").map((group) => group.id)).not.toContain("caption-style");
   });
 });
 

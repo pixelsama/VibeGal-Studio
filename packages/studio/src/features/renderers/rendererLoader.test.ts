@@ -175,4 +175,38 @@ describe("loadRenderer", () => {
       ]);
     }
   });
+
+  it("rejects malformed renderer appearance descriptions before exposing them to Studio", async () => {
+    compileResult = {
+      id: "default",
+      name: "Default",
+      contractVersion: 1,
+      appearance: {
+        groups: [{
+          id: "caption",
+          label: "字幕框",
+          controls: [{ key: "caption.opacity", label: "不透明度", kind: "slider" }],
+        }],
+      },
+      Component: () => null,
+    };
+    const { getRendererDiagnostics, loadRenderer } = await import("./rendererLoader");
+    const { trustProjectRenderer } = await import("./rendererTrust");
+    trustProjectRenderer("/project");
+
+    try {
+      await loadRenderer("/project", "default");
+      throw new Error("loadRenderer should fail");
+    } catch (error) {
+      expect(getRendererDiagnostics(error)).toEqual([
+        expect.objectContaining({
+          severity: "error",
+          code: "renderer_manifest_invalid",
+          rendererId: "default",
+          step: "manifest",
+          file: "renderers/default/index.tsx",
+        }),
+      ]);
+    }
+  });
 });

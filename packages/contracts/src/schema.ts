@@ -342,6 +342,7 @@ export const ProjectGraphSchema = z.object({
 // Project-level variable declarations. Runtime state remains scalar-only and
 // scope is explicit so save slots never accidentally capture global progress.
 export const VariableDeclarationSchema = z.strictObject({
+  label: z.string().optional(),
   type: z.enum(["string", "number", "boolean"]),
   default: VariableValueSchema,
   nullable: z.boolean().default(false),

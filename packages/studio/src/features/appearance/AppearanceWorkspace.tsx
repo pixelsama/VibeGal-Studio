@@ -35,7 +35,8 @@ import {
   readSkinTokens,
   saveAppearanceManifest,
   selectEditableSkinId,
-  tokenGroupsForPart,
+  tokenGroupsForRendererPart,
+  tokenGroupsFromRendererAppearance,
   withDefaultUiSkin,
   withUiSkinToken,
 } from "./appearanceTokens";
@@ -99,6 +100,10 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
   const fontFamilies = useMemo(
     () => [...new Set(Object.values(displayManifest.fonts ?? {}).map((font) => font.family))],
     [displayManifest],
+  );
+  const appearanceGroups = useMemo(
+    () => tokenGroupsFromRendererAppearance(renderer?.appearance?.groups),
+    [renderer?.appearance?.groups],
   );
 
   // 预览链路吃 display manifest：draft（编辑中/落盘中）与真实数据走同一条通路
@@ -314,7 +319,9 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
               tokens={skinTokens}
               fontFamilies={fontFamilies}
               disabled={readOnly}
-              groups={selectedPart !== null && viewMode === "single" ? tokenGroupsForPart(selectedPart) : undefined}
+              groups={selectedPart !== null && viewMode === "single"
+                ? tokenGroupsForRendererPart(appearanceGroups, selectedPart)
+                : appearanceGroups}
               onEdit={handleEditToken}
             />
             {/* Spec 19 §4.5：生效 skin 的贴图槽位（折叠高级区，V1 只读） */}

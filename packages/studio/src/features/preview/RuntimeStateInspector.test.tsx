@@ -33,8 +33,8 @@ describe("RuntimeStateInspector", () => {
 
     expect(html).toContain("开始 (start)");
     expect(html).toContain("预览运行后");
-    expect(html).not.toContain("BGM");
-    expect(html).not.toContain("Sprites");
+    expect(html).not.toContain("背景音乐");
+    expect(html).not.toContain("角色立绘");
   });
 
   it("keeps the full field dump once any runtime state exists", () => {
@@ -45,7 +45,7 @@ describe("RuntimeStateInspector", () => {
     const html = renderToStaticMarkup(createElement(RuntimeStateInspector, { state }));
 
     expect(html).toContain("school");
-    expect(html).toContain("BGM");
+    expect(html).toContain("背景音乐");
     expect(html).not.toContain("预览运行后");
   });
 
@@ -55,18 +55,58 @@ describe("RuntimeStateInspector", () => {
     const html = renderToStaticMarkup(createElement(RuntimeStateInspector, { state, dock: "bottom" }));
 
     expect(html).toContain("school");
-    expect(html).not.toContain("Runtime");
+    expect(html).not.toContain("运行状态");
     expect(html).not.toContain("border-left");
   });
 
-  it("groups declared run, global, legacy, and system variables", () => {
-    const state = { ...createInitialState(), vars: { affection: 3, route_done: true, legacy: "x", "system.playthroughCount": 2 } };
+  it("uses creator-facing Chinese labels and keeps technical terms inside folded details", () => {
+    const state = {
+      ...createInitialState(),
+      vars: {
+        affection: 3,
+        route_done: true,
+        legacy: "x",
+        "system.playthroughCount": 2,
+        "system.lastEndingId": null,
+      },
+    };
     const registry = { version: 1 as const, variables: {
-      affection: { type: "number" as const, default: 0, nullable: false, scope: "run" as const },
-      route_done: { type: "boolean" as const, default: false, nullable: false, scope: "global" as const },
+      affection: { label: "好感度", type: "number" as const, default: 0, nullable: false, scope: "run" as const },
+      route_done: { label: "路线已完成", type: "boolean" as const, default: false, nullable: false, scope: "global" as const },
     } };
     const html = renderToStaticMarkup(createElement(RuntimeStateInspector, { state, registry }));
-    for (const group of ["run variables", "global variables", "legacy variables", "system variables"]) expect(html).toContain(group);
-    expect(html).toContain("number · default 0");
+
+    for (const text of ["运行状态", "选项", "背景音乐", "语音", "角色立绘", "变量"]) {
+      expect(html).toContain(text);
+    }
+    for (const group of ["本轮变量", "跨周目变量", "未声明变量", "系统状态"]) {
+      expect(html).toContain(group);
+    }
+    expect(html).toContain("好感度");
+    expect(html).toContain("路线已完成");
+    expect(html).toContain("通关次数");
+    expect(html).toContain("上次达成结局");
+    expect(html).toContain("尚无");
+    expect(html).toContain("<summary>技术详情</summary>");
+    expect(html).toMatch(/<details[^>]*><summary>技术详情<\/summary>[\s\S]*system\.playthroughCount/);
+    expect(html).toMatch(/<details[^>]*><summary>技术详情<\/summary>[\s\S]*system\.lastEndingId/);
+    expect(html).not.toContain("<details open");
+  });
+
+  it("keeps variable rows shrinkable inside a narrow runtime sidebar", () => {
+    const state = {
+      ...createInitialState(),
+      vars: { a_very_long_creator_variable_identifier_that_must_not_expand_the_sidebar: 3 },
+    };
+    const html = renderToStaticMarkup(createElement(RuntimeStateInspector, {
+      state,
+      onVariableChange: () => {},
+      onResetVariables: () => {},
+    }));
+
+    expect(html).toContain("min-width:0");
+    expect(html).toContain("grid-template-columns:minmax(0, 1fr)");
+    expect(html).toContain("width:100%");
+    expect(html).not.toContain("overflow-x:auto");
   });
 });

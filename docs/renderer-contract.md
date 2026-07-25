@@ -45,6 +45,21 @@ Optional fields:
 
 - `description`
 - `capabilities`: string feature flags for contract probing. The bundled default renderer declares `player-ui-v1` when it provides the standard HUD/player menu for save/load, history, skip, auto, and runtime settings. It declares `gallery-ui-v1` when it also provides default CG Gallery, replay, music room, and ending list pages. It declares `layout-parts-v1` when its draggable parts are fully driven by geometry tokens and carry `data-ui-part` (see "Appearance Tokens, `data-ui-part`, and uiHint" below).
+- `appearance.groups`: creator-facing appearance controls consumed by Studio. Each group has `{ id, label, parts?, controls }`; each control has `{ key, label, kind }`, where `kind` is one of `number`, `color`, `checkbox`, `font`, or `text`, with optional numeric `min`, `max`, and `step`. Studio uses these declarations before its built-in default groups, and falls back to those groups when the field is absent. The loader validates this structure before exposing the manifest.
+
+```ts
+appearance: {
+  groups: [{
+    id: "dialogueBox",
+    label: "对话框",
+    parts: ["dialogueBox"],
+    controls: [
+      { key: "dialogueBox.bgColor", label: "背景色", kind: "color" },
+      { key: "dialogueBox.fontSize", label: "字号", kind: "number", min: 1, step: 1 },
+    ],
+  }],
+}
+```
 
 VibeGal-Studio rejects renderer manifests whose `contractVersion` is missing or newer than the engine-supported version. There is no legacy renderer compatibility shim in V1.
 
