@@ -6,7 +6,7 @@ import {
   buildInitialState,
 } from "../interpreter";
 import { InstructionSchema } from "../schema";
-import type { Manifest } from "../types";
+import type { Instruction, Manifest } from "../types";
 
 const manifest: Manifest = {
   characters: {
@@ -134,6 +134,27 @@ describe("set instruction", () => {
 });
 
 describe("applyInstruction: wait / effect / bg / bgm / sfx", () => {
+  it("在未经过 schema 解析的精简指令上应用契约缺省值", () => {
+    let state = applyInstruction(buildInitialState(), { t: "bg", id: "ocean" } as Instruction, deps);
+    expect(state.backgroundTrans).toBe("fade");
+    expect(state.backgroundMs).toBe(1000);
+
+    state = applyInstruction(state, { t: "char", id: "protagonist" } as Instruction, deps);
+    expect(state.sprites[0]).toMatchObject({ expr: "default", pos: "center", trans: "fade" });
+
+    state = applyInstruction(state, { t: "say", who: "protagonist", text: "你好" } as Instruction, deps);
+    expect(state.speaker?.expr).toBe("default");
+
+    state = applyInstruction(state, { t: "bgm", id: "bgm1" } as Instruction, deps);
+    expect(state.audio.bgm).toEqual({ id: "bgm1", fade: 1500, loop: true });
+
+    state = applyInstruction(state, { t: "effect", type: "shake" } as Instruction, deps);
+    expect(state.effects.at(-1)).toMatchObject({ type: "shake", intensity: 6, ms: 400 });
+
+    state = applyInstruction(state, { t: "transition", type: "fade_in" } as Instruction, deps);
+    expect(state.transitions.at(-1)).toMatchObject({ type: "fade_in", ms: 1000 });
+  });
+
   it("wait 只置标记，不改其他状态（实际计时由 player 负责）", () => {
     const before = buildInitialState();
     const state = applyInstruction(before, { t: "wait", ms: 500 }, deps);

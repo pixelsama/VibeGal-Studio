@@ -8,6 +8,7 @@ export * from "./schema";
 export * from "./types";
 export * from "./state";
 export * from "./interpreter";
+export * from "./instructionDefaults";
 export * from "./player";
 export * from "./graphPlayer";
 export * from "./graphRouting";

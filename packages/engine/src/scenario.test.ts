@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import type { Instruction } from "./types";
 import {
+  formatScenarioInstruction,
   formatScenarioText,
+  parseScenarioLine,
   parseScenarioText,
   withoutStoryPointId,
 } from "./scenario";
+import { withInstructionDefaults } from "./instructionDefaults";
 
 describe("scenario text DSL", () => {
   it("parses blank-line separated frames into instructions with pause for stage-only frames", () => {
@@ -19,11 +22,11 @@ akari: 今天也很安静呢。`);
     if (!result.ok) return;
 
     expect(result.instructions).toEqual([
-      { t: "bg", id: "classroom", trans: "fade", ms: 1000 },
-      { t: "bgm", id: "daily", fade: 1500, loop: true },
-      { t: "char", id: "akari", expr: "smile", pos: "left", trans: "fade", ms: 600, clear: false, remove: false },
+      { t: "bg", id: "classroom", trans: "fade" },
+      { t: "bgm", id: "daily" },
+      { t: "char", id: "akari", expr: "smile", pos: "left" },
       { t: "pause" },
-      { t: "say", who: "akari", expr: "default", text: "今天也很安静呢。" },
+      { t: "say", who: "akari", text: "今天也很安静呢。" },
     ]);
   });
 
@@ -47,8 +50,8 @@ akari: 今天也很安静呢。`);
       { t: "voice", id: "akari_001" },
       { t: "wait", ms: 800 },
       { t: "set", key: "has_key", value: true },
-      { t: "effect", type: "shake", intensity: 6, ms: 400 },
-      { t: "transition", type: "fade_in", ms: 1000 },
+      { t: "effect", type: "shake" },
+      { t: "transition", type: "fade_in" },
       { t: "pause" },
     ]);
   });
@@ -86,6 +89,24 @@ akari: 今天也很安静呢。`);
     ]);
   });
 
+  it("treats explicit contract defaults as equivalent to omitted fields", () => {
+    const parsed = parseScenarioLine("@char akari smile left");
+    expect(parsed).toMatchObject({ ok: true });
+    if (!parsed.ok || !parsed.instruction) return;
+    const explicit = {
+      t: "char",
+      id: "akari",
+      expr: "smile",
+      pos: "left",
+      trans: "fade",
+      ms: 600,
+      clear: false,
+      remove: false,
+    } as Instruction;
+    expect(withInstructionDefaults(parsed.instruction)).toEqual(withInstructionDefaults(explicit));
+    expect(formatScenarioInstruction(explicit)).toBe("@char akari smile left");
+  });
+
   it("formats instructions into stable scenario text", () => {
     const instructions: Instruction[] = [
       { t: "bg", id: "classroom", trans: "fade", ms: 1000 },
@@ -97,7 +118,7 @@ akari: 今天也很安静呢。`);
       { t: "set", key: "route", value: "stay" },
     ];
 
-    expect(formatScenarioText(instructions)).toBe(`@bg classroom fade
+    expect(formatScenarioText(instructions)).toBe(`@bg classroom
 @char akari smile left
 @pause
 
@@ -107,6 +128,29 @@ akari: 早上好。
 @playVideo op true
 @set route "stay"
 @continue`);
+  });
+
+  it("parses all readable parameters without materializing omitted defaults", () => {
+    const result = parseScenarioText(`@bg ocean_night dissolve 2375ms
+@bgm theme 0ms once
+@char hero hurt far-left slide 825ms clear out
+hero(hurt, 0ms): 别把 : 和 @ 当成语法。
+@narrate 2600ms 风停了。
+@wait 715ms
+@effect blur 2.5 975ms
+@transition white_out 1450ms`);
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual([
+      { t: "bg", id: "ocean_night", trans: "dissolve", ms: 2375 },
+      { t: "bgm", id: "theme", fade: 0, loop: false },
+      { t: "char", id: "hero", expr: "hurt", pos: "far-left", trans: "slide", ms: 825, clear: true, remove: true },
+      { t: "say", who: "hero", expr: "hurt", text: "别把 : 和 @ 当成语法。", ms: 0 },
+      { t: "narrate", text: "风停了。", ms: 2600 },
+      { t: "wait", ms: 715 },
+      { t: "effect", type: "blur", intensity: 2.5, ms: 975 },
+      { t: "transition", type: "white_out", ms: 1450 },
+    ]);
   });
 
   it("round-trips every semantic field while hiding story-point ids", () => {
@@ -139,7 +183,7 @@ akari: 早上好。
     expect(result.instructions).toEqual(instructions.map(withoutStoryPointId));
   });
 
-  it("removes story-point ids from fallback instruction JSON", () => {
+  it("keeps timed dialogue and narration readable while hiding story-point ids", () => {
     const instructions = [
       { t: "say", id: "say_fallback", who: "hero", text: "Keep every semantic field.", ms: 125 },
       { t: "narrate", id: "narrate_fallback", text: "Narration", ms: 250 },
@@ -148,8 +192,9 @@ akari: 早上好。
     const formatted = formatScenarioText(instructions);
     const result = parseScenarioText(formatted);
 
-    expect(formatted).toContain('@instruction {"t":"say","who":"hero","text":"Keep every semantic field.","ms":125}');
-    expect(formatted).toContain('@instruction {"t":"narrate","text":"Narration","ms":250}');
+    expect(formatted).toContain("hero(125ms): Keep every semantic field.");
+    expect(formatted).toContain("@narrate 250ms Narration");
+    expect(formatted).not.toContain("@instruction");
     expect(formatted).not.toContain("fallback");
     expect(result).toMatchObject({ ok: true, diagnostics: [] });
     expect(result.instructions).toEqual(instructions.map(withoutStoryPointId));
@@ -197,7 +242,9 @@ akari: 早上好。
     const result = parseScenarioText(formatScenarioText(source));
 
     expect(result).toMatchObject({ ok: true, diagnostics: [] });
-    expect(result.instructions).toEqual(source.map(withoutStoryPointId));
+    expect(result.instructions.map(withInstructionDefaults)).toEqual(
+      source.map(withoutStoryPointId).map(withInstructionDefaults),
+    );
   });
 
   it("does not invent an implicit pause after a formatted non-blocking tail", () => {

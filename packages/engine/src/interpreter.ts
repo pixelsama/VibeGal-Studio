@@ -14,10 +14,23 @@ import type { Instruction, Manifest } from "./types";
 import type { NovelState, ActiveSprite, Speaker, PendingEffect, PendingTransition } from "./state";
 import { createInitialState } from "./state";
 import { evaluateExpressionValue, parseExpression } from "./expression";
+import { INSTRUCTION_DEFAULTS } from "./instructionDefaults";
 
 /** 自增序号，给特效/转场/音效一个唯一 id，组件用它判断「是不是新的，要不要播」。 */
 let seqCounter = 0;
 const nextSeq = () => ++seqCounter;
+
+function charExpr(instr: { expr?: string }): string {
+  return instr.expr ?? INSTRUCTION_DEFAULTS.char.expr;
+}
+
+function charPos(instr: { pos?: string }): string {
+  return instr.pos ?? INSTRUCTION_DEFAULTS.char.pos;
+}
+
+function charTrans(instr: { trans?: "fade" | "cut" | "slide" }): "fade" | "cut" | "slide" {
+  return instr.trans ?? INSTRUCTION_DEFAULTS.char.trans;
+}
 
 export interface InterpreterDeps {
   manifest: Manifest;
@@ -45,8 +58,8 @@ export function applyInstruction(
       return {
         ...state,
         background: instr.id,
-        backgroundTrans: instr.trans,
-        backgroundMs: instr.ms,
+        backgroundTrans: instr.trans ?? INSTRUCTION_DEFAULTS.bg.trans,
+        backgroundMs: instr.ms ?? INSTRUCTION_DEFAULTS.bg.ms,
       };
 
     // ── 视觉：立绘 ──────────────────────────────
@@ -66,15 +79,15 @@ export function applyInstruction(
       const existing = state.sprites.find((s) => s.id === instr.id && !s.leaving);
       if (existing) {
         // 已在场 → 这是「换表情/移位」语义，不是登场
-        const changed = existing.expr !== instr.expr || existing.pos !== instr.pos;
+        const changed = existing.expr !== charExpr(instr) || existing.pos !== charPos(instr);
         if (!changed) return state;
         const updated: ActiveSprite = {
           ...existing,
           prevExpr: existing.expr,
           prevPos: existing.pos,
-          expr: instr.expr,
-          pos: instr.pos,
-          trans: instr.trans,
+          expr: charExpr(instr),
+          pos: charPos(instr),
+          trans: charTrans(instr),
           changeId: nextSeq(),
           justEntered: false,
         };
@@ -87,13 +100,13 @@ export function applyInstruction(
       // 新登场
       const sprite: ActiveSprite = {
         id: instr.id,
-        pos: instr.pos,
-        expr: instr.expr,
+        pos: charPos(instr),
+        expr: charExpr(instr),
         changeId: nextSeq(),
         justEntered: true,
         prevExpr: null,
         prevPos: null,
-        trans: instr.trans,
+        trans: charTrans(instr),
         leaving: false,
       };
       // clear=true：其余立绘标记 leaving 保留一帧（让它们播退场而非瞬间消失）
@@ -110,9 +123,10 @@ export function applyInstruction(
     // ── 文本：对话 ──────────────────────────────
     case "say": {
       const char = deps.manifest.characters[instr.who];
+      const expr = instr.expr ?? INSTRUCTION_DEFAULTS.say.expr;
       const speaker: Speaker | null = char
-        ? { id: instr.who, name: char.name, color: char.color, expr: instr.expr }
-        : { id: instr.who, name: instr.who, color: "#ffffff", expr: instr.expr };
+        ? { id: instr.who, name: char.name, color: char.color, expr }
+        : { id: instr.who, name: instr.who, color: "#ffffff", expr };
       return {
         ...state,
         speaker,
@@ -149,7 +163,17 @@ export function applyInstruction(
 
     // ── 音频线索（不在这里播放，只改状态；播放由 player/组件负责） ──
     case "bgm":
-      return { ...state, audio: { ...state.audio, bgm: { id: instr.id, fade: instr.fade, loop: instr.loop } } };
+      return {
+        ...state,
+        audio: {
+          ...state.audio,
+          bgm: {
+            id: instr.id,
+            fade: instr.fade ?? INSTRUCTION_DEFAULTS.bgm.fade,
+            loop: instr.loop ?? INSTRUCTION_DEFAULTS.bgm.loop,
+          },
+        },
+      };
 
     case "sfx": {
       const seq = nextSeq();
@@ -167,14 +191,14 @@ export function applyInstruction(
       const e: PendingEffect = {
         id: nextSeq(),
         type: instr.type,
-        intensity: instr.intensity,
-        ms: instr.ms,
+        intensity: instr.intensity ?? INSTRUCTION_DEFAULTS.effect.intensity,
+        ms: instr.ms ?? INSTRUCTION_DEFAULTS.effect.ms,
       };
       return { ...state, effects: [...state.effects, e] };
     }
 
     case "transition": {
-      const tr: PendingTransition = { id: nextSeq(), type: instr.type, ms: instr.ms };
+      const tr: PendingTransition = { id: nextSeq(), type: instr.type, ms: instr.ms ?? INSTRUCTION_DEFAULTS.transition.ms };
       return { ...state, transitions: [...state.transitions, tr] };
     }
 

@@ -1,6 +1,7 @@
 import { InstructionSchema } from "./schema";
 import type { Instruction } from "./types";
 import { instructionPolicies } from "@vibegal/contracts";
+import { INSTRUCTION_DEFAULTS, withInstructionDefaults } from "./instructionDefaults";
 
 export interface ScenarioDiagnostic {
   line: number;
@@ -14,6 +15,90 @@ export type ScenarioParseResult =
 type ParsedLine =
   | { ok: true; instruction: Instruction | null; suppressesImplicitPause?: boolean }
   | { ok: false; message: string };
+
+/**
+ * 剧本行里的「参数尾巴」。
+ *
+ * 此前可读语法只能表达指令的一部分字段（`@bg` 固定 ms=1000、`@char` 固定
+ * clear/remove=false…），凡是参数偏离默认值的指令都会整条退化成
+ * `@instruction {…JSON…}`——角色退场、非默认转场时长这种高频操作首当其冲。
+ * 现在统一在位置参数之后接受三类记号：
+ *
+ * - 时长：`1200ms`
+ * - 开关：`clear` / `out` / `once` / `loop`（各命令自行取用）
+ * - 其余裸词：交给命令自己按位置解释（转场名、表情、位置、强度…）
+ */
+interface OptionTokens {
+  ok: true;
+  words: string[];
+  flags: string[];
+  ms?: number;
+}
+
+type OptionTokensResult = OptionTokens | { ok: false; message: string };
+
+const OPTION_FLAGS = new Set(["clear", "out", "once", "loop"]);
+
+/** `1200ms` → 1200；不是时长记号 → undefined；写坏了（`-5ms`、`abcms`）→ null。 */
+function parseMsToken(token: string): number | null | undefined {
+  if (!token.endsWith("ms")) return undefined;
+  const digits = token.slice(0, -2);
+  if (!/^\d+$/.test(digits)) return null;
+  return Number.parseInt(digits, 10);
+}
+
+function readOptionTokens(tokens: string[]): OptionTokensResult {
+  const words: string[] = [];
+  const flags: string[] = [];
+  let ms: number | undefined;
+  for (const token of tokens) {
+    const parsed = parseMsToken(token);
+    if (parsed === null) return { ok: false, message: `时长必须写成毫秒数，如 1200ms（收到「${token}」）。` };
+    if (parsed !== undefined) {
+      if (ms != null) return { ok: false, message: "只能写一个时长。" };
+      ms = parsed;
+      continue;
+    }
+    if (OPTION_FLAGS.has(token)) flags.push(token);
+    else words.push(token);
+  }
+  return { ok: true, words, flags, ms };
+}
+
+/** 只保留真正写下的字段，缺省项留给 schema/interpreter，避免把默认值写进项目文件。 */
+function pruneUndefined<T extends Record<string, unknown>>(value: T): T {
+  const entries = Object.entries(value).filter(([, item]) => item !== undefined);
+  return Object.fromEntries(entries) as T;
+}
+
+/**
+ * 台词行的说话人部分：`雪`、`雪(hurt)`、`雪(hurt, 1800ms)`、`雪(1800ms)`。
+ * 表情与停顿写在冒号左边，右边永远是纯台词文本。
+ */
+function parseSpeakerHead(head: string):
+  | { ok: true; who: string; expr?: string; ms?: number }
+  | { ok: false; message: string } {
+  const match = head.match(/^(.*?)\s*[(（]\s*([^)）]*)\s*[)）]$/);
+  if (!match) return { ok: true, who: head };
+  const who = match[1].trim();
+  if (!who) return { ok: false, message: "台词需要说话人。" };
+  let expr: string | undefined;
+  let ms: number | undefined;
+  for (const raw of match[2].split(/[,，]/)) {
+    const token = raw.trim();
+    if (!token) continue;
+    const parsed = parseMsToken(token);
+    if (parsed === null) return { ok: false, message: `台词停顿必须写成毫秒数，如 1800ms（收到「${token}」）。` };
+    if (parsed !== undefined) {
+      if (ms != null) return { ok: false, message: "台词只能写一个停顿。" };
+      ms = parsed;
+      continue;
+    }
+    if (expr != null) return { ok: false, message: `台词只能写一个表情（收到「${token}」）。` };
+    expr = token;
+  }
+  return { ok: true, who, expr, ms };
+}
 
 const BG_TRANSITIONS = new Set(["fade", "cut", "dissolve"]);
 const CHAR_TRANSITIONS = new Set(["fade", "cut", "slide"]);
@@ -109,14 +194,32 @@ export function parseScenarioLine(line: string): ParsedLine {
       case "@bg": {
         const id = parts[1];
         if (!id) return { ok: false, message: "@bg 需要背景 ID。" };
-        const trans = parts[2] ?? "fade";
-        if (!BG_TRANSITIONS.has(trans)) return { ok: false, message: "@bg 转场必须是 fade、cut 或 dissolve。" };
-        return { ok: true, instruction: { t: "bg", id, trans, ms: 1000 } as Instruction };
+        const rest = readOptionTokens(parts.slice(2));
+        if (!rest.ok) return { ok: false, message: `@bg ${rest.message}` };
+        const trans = rest.words[0];
+        if (rest.words.length > 1) return { ok: false, message: "@bg 只接受一个转场名。" };
+        if (trans != null && !BG_TRANSITIONS.has(trans)) {
+          return { ok: false, message: "@bg 转场必须是 fade、cut 或 dissolve。" };
+        }
+        if (rest.flags.length > 0) return { ok: false, message: `@bg 不认识「${rest.flags[0]}」。` };
+        return {
+          ok: true,
+          instruction: pruneUndefined({ t: "bg", id, trans, ms: rest.ms }) as Instruction,
+        };
       }
       case "@bgm": {
         const id = parts[1];
         if (!id) return { ok: false, message: "@bgm 需要 BGM ID。" };
-        return { ok: true, instruction: { t: "bgm", id, fade: 1500, loop: true } as Instruction };
+        const rest = readOptionTokens(parts.slice(2));
+        if (!rest.ok) return { ok: false, message: `@bgm ${rest.message}` };
+        if (rest.words.length > 0) return { ok: false, message: `@bgm 不认识「${rest.words[0]}」。` };
+        const unknown = rest.flags.find((flag) => flag !== "once" && flag !== "loop");
+        if (unknown) return { ok: false, message: `@bgm 不认识「${unknown}」。` };
+        const loop = rest.flags.includes("once") ? false : rest.flags.includes("loop") ? true : undefined;
+        return {
+          ok: true,
+          instruction: pruneUndefined({ t: "bgm", id, fade: rest.ms, loop }) as Instruction,
+        };
       }
       case "@sfx": {
         const id = parts[1];
@@ -131,21 +234,52 @@ export function parseScenarioLine(line: string): ParsedLine {
       case "@char": {
         const id = parts[1];
         if (!id) return { ok: false, message: "@char 需要角色 ID。" };
-        const expr = parts[2] ?? "default";
-        const pos = parts[3] ?? "center";
-        const trans = parts[4] && CHAR_TRANSITIONS.has(parts[4]) ? parts[4] : "fade";
+        const rest = readOptionTokens(parts.slice(2));
+        if (!rest.ok) return { ok: false, message: `@char ${rest.message}` };
+        const unknownFlag = rest.flags.find((flag) => flag !== "clear" && flag !== "out");
+        if (unknownFlag) return { ok: false, message: `@char 不认识「${unknownFlag}」。` };
+        // 位置参数：表情、位置、转场。转场名可以直接出现在任意位置（它自成词表），
+        // 于是 `@char akari smile left slide` 与 `@char akari slide` 都能写。
+        const words = [...rest.words];
+        const transIndex = words.findIndex((word) => CHAR_TRANSITIONS.has(word));
+        const trans = transIndex >= 0 ? words.splice(transIndex, 1)[0] : undefined;
+        if (words.length > 2) return { ok: false, message: `@char 不认识「${words[2]}」。` };
+        const [expr, pos] = words;
         return {
           ok: true,
-          instruction: { t: "char", id, expr, pos, trans, ms: 600, clear: false, remove: false } as Instruction,
+          instruction: pruneUndefined({
+            t: "char",
+            id,
+            expr,
+            pos,
+            trans,
+            ms: rest.ms,
+            clear: rest.flags.includes("clear") ? true : undefined,
+            remove: rest.flags.includes("out") ? true : undefined,
+          }) as Instruction,
         };
       }
       case "@wait": {
-        const ms = Number.parseInt(parts[1] ?? "", 10);
-        if (!Number.isInteger(ms) || ms < 0) return { ok: false, message: "@wait 需要非负毫秒数。" };
+        const raw = parts[1] ?? "";
+        const ms = Number.parseInt(raw.endsWith("ms") ? raw.slice(0, -2) : raw, 10);
+        if (!Number.isInteger(ms) || ms < 0 || parts.length > 2) {
+          return { ok: false, message: "@wait 需要非负毫秒数。" };
+        }
         return { ok: true, instruction: { t: "wait", ms } as Instruction };
       }
       case "@pause":
         return { ok: true, instruction: { t: "pause" } as Instruction };
+      case "@narrate": {
+        // 旁白通常直接写一行裸文本；只有需要覆盖自动播放停顿时才用显式命令：
+        // `@narrate 0ms 它们不该有意识。`
+        const first = parts[1] ?? "";
+        const ms = parseMsToken(first);
+        if (ms === null) return { ok: false, message: "@narrate 停顿必须是非负毫秒数，如 0ms。" };
+        const consumed = ms === undefined ? command.length : trimmed.indexOf(first) + first.length;
+        const text = trimmed.slice(consumed).trim();
+        if (!text) return { ok: false, message: "@narrate 需要旁白文本。" };
+        return { ok: true, instruction: pruneUndefined({ t: "narrate", text, ms }) as Instruction };
+      }
       case "@set": {
         const key = parts[1];
         const valueRaw = parts.slice(2).join(" ");
@@ -166,14 +300,33 @@ export function parseScenarioLine(line: string): ParsedLine {
       case "@effect": {
         const type = parts[1];
         if (!type || !EFFECT_TYPES.has(type)) return { ok: false, message: "@effect 类型必须是 shake、flash 或 blur。" };
-        return { ok: true, instruction: { t: "effect", type, intensity: 6, ms: 400 } as Instruction };
+        const rest = readOptionTokens(parts.slice(2));
+        if (!rest.ok) return { ok: false, message: `@effect ${rest.message}` };
+        if (rest.flags.length > 0) return { ok: false, message: `@effect 不认识「${rest.flags[0]}」。` };
+        if (rest.words.length > 1) return { ok: false, message: `@effect 不认识「${rest.words[1]}」。` };
+        const intensity = rest.words.length === 1 ? Number(rest.words[0]) : undefined;
+        if (intensity != null && (!Number.isFinite(intensity) || intensity < 0 || intensity > 20)) {
+          return { ok: false, message: "@effect 强度必须是 0–20 的数字。" };
+        }
+        return {
+          ok: true,
+          instruction: pruneUndefined({ t: "effect", type, intensity, ms: rest.ms }) as Instruction,
+        };
       }
       case "@transition": {
         const type = parts[1];
         if (!type || !TRANSITION_TYPES.has(type)) {
           return { ok: false, message: "@transition 类型必须是 fade_in、fade_out、white_in、white_out 或 black。" };
         }
-        return { ok: true, instruction: { t: "transition", type, ms: 1000 } as Instruction };
+        const rest = readOptionTokens(parts.slice(2));
+        if (!rest.ok) return { ok: false, message: `@transition ${rest.message}` };
+        if (rest.words.length > 0 || rest.flags.length > 0) {
+          return { ok: false, message: `@transition 不认识「${rest.words[0] ?? rest.flags[0]}」。` };
+        }
+        return {
+          ok: true,
+          instruction: pruneUndefined({ t: "transition", type, ms: rest.ms }) as Instruction,
+        };
       }
       case "@unlock": {
         const kind = parts[1];
@@ -204,10 +357,20 @@ export function parseScenarioLine(line: string): ParsedLine {
 
   const sayMatch = trimmed.match(/^([^:：\s][^:：]*?)\s*[:：]\s*(.*)$/);
   if (sayMatch) {
-    const who = sayMatch[1].trim();
+    const speaker = parseSpeakerHead(sayMatch[1].trim());
+    if (!speaker.ok) return { ok: false, message: speaker.message };
     const sayText = sayMatch[2].trim();
     if (!sayText) return { ok: false, message: "台词文本不能为空。" };
-    return { ok: true, instruction: { t: "say", who, expr: "default", text: sayText } as Instruction };
+    return {
+      ok: true,
+      instruction: pruneUndefined({
+        t: "say",
+        who: speaker.who,
+        expr: speaker.expr,
+        text: sayText,
+        ms: speaker.ms,
+      }) as Instruction,
+    };
   }
 
   return { ok: true, instruction: { t: "narrate", text: trimmed } as Instruction };
@@ -253,22 +416,67 @@ export function withoutStoryPointId(instruction: Instruction): Instruction {
   return projected;
 }
 
+function joinTokens(tokens: Array<string | undefined>): string {
+  return tokens.filter((token): token is string => token != null && token !== "").join(" ");
+}
+
+function msToken(ms: number | undefined): string | undefined {
+  return ms === undefined ? undefined : `${ms}ms`;
+}
+
+/** 台词的表情/停顿写在冒号左边：`雪(hurt, 1800ms): 台词`。两者都缺省时不加括号。 */
+function joinSpeakerOptions(expr: string | undefined, ms: number | undefined): string {
+  const options = [expr, msToken(ms)].filter((token): token is string => token != null && token !== "");
+  return options.length === 0 ? "" : `(${options.join(", ")})`;
+}
+
 function formatReadableScenarioInstruction(instruction: Instruction): string {
+  const defaults = INSTRUCTION_DEFAULTS[instruction.t as keyof typeof INSTRUCTION_DEFAULTS] as Record<string, unknown> | undefined;
   switch (instruction.t) {
     case "bg":
-      return `@bg ${instruction.id} ${instruction.trans ?? "fade"}`;
+      return joinTokens([
+        "@bg",
+        instruction.id,
+        instruction.trans === defaults?.trans ? undefined : instruction.trans,
+        instruction.ms === defaults?.ms ? undefined : msToken(instruction.ms),
+      ]);
     case "bgm":
-      return `@bgm ${instruction.id}`;
+      return joinTokens([
+        "@bgm",
+        instruction.id,
+        instruction.fade === defaults?.fade ? undefined : msToken(instruction.fade),
+        instruction.loop === defaults?.loop || instruction.loop === undefined
+          ? undefined
+          : instruction.loop ? "loop" : "once",
+      ]);
     case "sfx":
       return `@sfx ${instruction.id}`;
     case "voice":
       return `@voice ${instruction.id}`;
-    case "char":
-      return `@char ${instruction.id} ${instruction.expr ?? "default"} ${instruction.pos ?? "center"}`;
-    case "say":
-      return `${instruction.who}: ${instruction.text}`;
+    case "char": {
+      const hasNonDefaultPos = instruction.pos !== undefined && instruction.pos !== defaults?.pos;
+      const expr = instruction.expr === defaults?.expr && !hasNonDefaultPos ? undefined : instruction.expr;
+      const pos = instruction.pos === defaults?.pos ? undefined : instruction.pos;
+      return joinTokens([
+        "@char",
+        instruction.id,
+        expr,
+        pos,
+        instruction.trans === defaults?.trans ? undefined : instruction.trans,
+        instruction.ms === defaults?.ms ? undefined : msToken(instruction.ms),
+        instruction.clear ? "clear" : undefined,
+        instruction.remove ? "out" : undefined,
+      ]);
+    }
+    case "say": {
+      const expr = instruction.expr === defaults?.expr ? undefined : instruction.expr;
+      const head = joinSpeakerOptions(expr, instruction.ms);
+      return `${instruction.who}${head}: ${instruction.text}`;
+    }
     case "narrate":
-      return instruction.text;
+      return instruction.ms === undefined
+        ? instruction.text
+        : `@narrate ${msToken(instruction.ms)} ${instruction.text}`;
     case "set":
       return "expr" in instruction && instruction.expr != null
         ? `@set ${instruction.key} = ${instruction.expr}`
@@ -284,16 +492,27 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
     case "wait":
       return `@wait ${instruction.ms}`;
     case "effect":
-      return `@effect ${instruction.type}`;
+      return joinTokens([
+        "@effect",
+        instruction.type,
+        instruction.intensity === defaults?.intensity || instruction.intensity === undefined
+          ? undefined
+          : String(instruction.intensity),
+        instruction.ms === defaults?.ms ? undefined : msToken(instruction.ms),
+      ]);
     case "transition":
-      return `@transition ${instruction.type}`;
+      return joinTokens([
+        "@transition",
+        instruction.type,
+        instruction.ms === defaults?.ms ? undefined : msToken(instruction.ms),
+      ]);
     case "pause":
       return "@pause";
   }
 }
 
 function instructionsAreEquivalent(left: Instruction, right: Instruction): boolean {
-  return jsonValuesAreEquivalent(left, right);
+  return jsonValuesAreEquivalent(withInstructionDefaults(left), withInstructionDefaults(right));
 }
 
 function jsonValuesAreEquivalent(left: unknown, right: unknown): boolean {
