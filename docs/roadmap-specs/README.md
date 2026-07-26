@@ -2,7 +2,7 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-当前没有仍在规划或开发中的 roadmap spec。
+- [Review 28 — 产品现状评审与开发路线图](./28-product-review-and-roadmap.md)（评审稿，待拍板后拆成实施 spec）
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
