@@ -145,6 +145,7 @@ export function NodeInspector({
             nodeId={node.id}
             edges={outgoingEdges}
             sources={sources}
+            registry={variables}
             disabled={saving || !onUpdateOutgoingEdges}
             onChange={(edges) => onUpdateOutgoingEdges?.(node.id, edges)}
             trialValues={{ ...defaults, ...trialValues }}

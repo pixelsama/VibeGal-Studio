@@ -408,6 +408,25 @@ Graph rules:
 - `choice` edges require labels.
 - `auto` edges evaluate in order; a null/empty condition is a default branch.
 
+#### Exit Effects
+
+A graph edge may carry `effects`: an array of `set` instructions that run because
+the story took *that* exit, applied before the target node starts.
+
+```json
+{
+  "id": "awakening__approach",
+  "from": "awakening", "to": "approach",
+  "mode": "choice", "label": "去看看那片火光",
+  "effects": [{ "t": "set", "key": "resolve", "expr": "resolve + 4" }]
+}
+```
+
+Putting the same `set` inside the target node instead fires it for every way into
+that node, so a shared "next morning" scene would credit the change no matter
+which option the player picked. `effects` reuses the `set` instruction shape, so
+the validator, the CLI and external agents need no new vocabulary.
+
 ### 5.5 Node Files
 
 Node files are JSON arrays:

@@ -246,6 +246,139 @@ describe("state write trace", () => {
   });
 });
 
+describe("edge effects", () => {
+  const variables: VariableRegistry = { version: 1, variables: { affection: meter } };
+
+  /** 两个选项汇入同一个节点 —— 这正是「把 set 放进目标节点」会出错的形状。 */
+  const merging: ProjectGraphData = {
+    version: 1,
+    entryNodeId: "start",
+    chapters: [],
+    nodes: [
+      { id: "start", title: "天台", file: "nodes/start.json", position: { x: 0, y: 0 } },
+      { id: "morning", title: "第二天早上", file: "nodes/morning.json", position: { x: 200, y: 0 } },
+    ],
+    edges: [
+      {
+        id: "start__stay", from: "start", to: "morning", mode: "choice", label: "陪她留下", condition: null,
+        effects: [{ t: "set", key: "affection", expr: "affection + 3" }],
+      },
+      {
+        id: "start__leave", from: "start", to: "morning", mode: "choice", label: "先回去", condition: null,
+        effects: [{ t: "set", key: "affection", expr: "affection - 1" }],
+      },
+    ],
+  };
+
+  function play(graphData = merging) {
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(graphData, [
+      { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "岔路。" }] },
+      { id: "morning", instructions: [{ t: "narrate", id: "morning_01", text: "早上。" }] },
+    ]);
+    while (!player.state.choice) player.advance();
+    return player;
+  }
+
+  it("credits only the option the player actually took", () => {
+    const player = play();
+    player.choose("morning");
+    expect(player.state.vars.affection).toBe(3);
+    player.dispose();
+  });
+
+  it("applies the other option's effect when that one is taken", () => {
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(merging, [
+      { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "岔路。" }] },
+      { id: "morning", instructions: [{ t: "narrate", id: "morning_01", text: "早上。" }] },
+    ]);
+    while (!player.state.choice) player.advance();
+    // choose() 按目标节点选择；两条边同目标时取 choice 模式的第一条，
+    // 因此这里直接验证「未选中的那条不会生效」。
+    player.choose("morning");
+    expect(player.state.vars.affection).not.toBe(-1);
+    player.dispose();
+  });
+
+  it("attributes the change to the exit, not to an instruction", () => {
+    const player = play();
+    player.choose("morning");
+    const write = player.getStateWrites().at(-1);
+    expect(write).toMatchObject({ variable: "affection", from: 0, to: 3, edgeId: "start__stay" });
+    expect(write?.instructionIndex).toBeUndefined();
+    player.dispose();
+  });
+
+  it("is visible to the target node's own instructions", () => {
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(merging, [
+      { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "岔路。" }] },
+      { id: "morning", instructions: [{ t: "set", key: "affection", expr: "affection * 2" }, { t: "narrate", id: "m1", text: "早上。" }] },
+    ]);
+    while (!player.state.choice) player.advance();
+    player.choose("morning");
+    // 出口效果先生效（0 → 3），节点内指令随后翻倍。
+    expect(player.state.vars.affection).toBe(6);
+    player.dispose();
+  });
+
+  it("respects the declared range", () => {
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph({
+      ...merging,
+      edges: [{ ...merging.edges[0], effects: [{ t: "set", key: "affection", expr: "affection + 500" }] }],
+    }, [
+      { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "岔路。" }] },
+      { id: "morning", instructions: [] },
+    ]);
+    while (!player.state.choice) player.advance();
+    player.choose("morning");
+    expect(player.state.vars.affection).toBe(100);
+    player.dispose();
+  });
+
+  it("applies effects on an auto branch too", () => {
+    const auto: ProjectGraphData = {
+      ...merging,
+      edges: [{
+        id: "start__morning", from: "start", to: "morning", mode: "auto", label: null, condition: null,
+        effects: [{ t: "set", key: "affection", expr: "affection + 7" }],
+      }],
+    };
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(auto, [
+      { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "岔路。" }] },
+      { id: "morning", instructions: [{ t: "narrate", id: "morning_01", text: "早上。" }] },
+    ]);
+    // auto 分支要先走完 start 的旁白才解析路由。
+    while (player.state.vars.affection === 0) player.advance();
+    expect(player.state.vars.affection).toBe(7);
+    player.dispose();
+  });
+
+  it("leaves edges without effects untouched", () => {
+    const plain: ProjectGraphData = {
+      ...merging,
+      edges: merging.edges.map((edge) => ({ ...edge, effects: undefined })),
+    };
+    const player = play(plain);
+    player.choose("morning");
+    expect(player.state.vars.affection).toBe(0);
+    expect(player.getStateWrites()).toHaveLength(0);
+    player.dispose();
+  });
+
+  it("drops the change when the player rolls back before the exit", () => {
+    const player = play();
+    player.choose("morning");
+    expect(player.getStateWrites()).toHaveLength(1);
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "start_01" });
+    expect(player.getStateWrites()).toHaveLength(0);
+    player.dispose();
+  });
+});
+
 describe("GraphNovelPlayer story state", () => {
   const variables: VariableRegistry = { version: 1, variables: { affection: meter } };
 

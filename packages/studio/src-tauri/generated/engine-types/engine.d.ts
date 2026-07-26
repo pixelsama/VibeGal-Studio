@@ -93,7 +93,7 @@ import type { ComponentType } from "react";
 
   export type GraphChapterData = { id: string; title: string; };
 
-  export type GraphEdgeData = { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; };
+  export type GraphEdgeData = { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; };
 
   export type GraphNodeData = { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; };
 
@@ -243,7 +243,7 @@ import type { ComponentType } from "react";
     subscribe(listener: () => void): () => void;
   }
 
-  export type ProjectGraphData = { version: number; entryNodeId: string; chapters: { id: string; title: string; }[]; nodes: { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; }[]; };
+  export type ProjectGraphData = { version: number; entryNodeId: string; chapters: { id: string; title: string; }[]; nodes: { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; }[]; };
 
   export const RENDERER_CONTRACT_VERSION: 1;
 

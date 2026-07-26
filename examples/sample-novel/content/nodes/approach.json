@@ -1,0 +1,8 @@
+[
+  { "t": "bg", "id": "ocean_dawn", "trans": "fade", "ms": 1200 },
+  { "t": "narrate", "id": "approach_001", "text": "火光越来越近。海水在她脚下退开，像认得她。" },
+  { "t": "char", "id": "protagonist", "pos": "center", "expr": "default", "trans": "fade", "ms": 600 },
+  { "t": "say", "id": "approach_002", "who": "protagonist", "expr": "default", "text": "再近一点，我就能看清了。" },
+  { "t": "set", "key": "knows_the_fire", "value": true },
+  { "t": "narrate", "id": "approach_003", "text": "两条船。一条在沉，另一条不肯走。" }
+]

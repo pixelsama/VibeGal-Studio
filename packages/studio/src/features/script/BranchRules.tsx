@@ -10,11 +10,12 @@
  */
 import { useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical, TriangleAlert } from "lucide-react";
-import { evaluateGraphConditionResult } from "@vibegal/engine";
+import { evaluateGraphConditionResult, type VariableRegistry } from "@vibegal/engine";
 import type { GraphEdge, ProjectGraph } from "../../lib/types";
 import { IconButton } from "../common/Button";
 import { SegmentedControl, SentenceRow, TextInput } from "../common/Form";
 import { ConditionEditor } from "./ConditionEditor";
+import { EdgeEffectsEditor } from "./EdgeEffectsEditor";
 import { StateTrial } from "./StateTrial";
 import type { StateSource } from "./storyState";
 
@@ -25,6 +26,8 @@ export interface BranchRulesProps {
   nodeId: string;
   edges: GraphEdge[];
   sources: StateSource[];
+  /** 编辑出口效果需要声明表：按用途决定「增加/减少/设为」的控件。 */
+  registry?: VariableRegistry;
   disabled?: boolean;
   onChange: (edges: GraphEdge[]) => void;
   /** 试算值；与预览调试会话共用同一份，避免 Inspector 与预览各有一套。 */
@@ -37,6 +40,7 @@ export function BranchRules({
   nodeId,
   edges,
   sources,
+  registry,
   disabled,
   onChange,
   trialValues,
@@ -142,6 +146,13 @@ export function BranchRules({
                   onChange={(condition) => updateEdge(edge.id, { mode: "auto", label: null, condition: condition || null })}
                 />
               )}
+
+              <EdgeEffectsEditor
+                effects={edge.effects}
+                registry={registry}
+                disabled={disabled}
+                onChange={(effects) => updateEdge(edge.id, { effects })}
+              />
 
               {outcome?.problem && (
                 <p className="gs-branch__problem">

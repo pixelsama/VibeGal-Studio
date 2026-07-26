@@ -14,7 +14,14 @@ fn write_rename_project(project: &Path) {
                 { "id": "plain", "title": "普通", "file": "nodes/plain.json", "chapterId": "c1", "position": { "x": 200, "y": 80 } }
             ],
             "edges": [
-                { "id": "start__love", "from": "start", "to": "love", "mode": "auto", "label": null, "condition": "affection >= 60 && affection_yuki < 3" },
+                {
+                    "id": "start__love", "from": "start", "to": "love", "mode": "auto", "label": null,
+                    "condition": "affection >= 60 && affection_yuki < 3",
+                    "effects": [
+                        { "t": "set", "key": "affection", "expr": "affection + 2" },
+                        { "t": "set", "key": "affection_yuki", "value": 1 }
+                    ]
+                },
                 { "id": "start__plain", "from": "start", "to": "plain", "mode": "auto", "label": null, "condition": null }
             ]
         }),
@@ -75,6 +82,8 @@ fn rename_variable_rewrites_registry_conditions_and_instructions_together() {
     assert_eq!(start[0]["expr"], "love_points + 3");
 
     assert_eq!(result.updated_conditions, 1);
+    // 出口效果单独计数：一条 set 的 key + expr 一起算一处。
+    assert_eq!(result.updated_edge_effects, 1);
     assert_eq!(result.updated_nodes, 1);
     assert!(result.variables_revision.is_some());
     assert!(result.graph_revision.is_some());
@@ -170,6 +179,29 @@ fn rename_variable_rejects_a_reserved_target_namespace() {
 
     let variables = read(&project, "content/variables.json");
     assert!(variables["variables"]["affection"].is_object());
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rename_variable_rewrites_edge_effects() {
+    let root = unique_temp_dir("rename-variable-edge-effects");
+    let project = root.join("project");
+    write_rename_project(&project);
+
+    rename_variable(
+        project.to_string_lossy().into_owned(),
+        "affection".to_string(),
+        "love_points".to_string(),
+    )
+    .unwrap();
+
+    let graph = read(&project, "content/graph.json");
+    let effects = &graph["edges"][0]["effects"];
+    assert_eq!(effects[0]["key"], "love_points");
+    assert_eq!(effects[0]["expr"], "love_points + 2");
+    // 同前缀的另一个状态不能被改。
+    assert_eq!(effects[1]["key"], "affection_yuki");
 
     let _ = fs::remove_dir_all(&root);
 }

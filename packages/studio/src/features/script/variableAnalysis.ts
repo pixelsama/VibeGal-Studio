@@ -68,6 +68,20 @@ export function analyzeGraphVariables(
   }
 
   graph.edges.forEach((edge, index) => {
+    // 出口效果是写入点：不计入的话「没有任何地方改变它」会误报。
+    (edge.effects ?? []).forEach((effect, effectIndex) => {
+      if (typeof effect.key !== "string") return;
+      const slot = ensureVariable(variableMap, effect.key);
+      slot.types.add(inferVariableValueType("value" in effect ? effect.value : undefined));
+      slot.writes.push({
+        nodeId: edge.from,
+        edgeId: edge.id,
+        file: "content/graph.json",
+        jsonPath: `$.edges[${index}].effects[${effectIndex}]`,
+        preview: `走这条出口后 ${effect.key}`,
+      });
+    });
+
     const condition = edge.condition?.trim();
     if (!condition) return;
     const parsed = parseGraphCondition(condition);

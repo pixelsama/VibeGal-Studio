@@ -30,3 +30,4 @@
 - [Spec 24 — Story State Authoring（故事状态创作面）](./24-story-state-authoring.spec.md)
 - [Review Brief 25 — 故事状态与创作者式剧情检查](./25-story-state-and-preview-review-brief.md)
 - [Spec 26 — Story State IA & Story Inspection（故事状态信息架构与剧情检查）](./26-story-state-ia-and-inspection.spec.md)
+- [Spec 27 — Exit Effects & Sample Story（出口效果与示例故事）](./27-exit-effects-and-sample-story.spec.md)

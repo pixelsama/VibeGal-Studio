@@ -80,16 +80,32 @@ function analyzeEndingRoutesFrom(input: Parameters<typeof analyzeEndingRoutes>[0
       if (instruction.t === "completeEnding" && !found.has(instruction.endingId)) found.set(instruction.endingId, current.path);
     }
     const outgoing = input.graph.edges.filter((edge) => edge.from === current.nodeId);
+    // 出口效果在进入目标节点前生效，静态推演必须同样建模，否则结局可达矩阵会
+    // 漏掉「靠选项加分才够格」的路线。
+    const varsAfter = (edge: ProjectGraph["edges"][number]) => {
+      const next = { ...vars };
+      for (const effect of edge.effects ?? []) {
+        if ("value" in effect) next[effect.key] = effect.value ?? null;
+        else if (effect.expr != null) {
+          try {
+            next[effect.key] = evaluateAssignmentExpression(effect.expr, next);
+          } catch {
+            uncertain = true;
+          }
+        }
+      }
+      return next;
+    };
     if (outgoing.every((edge) => (edge.mode ?? "linear") === "auto")) {
       let matched = false;
       for (const edge of outgoing) {
         const result = evaluateGraphConditionResult(edge.condition, vars);
-        if (!result.ok) { uncertain = true; queue.push({ nodeId: edge.to, vars, path: [...current.path, edge.to] }); continue; }
-        if (result.value) { queue.push({ nodeId: edge.to, vars, path: [...current.path, edge.to] }); matched = true; break; }
+        if (!result.ok) { uncertain = true; queue.push({ nodeId: edge.to, vars: varsAfter(edge), path: [...current.path, edge.to] }); continue; }
+        if (result.value) { queue.push({ nodeId: edge.to, vars: varsAfter(edge), path: [...current.path, edge.to] }); matched = true; break; }
       }
       if (!matched && outgoing.length > 0) uncertain = true;
     } else {
-      for (const edge of outgoing) queue.push({ nodeId: edge.to, vars, path: [...current.path, edge.to] });
+      for (const edge of outgoing) queue.push({ nodeId: edge.to, vars: varsAfter(edge), path: [...current.path, edge.to] });
     }
   }
   if (queue.length > 0) uncertain = true;

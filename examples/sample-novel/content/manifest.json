@@ -42,5 +42,25 @@
         "titleScreen.buttonFontSize": 17
       }
     }
+  },
+  "unlocks": {
+    "cg": {
+      "smoke_ocean": {
+        "assetId": "smoke_ocean",
+        "title": "海上黎明"
+      }
+    },
+    "music": {},
+    "replay": {},
+    "endings": {
+      "guardian": {
+        "title": "护卫",
+        "nodeId": "protect"
+      },
+      "adrift": {
+        "title": "随波",
+        "nodeId": "adrift"
+      }
+    }
   }
 }

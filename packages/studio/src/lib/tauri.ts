@@ -241,6 +241,7 @@ export interface RenameVariableResult {
   variablesRevision: FileRevision | null;
   graphRevision: FileRevision | null;
   updatedConditions: number;
+  updatedEdgeEffects: number;
   updatedNodes: number;
 }
 

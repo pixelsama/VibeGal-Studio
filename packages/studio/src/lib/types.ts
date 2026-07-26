@@ -2,7 +2,7 @@
  * 项目相关类型 —— studio 与 Rust 后端之间的数据契约。
  */
 import type { Manifest as EngineManifest, VariableRegistry } from "@vibegal/engine";
-import type { Instruction } from "@vibegal/engine";
+import type { Instruction, SetInstr } from "@vibegal/engine";
 
 /** gal.project.json 的结构 */
 export interface ProjectMeta {
@@ -64,6 +64,8 @@ export interface GraphEdge {
   mode?: "linear" | "choice" | "auto";
   label?: string | null;
   condition: string | null;
+  /** 「走这条出口之后」的状态改变；见 contracts 的 GraphEdgeSchema.effects。 */
+  effects?: SetInstr[];
 }
 
 /** 完整图 */

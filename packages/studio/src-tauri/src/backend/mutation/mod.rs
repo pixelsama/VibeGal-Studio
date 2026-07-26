@@ -544,17 +544,42 @@ pub(crate) fn rename_variable(
     let graph_path = content_root.resolve_write_target("graph.json")?;
     let mut graph: serde_json::Value = read_json(&graph_path)?;
     let mut condition_updates = 0usize;
+    let mut effect_updates = 0usize;
     for edge in graph
         .get_mut("edges")
         .and_then(serde_json::Value::as_array_mut)
         .into_iter()
         .flatten()
     {
-        let Some(condition) = edge.get("condition").and_then(serde_json::Value::as_str) else { continue };
-        let rewritten = validation::rename_identifier(condition, &from, &to)?;
-        if rewritten != condition {
-            condition_updates += 1;
-            edge["condition"] = serde_json::Value::String(rewritten);
+        if let Some(condition) = edge.get("condition").and_then(serde_json::Value::as_str) {
+            let rewritten = validation::rename_identifier(condition, &from, &to)?;
+            if rewritten != condition {
+                condition_updates += 1;
+                edge["condition"] = serde_json::Value::String(rewritten);
+            }
+        }
+        // 出口效果里的 set 也要跟着改名，否则改完名字这些效果会写到一个不存在的状态上。
+        for effect in edge
+            .get_mut("effects")
+            .and_then(serde_json::Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            let mut touched = false;
+            if effect.get("key").and_then(serde_json::Value::as_str) == Some(from.as_str()) {
+                effect["key"] = serde_json::Value::String(to.clone());
+                touched = true;
+            }
+            if let Some(expression) = effect.get("expr").and_then(serde_json::Value::as_str) {
+                let rewritten = validation::rename_identifier(expression, &from, &to)?;
+                if rewritten != expression {
+                    effect["expr"] = serde_json::Value::String(rewritten);
+                    touched = true;
+                }
+            }
+            if touched {
+                effect_updates += 1;
+            }
         }
     }
     validate_write_contract(contracts::ContractSchemaKind::Graph, &graph, "graph")?;
@@ -605,6 +630,7 @@ pub(crate) fn rename_variable(
         variables_revision: project_root.revision("content/variables.json")?,
         graph_revision: project_root.revision("content/graph.json")?,
         updated_conditions: condition_updates,
+        updated_edge_effects: effect_updates,
         updated_nodes: node_updates,
     })
 }
@@ -647,6 +673,8 @@ pub struct RenameVariableResult {
     pub variables_revision: Option<FileRevision>,
     pub graph_revision: Option<FileRevision>,
     pub updated_conditions: usize,
+    /// 出口效果里被改写的 set 条数，与条件分开计数便于向作者交代改了什么。
+    pub updated_edge_effects: usize,
     pub updated_nodes: usize,
 }
 

@@ -145,7 +145,10 @@ export interface StateWriteEvent {
   from: GraphRouteValue;
   to: GraphRouteValue;
   nodeId: string;
-  instructionIndex: number;
+  /** 节点内指令的下标；来自出口效果时为 undefined。 */
+  instructionIndex?: number;
+  /** 有值表示这次改变来自「走这条出口之后」，而不是节点里的某条指令。 */
+  edgeId?: string;
   /**
    * 记录这次写入时决策日志的长度，用于回滚时精确裁剪：
    * 回滚把决策日志截到长度 L 后，保留 decisionIndex <= L 的写入。

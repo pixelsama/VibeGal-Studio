@@ -318,6 +318,15 @@ export const GraphEdgeSchema = z.object({
   mode: z.enum(["linear", "choice", "auto"]).default("linear"),
   label: z.string().nullable().default(null),
   condition: z.string().nullable().default(null),
+  /**
+   * State changes that happen because the story took *this* exit.
+   *
+   * Putting a `set` in the target node instead fires it for every way into that
+   * node, so a shared "next morning" scene would credit affection no matter
+   * which option the player picked. Reuses SetInstruction so the shape, the
+   * validator and external agents are all unchanged.
+   */
+  effects: z.array(SetInstruction).optional(),
 });
 
 export const ProjectGraphSchema = z.object({

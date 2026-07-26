@@ -440,6 +440,9 @@ export class GraphNovelPlayer {
     if (fromNodeId && edge) {
       this.decisions.push({ type: "choice", fromNodeId, toNodeId, edgeId: edge.id });
       this.syncExperienceToState();
+      // 「选了这个选项之后」的状态改变：目标节点可能有多个入口，放在节点里会误伤
+      // 所有进入者，所以挂在出口上。
+      if (!this.applyEdgeEffects(edge)) return;
     }
     this.pendingChoiceCheckpoint = true;
     this.jumpToNode(toNodeId);
@@ -677,8 +680,31 @@ export class GraphNovelPlayer {
       this.decisions.push({ type: "auto", fromNodeId: edge.from, toNodeId: edge.to, edgeId: edge.id });
       this.syncExperienceToState();
     }
+    if (!this.applyEdgeEffects(edge)) return;
     this.jumpToNode(edge.to);
     this.stepNext(routeDepth + 1);
+  }
+
+  /**
+   * 应用「走这条出口之后」的状态改变。
+   *
+   * 在离开来源节点、进入目标节点之前生效，因此目标节点的条件与指令看到的已经是
+   * 新值。返回 false 表示赋值失败并已停在错误上，调用方不应继续推进。
+   */
+  private applyEdgeEffects(edge: GraphEdgeData): boolean {
+    for (const effect of edge.effects ?? []) {
+      try {
+        this.state = this.applyRuntimeInstruction(this.state, effect, undefined, {
+          nodeId: edge.from,
+          edgeId: edge.id,
+        });
+      } catch (error) {
+        this.stopOnAssignmentError(error, this.ip);
+        return false;
+      }
+    }
+    if ((edge.effects?.length ?? 0) > 0) this.emit();
+    return true;
   }
 
   /**
@@ -826,7 +852,12 @@ export class GraphNovelPlayer {
    *   重放（seekToInstruction）传 undefined，此时不记 trace —— 重放会把同一批
    *   指令再跑一遍，记下来会让「发生过的状态变化」出现重复条目。
    */
-  private applyRuntimeInstruction(state: NovelState, instr: Instruction, instructionIndex?: number): NovelState {
+  private applyRuntimeInstruction(
+    state: NovelState,
+    instr: Instruction,
+    instructionIndex?: number,
+    origin?: { nodeId: string; edgeId: string },
+  ): NovelState {
     if (instr.t !== "set") return applyInstruction(state, instr, this.deps);
     const declaration = this.deps.variables?.variables[instr.key];
     const value = this.resolveSetValue(instr, state.vars);
@@ -835,12 +866,31 @@ export class GraphNovelPlayer {
     } catch (error) {
       throw new RuntimeAssignmentError(error instanceof Error ? error.message : String(error));
     }
-    if (instructionIndex != null) this.recordStateWrite(instr.key, state.vars[instr.key] ?? null, value, instructionIndex);
+    if (origin) this.recordEdgeStateWrite(instr.key, state.vars[instr.key] ?? null, value, origin);
+    else if (instructionIndex != null) this.recordStateWrite(instr.key, state.vars[instr.key] ?? null, value, instructionIndex);
     if ((declaration?.scope ?? "run") === "global") {
       if (!instr.id) throw new Error(`global set ${instr.key} 缺少稳定 id`);
       return state;
     }
     return { ...state, vars: { ...state.vars, [instr.key]: value } };
+  }
+
+  /** 出口效果的写入：归属到出口本身，检查面板才能说「因为选了这个选项」。 */
+  private recordEdgeStateWrite(
+    variable: string,
+    from: GraphRouteValue,
+    to: GraphRouteValue,
+    origin: { nodeId: string; edgeId: string },
+  ) {
+    if (from === to) return;
+    this.stateWrites.push({
+      variable,
+      from,
+      to,
+      nodeId: origin.nodeId,
+      edgeId: origin.edgeId,
+      decisionIndex: this.decisions.length,
+    });
   }
 
   /** 值没变就不记：作者关心的是「哪里改了它」，不是「哪里碰过它」。 */
