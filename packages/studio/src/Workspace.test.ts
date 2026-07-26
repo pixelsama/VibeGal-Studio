@@ -6,6 +6,8 @@ import {
   projectIssueSourceLabel,
   shouldConfirmUnsavedNavigation,
   shouldStartWindowDrag,
+  workspaceTitle,
+  workTitleTooltip,
 } from "./Workspace";
 import { Workspace } from "./Workspace";
 import { SIDEBAR_PREFS_STORAGE_KEY } from "./lib/sidebarPrefs";
@@ -297,5 +299,23 @@ describe("Workspace renderer chrome", () => {
 
     expect(scriptHtml).toContain('data-outline-collapsed="true"');
     expect(assetsHtml).toContain('data-sidebar-collapsed="true"');
+  });
+});
+
+describe("workspaceTitle", () => {
+  const base = { meta: { name: "sample-novel" }, content: { meta: { title: "兵装心智体 · 序章" } } } as never;
+
+  it("作品名以 meta.title 为准", () => {
+    expect(workspaceTitle(base)).toBe("兵装心智体 · 序章");
+  });
+
+  it("标题未填时才回退项目文件夹名", () => {
+    expect(workspaceTitle({ meta: { name: "sample-novel" }, content: { meta: { title: "  " } } } as never)).toBe("sample-novel");
+    expect(workspaceTitle({ meta: { name: "sample-novel" }, content: {} } as never)).toBe("sample-novel");
+  });
+
+  it("提示语说明两个名字的关系", () => {
+    expect(workTitleTooltip(base)).toContain("项目文件夹：sample-novel");
+    expect(workTitleTooltip({ meta: { name: "sample-novel" }, content: {} } as never)).toContain("还没填作品标题");
   });
 });

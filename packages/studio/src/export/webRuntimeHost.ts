@@ -400,6 +400,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
       state: nextState,
       manifest: content.manifest as Manifest,
       contentBase: options.contentBase,
+      meta: content.meta as Meta,
       stage: (content.meta as Meta).stage,
       controls,
       runtime: runtimeServices,

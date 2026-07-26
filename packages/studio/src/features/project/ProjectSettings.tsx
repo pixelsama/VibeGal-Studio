@@ -354,10 +354,16 @@ export function ProjectSettings({
 
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>基础信息</span>
-          <TextField label="项目标题" value={titleText} onChange={(value) => setDraftText(setTitleText, value)} />
+          <TextField
+            label="作品标题"
+            hint="玩家在标题画面和导出物里看到的名字。左上角的项目名只是磁盘上的文件夹标识。"
+            value={titleText}
+            onChange={(value) => setDraftText(setTitleText, value)}
+          />
           <div style={numberRowStyle}>
             <NumberField
               label="默认打字速度"
+              hint="每秒显示几个字"
               value={typingSpeedText}
               min={0.1}
               step={0.1}
@@ -365,6 +371,7 @@ export function ProjectSettings({
             />
             <NumberField
               label="默认自动播放间隔"
+              hint="自动播放时每句停留的毫秒数"
               value={autoAdvanceText}
               min={0}
               step={1}
@@ -372,6 +379,7 @@ export function ProjectSettings({
             />
             <NumberField
               label="章节间隔"
+              hint="切换章节时的停顿毫秒数"
               value={chapterGapText}
               min={0}
               step={1}
@@ -475,10 +483,12 @@ function parseProjectSettingsDraft(draft: ProjectSettingsFormDraft): ProjectMeta
 function TextField({
   label,
   value,
+  hint,
   onChange,
 }: {
   label: string;
   value: string;
+  hint?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -490,6 +500,7 @@ function TextField({
         onChange={(event) => onChange(event.target.value)}
         style={textInputStyle}
       />
+      {hint && <span style={fieldHintStyle}>{hint}</span>}
     </label>
   );
 }
@@ -500,6 +511,7 @@ function NumberField({
   min,
   max,
   step,
+  hint,
   onChange,
 }: {
   label: string;
@@ -507,6 +519,7 @@ function NumberField({
   min: number;
   max?: number;
   step: number;
+  hint?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -521,6 +534,7 @@ function NumberField({
         onChange={(event) => onChange(event.target.value)}
         style={numberInputStyle}
       />
+      {hint && <span style={fieldHintStyle}>{hint}</span>}
     </label>
   );
 }
@@ -599,8 +613,17 @@ const numberFieldStyle: CSSProperties = {
 };
 
 const numberLabelStyle: CSSProperties = {
+  // 字段名比字段值更该被扫到：此前 label 用 --text-muted，看起来像禁用态。
   fontSize: "var(--text-sm)",
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+};
+
+const fieldHintStyle: CSSProperties = {
+  maxWidth: 420,
+  fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
+  lineHeight: 1.5,
 };
 
 const numberInputStyle: CSSProperties = {

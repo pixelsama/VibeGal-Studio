@@ -23,7 +23,7 @@ import {
 } from "@vibegal/engine";
 import type { ProjectData } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
-import { readStageResolution } from "../../lib/projectMeta";
+import { readProjectMeta } from "../../lib/projectMeta";
 import {
   buildSnapshotScenes,
   customSceneFromFixture,
@@ -152,11 +152,13 @@ export function SceneFixtureView({ project, renderer, scene }: SceneFixtureViewP
     [],
   );
 
-  const stage = readStageResolution(project.content.meta);
+  const meta = readProjectMeta(project.content.meta);
+  const stage = meta.stage;
   const props: RendererProps = {
     state: scene.state,
     manifest,
     contentBase: `${project.path}/content`,
+    meta,
     stage,
     controls: FIXTURE_CONTROLS,
     runtime,

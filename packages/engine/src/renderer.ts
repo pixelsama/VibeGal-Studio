@@ -201,7 +201,12 @@ export interface RendererProps {
   manifest: Manifest;
   /** 资源根路径（相对），用于拼绝对 URL */
   contentBase: string;
-  /** 项目固定舞台尺寸，renderer 的坐标系应以它为准 */
+  /**
+   * 作品元信息（content/meta.json）。作品名的唯一来源是 `meta.title`：
+   * gal.project.json 的 name 只是磁盘上的项目标识，不进渲染层。
+   */
+  meta: Meta;
+  /** 项目固定舞台尺寸，renderer 的坐标系应以它为准；等价于 meta.stage */
   stage: Meta["stage"];
   /** 正式播放控制 API */
   controls: RuntimeControls;

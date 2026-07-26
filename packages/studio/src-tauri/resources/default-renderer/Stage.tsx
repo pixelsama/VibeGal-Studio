@@ -40,7 +40,7 @@ const fallbackSettings: RuntimeSettingsRecord = {
   volumes: { master: 1, bgm: 0.8, sfx: 1, voice: 1 },
 };
 
-export function Stage({ state, manifest, contentBase, controls, runtime }: RendererProps) {
+export function Stage({ state, manifest, meta, contentBase, controls, runtime }: RendererProps) {
   // uiHint（fixture 场景宿主，Spec 17 第 4.1 节）：挂载前若存在
   // window.__VIBEGAL_FIXTURE_UI__ = { panel }，把它当作初始 UI 状态读一次；
   // 无该全局时初始 menuPage = null，与现状完全一致。
@@ -517,6 +517,7 @@ export function Stage({ state, manifest, contentBase, controls, runtime }: Rende
           )}
           <TitleScreen
             manifest={manifest}
+            meta={meta}
             titleBackgroundUrl={titleBackgroundUrl}
             tokens={uiTokens.titleScreen}
             continueSlot={continueSlot}

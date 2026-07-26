@@ -29,7 +29,8 @@ export interface SnapshotHostOptions {
   /** worker 合并后的完整场景列表（内置场景 + 项目自定义 fixtures）。 */
   scenes: SnapshotScene[];
   manifest: Manifest;
-  stage: Meta["stage"];
+  /** 作品元信息；stage 从 meta.stage 取，保证与运行时同源。 */
+  meta: Meta;
   contentBase: string;
 }
 
@@ -208,7 +209,8 @@ export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions:
     state: scene.state,
     manifest: hostOptions.manifest,
     contentBase: hostOptions.contentBase,
-    stage: hostOptions.stage,
+    meta: hostOptions.meta,
+    stage: hostOptions.meta.stage,
     controls,
     runtime: createInMemoryRuntimeServices({
       getState: () => scene.state,

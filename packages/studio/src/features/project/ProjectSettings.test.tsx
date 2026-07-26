@@ -31,7 +31,7 @@ describe("ProjectSettings", () => {
     const html = renderToStaticMarkup(<ProjectSettings project={project} onSaved={() => {}} />);
 
     expect(html).toContain("项目");
-    expect(html).toContain("项目标题");
+    expect(html).toContain("作品标题");
     expect(html).toContain("默认打字速度");
     expect(html).toContain("默认自动播放间隔");
     expect(html).toContain("章节间隔");

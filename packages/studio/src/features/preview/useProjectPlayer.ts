@@ -27,7 +27,7 @@ import {
 } from "@vibegal/engine";
 import type { NodeEntry, ProjectData, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
-import { readStageResolution } from "../../lib/projectMeta";
+import { readProjectMeta } from "../../lib/projectMeta";
 import { runtimeMediaFromEffect, type RuntimeMediaState } from "./RuntimeMediaOverlay";
 
 export interface ProjectPlayerResult {
@@ -58,7 +58,7 @@ export interface ProjectRendererPropsInput {
   state: NovelState;
   manifest: Manifest;
   contentBase: string;
-  stage: Meta["stage"];
+  meta: Meta;
   controls: RuntimeControls;
   runtime: RuntimeServices | null;
 }
@@ -68,7 +68,9 @@ export function createProjectRendererProps(input: ProjectRendererPropsInput): Re
     state: input.state,
     manifest: input.manifest,
     contentBase: input.contentBase,
-    stage: input.stage,
+    meta: input.meta,
+    // stage 是 meta.stage 的快捷方式，两者必须同源，避免渲染层读到两套尺寸。
+    stage: input.meta.stage,
     controls: input.controls,
     runtime: input.runtime ?? createInMemoryRuntimeServices({ getState: () => input.state }),
   };
@@ -177,17 +179,6 @@ export function createProjectPreviewRuntimeServices(input: ProjectPreviewRuntime
   });
 }
 
-function readPreviewPlaybackTiming(raw: unknown): Pick<Meta, "typingSpeedCps" | "autoAdvanceMs"> {
-  const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-  return {
-    typingSpeedCps: typeof record.typingSpeedCps === "number" && record.typingSpeedCps > 0
-      ? record.typingSpeedCps
-      : 30,
-    autoAdvanceMs: typeof record.autoAdvanceMs === "number" && Number.isInteger(record.autoAdvanceMs) && record.autoAdvanceMs >= 0
-      ? record.autoAdvanceMs
-      : 1_200,
-  };
-}
 
 export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const [state, setState] = useState<NovelState>(createInitialState);
@@ -331,7 +322,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   }, []);
 
   const contentBase = `${project.path}/content`;
-  const stage = readStageResolution(project.content.meta);
+  const meta = readProjectMeta(project.content.meta);
 
   const controls: RuntimeControls = {
     advance,
@@ -342,7 +333,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     restart,
   };
   runtimeRef.current ??= createProjectPreviewRuntimeServices({
-    meta: readPreviewPlaybackTiming(project.content.meta),
+    meta,
     applyPlaybackTiming: (timing) => {
       playerRef.current?.setPlaybackTiming(timing);
       setState({ ...stateRef.current });
@@ -379,7 +370,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     state,
     manifest: project.content.manifest ?? EMPTY_MANIFEST,
     contentBase,
-    stage,
+    meta,
     controls,
     runtime: runtimeRef.current,
   });

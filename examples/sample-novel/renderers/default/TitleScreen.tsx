@@ -10,13 +10,15 @@
  * 缺失时退回 token 底色/内置磨砂白面板）；titleBgm 的播放/停止由 Stage 负责。
  */
 import type { CSSProperties } from "react";
-import type { Manifest, SaveSlotSummary } from "@vibegal/engine";
+import type { Manifest, Meta, SaveSlotSummary } from "@vibegal/engine";
 import { formatSlotTime } from "./playerUiModel";
 import type { TitleScreenTokens } from "./useUiTokens";
 import { palette } from "./uiTheme";
 
 export interface TitleScreenProps {
   manifest: Manifest;
+  /** 作品元信息；标题取 meta.title */
+  meta: Meta;
   /** uiSkin assets.titleBackground 解析出的整舞台美术 URL；null = 无标题美术 */
   titleBackgroundUrl: string | null;
   tokens: TitleScreenTokens;
@@ -31,14 +33,20 @@ export interface TitleScreenProps {
   onSettings: () => void;
 }
 
-/** 标题文案：取 manifest.name，缺失回退项目通用默认文案。 */
-export function titleScreenTitle(manifest: Manifest): string {
-  const name = (manifest as { name?: unknown }).name;
-  return typeof name === "string" && name.trim() !== "" ? name : "未命名作品";
+/**
+ * 标题文案：取 meta.title（= content/meta.json 的「作品标题」），未填时回退默认文案。
+ *
+ * 曾经读的是 manifest.name —— 该字段在 ManifestSchema 里并不存在，于是无论作者
+ * 怎么填「项目 → 作品标题」，标题画面都恒为「未命名作品」。
+ */
+export function titleScreenTitle(meta: Pick<Meta, "title">): string {
+  const title = meta?.title;
+  return typeof title === "string" && title.trim() !== "" ? title : "未命名作品";
 }
 
 export function TitleScreen({
   manifest,
+  meta,
   titleBackgroundUrl,
   tokens,
   continueSlot,
@@ -67,7 +75,7 @@ export function TitleScreen({
         onClick={(event) => event.stopPropagation()}
         style={containerStyle(tokens)}
       >
-        <h1 style={titleStyle(tokens)}>{titleScreenTitle(manifest)}</h1>
+        <h1 style={titleStyle(tokens)}>{titleScreenTitle(meta)}</h1>
         <div style={menuStyle}>
           <button
             type="button"

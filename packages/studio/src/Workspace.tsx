@@ -96,6 +96,22 @@ function nodeIdFromIssueFile(file: string | undefined, graph?: Pick<ProjectGraph
   return graph.nodes.find((node) => node.file.replace(/\\/g, "/") === normalized)?.id ?? null;
 }
 
+/**
+ * 顶栏显示的名字 —— 作品名的唯一来源是 content/meta.json 的 title。
+ * 未填标题时才回退到项目文件夹标识，避免同一个项目在三个地方显示三个名字。
+ */
+export function workspaceTitle(project: Pick<ProjectData, "meta" | "content">): string {
+  const title = (project.content?.meta as { title?: unknown } | undefined)?.title;
+  return typeof title === "string" && title.trim() !== "" ? title : project.meta.name;
+}
+
+export function workTitleTooltip(project: Pick<ProjectData, "meta" | "content">): string {
+  const title = workspaceTitle(project);
+  return title === project.meta.name
+    ? `${title}（还没填作品标题，先用项目文件夹名；在「项目」里填写）`
+    : `${title}（项目文件夹：${project.meta.name}）`;
+}
+
 export function projectIssueSourceLabel(source: string): string {
   if (source === "graph") return "图结构";
   if (source === "node") return "节点内容";
@@ -369,7 +385,7 @@ export function Workspace({
 
         {/* 右侧：项目名 + 同步指示器 + 界面风格选择器（渲染层唯一切换入口，Spec 19 §4.2） */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
-          <span style={projectNameStyle}>{project.meta.name}</span>
+          <span style={projectNameStyle} title={workTitleTooltip(project)}>{workspaceTitle(project)}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
           <span style={rendererLabelStyle} title={RENDERER_GUIDANCE_HINT}>界面风格</span>
           {project.rendererIds.length > 0 ? (

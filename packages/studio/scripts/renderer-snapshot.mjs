@@ -51,6 +51,20 @@ function readProjectJson(projectDir, relativePath, rendererId) {
   return undefined;
 }
 
+/** 从 meta.json 整理出渲染层可读的 Meta（标题、时序、舞台）。 */
+function snapshotMeta(meta) {
+  const typingSpeedCps = Number(meta?.typingSpeedCps);
+  const autoAdvanceMs = Number(meta?.autoAdvanceMs);
+  const chapterGapMs = Number(meta?.chapterGapMs);
+  return {
+    title: typeof meta?.title === "string" ? meta.title : "",
+    typingSpeedCps: Number.isFinite(typingSpeedCps) && typingSpeedCps > 0 ? typingSpeedCps : 30,
+    autoAdvanceMs: Number.isInteger(autoAdvanceMs) && autoAdvanceMs >= 0 ? autoAdvanceMs : 1200,
+    chapterGapMs: Number.isInteger(chapterGapMs) && chapterGapMs >= 0 ? chapterGapMs : 1500,
+    stage: snapshotStage(meta),
+  };
+}
+
 /** 从 meta.json 取舞台尺寸；缺省或非法时回落到 1280x720。 */
 function snapshotStage(meta) {
   const width = Number(meta?.stage?.width);
@@ -149,7 +163,8 @@ async function main() {
 
   const meta = readProjectJson(projectDir, "content/meta.json", rendererId);
   const manifest = readProjectJson(projectDir, "content/manifest.json", rendererId);
-  const stage = snapshotStage(meta);
+  const rendererMeta = snapshotMeta(meta);
+  const stage = rendererMeta.stage;
 
   const snapshotDir = path.join(outDir, ".vibegal-snapshot");
   await mkdir(snapshotDir, { recursive: true });
@@ -171,7 +186,7 @@ async function main() {
     "startVibeGalSnapshotHost(rendererManifest, {",
     `  scenes: ${JSON.stringify(scenes)},`,
     `  manifest: ${JSON.stringify(manifest)},`,
-    `  stage: ${JSON.stringify(stage)},`,
+    `  meta: ${JSON.stringify(rendererMeta)},`,
     `  contentBase: "/content/",`,
     "});",
     "",

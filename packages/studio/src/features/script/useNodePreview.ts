@@ -15,7 +15,7 @@ import {
 } from "@vibegal/engine";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
-import { readStageResolution } from "../../lib/projectMeta";
+import { readProjectMeta } from "../../lib/projectMeta";
 import { createProjectRendererProps, type ProjectPlayerResult } from "../preview/useProjectPlayer";
 import { runtimeMediaFromEffect, type RuntimeMediaState } from "../preview/RuntimeMediaOverlay";
 
@@ -113,7 +113,7 @@ export function useNodePreview(
 
   const manifest = (playerRef.current?.deps_.manifest ?? null) as Manifest | null;
   const contentBase = `${project.path}/content`;
-  const stage = readStageResolution(project.content.meta);
+  const meta = readProjectMeta(project.content.meta);
 
   const controls: RuntimeControls = {
     advance,
@@ -152,7 +152,7 @@ export function useNodePreview(
     state,
     manifest: manifest ?? EMPTY_MANIFEST,
     contentBase,
-    stage,
+    meta,
     controls,
     runtime: runtimeRef.current,
   });

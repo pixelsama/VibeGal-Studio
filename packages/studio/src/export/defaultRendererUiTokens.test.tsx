@@ -51,7 +51,9 @@ function runtime(): RuntimeServices {
  * SSR 挂载 Stage。剧情 UI 断言一律注入 `{ screen: "story" }`（Spec 21：无 uiHint
  * 全局 = 真实启动 = 标题门）。uiHint === null 表示完全不设置全局（真实启动）。
  */
-function renderStage(state: NovelState, manifest: Manifest, uiHint?: unknown): string {
+const STAGE_META = { title: "", typingSpeedCps: 30, autoAdvanceMs: 1200, chapterGapMs: 1500, stage: { width: 1280, height: 720 } };
+
+function renderStage(state: NovelState, manifest: Manifest, uiHint?: unknown, title = ""): string {
   const globalScope = globalThis as { window?: unknown };
   const hadWindow = "window" in globalScope;
   const previous = globalScope.window;
@@ -63,7 +65,8 @@ function renderStage(state: NovelState, manifest: Manifest, uiHint?: unknown): s
         state={state}
         manifest={manifest}
         contentBase="./content"
-        stage={{ width: 1280, height: 720 }}
+        meta={{ ...STAGE_META, title }}
+        stage={STAGE_META.stage}
         controls={{
           advance: vi.fn(),
           choose: vi.fn(),
@@ -419,7 +422,22 @@ describe("title gate（Spec 21 §4 uiHint 语义表）", () => {
       .toContain('data-ui-part="titleScreen"');
   });
 
-  it("标题页：无存档时「继续/读档」禁用，标题取 manifest.name 回退默认文案", () => {
+  it("标题页：标题取 meta.title，而不是 manifest 上并不存在的 name", () => {
+    const html = renderStage(createInitialState(), baseManifest(), { screen: "title" }, "兵装心智体 · 序章");
+    expect(html).toContain("兵装心智体 · 序章");
+    expect(html).not.toContain("未命名作品");
+    // 旧实现读 manifest.name（ManifestSchema 无此字段），补一个也不该改变标题。
+    const withStaleName = renderStage(
+      createInitialState(),
+      { ...baseManifest(), name: "旧字段" } as Manifest,
+      { screen: "title" },
+      "兵装心智体 · 序章",
+    );
+    expect(withStaleName).toContain("兵装心智体 · 序章");
+    expect(withStaleName).not.toContain("旧字段");
+  });
+
+  it("标题页：无存档时「继续/读档」禁用，标题未填时回退默认文案", () => {
     const html = renderStage(createInitialState(), baseManifest(), { screen: "title" });
     expect(html).toContain("未命名作品");
     expect(html).toContain("开始游戏");

@@ -1,3 +1,5 @@
+import type { Meta } from "@vibegal/engine";
+
 export interface StageResolution {
   width: number;
   height: number;
@@ -26,6 +28,34 @@ export function readStageResolution(meta: unknown): StageResolution {
     return DEFAULT_STAGE_RESOLUTION;
   }
   return { width, height };
+}
+
+export const DEFAULT_TYPING_SPEED_CPS = 30;
+export const DEFAULT_AUTO_ADVANCE_MS = 1_200;
+export const DEFAULT_CHAPTER_GAP_MS = 1_500;
+
+/**
+ * 把 content/meta.json 的原始内容整理成渲染层可以直接读的 Meta。
+ *
+ * 作品名的唯一来源是 meta.title —— gal.project.json 的 name 只是磁盘上的项目
+ * 标识，不进渲染层。此前渲染层无处可读标题，于是默认渲染层退而去读
+ * manifest.name（该字段在 ManifestSchema 里根本不存在），导出物标题恒为空。
+ */
+export function readProjectMeta(meta: unknown): Meta {
+  const record = isRecord(meta) ? meta : {};
+  return {
+    title: typeof record.title === "string" ? record.title : "",
+    typingSpeedCps: typeof record.typingSpeedCps === "number" && record.typingSpeedCps > 0
+      ? record.typingSpeedCps
+      : DEFAULT_TYPING_SPEED_CPS,
+    autoAdvanceMs: nonNegativeInteger(record.autoAdvanceMs, DEFAULT_AUTO_ADVANCE_MS),
+    chapterGapMs: nonNegativeInteger(record.chapterGapMs, DEFAULT_CHAPTER_GAP_MS),
+    stage: readStageResolution(meta),
+  };
+}
+
+function nonNegativeInteger(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
 export function withStageResolution(meta: unknown, stage: StageResolution): Record<string, unknown> {

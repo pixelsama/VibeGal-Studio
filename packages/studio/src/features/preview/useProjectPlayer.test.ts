@@ -51,7 +51,7 @@ describe("useProjectPlayer helpers", () => {
       state: createInitialState(),
       manifest: project.content.manifest,
       contentBase: `${project.path}/content`,
-      stage: { width: 1280, height: 720 },
+      meta: { title: "示例作品", typingSpeedCps: 30, autoAdvanceMs: 1200, chapterGapMs: 1500, stage: { width: 1280, height: 720 } },
       controls: {
         advance: () => advanceCalls.push("advance"),
         choose: () => advanceCalls.push("choose"),
@@ -68,6 +68,9 @@ describe("useProjectPlayer helpers", () => {
     expect(advanceCalls).toEqual(["advance"]);
     expect(props.runtime).toBeTruthy();
     expect("onAdvance" in props).toBe(false);
+    // 渲染层要能读到作品标题；stage 只是 meta.stage 的快捷方式，必须同源。
+    expect(props.meta.title).toBe("示例作品");
+    expect(props.stage).toEqual(props.meta.stage);
     expect("onChoose" in props).toBe(false);
   });
 
