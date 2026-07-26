@@ -8,6 +8,11 @@ dist/
 *.tsbuildinfo
 .tsbuildinfo
 
+# ── 官网 / 宣传片工作目录 ──────────────
+# 独立发布物与大体积生成帧，不纳入产品源码仓库
+website/
+promo/
+
 # ── Tauri / Rust ─────────────────────
 # Rust 编译产物（很大，绝不提交）
 src-tauri/target/
