@@ -65,12 +65,14 @@ describe("NodeInspector graph exits", () => {
       onUpdateOutgoingEdges: () => {},
     }));
 
-    expect(html).toContain("结束方式");
-    expect(html).toContain("玩家选择");
-    expect(html).toContain("自动判断");
+    expect(html).toContain("离开这个节点");
+    expect(html).toContain("让玩家选择");
+    expect(html).toContain("按故事状态自动分流");
     expect(html).toContain("去左边");
     expect(html).toContain("左线");
     expect(html).not.toContain("节点播放完后");
+    // 出口在图上编辑，词汇不再暴露 auto/choice 这类实现术语。
+    expect(html).not.toContain("自动判断");
   });
 
   it("reorders outgoing edges without changing their identity", () => {

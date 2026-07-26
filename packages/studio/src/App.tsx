@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { ProjectList } from "./features/projects/ProjectList";
 import { Settings } from "./features/settings/Settings";
+import { ErrorBoundary } from "./features/common/ErrorBoundary";
 import { Workspace } from "./Workspace";
 import type { ProjectData } from "./lib/types";
 import { useAppSettings } from "./lib/theme";
@@ -85,18 +86,20 @@ export default function App() {
   }
 
   return (
-    <Workspace
-      project={project}
-      location={location}
-      canGoBack={backEnabled}
-      canGoForward={forwardEnabled}
-      onBack={handleBack}
-      onForward={handleForward}
-      onNavigate={navigate}
-      onReplaceLocation={replaceNavigation}
-      onProjectChanged={handleProjectChanged}
-      onOpenSettings={openSettings}
-    />
+    <ErrorBoundary title="工作区渲染出错">
+      <Workspace
+        project={project}
+        location={location}
+        canGoBack={backEnabled}
+        canGoForward={forwardEnabled}
+        onBack={handleBack}
+        onForward={handleForward}
+        onNavigate={navigate}
+        onReplaceLocation={replaceNavigation}
+        onProjectChanged={handleProjectChanged}
+        onOpenSettings={openSettings}
+      />
+    </ErrorBoundary>
   );
 }
 

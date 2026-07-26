@@ -27,6 +27,9 @@ import type {
   CompleteEndingInstruction,
   VariableRegistrySchema,
   VariableDeclarationSchema,
+  VariableKindSchema,
+  VariableBandSchema,
+  VariableOptionSchema,
   ProjectGraphSchema,
   GraphChapterSchema,
   GraphNodeSchema,
@@ -47,6 +50,9 @@ export type GraphEdgeData = z.infer<typeof GraphEdgeSchema>;
 export type ProjectGraphData = z.infer<typeof ProjectGraphSchema>;
 export type VariableRegistry = z.infer<typeof VariableRegistrySchema>;
 export type VariableDeclaration = z.infer<typeof VariableDeclarationSchema>;
+export type VariableKind = z.infer<typeof VariableKindSchema>;
+export type VariableBand = z.infer<typeof VariableBandSchema>;
+export type VariableOption = z.infer<typeof VariableOptionSchema>;
 
 // 便于在 interpreter 的 switch 里精确收窄
 export type BgInstr = z.infer<typeof BgInstruction>;

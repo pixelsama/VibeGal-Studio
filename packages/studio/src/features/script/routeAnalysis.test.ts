@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { analyzeEndingRouteMatrix, analyzeEndingRoutes, collectUnregisteredTerminals } from "./routeAnalysis";
-import { EMPTY_MANIFEST } from "../../lib/types";
+import { EMPTY_MANIFEST, type Manifest } from "../../lib/types";
 
 describe("bounded ending route analysis", () => {
+  it("tolerates a manifest whose raw JSON lacks the unlocks registry", () => {
+    // open_project 原样返回 manifest.json，不套用 schema 默认值；
+    // 缺省 unlocks 的项目（如 examples/sample-novel）不应让分析面板崩溃。
+    const manifest = { ...EMPTY_MANIFEST, unlocks: undefined } as unknown as Manifest;
+    const graph = {
+      version: 1, entryNodeId: "start",
+      nodes: [{ id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } }],
+      edges: [],
+    };
+    expect(analyzeEndingRouteMatrix({ graph, manifest }).rows).toEqual([]);
+    expect(collectUnregisteredTerminals(graph, manifest)).toEqual([{ nodeId: "start", title: "Start" }]);
+  });
+
   it("reports reachable completion and unknown on exhausted budget", () => {
     const manifest = { ...EMPTY_MANIFEST, unlocks: { ...EMPTY_MANIFEST.unlocks, endings: { true_end: { title: "True" } } } };
     const graph = { version: 1, entryNodeId: "start", nodes: [{ id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } }], edges: [] };

@@ -17,6 +17,10 @@ import { formatRendererDiagnostics } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
 import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
 import { RuntimeMediaOverlay } from "./RuntimeMediaOverlay";
+import { StateTrial } from "../script/StateTrial";
+import { StoryInspection } from "./StoryInspection";
+import { Button } from "../common/Button";
+import { collectStateSources, stateSourceDefaults } from "../script/storyState";
 
 type PreviewMode = "story" | "fixtures";
 
@@ -25,9 +29,12 @@ interface Props {
   rendererId: string;
   /** 初始模式，默认剧情播放；场景快照初始模式给测试与外观面板嵌入用。 */
   initialPreviewMode?: PreviewMode;
+  /** 从剧情检查跳到改变状态的那条指令。 */
+  onOpenNode?: (nodeId: string, instructionIndex?: number) => void;
+  onSelectEdge?: (edgeId: string) => void;
 }
 
-export function Preview({ project, rendererId, initialPreviewMode = "story" }: Props) {
+export function Preview({ project, rendererId, initialPreviewMode = "story", onOpenNode, onSelectEdge }: Props) {
   const player = useProjectPlayer(project);
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
@@ -36,9 +43,16 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
   const [fixtureSceneId, setFixtureSceneId] = useState<string | null>(null);
   const [debugNodeId, setDebugNodeId] = useState(project.graph?.entryNodeId ?? "");
   const [debugInstructionId, setDebugInstructionId] = useState("");
-  const [debugVariables, setDebugVariables] = useState<Record<string, string | number | boolean | null>>(() =>
-    Object.fromEntries(Object.entries(project.content.variables?.variables ?? {}).map(([name, declaration]) => [name, declaration.default])),
+  const [trialOpen, setTrialOpen] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  // 试算值与脚本工作台共用同一套模型：此前预览页和 Inspector 各有一份互不相通的
+  // 「注入值 / 模拟变量」，作者在一边调好的值到另一边就消失。
+  const [debugVariables, setDebugVariables] = useState<Record<string, string | number | boolean | null>>({});
+  const trialSources = useMemo(
+    () => collectStateSources({ registry: project.content.variables, graph: project.graph ?? undefined, manifest: project.content.manifest }),
+    [project.content.variables, project.graph, project.content.manifest],
   );
+  const trialDefaults = useMemo(() => stateSourceDefaults(trialSources), [trialSources]);
   const activeFixtureScene = fixtureScenes.find((scene) => scene.id === fixtureSceneId) ?? fixtureScenes[0] ?? null;
   const debugNode = project.graph?.nodes.find((node) => node.id === debugNodeId);
   const debugInstructions = project.nodes?.find((entry) => entry.relPath === debugNode?.file)?.data;
@@ -85,7 +99,7 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
   const fixtureMode = previewMode === "fixtures" && activeFixtureScene != null;
   const Renderer = renderer.Component;
   return (
-    <div style={layoutStyle}>
+    <div style={inspecting ? inspectingLayoutStyle : layoutStyle}>
       <div style={stagePaneStyle}>
         <div style={toolbarStyle}>
           <button
@@ -123,19 +137,31 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
                 <option value="">节点开头</option>
                 {stableInstructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.id}</option>)}
               </select>
-              {Object.entries(project.content.variables?.variables ?? {}).map(([name, declaration]) => <input
-                key={name}
-                aria-label={`调试变量 ${name}`}
-                style={sceneSelectStyle}
-                type={declaration.type === "number" ? "number" : "text"}
-                value={String(debugVariables[name] ?? "null")}
-                onChange={(event) => setDebugVariables((current) => ({ ...current, [name]: parseDebugVariable(event.target.value, declaration.type, declaration.nullable) }))}
-              />)}
-              <button type="button" onClick={() => debugNodeId && player.startDebugSession(debugNodeId, debugVariables, debugInstructionId || undefined)}>启动调试</button>
-              <button type="button" onClick={() => setDebugVariables(Object.fromEntries(Object.entries(project.content.variables?.variables ?? {}).map(([name, declaration]) => [name, declaration.default])))}>重置注入值</button>
+              <Button
+                onClick={() => setTrialOpen((open) => !open)}
+                aria-expanded={trialOpen}
+              >
+                假设前情
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => debugNodeId && player.startDebugSession(debugNodeId, { ...trialDefaults, ...debugVariables }, debugInstructionId || undefined)}
+              >
+                从这里试演
+              </Button>
             </>
           )}
+          <div style={{ flex: 1 }} />
+          <Button onClick={() => setInspecting((open) => !open)} aria-expanded={inspecting}>
+            剧情检查
+          </Button>
         </div>
+        {!fixtureMode && trialOpen && (
+          <div className="gs-trial-pane">
+            <StateTrial sources={trialSources} values={{ ...trialDefaults, ...debugVariables }} onChange={setDebugVariables} />
+            <p className="gs-trial-pane__note">只影响这次试演，不会改动你的故事。</p>
+          </div>
+        )}
         <div style={stageMountStyle}>
           {fixtureMode ? (
             <SceneFixtureView project={project} renderer={renderer} scene={activeFixtureScene} />
@@ -147,29 +173,51 @@ export function Preview({ project, rendererId, initialPreviewMode = "story" }: P
           )}
         </div>
       </div>
-      {/* 场景快照模式下检视器显示 fixture state：场景快照是设计视角的只读巡检，
-          侧栏本来就是 state 检视器，隐藏反而丢掉对 fixture state 的核对面。 */}
-      <RuntimeStateInspector state={fixtureMode ? activeFixtureScene.state : player.state} registry={project.content.variables} onVariableChange={fixtureMode ? undefined : player.setDebugVariable} onResetVariables={fixtureMode ? undefined : player.resetDebugVariables} />
+      {/* 舞台是主角：检查面板默认不出现，由工具条按需打开。
+          场景快照是渲染层作者的只读巡检面，仍然给出 fixture 的原始状态检视器。 */}
+      {fixtureMode
+        ? inspecting && (
+          <RuntimeStateInspector state={activeFixtureScene.state} registry={project.content.variables} />
+        )
+        : inspecting && (
+          <StoryInspection
+            state={player.state}
+            graph={project.graph}
+            registry={project.content.variables}
+            manifest={project.content.manifest}
+            stateWrites={player.stateWrites}
+            currentNodeId={player.currentNodeId}
+            onClose={() => setInspecting(false)}
+            onOpenNode={onOpenNode}
+            onSelectEdge={onSelectEdge}
+            onReplayWithCurrentValues={() => {
+              // 逃生口：把当前实际值搬进试演假设，一步回到「从这里试演」。
+              setDebugVariables(Object.fromEntries(
+                Object.entries(player.state.vars).filter(([name]) => !name.startsWith("system.")),
+              ));
+              setTrialOpen(true);
+            }}
+          />
+        )}
     </div>
   );
-}
-
-function parseDebugVariable(raw: string, type: "string" | "number" | "boolean", nullable: boolean) {
-  if (nullable && raw === "null") return null;
-  if (type === "number") return Number(raw);
-  if (type === "boolean") return raw === "true";
-  return raw;
 }
 
 function Centered({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
   return <CenteredMessage mono={mono}>{children}</CenteredMessage>;
 }
 
+/** 检查面板关掉时不留空列，舞台独占宽度。 */
 const layoutStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
+  gridTemplateColumns: "minmax(0, 1fr)",
   width: "100%",
   height: "100%",
+};
+
+const inspectingLayoutStyle: React.CSSProperties = {
+  ...layoutStyle,
+  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)",
 };
 
 const stagePaneStyle: React.CSSProperties = {

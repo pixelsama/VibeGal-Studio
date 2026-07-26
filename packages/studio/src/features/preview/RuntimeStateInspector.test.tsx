@@ -79,14 +79,15 @@ describe("RuntimeStateInspector", () => {
     for (const text of ["运行状态", "选项", "背景音乐", "语音", "角色立绘", "变量"]) {
       expect(html).toContain(text);
     }
-    for (const group of ["本轮变量", "跨周目变量", "未声明变量", "系统状态"]) {
+    for (const group of ["本轮状态", "跨周目状态", "未登记的状态", "系统状态"]) {
       expect(html).toContain(group);
     }
     expect(html).toContain("好感度");
     expect(html).toContain("路线已完成");
     expect(html).toContain("通关次数");
-    expect(html).toContain("上次达成结局");
-    expect(html).toContain("尚无");
+    expect(html).toContain("上次达成的结局");
+    // 布尔状态用开关呈现，不再要求作者手打 true。
+    expect(html).toContain('role="switch"');
     expect(html).toContain("<summary>技术详情</summary>");
     expect(html).toMatch(/<details[^>]*><summary>技术详情<\/summary>[\s\S]*system\.playthroughCount/);
     expect(html).toMatch(/<details[^>]*><summary>技术详情<\/summary>[\s\S]*system\.lastEndingId/);
@@ -106,7 +107,8 @@ describe("RuntimeStateInspector", () => {
 
     expect(html).toContain("min-width:0");
     expect(html).toContain("grid-template-columns:minmax(0, 1fr)");
-    expect(html).toContain("width:100%");
+    // 控件宽度收敛到 .gs-input（width:100% / min-width:0），不再逐处内联。
+    expect(html).toContain("gs-input");
     expect(html).not.toContain("overflow-x:auto");
   });
 });

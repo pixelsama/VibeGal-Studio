@@ -451,6 +451,29 @@ function assertSupportedRuntimeRecord(raw: unknown, label: string) {
   }
 }
 
+/**
+ * Trim the decision log back to the last time the path stood on `nodeId`.
+ *
+ * Rollback moves the playhead backwards, so choices taken after that point did
+ * not happen any more. `chose.*` / `seen.*` are derived from this log, so
+ * leaving stale entries in would report choices the player just undid. When the
+ * node never appears in the log the caller jumped somewhere off the recorded
+ * path and the log is left untouched.
+ */
+export function truncateDecisionLogToNode(
+  decisions: DecisionLogEvent[],
+  nodeId: string,
+): DecisionLogEvent[] {
+  let cut = -1;
+  decisions.forEach((event, index) => {
+    const arrived = event.type === "start" ? event.nodeId
+      : event.type === "checkpoint" ? event.snapshot.currentNodeId
+      : event.toNodeId;
+    if (arrived === nodeId) cut = index;
+  });
+  return cut < 0 ? decisions : decisions.slice(0, cut + 1);
+}
+
 export function replayDecisionLogToNodeId(
   graph: ProjectGraphData,
   decisions: DecisionLogEvent[],

@@ -20,6 +20,13 @@ import type {
   ProjectMeta,
 } from "./types";
 import type { VariableRegistry } from "@vibegal/engine";
+import { normalizeManifest } from "./normalizeManifest";
+
+/** 后端原样返回 manifest.json 原文（不套用 schema 默认值），统一补齐缺省注册表后再交给 UI */
+function withNormalizedManifest(data: ProjectData): ProjectData {
+  if (!data?.content) return data;
+  return { ...data, content: { ...data.content, manifest: normalizeManifest(data.content.manifest) } };
+}
 
 /** 弹出「选择文件夹」对话框，返回用户选的绝对路径 */
 export async function pickDirectory(): Promise<string | null> {
@@ -61,17 +68,17 @@ export async function listProjects(workspaceDir: string): Promise<ProjectListIte
 
 /** 打开项目：读取 gal.project.json + content + 渲染层列表 */
 export async function openProject(path: string): Promise<ProjectData> {
-  return invoke<ProjectData>("open_project", { path });
+  return withNormalizedManifest(await invoke<ProjectData>("open_project", { path }));
 }
 
 /** 在指定目录初始化一个新项目（复制默认模板，写 gal.project.json） */
 export async function createProject(parentDir: string, name: string): Promise<ProjectData> {
-  return invoke<ProjectData>("create_project", { parentDir, name });
+  return withNormalizedManifest(await invoke<ProjectData>("create_project", { parentDir, name }));
 }
 
 /** 把指定目录初始化为 VibeGal-Studio 项目（不额外套子目录），然后打开 */
 export async function initializeProject(path: string): Promise<ProjectData> {
-  return invoke<ProjectData>("initialize_project", { path });
+  return withNormalizedManifest(await invoke<ProjectData>("initialize_project", { path }));
 }
 
 function withExpectedRevision<T extends Record<string, unknown>>(
@@ -228,6 +235,27 @@ export async function saveVariables(
   expectedRevision?: FileRevision | null,
 ): Promise<FileRevision | null> {
   return invoke<FileRevision | null>("save_variables", withExpectedRevision({ projectPath, variables }, expectedRevision));
+}
+
+export interface RenameVariableResult {
+  variablesRevision: FileRevision | null;
+  graphRevision: FileRevision | null;
+  updatedConditions: number;
+  updatedNodes: number;
+}
+
+/**
+ * 重命名故事状态，并改写所有引用。
+ *
+ * 后端一次性改注册表、图条件和 set 指令：三者各有独立 revision 守卫，前端串行
+ * 保存中途失败会留下半改状态（条件指向已不存在的变量）。
+ */
+export async function renameVariable(
+  projectPath: string,
+  from: string,
+  to: string,
+): Promise<RenameVariableResult> {
+  return invoke<RenameVariableResult>("rename_variable", { projectPath, from, to });
 }
 
 // ──────────────────────────────────────────────

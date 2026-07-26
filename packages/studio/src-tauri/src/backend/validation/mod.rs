@@ -13,6 +13,7 @@ pub(crate) use data::{
 };
 pub(crate) use graph::validate_graph;
 pub(crate) use expression::parse_expression;
+pub(crate) use expression::rename_identifier;
 #[cfg(test)]
 pub(crate) use node::validate_node_contents;
 pub(crate) use node::validate_node_contents_with_variables;

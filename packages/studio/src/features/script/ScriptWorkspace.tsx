@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layers3, Plus } from "lucide-react";
-import { deleteFile, saveFile, saveGraph, saveGraphPositions, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
+import { deleteFile, renameVariable, saveFile, saveGraph, saveGraphPositions, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
 import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
-import { GraphAnalysisPanel } from "./GraphAnalysisPanel";
+import { StoryStateView } from "./StoryStateView";
+import { RouteCoveragePanel } from "./RouteCoveragePanel";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
 import { StoryOutline } from "./StoryOutline";
@@ -147,7 +148,10 @@ export function ScriptWorkspace({
   onDirtyChange,
 }: Props) {
   const view = location.view;
-  const [inspectorTab, setInspectorTab] = useState<"node" | "analysis">("node");
+  /** 脚本工作台的一级视图：剧情流程 / 故事状态。 */
+  const [primaryView, setPrimaryView] = useState<"flow" | "state">("flow");
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [chapterScope, setChapterScope] = useState<ChapterScope>({ kind: "all" });
@@ -353,6 +357,20 @@ export function ScriptWorkspace({
     setSelectedNodeId(id);
     setSelectedEdgeId(null);
     onOpenNode(id);
+  };
+
+  /**
+   * 从故事状态页跳到「改变它的那一条指令」。
+   *
+   * 复用问题面板已有的 focusRequest 通道（NodeEditor 按 jsonPath 定位），
+   * 所以不需要给 run-scope 的 set 指令新发稳定 ID。
+   */
+  const handleOpenNodeAtInstruction = (nodeId: string, instructionIndex?: number) => {
+    setPrimaryView("flow");
+    setLocalFocus(instructionIndex == null
+      ? null
+      : { requestId: Date.now(), nodeId, jsonPath: `$[${instructionIndex}]` });
+    handleEnter(nodeId);
   };
 
   const handleCreateNode = async (position?: { x: number; y: number }) => {
@@ -672,6 +690,15 @@ export function ScriptWorkspace({
   const handleVariablesChange = (variables: typeof project.content.variables) => {
     void saveVariables(project.path, variables, project.variablesRevision).then(() => { setGraphStatus("变量声明已保存"); onSaved(); }).catch((error) => setGraphStatus(`变量保存失败: ${error instanceof Error ? error.message : String(error)}`));
   };
+  const handleRenameVariable = (from: string, to: string) => {
+    // 后端一次性改写注册表、图条件与 set 指令；成功后整份项目重新加载。
+    void renameVariable(project.path, from, to)
+      .then((result) => {
+        setGraphStatus(`已改名：更新了 ${result.updatedConditions} 处判断、${result.updatedNodes} 个节点`);
+        onSaved();
+      })
+      .catch((error) => setGraphStatus(`改名失败: ${error instanceof Error ? error.message : String(error)}`));
+  };
   const handleEditEnding = (endingId: string) => {
     const ending = project.content.manifest.unlocks.endings[endingId];
     if (!ending) return;
@@ -755,8 +782,41 @@ export function ScriptWorkspace({
         selectedNodeTitle={selectedNode?.title ?? null}
         onBackToGraph={onOpenGraph}
       />
+      {view === "graph" && (
+        <div className="gs-script-views" role="tablist" aria-label="脚本视图">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={primaryView === "flow"}
+            className={primaryView === "flow" ? "gs-tab gs-tab--active" : "gs-tab"}
+            onClick={() => setPrimaryView("flow")}
+          >
+            剧情流程
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={primaryView === "state"}
+            className={primaryView === "state" ? "gs-tab gs-tab--active" : "gs-tab"}
+            onClick={() => setPrimaryView("state")}
+          >
+            故事状态
+          </button>
+        </div>
+      )}
       <div style={contentStyle}>
-        {view === "graph" ? (
+        {view === "graph" && primaryView === "state" ? (
+          <StoryStateView
+            graph={graph}
+            nodes={project.nodes}
+            manifest={project.content.manifest}
+            registry={project.content.variables}
+            onChange={handleVariablesChange}
+            onRename={handleRenameVariable}
+            onOpenNode={handleOpenNodeAtInstruction}
+            onSelectEdge={(edgeId) => { setPrimaryView("flow"); handleSelectEdge(edgeId); }}
+          />
+        ) : view === "graph" ? (
           <div style={graphLayoutStyle}>
             <div style={outlinePaneStyle}>
               <CollapsibleSidebar
@@ -793,6 +853,9 @@ export function ScriptWorkspace({
                     <Layers3 size={14} />
                     {chapterScope.kind === "all" ? "全局视图" : graph.chapters.find((chapter) => chapter.id === chapterScope.chapterId)?.title ?? "章节"}
                   </span>
+                  <Button onClick={() => setCoverageOpen((open) => !open)} aria-expanded={coverageOpen}>
+                    剧情覆盖
+                  </Button>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
@@ -805,6 +868,15 @@ export function ScriptWorkspace({
                     </span>
                   )}
                 </div>
+                {coverageOpen && (
+                  <RouteCoveragePanel
+                    graph={graph}
+                    nodeEntries={project.nodes}
+                    manifest={project.content.manifest}
+                    registry={project.content.variables}
+                    onSelectNode={handleSelect}
+                  />
+                )}
                 <GraphCanvas
                   graph={graph}
                   visibleNodeIds={visibleNodeIds}
@@ -835,52 +907,24 @@ export function ScriptWorkspace({
               </div>
             </div>
             <div style={inspectorPaneStyle}>
-              <div style={inspectorTabsStyle}>
-                <button
-                  type="button"
-                  className={inspectorTab === "node" ? "gs-tab gs-tab--active" : "gs-tab"}
-                  onClick={() => setInspectorTab("node")}
-                >
-                  节点
-                </button>
-                <button
-                  type="button"
-                  className={inspectorTab === "analysis" ? "gs-tab gs-tab--active" : "gs-tab"}
-                  onClick={() => setInspectorTab("analysis")}
-                >
-                  分析
-                </button>
-              </div>
               <div style={inspectorContentStyle}>
-                {inspectorTab === "node" ? (
-                  <NodeInspector
-                    graph={graph}
-                    nodeEntries={project.nodes}
-                    selectedNodeId={selectedNodeId}
-                    onEnter={handleEnter}
-                    onRename={handleRenameNode}
-                    onSetChapter={handleSetNodeChapter}
-                    onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
-                    onSetEntry={handleSetEntry}
-                    saving={savingGraph}
-                    variables={project.content.variables}
-                    manifest={project.content.manifest}
-                    onRegisterEnding={handleManageEnding}
-                    onEditEnding={handleEditEnding}
-                    onUnregisterEnding={handleUnregisterEnding}
-                    onInsertEndingCompletion={handleInsertEndingCompletion}
-                  />
-                ) : (
-                  <GraphAnalysisPanel
-                    graph={graph}
-                    nodeEntries={project.nodes}
-                    manifest={project.content.manifest}
-                    registry={project.content.variables}
-                    onRegistryChange={handleVariablesChange}
-                    onSelectNode={handleSelect}
-                    onSelectEdge={handleSelectEdge}
-                  />
-                )}
+                <NodeInspector
+                  graph={graph}
+                  nodeEntries={project.nodes}
+                  selectedNodeId={selectedNodeId}
+                  onEnter={handleEnter}
+                  onRename={handleRenameNode}
+                  onSetChapter={handleSetNodeChapter}
+                  onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
+                  onSetEntry={handleSetEntry}
+                  saving={savingGraph}
+                  variables={project.content.variables}
+                  manifest={project.content.manifest}
+                  onRegisterEnding={handleManageEnding}
+                  onEditEnding={handleEditEnding}
+                  onUnregisterEnding={handleUnregisterEnding}
+                  onInsertEndingCompletion={handleInsertEndingCompletion}
+                />
               </div>
             </div>
           </div>
@@ -892,7 +936,7 @@ export function ScriptWorkspace({
               rendererId={rendererId}
               node={selectedNode}
               nodeData={findNodeData(project.nodes, selectedNode.file)}
-              focusRequest={focusRequest}
+              focusRequest={localFocus ?? focusRequest}
               onSaved={onSaved}
               onDirtyChange={onDirtyChange}
             />
@@ -997,14 +1041,6 @@ const inspectorPaneStyle: React.CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   borderLeft: "1px solid var(--border)",
-};
-
-const inspectorTabsStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "var(--space-1)",
-  padding: "var(--space-2)",
-  borderBottom: "1px solid var(--border)",
-  background: "var(--bg-app)",
 };
 
 const inspectorContentStyle: React.CSSProperties = {

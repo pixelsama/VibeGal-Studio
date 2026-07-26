@@ -339,16 +339,87 @@ export const ProjectGraphSchema = z.object({
   });
 });
 
+// Authoring intent behind a variable. `kind` is a lens over `type`, never a
+// replacement: `type` stays required and authoritative so the Rust validator,
+// expression evaluation and external agents keep working unchanged. Legacy
+// registries without `kind` are read through the same lens by inference
+// (boolean -> flag, number -> meter, string -> text).
+export const VariableKindSchema = z.enum(["flag", "meter", "state", "counter", "text"]);
+
+/** Named range of a meter/counter, so conditions read "达到 喜欢" not ">= 60". */
+export const VariableBandSchema = z.strictObject({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  // Inclusive upper bound. The last band omits it to mean "up to max".
+  upTo: z.number().optional(),
+});
+
+/** Allowed value of a `state` variable, so authors pick instead of typing. */
+export const VariableOptionSchema = z.strictObject({
+  id: z.string().min(1),
+  label: z.string().min(1),
+});
+
 // Project-level variable declarations. Runtime state remains scalar-only and
 // scope is explicit so save slots never accidentally capture global progress.
 export const VariableDeclarationSchema = z.strictObject({
+  kind: VariableKindSchema.optional(),
   label: z.string().optional(),
   type: z.enum(["string", "number", "boolean"]),
   default: VariableValueSchema,
   nullable: z.boolean().default(false),
   scope: z.enum(["run", "global"]).default("run"),
   description: z.string().optional(),
+  // manifest.characters key this variable belongs to (per-character meters).
+  of: z.string().min(1).optional(),
+  // Explicit bounds are clamped at write time. Absent bounds stay unbounded,
+  // so registries that predate this field keep their exact runtime behaviour.
+  min: z.number().optional(),
+  max: z.number().optional(),
+  bands: z.array(VariableBandSchema).optional(),
+  options: z.array(VariableOptionSchema).optional(),
+  // Read by the renderer only; suppresses the "never read by any branch" hint.
+  displayOnly: z.boolean().optional(),
 }).superRefine((declaration, context) => {
+  const expectedType = declaration.kind ? VARIABLE_KIND_TYPE[declaration.kind] : undefined;
+  if (expectedType && expectedType !== declaration.type) {
+    context.addIssue({ code: "custom", path: ["type"], message: `${declaration.kind} 变量的 type 必须是 ${expectedType}` });
+  }
+  if (declaration.min != null && declaration.max != null && declaration.min > declaration.max) {
+    context.addIssue({ code: "custom", path: ["max"], message: "变量上限不能小于下限" });
+  }
+  if ((declaration.min != null || declaration.max != null) && declaration.type !== "number") {
+    context.addIssue({ code: "custom", path: ["min"], message: "只有数值变量可以声明范围" });
+  }
+  if (declaration.bands) {
+    if (declaration.type !== "number") {
+      context.addIssue({ code: "custom", path: ["bands"], message: "只有数值变量可以声明分段" });
+    }
+    const bounded = declaration.bands.filter((band) => band.upTo != null);
+    bounded.forEach((band, index) => {
+      if (index > 0 && band.upTo! <= bounded[index - 1].upTo!) {
+        context.addIssue({ code: "custom", path: ["bands", index, "upTo"], message: "分段上界必须递增" });
+      }
+    });
+    if (declaration.bands.length > 0 && declaration.bands.at(-1)!.upTo != null && declaration.max == null) {
+      context.addIssue({ code: "custom", path: ["bands"], message: "最后一个分段应省略 upTo，或为变量声明 max" });
+    }
+  }
+  if (declaration.options) {
+    if (declaration.type !== "string") {
+      context.addIssue({ code: "custom", path: ["options"], message: "只有文本变量可以声明可选值" });
+    }
+    const ids = new Set<string>();
+    declaration.options.forEach((option, index) => {
+      if (ids.has(option.id)) {
+        context.addIssue({ code: "custom", path: ["options", index, "id"], message: `可选值 ${option.id} 重复` });
+      }
+      ids.add(option.id);
+    });
+    if (typeof declaration.default === "string" && declaration.options.length > 0 && !ids.has(declaration.default)) {
+      context.addIssue({ code: "custom", path: ["default"], message: "默认值必须是已声明的可选值之一" });
+    }
+  }
   if (declaration.default === null) {
     if (!declaration.nullable) {
       context.addIssue({ code: "custom", path: ["default"], message: "只有 nullable 变量可使用 null 默认值" });
@@ -360,9 +431,19 @@ export const VariableDeclarationSchema = z.strictObject({
   }
 });
 
+const VARIABLE_KIND_TYPE = {
+  flag: "boolean",
+  meter: "number",
+  counter: "number",
+  state: "string",
+  text: "string",
+} as const;
+
+// system.* is runtime-provided; chose.*/seen.* are derived from the decision
+// log. All three are read-only namespaces that projects must not declare.
 const VariableNameSchema = z.string().regex(
-  /^(?!system\.)(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/,
-  "变量名必须是点号分隔的标识符，且不能使用 system. 前缀",
+  /^(?!(?:system|chose|seen)\.)(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/,
+  "变量名必须是点号分隔的标识符，且不能使用 system. / chose. / seen. 前缀",
 );
 
 export const VariableRegistrySchema = z.strictObject({

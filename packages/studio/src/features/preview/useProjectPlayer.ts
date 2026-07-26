@@ -19,6 +19,7 @@ import {
   type RuntimeControls,
   type RuntimeServices,
   type RuntimeSettingsRecord,
+  type StateWriteEvent,
   type InMemoryRuntimeServicesOptions,
   createInMemoryRuntimeServices,
   createRuntimeSnapshot,
@@ -48,6 +49,9 @@ export interface ProjectPlayerResult {
   startDebugSession: (nodeId: string, variableOverrides?: PreviewInitialVars, instructionId?: string) => void;
   setDebugVariable: (name: string, value: string | number | boolean | null) => void;
   resetDebugVariables: () => void;
+  /** 本次运行中改变过故事状态的位置，供只读的「剧情检查」解释因果。 */
+  stateWrites: StateWriteEvent[];
+  currentNodeId: string | null;
 }
 
 export interface ProjectRendererPropsInput {
@@ -187,6 +191,7 @@ function readPreviewPlaybackTiming(raw: unknown): Pick<Meta, "typingSpeedCps" | 
 
 export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const [state, setState] = useState<NovelState>(createInitialState);
+  const [stateWrites, setStateWrites] = useState<StateWriteEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [media, setMedia] = useState<RuntimeMediaState>(null);
   const playerRef = useRef<GraphNovelPlayer | null>(null);
@@ -285,6 +290,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
 
       player.subscribe((s) => {
         setState({ ...s });
+        setStateWrites(playerRef.current?.getStateWrites() ?? []);
         audio?.sync(s);
       });
       setError(null);
@@ -383,5 +389,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     rendererProps, media, closeMedia, skipVideo, startDebugSession,
     setDebugVariable: (name, value) => playerRef.current?.setDebugVariable(name, value),
     resetDebugVariables: () => playerRef.current?.resetDebugVariables(),
+    stateWrites,
+    currentNodeId: playerRef.current?.getCurrentNodeId() ?? null,
   };
 }

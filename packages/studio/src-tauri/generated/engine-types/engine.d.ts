@@ -468,9 +468,15 @@ import type { ComponentType } from "react";
     endings: string[];
   }
 
-  export type VariableDeclaration = { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; label?: string | undefined; description?: string | undefined; };
+  export type VariableBand = { id: string; label: string; upTo?: number | undefined; };
 
-  export type VariableRegistry = { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; label?: string | undefined; description?: string | undefined; }>; };
+  export type VariableDeclaration = { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; kind?: "text" | "flag" | "meter" | "state" | "counter" | undefined; label?: string | undefined; description?: string | undefined; of?: string | undefined; min?: number | undefined; max?: number | undefined; bands?: { id: string; label: string; upTo?: number | undefined; }[] | undefined; options?: { id: string; label: string; }[] | undefined; displayOnly?: boolean | undefined; };
+
+  export type VariableKind = "text" | "flag" | "meter" | "state" | "counter";
+
+  export type VariableOption = { id: string; label: string; };
+
+  export type VariableRegistry = { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; kind?: "text" | "flag" | "meter" | "state" | "counter" | undefined; label?: string | undefined; description?: string | undefined; of?: string | undefined; min?: number | undefined; max?: number | undefined; bands?: { id: string; label: string; upTo?: number | undefined; }[] | undefined; options?: { id: string; label: string; }[] | undefined; displayOnly?: boolean | undefined; }>; };
 
   export type VoiceInstr = { t: "voice"; id: string; };
 

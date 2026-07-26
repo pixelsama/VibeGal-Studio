@@ -312,6 +312,15 @@ pub(crate) fn save_variables(
 }
 
 #[tauri::command]
+pub(crate) fn rename_variable(
+    project_path: String,
+    from: String,
+    to: String,
+) -> Result<mutation::RenameVariableResult, String> {
+    mutation::rename_variable(project_path, from, to)
+}
+
+#[tauri::command]
 pub(crate) fn load_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
     settings_service::load(&resources::settings_path(&app_handle)?)
 }

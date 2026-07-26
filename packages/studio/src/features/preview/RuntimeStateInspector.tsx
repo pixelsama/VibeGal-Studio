@@ -1,4 +1,13 @@
 import type { NovelState, VariableRegistry } from "@vibegal/engine";
+import { NumberInput, Select, Switch, TextInput } from "../common/Form";
+import { bandLabelForValue } from "../script/storyState";
+
+/** 只读命名空间在检视器里的中文名。 */
+const SYSTEM_TITLE: Record<string, string> = {
+  "system.playthroughCount": "通关次数",
+  "system.lastEndingId": "上次达成的结局",
+};
+const EXPERIENCE_TITLE: Record<string, string> = {};
 
 interface RuntimeStateInspectorProps {
   state: NovelState;
@@ -78,11 +87,12 @@ export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right",
   );
 }
 
-function groupLabel(group: "run" | "global" | "legacy" | "system") {
-  return group === "run" ? "本轮变量"
-    : group === "global" ? "跨周目变量"
-      : group === "legacy" ? "未声明变量"
-        : "系统状态";
+function groupLabel(group: "run" | "global" | "legacy" | "experience" | "system") {
+  return group === "run" ? "本轮状态"
+    : group === "global" ? "跨周目状态"
+      : group === "legacy" ? "未登记的状态"
+        : group === "experience" ? "剧情经历"
+          : "系统状态";
 }
 
 function RuntimeVariableRow({
@@ -98,42 +108,100 @@ function RuntimeVariableRow({
   editable: boolean;
   onChange: (value: string | number | boolean | null) => void;
 }) {
-  const isSystem = name === "system.playthroughCount" || name === "system.lastEndingId";
-  const title = name === "system.playthroughCount" ? "通关次数"
-    : name === "system.lastEndingId" ? "上次达成结局"
-      : declaration?.label ?? name;
-  const displayValue = name === "system.lastEndingId" && value === null ? "尚无" : value == null ? "尚无" : String(value);
-  return <label style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8, minWidth: 0 }}>
-    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-      {title}
-      <details>
-        <summary>技术详情</summary>
-        <small style={{ display: "block", overflowWrap: "anywhere" }}>
-          {name} · {declaration?.type ?? (value === null ? "null" : typeof value)}
-          {declaration ? ` · 默认值 ${String(declaration.default)}` : " · runtime"}
-        </small>
-      </details>
-    </span>
-    <input
-      style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
-      disabled={!editable || isSystem}
-      value={displayValue}
-      onChange={(event) => onChange(parseTypedValue(event.target.value, value))}
-    />
-  </label>;
+  const title = EXPERIENCE_TITLE[name] ?? SYSTEM_TITLE[name] ?? declaration?.label ?? name;
+  const band = declaration && typeof value === "number" ? bandLabelForValue(declaration, value) : undefined;
+
+  return (
+    <label style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8, minWidth: 0 }}>
+      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+        {title}
+        <details>
+          <summary>技术详情</summary>
+          <small style={{ display: "block", overflowWrap: "anywhere" }}>
+            {name} · {declaration?.type ?? (value === null ? "null" : typeof value)}
+            {declaration ? ` · 初始 ${String(declaration.default)}` : " · 运行时提供"}
+          </small>
+        </details>
+      </span>
+      <RuntimeVariableControl
+        name={name}
+        title={title}
+        value={value}
+        band={band}
+        declaration={declaration}
+        editable={editable}
+        onChange={onChange}
+      />
+    </label>
+  );
 }
 
-function variableGroup(name: string, registry?: VariableRegistry): "run" | "global" | "legacy" | "system" {
+/** 按状态用途换控件：是/否用开关，枚举用下拉，数值用数字框。 */
+function RuntimeVariableControl({
+  name,
+  title,
+  value,
+  band,
+  declaration,
+  editable,
+  onChange,
+}: {
+  name: string;
+  title: string;
+  value: string | number | boolean | null;
+  band?: string;
+  declaration?: VariableRegistry["variables"][string];
+  editable: boolean;
+  onChange: (value: string | number | boolean | null) => void;
+}) {
+  // 剧情经历是决策日志的派生值，改它没有意义，只读显示。
+  if (name.startsWith("chose.") || name.startsWith("seen.")) {
+    return <span style={valueStyle}>{value === true ? "是" : "否"}</span>;
+  }
+  if (typeof value === "boolean") {
+    return <Switch aria-label={title} disabled={!editable} checked={value} label={value ? "是" : "否"} onChange={onChange} />;
+  }
+  if (declaration?.options?.length && typeof value === "string") {
+    return (
+      <Select
+        aria-label={title}
+        disabled={!editable}
+        value={value}
+        options={declaration.options.map((option) => ({ value: option.id, label: option.label }))}
+        onChange={onChange}
+      />
+    );
+  }
+  if (typeof value === "number") {
+    return (
+      <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+        <NumberInput
+          aria-label={title}
+          disabled={!editable}
+          value={value}
+          min={declaration?.min}
+          max={declaration?.max}
+          onChange={onChange}
+        />
+        {band && <small>（{band}）</small>}
+      </span>
+    );
+  }
+  return (
+    <TextInput
+      aria-label={title}
+      disabled={!editable}
+      value={value == null ? "" : String(value)}
+      onChange={(next) => onChange(next === "" && value === null ? null : next)}
+    />
+  );
+}
+
+function variableGroup(name: string, registry?: VariableRegistry): "run" | "global" | "legacy" | "experience" | "system" {
+  if (name.startsWith("chose.") || name.startsWith("seen.")) return "experience";
   if (name.startsWith("system.")) return "system";
   const declaration = registry?.variables[name];
   return declaration ? declaration.scope ?? "run" : "legacy";
-}
-
-function parseTypedValue(raw: string, previous: string | number | boolean | null) {
-  if (previous === null) return raw === "null" ? null : raw;
-  if (typeof previous === "boolean") return raw === "true";
-  if (typeof previous === "number") return Number(raw);
-  return raw;
 }
 
 function Field({ label, value, mono = false, multiline = false }: { label: string; value: string; mono?: boolean; multiline?: boolean }) {

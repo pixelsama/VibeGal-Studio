@@ -27,3 +27,6 @@
 - [Spec 20 — Stable Instruction Identity Workflow（稳定指令身份工作流）](./archive/20-stable-instruction-identity-workflow.spec.md)
 - [Spec 21 — Title Screen（标题画面 / 游戏主界面）](./archive/21-title-screen.spec.md)
 - [Spec 22 — Branch, Ending, and Variable Runtime Completion（分支、结局与变量完整化）](./archive/22-branch-ending-variable-runtime-completion.spec.md)
+- [Spec 24 — Story State Authoring（故事状态创作面）](./24-story-state-authoring.spec.md)
+- [Review Brief 25 — 故事状态与创作者式剧情检查](./25-story-state-and-preview-review-brief.md)
+- [Spec 26 — Story State IA & Story Inspection（故事状态信息架构与剧情检查）](./26-story-state-ia-and-inspection.spec.md)

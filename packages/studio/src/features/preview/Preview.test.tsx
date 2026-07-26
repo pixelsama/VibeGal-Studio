@@ -120,10 +120,24 @@ describe("Preview 场景快照", () => {
     expect(html).not.toContain("场景刷");
     expect(html).toContain('aria-label="调试起点"');
     expect(html).toContain('aria-label="调试指令"');
-    expect(html).toContain('aria-label="调试变量 affection"');
-    expect(html).toContain("启动调试");
+    expect(html).toContain("从这里试演");
     expect(html).not.toContain('aria-label="场景"');
     expect(html).not.toContain("海平线上的第一缕光");
+  });
+
+  it("舞台默认独占：检查面板与试演假设都按需打开", () => {
+    const html = renderToStaticMarkup(<Preview project={project} rendererId="default" />);
+
+    // 两个入口都在工具条上，但内容默认不占地方。
+    expect(html).toContain("剧情检查");
+    expect(html).toContain("假设前情");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("gs-inspection");
+    expect(html).not.toContain('aria-label="试算 affection"');
+    // 舞台列不为侧栏预留宽度。
+    expect(html).toContain("grid-template-columns:minmax(0, 1fr)");
+    // 运行中不再提供直接改值的入口。
+    expect(html).not.toContain("重置变量");
   });
 
   it("场景快照模式：渲染 fixture 场景（内置第一个场景），场景下拉含内置面板与自定义 fixture", () => {
@@ -139,8 +153,9 @@ describe("Preview 场景快照", () => {
     for (const title of ["存档", "历史", "设置", "CG 画廊", "场景回放", "音乐室", "结局列表", "黎明重逢"]) {
       expect(html).toContain(title);
     }
-    // RuntimeStateInspector 显示 fixture state（第一个背景 id）
-    expect(html).toContain("sky");
+    // 场景快照的状态检视器同样按需打开，默认不挤压舞台。
+    expect(html).not.toContain("sky");
+    expect(html).toContain("剧情检查");
   });
 
   it("场景快照模式默认场景带 story 语义 uiHint（Spec 21：剧情 fixture 不卡标题门）", () => {

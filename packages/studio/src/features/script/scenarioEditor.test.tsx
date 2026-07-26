@@ -85,8 +85,10 @@ describe("ScenarioInspector", () => {
     expect(bg).toContain("背景");
     expect(bg).toContain("转场");
     expect(char).toContain("位置槽");
-    expect(set).toContain("变量名");
-    expect(set).toContain("变量值");
+    // set 指令改成作者动作：「把 X 设为 Y」，不再暴露「变量名/变量值/赋值方式」。
+    expect(set).toContain("改变故事状态");
+    expect(set).toContain('aria-label="要改变的故事状态"');
+    expect(set).not.toContain("赋值方式");
   });
 
   it("renders compact current-line text fields for prose", () => {

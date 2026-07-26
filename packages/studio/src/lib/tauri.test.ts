@@ -6,6 +6,8 @@ import {
   desktopBuildPreflight,
   isDesktopBuildResult,
   normalizeDesktopBuildFailure,
+  openProject,
+  renameVariable,
   revealPath,
   runDesktopGame,
   saveNode,
@@ -288,5 +290,54 @@ describe("取消与系统交互命令", () => {
     expect(invokeMock).toHaveBeenCalledWith("build_desktop_game", {
       request: expect.objectContaining({ buildId: "build-42" }),
     });
+  });
+});
+
+describe("openProject", () => {
+  it("对后端原样返回的 manifest 归一化：补齐缺省的 unlocks 等注册表", async () => {
+    // 后端原样返回 manifest.json（不套用 schema 默认值）；
+    // 缺 unlocks 的项目不能再让 UI 裸访问 manifest.unlocks.endings 抛 TypeError
+    const rawProject = {
+      path: "/project",
+      meta: { title: "P", activeRendererId: "default" },
+      content: {
+        manifest: { characters: {}, backgrounds: {} },
+        meta: {},
+        variables: { version: 1, variables: {} },
+      },
+      rendererIds: ["default"],
+    };
+    invokeMock.mockResolvedValue(rawProject);
+
+    const project = await openProject("/project");
+
+    expect(invokeMock).toHaveBeenCalledWith("open_project", { path: "/project" });
+    expect(project.content.manifest.unlocks).toEqual({ cg: {}, music: {}, replay: {}, endings: {} });
+    expect(project.content.manifest.audio).toEqual({ bgm: {}, sfx: {}, voice: {} });
+  });
+});
+
+describe("renameVariable", () => {
+  it("sends the rename to the backend as one atomic call", async () => {
+    invokeMock.mockResolvedValue({
+      variablesRevision: null,
+      graphRevision: null,
+      updatedConditions: 2,
+      updatedNodes: 1,
+    });
+
+    const result = await renameVariable("/project", "variable_1", "affection");
+
+    expect(invokeMock).toHaveBeenCalledWith("rename_variable", {
+      projectPath: "/project",
+      from: "variable_1",
+      to: "affection",
+    });
+    expect(result.updatedConditions).toBe(2);
+  });
+
+  it("propagates a backend rejection instead of leaving the caller to guess", async () => {
+    invokeMock.mockRejectedValue(new Error("变量 affection 已存在"));
+    await expect(renameVariable("/project", "variable_1", "affection")).rejects.toThrow("已存在");
   });
 });

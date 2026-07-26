@@ -1,4 +1,5 @@
-import type { Meta, Manifest, Instruction, ProjectGraphData, GraphEdgeData, VariableRegistry } from "./types";
+import type { Meta, Manifest, Instruction, ProjectGraphData, GraphEdgeData, SetInstr, VariableRegistry } from "./types";
+import type { GraphRouteValue } from "./graphRouting";
 import type { NovelState } from "./state";
 import { createInitialState } from "./state";
 import { applyInstruction, advanceTyping, revealFully, buildInitialState, evaluateAssignmentExpression, RuntimeAssignmentError, type InterpreterDeps } from "./interpreter";
@@ -10,6 +11,7 @@ import {
   createRuntimeSnapshot,
   migrateSaveSlotRecord,
   replayDecisionLogToNodeId,
+  truncateDecisionLogToNode,
   type DecisionLogEvent,
   type ReadTextKey,
   type RuntimeLoadWarning,
@@ -19,7 +21,7 @@ import {
   type StoryPointId,
   createPlaythroughId,
 } from "./runtimeContract";
-import { assertVariableValue, effectiveVariables, variableDefaults } from "./variables";
+import { assertVariableValue, clampVariableValue, effectiveVariables, isReadonlyVariableName, storyExperienceVariables, variableDefaults, type StateWriteEvent } from "./variables";
 import type { BacklogEntry, SkipMode } from "./renderer";
 
 export interface GraphPlayerPersistentBridge {
@@ -73,6 +75,14 @@ export class GraphNovelPlayer {
   private currentReadKey: ReadTextKey | null = null;
   private currentStableKind: StableInstruction["t"] | null = null;
   private decisions: DecisionLogEvent[] = [];
+  /** 状态写入 trace：只存内存，不进存档。见 variables.ts 的 StateWriteEvent。 */
+  private stateWrites: StateWriteEvent[] = [];
+  /**
+   * 进入当前节点时的变量快照。seekToInstruction 在节点内重放指令时以此为起点：
+   * 从空 vars 起步会让 `affection + 1` 这类自引用赋值抛「未知变量」，
+   * 而从「当前」vars 起步会把增量重复叠加。
+   */
+  private varsAtNodeEntry: Record<string, GraphRouteValue> = {};
   private ip = 0;
   private state: NovelState;
   private listeners = new Set<Listener>();
@@ -118,6 +128,7 @@ export class GraphNovelPlayer {
     this.currentReadKey = null;
     this.currentStableKind = null;
     this.decisions = this.currentNodeId ? [{ type: "start", nodeId: this.currentNodeId }] : [];
+    this.stateWrites = [];
     this.backlog = [];
     this.backlogOrder = 0;
     this.pendingVoiceId = undefined;
@@ -132,6 +143,7 @@ export class GraphNovelPlayer {
     const total = this.currentInstructions().length;
     this.state = buildInitialState(0, total);
     this.state.vars = this.initialEffectiveVariables();
+    this.varsAtNodeEntry = { ...this.state.vars };
     this.emit();
   }
 
@@ -195,9 +207,18 @@ export class GraphNovelPlayer {
     return this.decisions.map(cloneDecisionEvent);
   }
 
+  /**
+   * 本次运行中改变过故事状态的位置，按发生顺序。
+   * 供预览的「剧情检查」回答「这个值是哪来的」；不进存档。
+   */
+  getStateWrites(): StateWriteEvent[] {
+    return this.stateWrites.map((event) => ({ ...event }));
+  }
+
   createSnapshot(): RuntimeSnapshot {
     const runVars = Object.fromEntries(Object.entries(this.state.vars).filter(([name]) => {
-      if (name.startsWith("system.")) return false;
+      // 只读命名空间（system./chose./seen.）是派生值，存进档只会和实际路径漂移。
+      if (isReadonlyVariableName(name)) return false;
       return (this.deps.variables?.variables[name]?.scope ?? "run") === "run";
     }));
     return createRuntimeSnapshot({ ...this.state, vars: runVars }, {
@@ -219,6 +240,8 @@ export class GraphNovelPlayer {
     const slot = migrateSaveSlotRecord(record);
     this.playthroughId = slot.checkpoint.playthroughId;
     this.decisions = slot.decisions.map(cloneDecisionEvent);
+    // trace 属于「本次运行」，读档换了一条时间线，旧记录不能留。
+    this.stateWrites = [];
     const result = this.restoreSnapshot(slot.checkpoint);
     if (result.warnings.length === 0 || !this.graph || slot.decisions.length === 0) {
       return result;
@@ -255,9 +278,34 @@ export class GraphNovelPlayer {
   jumpToStoryPoint(point: StoryPointId): RuntimeRestoreResult {
     this.clearTimers();
     this.suppressStableCheckpoints = false;
-    const result = this.applyStoryPoint(point, createInitialState());
+    this.decisions = truncateDecisionLogToNode(this.decisions, point.nodeId);
+    // 回滚撤销了之后走过的路，那段路上的状态改变也不该继续出现在剧情检查里。
+    this.stateWrites = this.stateWrites.filter((event) => event.decisionIndex <= this.decisions.length);
+    const result = this.applyStoryPoint(point, this.stateForRollback());
     this.emit();
     return result;
+  }
+
+  /**
+   * 回滚的起始状态：保留已积累的变量，只把派生的经历变量按裁剪后的决策日志重算。
+   * 早期实现从空状态起步，回滚会把好感度之类的累积值一并清空，后续 auto 分支
+   * 条件也会因此求值失败。
+   */
+  private stateForRollback(): NovelState {
+    const carried = Object.fromEntries(
+      Object.entries(this.state.vars).filter(([name]) => !isReadonlyVariableName(name)),
+    );
+    const global = this.deps.globalState?.() ?? { vars: {}, playthroughCount: 0, lastEndingId: null };
+    return {
+      ...createInitialState(),
+      vars: effectiveVariables({
+        run: carried,
+        global: {},
+        playthroughCount: global.playthroughCount,
+        lastEndingId: global.lastEndingId,
+        experience: this.currentExperience(),
+      }),
+    };
   }
 
   startReplay(nodeId: string): RuntimeRestoreResult {
@@ -297,8 +345,13 @@ export class GraphNovelPlayer {
     return { warnings: [] };
   }
 
+  /**
+   * 调试会话里可以覆盖任何变量，包括 system./chose./seen. —— 「假设玩家已经通关一周目
+   * 并且选过这个选项」正是试算要问的问题。`startDebugSession` 的 variableOverrides
+   * 一直就允许，这里保持一致。非调试会话仍然完全不可写。
+   */
   setDebugVariable(name: string, value: string | number | boolean | null): void {
-    if (!this.playthroughId.startsWith("debug:") || name.startsWith("system.")) return;
+    if (!this.playthroughId.startsWith("debug:")) return;
     this.state = { ...this.state, vars: { ...this.state.vars, [name]: value } };
     this.emit();
   }
@@ -386,6 +439,7 @@ export class GraphNovelPlayer {
       : null;
     if (fromNodeId && edge) {
       this.decisions.push({ type: "choice", fromNodeId, toNodeId, edgeId: edge.id });
+      this.syncExperienceToState();
     }
     this.pendingChoiceCheckpoint = true;
     this.jumpToNode(toNodeId);
@@ -416,6 +470,9 @@ export class GraphNovelPlayer {
     const instructions = this.currentInstructions();
     const clamped = Math.max(0, Math.min(target, instructions.length));
     let nextState = buildInitialState(0, instructions.length);
+    // 从进入本节点时的变量重放：空 vars 会让 `affection + 1` 抛「未知变量」，
+    // 当前 vars 则会把已经算过的增量再叠一次。
+    nextState.vars = { ...this.varsAtNodeEntry };
     let lastStable: { instruction: StableInstruction; index: number } | null = null;
 
     for (let index = 0; index < clamped; index += 1) {
@@ -467,7 +524,7 @@ export class GraphNovelPlayer {
     const instr = this.currentInstructions()[index];
     this.ip += 1;
     try {
-      this.state = this.applyRuntimeInstruction(this.state, instr);
+      this.state = this.applyRuntimeInstruction(this.state, instr, index);
     } catch (error) {
       this.stopOnAssignmentError(error, index);
       return;
@@ -503,6 +560,7 @@ export class GraphNovelPlayer {
 
   private jumpToNode(nodeId: string) {
     this.currentNodeId = nodeId;
+    this.varsAtNodeEntry = { ...this.state.vars };
     this.currentStoryPoint = null;
     this.currentReadKey = null;
     this.currentStableKind = null;
@@ -533,6 +591,7 @@ export class GraphNovelPlayer {
     this.routeError = null;
     this.ip = 0;
     this.state = buildInitialState(0, this.currentInstructions().length);
+    this.varsAtNodeEntry = { ...this.state.vars };
     this.emit();
   }
 
@@ -550,7 +609,7 @@ export class GraphNovelPlayer {
       const instr = instructions[index];
       this.ip += 1;
       try {
-        this.state = this.applyRuntimeInstruction(this.state, instr);
+        this.state = this.applyRuntimeInstruction(this.state, instr, index);
       } catch (error) {
         this.stopOnAssignmentError(error, index);
         return;
@@ -616,9 +675,21 @@ export class GraphNovelPlayer {
     }
     if (edge.mode === "auto") {
       this.decisions.push({ type: "auto", fromNodeId: edge.from, toNodeId: edge.to, edgeId: edge.id });
+      this.syncExperienceToState();
     }
     this.jumpToNode(edge.to);
     this.stepNext(routeDepth + 1);
+  }
+
+  /**
+   * 把当前决策日志派生的经历变量合并进 state.vars。
+   *
+   * `chose.*` / `seen.*` 在玩家做出决策那一刻起就应该对后续条件可见，
+   * 不能等到下一次完整重建状态才生效。此方法在每次追加决策后调用。
+   */
+  private syncExperienceToState() {
+    const experience = this.currentExperience();
+    this.state = { ...this.state, vars: { ...this.state.vars, ...experience } };
   }
 
   private afterStep(instr: Instruction, index: number): boolean {
@@ -720,7 +791,7 @@ export class GraphNovelPlayer {
           type: "globalSet" as const,
           id: instr.id ?? "",
           key: instr.key,
-          value: "expr" in instr && instr.expr != null ? evaluateAssignmentExpression(instr.expr, this.state.vars) : instr.value ?? null,
+          value: this.resolveSetValue(instr, this.state.vars),
           nodeId: this.currentNodeId ?? undefined,
           playthroughId: this.playthroughId,
         }
@@ -750,22 +821,55 @@ export class GraphNovelPlayer {
     return false;
   }
 
-  private applyRuntimeInstruction(state: NovelState, instr: Instruction): NovelState {
+  /**
+   * @param instructionIndex 当前指令在节点里的下标；给状态写入 trace 用。
+   *   重放（seekToInstruction）传 undefined，此时不记 trace —— 重放会把同一批
+   *   指令再跑一遍，记下来会让「发生过的状态变化」出现重复条目。
+   */
+  private applyRuntimeInstruction(state: NovelState, instr: Instruction, instructionIndex?: number): NovelState {
     if (instr.t !== "set") return applyInstruction(state, instr, this.deps);
     const declaration = this.deps.variables?.variables[instr.key];
-    const value = "expr" in instr && instr.expr != null
-      ? evaluateAssignmentExpression(instr.expr, state.vars)
-      : instr.value ?? null;
+    const value = this.resolveSetValue(instr, state.vars);
     try {
       assertVariableValue(instr.key, value, declaration);
     } catch (error) {
       throw new RuntimeAssignmentError(error instanceof Error ? error.message : String(error));
     }
+    if (instructionIndex != null) this.recordStateWrite(instr.key, state.vars[instr.key] ?? null, value, instructionIndex);
     if ((declaration?.scope ?? "run") === "global") {
       if (!instr.id) throw new Error(`global set ${instr.key} 缺少稳定 id`);
       return state;
     }
     return { ...state, vars: { ...state.vars, [instr.key]: value } };
+  }
+
+  /** 值没变就不记：作者关心的是「哪里改了它」，不是「哪里碰过它」。 */
+  private recordStateWrite(
+    variable: string,
+    from: GraphRouteValue,
+    to: GraphRouteValue,
+    instructionIndex: number,
+  ) {
+    if (from === to || !this.currentNodeId) return;
+    this.stateWrites.push({
+      variable,
+      from,
+      to,
+      nodeId: this.currentNodeId,
+      instructionIndex,
+      decisionIndex: this.decisions.length,
+    });
+  }
+
+  /**
+   * `set` 的最终写入值：先算表达式或字面量，再按声明范围钳制。
+   * run 与 global 两条写入路径共用，避免只有一边遵守范围。
+   */
+  private resolveSetValue(instr: SetInstr, vars: Record<string, GraphRouteValue>): GraphRouteValue {
+    const raw = "expr" in instr && instr.expr != null
+      ? evaluateAssignmentExpression(instr.expr, vars)
+      : instr.value ?? null;
+    return clampVariableValue(raw, this.deps.variables?.variables[instr.key]);
   }
 
   private stopOnAssignmentError(error: unknown, instructionIndex: number) {
@@ -783,17 +887,23 @@ export class GraphNovelPlayer {
       global: { ...variableDefaults(this.deps.variables, "global"), ...global.vars },
       playthroughCount: global.playthroughCount,
       lastEndingId: global.lastEndingId,
+      experience: this.currentExperience(),
     });
+  }
+
+  /** chose./seen. 由决策日志实时派生，不落盘，因此回滚与读档天然一致。 */
+  private currentExperience() {
+    return storyExperienceVariables(this.graph, this.decisions);
   }
 
   private refreshPersistentVariableView() {
     const global = this.deps.globalState?.();
     if (!global) return;
     const run = Object.fromEntries(Object.entries(this.state.vars).filter(([name]) => {
-      if (name.startsWith("system.")) return false;
+      if (isReadonlyVariableName(name)) return false;
       return (this.deps.variables?.variables[name]?.scope ?? "run") === "run";
     }));
-    this.state = { ...this.state, vars: effectiveVariables({ run, global: global.vars, playthroughCount: global.playthroughCount, lastEndingId: global.lastEndingId }) };
+    this.state = { ...this.state, vars: effectiveVariables({ run, global: global.vars, playthroughCount: global.playthroughCount, lastEndingId: global.lastEndingId, experience: this.currentExperience() }) };
     this.emit();
   }
 
@@ -870,6 +980,9 @@ export class GraphNovelPlayer {
       ? createReadTextKey({ ...point, text: instr.text })
       : null;
     this.ip = index + 1;
+    // 落到节点中间（读档/回滚/调试起点）时，把 baseState 当作本节点的入口状态，
+    // 后续 seekToInstruction 才有正确的重放起点。
+    this.varsAtNodeEntry = { ...baseState.vars };
     this.state = this.applyRuntimeInstruction(baseState, instr);
     if (instr.t === "say" || instr.t === "narrate") this.state = revealFully(this.state);
     if (instr.t === "wait") this.state = { ...this.state, flags: { ...this.state.flags, isWaiting: false } };
@@ -889,6 +1002,7 @@ export class GraphNovelPlayer {
         global: { ...variableDefaults(this.deps.variables, "global"), ...global.vars },
         playthroughCount: global.playthroughCount,
         lastEndingId: global.lastEndingId,
+        experience: this.currentExperience(),
       }),
       background: snapshot.background,
       sprites: snapshot.sprites.map((sprite, index) => ({
@@ -919,7 +1033,7 @@ export class GraphNovelPlayer {
     const names = new Set<string>();
     for (const instructions of this.instructionsByNodeId.values()) {
       for (const instruction of instructions) {
-        if (instruction.t === "set" && !declarations[instruction.key] && !instruction.key.startsWith("system.")) {
+        if (instruction.t === "set" && !declarations[instruction.key] && !isReadonlyVariableName(instruction.key)) {
           names.add(instruction.key);
         }
       }

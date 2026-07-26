@@ -28,7 +28,7 @@ export function analyzeEndingRouteMatrix(input: Parameters<typeof analyzeEndingR
   const results = columns.map((column) => analyzeEndingRoutesFrom(input, column.startNodeId));
   return {
     columns,
-    rows: Object.entries(input.manifest.unlocks.endings).map(([endingId, ending]) => ({
+    rows: Object.entries(input.manifest.unlocks?.endings ?? {}).map(([endingId, ending]) => ({
       endingId,
       title: ending.title,
       cells: results.map((result) => result.find((cell) => cell.endingId === endingId) ?? {
@@ -39,7 +39,7 @@ export function analyzeEndingRouteMatrix(input: Parameters<typeof analyzeEndingR
 }
 
 export function collectUnregisteredTerminals(graph: ProjectGraph, manifest: Manifest): Array<{ nodeId: string; title: string }> {
-  const registered = new Set(Object.values(manifest.unlocks.endings).map((ending) => ending.nodeId).filter(Boolean));
+  const registered = new Set(Object.values(manifest.unlocks?.endings ?? {}).map((ending) => ending.nodeId).filter(Boolean));
   const reachable = structurallyReachable(graph, graph.entryNodeId);
   return graph.nodes.filter((node) => reachable.has(node.id)
     && !graph.edges.some((edge) => edge.from === node.id)
@@ -94,7 +94,7 @@ function analyzeEndingRoutesFrom(input: Parameters<typeof analyzeEndingRoutes>[0
   }
   if (queue.length > 0) uncertain = true;
 
-  return Object.entries(input.manifest.unlocks.endings).map(([endingId, ending]) => {
+  return Object.entries(input.manifest.unlocks?.endings ?? {}).map(([endingId, ending]) => {
     const witness = found.get(endingId);
     if (witness) return { endingId, title: ending.title, reachability: "reachable", witness };
     if (ending.nodeId && seenHasNode(seen, ending.nodeId)) return { endingId, title: ending.title, reachability: "unknown", reason: "关联节点可达，但没有结算指令" };

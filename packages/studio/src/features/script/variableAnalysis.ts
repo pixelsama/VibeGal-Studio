@@ -1,3 +1,4 @@
+import type { VariableRegistry } from "@vibegal/engine";
 import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { parseGraphCondition, collectConditionVariables } from "./graphCondition";
 
@@ -39,7 +40,11 @@ export interface VariableAnalysisReport {
   parseIssues: VariableParseIssue[];
 }
 
-export function analyzeGraphVariables(graph: ProjectGraph, nodeEntries?: NodeEntry[]): VariableAnalysisReport {
+export function analyzeGraphVariables(
+  graph: ProjectGraph,
+  nodeEntries?: NodeEntry[],
+  registry?: VariableRegistry,
+): VariableAnalysisReport {
   const nodesByFile = new Map(graph.nodes.map((node) => [node.file, node]));
   const variableMap = new Map<string, { types: Set<VariableValueType>; writes: VariableUsagePoint[]; reads: VariableUsagePoint[] }>();
   const parseIssues: VariableParseIssue[] = [];
@@ -90,11 +95,13 @@ export function analyzeGraphVariables(graph: ProjectGraph, nodeEntries?: NodeEnt
 
   const variables = Array.from(variableMap, ([name, data]) => {
     const types = Array.from(data.types).sort();
+    const declaration = registry?.variables[name];
     const issues: VariableIssue[] = [];
     if (data.reads.length > 0 && data.writes.length === 0) {
       issues.push({ code: "read_before_write", message: "条件读取了未赋值变量", severity: "error" });
     }
-    if (data.writes.length > 0 && data.reads.length === 0) {
+    // 声明为「仅用于界面显示」的状态本来就不参与分流，不该报没人读。
+    if (data.writes.length > 0 && data.reads.length === 0 && !declaration?.displayOnly) {
       issues.push({ code: "write_without_read", message: "变量已写入但没有被条件读取", severity: "warn" });
     }
     if (types.filter((type) => type !== "unknown").length > 1) {

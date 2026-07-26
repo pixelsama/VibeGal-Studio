@@ -498,6 +498,117 @@ pub(crate) fn save_variables(
     project_root.revision("content/variables.json")
 }
 
+/// Rename a declared variable and rewrite every reference to it, atomically.
+///
+/// Renaming touches three kinds of file at once: the registry, every graph edge
+/// condition, and every `set` instruction across all node files. The frontend
+/// cannot do this safely — each save command carries its own revision guard, so
+/// a mid-sequence failure would leave the project half-renamed, with conditions
+/// pointing at a variable that no longer exists.
+///
+/// Everything is validated and staged in memory first; nothing is written until
+/// every document is known-good.
+pub(crate) fn rename_variable(
+    project_path: String,
+    from: String,
+    to: String,
+) -> Result<RenameVariableResult, String> {
+    if from == to {
+        return Err("新旧名称相同".to_string());
+    }
+    if to.trim().is_empty() {
+        return Err("新名称不能为空".to_string());
+    }
+
+    let project_root = ProjectRoot::open(Path::new(&project_path))?;
+    let content_root = project_root.content_root()?;
+
+    // ── 1. 注册表：改键，保持插入顺序之外的一切不变 ──
+    let variables_path = content_root.resolve_write_target("variables.json")?;
+    let mut variables: serde_json::Value = read_json(&variables_path)?;
+    let table = variables
+        .get_mut("variables")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "variables.json 结构不正确".to_string())?;
+    if !table.contains_key(&from) {
+        return Err(format!("变量 {from} 不存在"));
+    }
+    if table.contains_key(&to) {
+        return Err(format!("变量 {to} 已存在"));
+    }
+    let declaration = table.remove(&from).expect("checked above");
+    table.insert(to.clone(), declaration);
+    validate_write_contract(contracts::ContractSchemaKind::Variables, &variables, "variables")?;
+
+    // ── 2. 图：改写 auto 边条件 ──
+    let graph_path = content_root.resolve_write_target("graph.json")?;
+    let mut graph: serde_json::Value = read_json(&graph_path)?;
+    let mut condition_updates = 0usize;
+    for edge in graph
+        .get_mut("edges")
+        .and_then(serde_json::Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        let Some(condition) = edge.get("condition").and_then(serde_json::Value::as_str) else { continue };
+        let rewritten = validation::rename_identifier(condition, &from, &to)?;
+        if rewritten != condition {
+            condition_updates += 1;
+            edge["condition"] = serde_json::Value::String(rewritten);
+        }
+    }
+    validate_write_contract(contracts::ContractSchemaKind::Graph, &graph, "graph")?;
+
+    // ── 3. 节点：改写 set 指令的目标与赋值表达式 ──
+    let mut node_updates = 0usize;
+    let mut staged_nodes: Vec<(PathBuf, serde_json::Value)> = vec![];
+    for node in graph["nodes"].as_array().into_iter().flatten() {
+        let Some(file) = node["file"].as_str() else { continue };
+        let node_path = content_root.resolve_write_target(file)?;
+        if !node_path.exists() {
+            continue;
+        }
+        ensure_existing_path_within(content_root.path(), &node_path)?;
+        let mut instructions: serde_json::Value = read_json(&node_path)?;
+        let mut changed = false;
+        for instruction in instructions.as_array_mut().into_iter().flatten() {
+            if instruction.get("t").and_then(serde_json::Value::as_str) != Some("set") {
+                continue;
+            }
+            if instruction.get("key").and_then(serde_json::Value::as_str) == Some(from.as_str()) {
+                instruction["key"] = serde_json::Value::String(to.clone());
+                changed = true;
+            }
+            if let Some(expression) = instruction.get("expr").and_then(serde_json::Value::as_str) {
+                let rewritten = validation::rename_identifier(expression, &from, &to)?;
+                if rewritten != expression {
+                    instruction["expr"] = serde_json::Value::String(rewritten);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            validate_node_contract(&instructions)?;
+            node_updates += 1;
+            staged_nodes.push((node_path, instructions));
+        }
+    }
+
+    // ── 4. 全部校验通过后才落盘 ──
+    write_json(&variables_path, &variables)?;
+    write_json(&graph_path, &graph)?;
+    for (path, instructions) in &staged_nodes {
+        write_json(path, instructions)?;
+    }
+
+    Ok(RenameVariableResult {
+        variables_revision: project_root.revision("content/variables.json")?,
+        graph_revision: project_root.revision("content/graph.json")?,
+        updated_conditions: condition_updates,
+        updated_nodes: node_updates,
+    })
+}
+
 pub(crate) fn save_project_meta(
     project_path: String,
     meta: ProjectMeta,
@@ -512,6 +623,7 @@ pub(crate) fn save_project_meta(
     project_root.revision("gal.project.json")
 }
 use super::contracts;
+use super::validation;
 use super::fs::{
     atomic_write_text, ensure_existing_path_within, ensure_expected_revision,
     move_project_file_to_trash, parse_expected_revision, read_json, safe_relative_path,
@@ -528,6 +640,15 @@ use std::fs::{self, OpenOptions};
 use std::path::{Component, Path, PathBuf};
 
 const MAX_ASSET_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
+
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameVariableResult {
+    pub variables_revision: Option<FileRevision>,
+    pub graph_revision: Option<FileRevision>,
+    pub updated_conditions: usize,
+    pub updated_nodes: usize,
+}
 
 #[derive(serde::Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

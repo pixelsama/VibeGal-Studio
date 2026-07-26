@@ -690,3 +690,932 @@ select:focus-visible {
 .gs-command-item--active:hover {
   background: var(--bg-active);
 }
+
+/* ══ 表单原语（features/common/Form.tsx）════════════════════════════════
+   此前项目没有输入控件的共享实现，未手写内联样式的组件会掉回浏览器原生控件。
+   下列 class 是所有字段/输入/开关/滑块的唯一外观来源。 */
+
+.gs-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.gs-field__label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.gs-field__message {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.gs-field__message--error {
+  color: var(--status-error-text);
+}
+
+.gs-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-md);
+  outline: none;
+}
+.gs-input:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.gs-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-halo);
+}
+.gs-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.gs-input--invalid,
+.gs-input--invalid:hover:not(:disabled) {
+  border-color: var(--status-error);
+}
+.gs-input--invalid:focus-visible {
+  box-shadow: 0 0 0 3px var(--status-warn-ring);
+}
+.gs-input--number {
+  /* 句子里按内容收窄，但仍要能在窄侧栏内收缩，否则会把面板撑出横向滚动。 */
+  width: 100%;
+  min-width: 0;
+  max-width: 120px;
+}
+
+.gs-select {
+  /* 原生箭头在深色下几乎不可见，换成自绘三角。 */
+  appearance: none;
+  padding-right: var(--space-6);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right var(--space-3) center, right calc(var(--space-3) - 4px) center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* ── 开关 ── */
+.gs-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.gs-switch__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.gs-switch__track {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.gs-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+.gs-switch__input:checked + .gs-switch__track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.gs-switch__input:checked + .gs-switch__track .gs-switch__thumb {
+  transform: translateX(14px);
+  background: var(--text-on-accent);
+}
+.gs-switch__input:focus-visible + .gs-switch__track {
+  box-shadow: 0 0 0 3px var(--accent-halo);
+}
+.gs-switch__input:disabled + .gs-switch__track {
+  opacity: 0.55;
+}
+.gs-switch__label {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+/* ── 分段控件 ── */
+.gs-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+}
+.gs-segmented__item {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.gs-segmented__item:hover:not(:disabled):not(.gs-segmented__item--active) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.gs-segmented__item--active {
+  background: var(--bg-active);
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+.gs-segmented__item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── 滑块 ── */
+.gs-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.gs-slider__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gs-slider__input {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--accent);
+}
+.gs-slider__value {
+  flex: none;
+  min-width: 40px;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.gs-slider__marks {
+  position: relative;
+  height: 14px;
+}
+.gs-slider__mark {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* ── 步进器 ── */
+.gs-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.gs-stepper__button {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.gs-stepper__prefix {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+.gs-stepper__input {
+  width: 72px;
+  text-align: center;
+}
+
+/* ── 句子行：把控件排成一句可读的话 ── */
+.gs-sentence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-sentence__lead {
+  flex: none;
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+.gs-sentence__body {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-sentence__trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.gs-sentence__word {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ══ 故事状态面板（features/script/StoryStatePanel.tsx）══════════════════ */
+
+.gs-story-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.gs-story-state__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gs-story-state__search {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-muted);
+}
+.gs-story-state__search .gs-input {
+  padding-left: var(--space-2);
+}
+.gs-story-state__empty {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: 1.7;
+}
+.gs-story-state__undeclared {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-warn);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+.gs-story-state__undeclared h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--status-warn-text);
+}
+.gs-story-state__undeclared-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+}
+
+.gs-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  min-width: 0;
+}
+.gs-state-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.gs-state-card__title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+.gs-state-card__meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.gs-state-card__usage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.gs-state-card__usage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.gs-state-card__details summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.gs-state-card__details-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.gs-state-card__details-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-primary);
+}
+.gs-state-card__rename {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 220px;
+}
+
+.gs-range-fields,
+.gs-options-field__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.gs-options-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.gs-state-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-accent-soft);
+}
+.gs-state-new__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ══ 句子化条件编辑器（features/script/ConditionEditor.tsx）═══════════════ */
+
+.gs-condition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-condition__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.gs-condition--raw {
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+}
+.gs-condition__raw-source {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.gs-condition__raw-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.gs-condition__band {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gs-condition__exact summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ══ 分流规则表（features/script/BranchRules.tsx）════════════════════════ */
+
+.gs-branch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.gs-branch__single,
+.gs-branch__rule-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.gs-branch__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gs-branch__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+.gs-branch__row--winner {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-glow);
+}
+.gs-branch__row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gs-branch__index {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--bg-active);
+  color: var(--accent-bright);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+}
+.gs-branch__index--fallback {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  min-width: 34px;
+}
+.gs-branch__target {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+.gs-branch__reorder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-dim);
+}
+.gs-branch__problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--status-warn-text);
+}
+.gs-branch__winner {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--accent-bright);
+}
+
+/* ── 试算面板 ── */
+.gs-trial > summary {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.gs-trial__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+
+/* ══ 改变故事状态（features/script/StateChangeEditor.tsx）════════════════ */
+
+.gs-state-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-state-change__advanced > summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* ══ 脚本工作台一级视图切换（features/script/ScriptWorkspace.tsx）═════════ */
+
+.gs-script-views {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+}
+
+/* ══ 故事状态视图（features/script/StoryStateView.tsx）═══════════════════ */
+
+.gs-state-view {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.gs-state-view__list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-app);
+}
+.gs-state-view__list-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.gs-state-view__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+.gs-state-view__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.gs-state-view__group h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.gs-state-view__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+.gs-state-view__item:hover {
+  background: var(--bg-hover);
+}
+.gs-state-view__item--active,
+.gs-state-view__item--active:hover {
+  background: var(--bg-active);
+  border-color: var(--accent);
+  color: var(--text-bright);
+  font-weight: 600;
+}
+.gs-state-view__item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gs-state-view__item-flag {
+  flex: none;
+  color: var(--status-warn-text);
+}
+.gs-state-view__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+/* ── 在故事里 ── */
+.gs-state-usage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+.gs-state-usage h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+.gs-state-usage__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.gs-state-usage__block h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.gs-state-usage__issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gs-state-usage__fix {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+.gs-state-usage__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+.gs-state-usage__row:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+.gs-state-usage__hint {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* ══ 剧情覆盖（features/script/RouteCoveragePanel.tsx）══════════════════ */
+
+.gs-coverage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.gs-coverage__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-2);
+}
+.gs-coverage__stat {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+.gs-coverage__stat-value {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-bright);
+}
+.gs-coverage__stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.gs-coverage__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.gs-coverage__block h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.gs-coverage__matrix {
+  display: grid;
+  gap: var(--space-1);
+  overflow-x: auto;
+  font-size: var(--text-sm);
+}
+.gs-coverage__cell {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  text-align: center;
+}
+.gs-coverage__cell--reachable {
+  background: var(--bg-accent-soft);
+  color: var(--status-ok-text);
+}
+.gs-coverage__cell--unreachable {
+  background: var(--bg-tag-error);
+  color: var(--status-error-text);
+}
+.gs-coverage__cell--unknown {
+  background: var(--bg-tag-warn);
+  color: var(--status-warn-text);
+}
+
+/* ══ 剧情检查（features/preview/StoryInspection.tsx）════════════════════ */
+
+.gs-inspection {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid var(--border);
+  background: var(--bg-app);
+}
+.gs-inspection__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.gs-inspection__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+.gs-inspection__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-inspection__block h4 {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.gs-inspection__where {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-bright);
+  overflow-wrap: anywhere;
+}
+.gs-inspection__quiet {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.gs-inspection__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+.gs-inspection__row-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.gs-inspection__name {
+  min-width: 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.gs-inspection__value {
+  flex: none;
+  font-size: var(--text-base);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-bright);
+}
+.gs-inspection__origin {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-bright);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.gs-inspection__origin:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+.gs-inspection__clause {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.gs-inspection__clause--ok {
+  color: var(--status-ok-text);
+}
+.gs-inspection__outcome {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+.gs-inspection__foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── 试演假设面板 ── */
+.gs-trial-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.gs-trial-pane__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

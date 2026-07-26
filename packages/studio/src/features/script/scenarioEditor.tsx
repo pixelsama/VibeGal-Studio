@@ -7,6 +7,7 @@ import {
   type Instruction,
 } from "@vibegal/engine";
 import { ResourcePicker } from "../assets/ResourcePicker";
+import { StateChangeEditor } from "./StateChangeEditor";
 import { BottomSheet } from "../common/BottomSheet";
 import type { Manifest } from "../../lib/types";
 import type { VariableRegistry } from "@vibegal/engine";
@@ -266,20 +267,16 @@ export function ScenarioInspector({
           />
         </InspectorPanel>
       );
-    case "set": {
-      const declaration = variables?.variables[instruction.key];
-      const expressionMode = instruction.expr != null;
+    case "set":
       return (
-        <InspectorPanel title="变量">
-          {variables ? <label><span>变量名</span><select value={instruction.key} onChange={(event) => onReplaceInstruction({ ...instruction, key: event.target.value })}>{Object.keys(variables.variables).map((name) => <option key={name}>{name}</option>)}</select></label> : <TextField label="变量名" value={instruction.key} onChange={(key) => onReplaceInstruction({ ...instruction, key })} />}
-          <EnumField label="赋值方式" value={expressionMode ? "expr" : "literal"} options={["literal", "expr"]} optionLabels={{ literal: "类型化值", expr: "表达式" }} onChange={(mode) => onReplaceInstruction(mode === "expr" ? { t: "set", key: instruction.key, id: instruction.id, expr: "0" } : { t: "set", key: instruction.key, id: instruction.id, value: declaration?.default ?? null })} />
-          {expressionMode ? <TextField label="赋值表达式" value={instruction.expr ?? ""} onChange={(expr) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, expr })} />
-            : declaration?.type === "boolean" ? <EnumField label="变量值" value={String(instruction.value)} options={["true", "false"]} onChange={(value) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, value: value === "true" })} />
-              : declaration?.type === "number" ? <NumberField label="变量值" value={typeof instruction.value === "number" ? instruction.value : 0} onChange={(value) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, value })} />
-                : <TextField label="变量值" value={typeof instruction.value === "string" ? instruction.value : ""} onChange={(value) => onReplaceInstruction({ t: "set", key: instruction.key, id: instruction.id, value })} />}
+        <InspectorPanel title="改变故事状态">
+          <StateChangeEditor
+            instruction={instruction}
+            variables={variables}
+            onChange={onReplaceInstruction}
+          />
         </InspectorPanel>
       );
-    }
     case "bgm":
       return (
         <InspectorPanel title="背景音乐">

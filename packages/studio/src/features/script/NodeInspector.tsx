@@ -1,12 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 import type { GraphEdge, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNode, findNodeData, summarizeNodeConnections } from "./graphMapping";
-import { collectConditionVariables, parseGraphCondition } from "./graphCondition";
-import { evaluateGraphConditionResult, type VariableRegistry } from "@vibegal/engine";
-import { ConditionBuilder } from "./ConditionBuilder";
+import { parseGraphCondition } from "./graphCondition";
+import type { VariableRegistry } from "@vibegal/engine";
+import { BranchRules, moveEdge, moveEdgeById, normalizeEdge, orderDefaultAutoEdgeLast } from "./BranchRules";
+import { collectStateSources, stateSourceDefaults } from "./storyState";
 
-type BranchMode = "choice" | "auto";
+// 排序模型迁到 BranchRules，这里重新导出以保持既有调用方与测试的入口不变。
+export { moveEdge, moveEdgeById, orderDefaultAutoEdgeLast };
+
+/**
+ * 条件草稿的提交校验：解析失败就不写回项目文件。
+ * 句子化编辑器只产出合法表达式，但表达式模式与外部改动仍需要这道闸。
+ */
+export function commitConditionDraft(source: string):
+  | { ok: true; condition: string | null }
+  | { ok: false; message: string } {
+  const condition = source.trim();
+  if (!condition) return { ok: true, condition: null };
+  const parsed = parseGraphCondition(condition);
+  return parsed.ok ? { ok: true, condition } : { ok: false, message: parsed.error };
+}
 
 interface NodeInspectorProps {
   graph: ProjectGraph;
@@ -45,6 +60,14 @@ export function NodeInspector({
 }: NodeInspectorProps) {
   const node = findNode(graph, selectedNodeId);
   const [title, setTitle] = useState(node?.title ?? "");
+  const [trialValues, setTrialValues] = useState<Record<string, string | number | boolean | null>>({});
+
+  // 剧情经历与系统状态也要进试算环境，否则引用它们的条件会被误报成「未知变量」。
+  const sources = useMemo(
+    () => collectStateSources({ registry: variables, graph, manifest }),
+    [variables, graph, manifest],
+  );
+  const defaults = useMemo(() => stateSourceDefaults(sources), [sources]);
 
   useEffect(() => {
     setTitle(node?.title ?? "");
@@ -115,14 +138,19 @@ export function NodeInspector({
           )}
         </section>
 
-        <ExitSection
-          graph={graph}
-          nodeId={node.id}
-          edges={outgoingEdges}
-          disabled={saving || !onUpdateOutgoingEdges}
-          onChange={(edges) => onUpdateOutgoingEdges?.(node.id, edges)}
-          variables={variables}
-        />
+        <section style={sectionStyle}>
+          <div style={fieldLabelStyle}>离开这个节点</div>
+          <BranchRules
+            graph={graph}
+            nodeId={node.id}
+            edges={outgoingEdges}
+            sources={sources}
+            disabled={saving || !onUpdateOutgoingEdges}
+            onChange={(edges) => onUpdateOutgoingEdges?.(node.id, edges)}
+            trialValues={{ ...defaults, ...trialValues }}
+            onTrialChange={setTrialValues}
+          />
+        </section>
 
         <section style={sectionStyle}>
           <Field label="结构角色" value={outgoing === 0 ? "图终点" : "流程节点（仍有出口）"} />
@@ -147,258 +175,6 @@ export function NodeInspector({
       </div>
     </div>
   );
-}
-
-function ExitSection({
-  graph,
-  nodeId,
-  edges,
-  disabled,
-  onChange,
-  variables,
-}: {
-  graph: ProjectGraph;
-  nodeId: string;
-  edges: GraphEdge[];
-  disabled: boolean;
-  onChange: (edges: GraphEdge[]) => void;
-  variables?: VariableRegistry;
-}) {
-  const [draggedEdgeId, setDraggedEdgeId] = useState<string | null>(null);
-  const [simulationVars, setSimulationVars] = useState<Record<string, string | number | boolean | null>>({});
-  if (edges.length === 0) {
-    return (
-      <section style={sectionStyle}>
-        <Field label="出口" value="终点" />
-      </section>
-    );
-  }
-
-  if (edges.length === 1) {
-    return (
-      <section style={sectionStyle}>
-        <Field label="出口" value={`继续到 ${targetTitle(graph, edges[0].to)}`} />
-      </section>
-    );
-  }
-
-  const mode: BranchMode = edges.every((edge) => edge.mode === "auto") ? "auto" : "choice";
-
-  const applyMode = (nextMode: BranchMode) => {
-    const normalized = edges.map((edge, index) => normalizeBranchEdge(graph, nodeId, edge, index, nextMode));
-    onChange(nextMode === "auto" ? orderDefaultAutoEdgeLast(normalized) : normalized);
-  };
-
-  const updateEdge = (edgeId: string, patch: Partial<GraphEdge>) => {
-    const next = edges.map((edge, index) => {
-      const normalized = normalizeBranchEdge(graph, nodeId, edge, index, mode);
-      return normalized.id === edgeId ? normalizeEdge({ ...normalized, ...patch, mode }) : normalized;
-    });
-    onChange(mode === "auto" ? orderDefaultAutoEdgeLast(next) : next);
-  };
-
-  return (
-    <section style={sectionStyle}>
-      <label style={titleFieldStyle}>
-        <span style={fieldLabelStyle}>结束方式</span>
-        <select
-          value={mode}
-          onChange={(event) => applyMode(event.target.value as BranchMode)}
-          disabled={disabled}
-          style={titleInputStyle}
-        >
-          <option value="choice">玩家选择</option>
-          <option value="auto">自动判断</option>
-        </select>
-      </label>
-
-      {mode === "auto" && variables && <div style={conditionMetaStyle}>
-        <div>模拟变量（仅本地预览）</div>
-        {Object.entries(variables.variables).map(([name, declaration]) => <label key={name} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-          <span>{name}</span>
-          <input
-            aria-label={`模拟变量 ${name}`}
-            type={declaration.type === "number" ? "number" : "text"}
-            value={String(simulationVars[name] ?? declaration.default ?? "null")}
-            onChange={(event) => setSimulationVars((current) => ({
-              ...current,
-              [name]: declaration.type === "number" ? Number(event.target.value)
-                : declaration.type === "boolean" ? event.target.value === "true"
-                : event.target.value,
-            }))}
-          />
-        </label>)}
-      </div>}
-
-      <div style={exitListStyle}>
-        {edges.map((edge, index) => {
-          const condition = edge.condition?.trim() ?? "";
-          const parsed = condition ? parseGraphCondition(condition) : null;
-          const reads = parsed?.ok ? collectConditionVariables(parsed.ast) : [];
-          const defaults = {
-            ...Object.fromEntries(Object.entries(variables?.variables ?? {}).map(([name, declaration]) => [name, declaration.default])),
-            ...simulationVars,
-          };
-          const preview = mode === "auto" ? evaluateGraphConditionResult(edge.condition, defaults) : null;
-          const priorWins = mode === "auto" && edges.slice(0, index).some((prior) => {
-            const result = evaluateGraphConditionResult(prior.condition, defaults);
-            return result.ok && result.value;
-          });
-          return (
-          <div
-            key={edge.id}
-            style={exitRowStyle}
-            draggable={!disabled}
-            onDragStart={() => setDraggedEdgeId(edge.id)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => {
-              if (draggedEdgeId && draggedEdgeId !== edge.id) {
-                const reordered = moveEdgeById(edges, draggedEdgeId, edge.id);
-                onChange(mode === "auto" ? orderDefaultAutoEdgeLast(reordered) : reordered);
-              }
-              setDraggedEdgeId(null);
-            }}
-          >
-            <div style={fieldValueStyle}>{index + 1}. {targetTitle(graph, edge.to)}</div>
-            {mode === "choice" ? (
-              <input
-                value={edge.label ?? targetTitle(graph, edge.to)}
-                onChange={(event) => updateEdge(edge.id, { mode: "choice", label: event.target.value, condition: null })}
-                disabled={disabled}
-                placeholder="选项文本"
-                style={compactInputStyle}
-              />
-            ) : <ConditionDraftInput
-              condition={edge.condition}
-              disabled={disabled}
-              onCommit={(condition) => updateEdge(edge.id, { mode: "auto", label: null, condition })}
-            />}
-            {mode === "auto" && (
-              <div style={conditionMetaStyle}>
-                {!condition ? "默认边 · 最后兜底" : parsed?.ok ? `引用：${reads.join(", ") || "无"}` : `条件错误：${parsed?.error}`}
-                {preview && ` · ${preview.ok ? (preview.value ? (priorWins ? "命中但被前序分支遮蔽" : "实际胜出") : "不命中") : `error: ${preview.message}`}`}
-              </div>
-            )}
-            {mode === "auto" && condition && parsed?.ok && (
-              <div style={conditionMetaStyle}><ConditionBuilder source={condition} registry={variables} onChange={(source) => updateEdge(edge.id, { condition: source })} /></div>
-            )}
-            <div style={reorderStyle}>
-              <span aria-label={`拖拽 ${edge.id}`} title="拖拽排序">⋮⋮</span>
-              <button type="button" aria-label={`上移 ${edge.id}`} disabled={disabled || index === 0 || (mode === "auto" && !condition)} onClick={() => onChange(orderAfterMove(edges, index, -1, mode))}>↑</button>
-              <button type="button" aria-label={`下移 ${edge.id}`} disabled={disabled || index === edges.length - 1 || (mode === "auto" && !condition)} onClick={() => onChange(orderAfterMove(edges, index, 1, mode))}>↓</button>
-            </div>
-          </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function ConditionDraftInput({
-  condition,
-  disabled,
-  onCommit,
-}: {
-  condition: string | null;
-  disabled: boolean;
-  onCommit: (condition: string | null) => void;
-}) {
-  const [draft, setDraft] = useState(condition ?? "");
-  const [dirty, setDirty] = useState(false);
-  const result = commitConditionDraft(draft);
-
-  useEffect(() => {
-    if (!dirty) setDraft(condition ?? "");
-  }, [condition, dirty]);
-
-  const commit = () => {
-    if (!result.ok) return;
-    setDirty(false);
-    onCommit(result.condition);
-  };
-
-  return <div>
-    <input
-      value={draft}
-      onChange={(event) => { setDraft(event.target.value); setDirty(true); }}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") { commit(); event.currentTarget.blur(); }
-        if (event.key === "Escape") { setDraft(condition ?? ""); setDirty(false); }
-      }}
-      disabled={disabled}
-      aria-invalid={!result.ok}
-      placeholder="条件；留空为默认"
-      style={compactInputStyle}
-    />
-    {!result.ok && <div role="alert" style={conditionMetaStyle}>条件草稿尚未保存：{result.message}</div>}
-  </div>;
-}
-
-export function commitConditionDraft(source: string):
-  | { ok: true; condition: string | null }
-  | { ok: false; message: string } {
-  const condition = source.trim();
-  if (!condition) return { ok: true, condition: null };
-  const parsed = parseGraphCondition(condition);
-  return parsed.ok ? { ok: true, condition } : { ok: false, message: parsed.error };
-}
-
-export function moveEdge(edges: GraphEdge[], index: number, delta: -1 | 1): GraphEdge[] {
-  const target = index + delta;
-  if (target < 0 || target >= edges.length) return edges;
-  const next = [...edges];
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-}
-
-export function moveEdgeById(edges: GraphEdge[], draggedId: string, targetId: string): GraphEdge[] {
-  const from = edges.findIndex((edge) => edge.id === draggedId);
-  const to = edges.findIndex((edge) => edge.id === targetId);
-  if (from < 0 || to < 0 || from === to) return edges;
-  const next = [...edges];
-  const [dragged] = next.splice(from, 1);
-  next.splice(to, 0, dragged);
-  return next;
-}
-
-export function orderDefaultAutoEdgeLast(edges: GraphEdge[]): GraphEdge[] {
-  return [...edges.filter((edge) => edge.condition?.trim()), ...edges.filter((edge) => !edge.condition?.trim())];
-}
-
-function orderAfterMove(edges: GraphEdge[], index: number, delta: -1 | 1, mode: BranchMode) {
-  const next = moveEdge(edges, index, delta);
-  return mode === "auto" ? orderDefaultAutoEdgeLast(next) : next;
-}
-
-function normalizeBranchEdge(
-  graph: ProjectGraph,
-  from: string,
-  edge: GraphEdge,
-  index: number,
-  mode: BranchMode,
-): GraphEdge {
-  return {
-    ...normalizeEdge(edge),
-    from,
-    mode,
-    label: mode === "choice" ? edge.label?.trim() || targetTitle(graph, edge.to) || `选项 ${index + 1}` : null,
-    condition: mode === "auto" ? edge.condition ?? null : null,
-  };
-}
-
-function normalizeEdge(edge: GraphEdge): GraphEdge {
-  return {
-    ...edge,
-    mode: edge.mode ?? "linear",
-    label: edge.label ?? null,
-    condition: edge.condition ?? null,
-  };
-}
-
-function targetTitle(graph: ProjectGraph, nodeId: string): string {
-  return graph.nodes.find((node) => node.id === nodeId)?.title || nodeId || "未选择";
 }
 
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -504,42 +280,11 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
-const exitListStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-2)",
-};
 
-const exitRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(72px, 0.8fr) minmax(0, 1fr) auto",
-  gap: "var(--space-2)",
-  alignItems: "center",
-};
 
-const conditionMetaStyle: React.CSSProperties = {
-  gridColumn: "1 / -1",
-  fontSize: "var(--text-xs)",
-  color: "var(--text-muted)",
-};
 
-const reorderStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "var(--space-1)",
-};
 const endingRowStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: "var(--space-1)", alignItems: "center" };
 
-const compactInputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "var(--space-2) var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-inset)",
-  color: "var(--text-primary)",
-  fontSize: "var(--text-base)",
-  outline: "none",
-};
 
 const emptyStyle: React.CSSProperties = {
   padding: "var(--space-4)",

@@ -21,6 +21,73 @@ pub(crate) fn parse_expression(source: &str) -> Result<Vec<String>, String> {
     Ok(parser.reads)
 }
 
+/// Rewrite every free reference to `from` into `to`, leaving everything else byte-identical.
+///
+/// This must be token-aware: a plain string replace would also rewrite occurrences
+/// inside string literals (`route == "affection"`) and identifiers that merely
+/// contain the old name as a substring (`affection_yuki`). Renaming a variable is
+/// only safe if it cannot silently change what a condition means.
+pub(crate) fn rename_identifier(source: &str, from: &str, to: &str) -> Result<String, String> {
+    let spans = identifier_spans(source)?;
+    let mut result = String::with_capacity(source.len());
+    let mut cursor = 0;
+    for (start, end) in spans {
+        if &source[start..end] != from {
+            continue;
+        }
+        result.push_str(&source[cursor..start]);
+        result.push_str(to);
+        cursor = end;
+    }
+    result.push_str(&source[cursor..]);
+    Ok(result)
+}
+
+/// Byte ranges of identifier tokens, in source order. Shares the tokenizer's
+/// scanning rules so the two can never disagree about what an identifier is.
+fn identifier_spans(source: &str) -> Result<Vec<(usize, usize)>, String> {
+    let chars = source.as_bytes();
+    let mut spans = vec![];
+    let mut index = 0;
+    while index < chars.len() {
+        let byte = chars[index];
+        if byte == b'\'' || byte == b'"' {
+            let quote = byte;
+            index += 1;
+            while index < chars.len() && chars[index] != quote {
+                index += if chars[index] == b'\\' && index + 1 < chars.len() { 2 } else { 1 };
+            }
+            if index >= chars.len() {
+                return Err("字符串字面量未闭合".to_string());
+            }
+            index += 1;
+            continue;
+        }
+        if byte.is_ascii_alphabetic() || byte == b'_' {
+            let start = index;
+            index += 1;
+            while index < chars.len() {
+                if chars[index].is_ascii_alphanumeric() || matches!(chars[index], b'_' | b'.') {
+                    index += 1;
+                } else if chars[index] == b'-'
+                    && index + 1 < chars.len()
+                    && (chars[index + 1].is_ascii_alphabetic() || chars[index + 1] == b'_')
+                {
+                    index += 1;
+                } else {
+                    break;
+                }
+            }
+            if !matches!(&source[start..index], "true" | "false" | "null") {
+                spans.push((start, index));
+            }
+            continue;
+        }
+        index += 1;
+    }
+    Ok(spans)
+}
+
 fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     let chars = source.as_bytes();
     let mut tokens = vec![];
@@ -127,6 +194,37 @@ mod tests {
         assert_eq!(parse_expression("score + bonus * 2 >= 10 && has_key").unwrap(), vec!["bonus", "has_key", "score"]);
         assert!(parse_expression("globalThis.alert(1)").is_err());
         assert!(parse_expression("score +").is_err());
+    }
+
+    #[test]
+    fn rename_rewrites_only_free_references() {
+        assert_eq!(
+            rename_identifier("affection >= 60 && affection_yuki < 3", "affection", "love").unwrap(),
+            "love >= 60 && affection_yuki < 3",
+        );
+    }
+
+    #[test]
+    fn rename_leaves_string_literals_alone() {
+        assert_eq!(
+            rename_identifier("route == \"affection\"", "affection", "love").unwrap(),
+            "route == \"affection\"",
+        );
+    }
+
+    #[test]
+    fn rename_preserves_dotted_and_negated_forms() {
+        assert_eq!(rename_identifier("!has_key", "has_key", "got_key").unwrap(), "!got_key");
+        assert_eq!(
+            rename_identifier("a.b + a.bc", "a.b", "x.y").unwrap(),
+            "x.y + a.bc",
+        );
+    }
+
+    #[test]
+    fn rename_output_still_parses() {
+        let renamed = rename_identifier("score + bonus * 2 >= 10 && has_key", "score", "total").unwrap();
+        assert_eq!(parse_expression(&renamed).unwrap(), vec!["bonus", "has_key", "total"]);
     }
 
     #[test]

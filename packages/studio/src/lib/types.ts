@@ -118,7 +118,7 @@ export interface AssetReport {
 // ──────────────────────────────────────────────
 
 /** 问题来源，决定全局面板的分组 */
-export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta" | "fixture";
+export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta" | "fixture" | "variables";
 
 export interface ProjectIssue {
   severity: GraphIssueSeverity;

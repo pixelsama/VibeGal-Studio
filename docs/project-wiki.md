@@ -421,6 +421,66 @@ Node files are JSON arrays:
 
 They are the external-agent-friendly unit of script editing.
 
+### 5.6 `content/variables.json`
+
+Story state declarations. Each entry carries both an authoring intent (`kind`) and
+a runtime type (`type`):
+
+```json
+{
+  "version": 1,
+  "variables": {
+    "affection_yuki": {
+      "kind": "meter",
+      "label": "好感度",
+      "of": "yuki",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "bands": [
+        { "id": "cold", "label": "冷淡", "upTo": 29 },
+        { "id": "love", "label": "喜欢" }
+      ],
+      "scope": "run"
+    }
+  }
+}
+```
+
+- `kind` is one of `flag` / `meter` / `state` / `counter` / `text`. It is optional:
+  registries written before this field are read through the same lens by inference
+  (`boolean` → flag, `number` → meter, `string` → text), so no migration is needed.
+- `type` remains required and authoritative. Validation, expression evaluation and
+  external agents keep working off `type` alone.
+- `min` / `max` are clamped at write time. Absent bounds mean unbounded, so projects
+  that predate the field keep their exact runtime behaviour.
+- `bands` name ranges of a meter so conditions can read `达到 喜欢`. Conditions still
+  store the numeric threshold, so renaming a band never changes what a condition means.
+- `options` enumerate the legal values of a `state` variable.
+- `displayOnly` marks state the renderer reads but no branch tests.
+
+### 5.7 Read-Only Runtime Namespaces
+
+Three prefixes are owned by the runtime and may not be declared or written:
+
+| Prefix | Meaning |
+| --- | --- |
+| `system.` | Runtime facts: `system.playthroughCount`, `system.lastEndingId`. |
+| `chose.` | `chose.<edgeId>` — true once the player picked that choice. |
+| `seen.` | `seen.<nodeId>` — true once the player reached that node. |
+
+`chose.*` and `seen.*` are derived from the decision log rather than stored, so a
+save slot can never drift from the path that actually happened, and rolling back
+un-sets them automatically. They let a project branch on player choices without
+declaring any variables at all.
+
+The player also keeps an in-memory `StateWriteEvent[]` trace (variable, before,
+after, node, instruction index) so Studio's story inspection can explain where a
+value came from. It is deliberately **not** persisted: it is an authoring-time
+aid the player never sees, and storing it would grow save files and pin
+`RUNTIME_RECORD_SCHEMA_VERSION`. Rollback trims it alongside the decision log.
+
 ## 6. Scenario DSL
 
 The Studio node editor can show a text DSL, but disk source remains `Instruction[]`.

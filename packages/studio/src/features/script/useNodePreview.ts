@@ -163,5 +163,8 @@ export function useNodePreview(
     startDebugSession: () => {},
     setDebugVariable: () => {},
     resetDebugVariables: () => {},
+    // 节点预览是单节点的轻量重放，不提供剧情检查。
+    stateWrites: [],
+    currentNodeId: null,
   };
 }

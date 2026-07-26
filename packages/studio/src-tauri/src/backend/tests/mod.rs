@@ -11,5 +11,6 @@ mod path_security;
 mod project_loading;
 mod renderer;
 mod revision_public;
+mod variable_rename;
 mod settings_cli;
 mod support;
