@@ -883,6 +883,7 @@ export function ScriptWorkspace({
                   graphReport={graphReport}
                   nodeEntries={project.nodes}
                   manifest={project.content.manifest}
+                  variables={project.content.variables}
                   selectedNodeId={selectedNodeId}
                   selectedEdgeId={selectedEdgeId}
                   canUndo={graphHistory.canUndo}

@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import type { GraphIssue, NodeEntry, ProjectGraph } from "../../lib/types";
 import { EMPTY_MANIFEST } from "../../lib/types";
@@ -11,6 +14,7 @@ import {
   mapGraphToFlow,
   summarizeNodeConnections,
 } from "./graphMapping";
+import { GraphNodeView } from "./GraphNodeView";
 
 const sampleGraph: ProjectGraph = {
   version: 1,
@@ -81,6 +85,59 @@ describe("graphMapping", () => {
     const ending = flow.nodes.find((node) => node.id === "first-meeting")!;
     expect(ending.data.badges).toContain("图终点");
     expect(ending.data.badges).toContain("正式结局：true_end");
+  });
+
+  it("derives creator summaries from node data", () => {
+    const entries: NodeEntry[] = [
+      {
+        relPath: "nodes/first-meeting.json",
+        data: [
+          { t: "say", who: "akari", text: "你好" },
+          { t: "set", key: "route", value: "akari" },
+        ],
+      },
+    ];
+    const manifest = { ...EMPTY_MANIFEST, unlocks: { ...EMPTY_MANIFEST.unlocks, endings: {
+      true_end: { title: "True", nodeId: "first-meeting" },
+    } } };
+
+    const flow = mapGraphToFlow(sampleGraph, undefined, entries, manifest);
+
+    expect(flow.nodes.find((node) => node.id === "first-meeting")?.data.summary).toEqual([
+      "1 句台词",
+      "改变故事状态",
+      "正式结局",
+    ]);
+  });
+
+  it("renders creator summaries instead of file names and degree arrows", () => {
+    const html = renderToStaticMarkup(createElement(ReactFlowProvider, null, createElement(GraphNodeView, {
+      id: "first-meeting",
+      type: NODE_TYPE,
+      selected: false,
+      dragging: false,
+      draggable: true,
+      selectable: true,
+      deletable: true,
+      isConnectable: true,
+      zIndex: 0,
+      positionAbsoluteX: 0,
+      positionAbsoluteY: 0,
+      data: {
+        title: "初遇",
+        fileId: "nodes/first-meeting.json",
+        isEntry: false,
+        status: "normal",
+        incoming: 1,
+        outgoing: 2,
+        summary: ["2 句台词", "改变故事状态"],
+      },
+    })));
+
+    expect(html).toContain("2 句台词 · 改变故事状态");
+    expect(html).not.toContain("nodes/first-meeting.json");
+    expect(html).not.toContain("↑1");
+    expect(html).not.toContain("↓2");
   });
 
   it("mapGraphToFlow maps edges with smoothstep type", () => {

@@ -16,6 +16,7 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from "@xyflow/react";
+import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphReport, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { useResolvedTheme } from "../../lib/theme";
@@ -30,6 +31,7 @@ interface GraphCanvasProps {
   graphReport?: GraphReport;
   nodeEntries?: NodeEntry[];
   manifest?: Manifest;
+  variables?: VariableRegistry;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   visibleNodeIds?: ReadonlySet<string>;
@@ -84,6 +86,7 @@ export function GraphCanvas({
   graphReport,
   nodeEntries,
   manifest,
+  variables,
   selectedNodeId,
   selectedEdgeId,
   visibleNodeIds,
@@ -114,7 +117,7 @@ export function GraphCanvas({
   const colorMode = useResolvedTheme();
 
   const flow = useMemo(() => {
-    const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries, manifest);
+    const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries, manifest, variables);
     const visibleFlow = filterVisibleCanvasElements(baseFlow.nodes, baseFlow.edges, visibleNodeIds);
 
     const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => {
@@ -144,7 +147,7 @@ export function GraphCanvas({
     });
 
     return { nodes, edges };
-  }, [graph, graphReport, nodeEntries, manifest, selectedEdgeId, selectedNodeId, visibleNodeIds]);
+  }, [graph, graphReport, nodeEntries, manifest, variables, selectedEdgeId, selectedNodeId, visibleNodeIds]);
 
   useEffect(() => {
     setFlowNodes(flow.nodes);

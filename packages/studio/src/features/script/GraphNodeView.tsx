@@ -8,6 +8,7 @@ export interface GraphCanvasNodeData extends Record<string, unknown> {
   status: GraphNodeStatus;
   incoming: number;
   outgoing: number;
+  summary?: string[];
   badges?: string[];
   duplicateNodeId?: boolean;
   hasContent?: boolean;
@@ -48,15 +49,15 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
         {data.isEntry && <span style={entryBadgeStyle}>起</span>}
         <span style={titleStyle}>{data.title}</span>
       </div>
-      <div style={metaStyle}>{data.fileId}</div>
+      {data.summary && data.summary.length > 0 && (
+        <div style={summaryStyle}>{data.summary.join(" · ")}</div>
+      )}
       {data.badges && data.badges.length > 0 && (
         <div style={badgeRowStyle}>{data.badges.map((badge) => <span key={badge} style={semanticBadgeStyle}>{badge}</span>)}</div>
       )}
       <div style={statusRowStyle}>
         <span style={{ ...statusDotStyle, background: status.dot }} />
         <span style={{ color: status.text }}>{status.label}</span>
-        <span style={{ flex: 1 }} />
-        <span style={connStyle}>↑{data.incoming} ↓{data.outgoing}</span>
       </div>
     </div>
   );
@@ -98,11 +99,11 @@ const titleStyle: React.CSSProperties = {
   color: "var(--text-bright)",
 };
 
-const metaStyle: React.CSSProperties = {
+const summaryStyle: React.CSSProperties = {
   marginTop: "var(--space-2)",
-  fontSize: "var(--text-xs)",
-  color: "var(--text-muted)",
-  wordBreak: "break-all",
+  fontSize: "var(--text-sm)",
+  color: "var(--text-secondary)",
+  lineHeight: 1.5,
 };
 
 const badgeRowStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: "var(--space-1)", marginTop: "var(--space-2)" };
@@ -121,12 +122,6 @@ const statusDotStyle: React.CSSProperties = {
   height: 8,
   borderRadius: "var(--radius-pill)",
   flexShrink: 0,
-};
-
-const connStyle: React.CSSProperties = {
-  color: "var(--text-muted)",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: "var(--text-xs)",
 };
 
 const connectionHandleStyle: React.CSSProperties = {

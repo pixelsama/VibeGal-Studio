@@ -1,5 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
+import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphIssue, GraphReport, GraphNode, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
+import { creatorEdgeLabel, creatorNodeSummary } from "./graphCreatorLanguage";
 
 export const NODE_TYPE = "galNode";
 
@@ -11,6 +13,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   status: GraphNodeStatus;
   incoming: number;
   outgoing: number;
+  summary: string[];
   badges: string[];
 }
 
@@ -20,6 +23,7 @@ export function mapGraphToFlow(
   graphReport?: GraphReport,
   nodeEntries?: NodeEntry[],
   manifest?: Manifest,
+  variables?: VariableRegistry,
 ): { nodes: Node<FlowNodeData, typeof NODE_TYPE>[]; edges: Edge[] } {
   const duplicateNodeIds = collectDuplicateNodeIds(graphReport);
   const suspiciousEdgeIds = new Set(
@@ -55,6 +59,7 @@ export function mapGraphToFlow(
         status: baseStatus,
         incoming,
         outgoing,
+        summary: creatorNodeSummary(node.id, node.file, nodeEntries, manifest),
         badges,
         ...(duplicateNodeIds.has(node.id) ? { duplicateNodeId: true } : {}),
       },
@@ -65,7 +70,7 @@ export function mapGraphToFlow(
     source: edge.from,
     target: edge.to,
     type: "smoothstep",
-    label: edgeLabel(edge),
+    label: creatorEdgeLabel(edge, { graph, variables, manifest }),
     data: {
       condition: edge.condition,
       mode: edge.mode ?? "linear",
@@ -168,10 +173,4 @@ export function findNodeEntry(entries: NodeEntry[] | undefined, file: string): N
 /** 节点文件数据 */
 export function findNodeData(entries: NodeEntry[] | undefined, file: string): unknown | null {
   return findNodeEntry(entries, file)?.data ?? null;
-}
-
-function edgeLabel(edge: { mode?: string; label?: string | null; condition?: string | null }): string | undefined {
-  if ((edge.mode ?? "linear") === "choice") return edge.label?.trim() || "选项";
-  if ((edge.mode ?? "linear") === "auto" && edge.condition) return `if ${edge.condition}`;
-  return undefined;
 }
