@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layers3, Plus } from "lucide-react";
-import { deleteFile, renameVariable, saveFile, saveGraph, saveGraphPositions, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
+import { deleteFile, renameVariable, saveFile, saveGraph, saveGraphPositions, saveLocale, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
-import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, ProjectData, ProjectGraph } from "../../lib/types";
+import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, LocaleTable, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
 import { StoryStateView } from "./StoryStateView";
+import { TranslationComparison } from "./TranslationComparison";
+import { assignInstructionTextKey } from "./translationModel";
 import { RouteCoveragePanel } from "./RouteCoveragePanel";
 import { NodeInspector } from "./NodeInspector";
 import { NodeEditor } from "./NodeEditor";
@@ -148,8 +150,8 @@ export function ScriptWorkspace({
   onDirtyChange,
 }: Props) {
   const view = location.view;
-  /** 脚本工作台的一级视图：剧情流程 / 故事状态。 */
-  const [primaryView, setPrimaryView] = useState<"flow" | "state">("flow");
+  /** 脚本工作台的一级视图：剧情流程 / 故事状态 / 翻译对照。 */
+  const [primaryView, setPrimaryView] = useState<"flow" | "state" | "translation">("flow");
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -802,10 +804,37 @@ export function ScriptWorkspace({
           >
             故事状态
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={primaryView === "translation"}
+            className={primaryView === "translation" ? "gs-tab gs-tab--active" : "gs-tab"}
+            onClick={() => setPrimaryView("translation")}
+          >
+            翻译对照
+          </button>
         </div>
       )}
       <div style={contentStyle}>
-        {view === "graph" && primaryView === "state" ? (
+        {view === "graph" && primaryView === "translation" ? (
+          <TranslationComparison
+            project={{ ...project, graph }}
+            onAssignKey={async (row, textKey) => {
+              const node = graph.nodes.find((candidate) => candidate.id === row.nodeId);
+              const entry = node ? project.nodes?.find((candidate) => candidate.relPath === node.file) : undefined;
+              if (!node || !entry) throw new Error("找不到要更新的节点。");
+              const instructions = assignInstructionTextKey(entry.data, row.instructionIndex, textKey);
+              if (!instructions) throw new Error("节点内容已变化，请刷新后重试。");
+              await saveNode(project.path, node.file, instructions, project.nodeRevisions?.[node.file]);
+              onSaved();
+            }}
+            onSaveLocale={async (locale, value: LocaleTable) => {
+              const existing = project.locales?.find((entry) => entry.locale === locale);
+              await saveLocale(project.path, locale, value, existing?.revision ?? null);
+              onSaved();
+            }}
+          />
+        ) : view === "graph" && primaryView === "state" ? (
           <StoryStateView
             graph={graph}
             nodes={project.nodes}

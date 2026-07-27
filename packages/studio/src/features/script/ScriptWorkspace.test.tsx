@@ -33,6 +33,11 @@ vi.mock("../../lib/tauri", () => ({
   saveFile: vi.fn(),
   saveGraph: vi.fn(),
   saveGraphPositions: vi.fn(),
+  saveLocale: vi.fn(),
+  saveNode: vi.fn(),
+  saveManifest: vi.fn(),
+  saveVariables: vi.fn(),
+  renameVariable: vi.fn(),
 }));
 
 const graph: ProjectGraph = {
@@ -51,6 +56,7 @@ const project: ProjectData = {
   content: {
     manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
     meta: {},
+    variables: { version: 1, variables: {} },
   },
   rendererIds: ["default"],
   graph,
@@ -76,6 +82,7 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("序章");
     expect(html).toContain("全局视图");
+    expect(html).toContain("翻译对照");
   });
 
 });

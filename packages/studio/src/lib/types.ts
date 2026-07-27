@@ -178,7 +178,7 @@ export type ManifestVideoAssetRef = Manifest["videos"][string];
 export type ManifestFontAsset = Manifest["fonts"][string];
 export type ManifestUiSkin = Manifest["uiSkins"][string];
 export type ManifestAnimationAtlas = Manifest["animationAtlases"][string];
-export type { CharacterSpriteRef };
+export type { ChapterCheckpoint, CharacterSpriteRef, LocaleTable, VariableRegistry };
 export type ManifestUnlocks = Manifest["unlocks"];
 
 /** 空的 manifest 常量，用于渲染层 props 的回退值（保持 audio 三子表结构合法）。 */
