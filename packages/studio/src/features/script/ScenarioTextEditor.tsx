@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
+import { useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption, ScenarioParameterOption } from "./scenarioCommands";
@@ -34,6 +34,7 @@ export function ScenarioTextEditor({
   parameterMenuVisible,
   visibleParameters,
   selectedParameterIndex,
+  inlineControls,
   onToggleLineCommandMenu,
   onInsertCommand,
   onInsertParameter,
@@ -55,6 +56,7 @@ export function ScenarioTextEditor({
   parameterMenuVisible: boolean;
   visibleParameters: ScenarioParameterOption[];
   selectedParameterIndex: number;
+  inlineControls?: ReactNode;
   onToggleLineCommandMenu: () => void;
   onInsertCommand: (kind: InsertableKind) => void;
   onInsertParameter: (id: string) => void;
@@ -177,6 +179,14 @@ export function ScenarioTextEditor({
               {option.detail !== option.label && <span style={commandMenuDetailStyle}>{option.detail}</span>}
             </button>
           ))}
+        </div>
+      )}
+      {inlineControls && (
+        <div
+          data-region="scenario-inline-controls"
+          style={{ ...inlineControlsStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
+        >
+          {inlineControls}
         </div>
       )}
       {scenario && (
@@ -385,6 +395,18 @@ const starterGuideLabelStyle: CSSProperties = {
 const starterGuideDetailStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
+};
+
+const inlineControlsStyle: CSSProperties = {
+  position: "absolute",
+  right: "var(--space-3)",
+  zIndex: 3,
+  maxWidth: "min(560px, calc(100% - 64px))",
+  padding: "var(--space-2)",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-panel)",
+  boxShadow: "var(--shadow-pop)",
 };
 
 const commandMenuStyle: CSSProperties = {

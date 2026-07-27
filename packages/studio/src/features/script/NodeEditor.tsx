@@ -12,6 +12,7 @@ import type { FileRevision, GraphIssueFocusRequest, GraphNode, ProjectData } fro
 import type { InsertableKind } from "./instructions";
 import {
   instructionIndexFromJsonPath,
+  updateInstruction,
 } from "./instructionEditing";
 import {
   type AssignedInstructionIdentity,
@@ -45,7 +46,7 @@ import {
 import {
   getScenarioSelection,
   INSPECTOR_RAIL_WIDTH,
-  replaceScenarioSelectionInstruction,
+  ScenarioInlineControls,
   ScenarioInspector,
   ScenarioNodeLayout,
 } from "./scenarioEditor";
@@ -537,6 +538,31 @@ export function NodeEditor({
     }
   };
 
+  const applyStructuredInstructions = (nextInstructions: Instruction[]) => {
+    if (nextInstructions === lastValidInstructionsRef.current) return;
+    undoHistoryRef.current = recordUndoCheckpoint(undoHistoryRef.current, {
+      text,
+      instructions: lastValidInstructionsRef.current,
+    }, { programmatic: true });
+    draftVersionRef.current += 1;
+    replaceValidInstructions(nextInstructions);
+    replaceText(formatScenarioText(nextInstructions));
+    setDiagnostics([]);
+    setDirty(true);
+    setStatus("");
+    setParameterTrigger(null);
+  };
+
+  const applyStructuredInstructionAt = (index: number, instruction: Instruction) => {
+    const current = lastValidInstructionsRef.current[index];
+    if (!current || current.t !== instruction.t) return;
+    applyStructuredInstructions(updateInstruction(
+      lastValidInstructionsRef.current,
+      index,
+      instruction as Partial<Instruction>,
+    ));
+  };
+
   const applyJsonText = (nextText: string) => {
     draftVersionRef.current += 1;
     replaceText(nextText);
@@ -870,6 +896,24 @@ export function NodeEditor({
     window.addEventListener("pointercancel", handlePointerEnd);
   }, [inspectorPaneLayout.width]);
 
+  const selectedInstructionIndex = mode === "scenario" && diagnostics.length === 0
+    && scenarioSelection.instruction
+    && currentLineStartIndex != null
+    && lastValidInstructions[currentLineStartIndex]?.t === scenarioSelection.instruction.t
+    ? currentLineStartIndex
+    : null;
+  const selectedInstruction = selectedInstructionIndex == null
+    ? null
+    : lastValidInstructions[selectedInstructionIndex] ?? null;
+  const inlineControls = mode === "scenario" && selectedInstruction && selectedInstruction.t !== "pause" ? (
+    <ScenarioInlineControls
+      instruction={selectedInstruction}
+      manifest={project.content.manifest}
+      variables={project.content.variables}
+      onChange={(instruction) => applyStructuredInstructionAt(selectedInstructionIndex!, instruction)}
+    />
+  ) : null;
+
   const editor = (
     <div style={editorPaneStyle}>
       <NodeEditorToolbar
@@ -911,6 +955,7 @@ export function NodeEditor({
         parameterMenuVisible={parameterMenuVisible}
         visibleParameters={visibleParameters}
         selectedParameterIndex={completionIndex}
+        inlineControls={inlineControls}
         onToggleLineCommandMenu={() => {
           setParameterTrigger(null);
           setCommandMenuSource(commandMenuSource === "line-plus" ? null : "line-plus");
@@ -950,10 +995,11 @@ export function NodeEditor({
       manifest={project.content.manifest}
       variables={project.content.variables}
       diagnostics={diagnostics}
-      onReplaceInstruction={(instruction) => applyScenarioText(
-        replaceScenarioSelectionInstruction(text, scenarioSelection, instruction),
-        { programmatic: true },
-      )}
+      onReplaceInstruction={(instruction) => {
+        if (selectedInstructionIndex != null) {
+          applyStructuredInstructionAt(selectedInstructionIndex, instruction);
+        }
+      }}
     />
   ) : (
     <div style={jsonInspectorStyle}>

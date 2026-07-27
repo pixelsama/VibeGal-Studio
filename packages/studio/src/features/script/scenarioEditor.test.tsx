@@ -5,6 +5,7 @@ import type { Instruction } from "@vibegal/engine";
 import {
   getScenarioSelection,
   replaceScenarioSelectionInstruction,
+  ScenarioInlineControls,
   ScenarioInspector,
   ScenarioNodeLayout,
 } from "./scenarioEditor";
@@ -50,6 +51,36 @@ describe("scenario editor helpers", () => {
 
     expect(selection.kind).toBe("invalid");
     expect(selection.message).toContain("分支选项已移到流程图出口");
+  });
+});
+
+describe("ScenarioInlineControls", () => {
+  it("renders compact high-frequency controls beside the active line", () => {
+    const say = renderToStaticMarkup(createElement(ScenarioInlineControls, {
+      instruction: { t: "say", who: "akari", expr: "smile", text: "你好", ms: 900 } as Instruction,
+      manifest,
+      onChange: () => {},
+    }));
+    const character = renderToStaticMarkup(createElement(ScenarioInlineControls, {
+      instruction: { t: "char", id: "akari", expr: "smile", pos: "left", clear: true } as Instruction,
+      manifest,
+      onChange: () => {},
+    }));
+    const state = renderToStaticMarkup(createElement(ScenarioInlineControls, {
+      instruction: { t: "set", key: "has_key", value: true } as Instruction,
+      manifest,
+      variables: { version: 1, variables: { has_key: { type: "boolean", default: false, nullable: false, scope: "run", label: "拿到钥匙" } } },
+      onChange: () => {},
+    }));
+
+    expect(say).toContain('aria-label="当前行可视化控件"');
+    expect(say).toContain("表情");
+    expect(say).toContain("停顿");
+    expect(character).toContain("位置");
+    expect(character).toContain("清场");
+    expect(character).toContain("退场");
+    expect(state).toContain("改变故事状态");
+    expect(state).toContain("拿到钥匙");
   });
 });
 

@@ -57,6 +57,15 @@ describe("updateInstruction", () => {
     expect(next).toEqual([{ t: "say", id: "say_original", who: "hero", text: "After" }]);
   });
 
+  it("preserves a story-point id when a structured form supplies an instruction object", () => {
+    const original = [{ t: "say", id: "say_original", who: "hero", text: "Before" }] as Instruction[];
+    const replacement = { t: "say", who: "heroine", text: "After" } as Instruction;
+
+    const next = updateInstruction(original, 0, replacement as Partial<Instruction>);
+
+    expect(next).toEqual([{ t: "say", id: "say_original", who: "heroine", text: "After" }]);
+  });
+
   it("allows resource ids to be updated", () => {
     const original = [{ t: "bg", id: "room" }] as Instruction[];
 

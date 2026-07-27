@@ -17,6 +17,7 @@ function renderEditor(text: string, overrides: { currentLine?: number; implicitP
     parameterMenuVisible: false,
     visibleParameters: [],
     selectedParameterIndex: 0,
+    inlineControls: undefined,
     onToggleLineCommandMenu: () => {},
     onInsertCommand: () => {},
     onInsertParameter: () => {},
@@ -67,6 +68,35 @@ describe("ScenarioTextEditor empty guide", () => {
     expect(html).toContain("空行 = 一次停顿");
   });
 
+  it("renders controls beside the active line instead of in the textarea layer", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
+      mode: "scenario",
+      text: "@wait 800",
+      textareaRef: { current: null },
+      currentLine: 1,
+      implicitPauseLines: [],
+      lineActionTop: 16,
+      commandMenuVisible: false,
+      visibleCommands: [],
+      parameterMenuVisible: false,
+      visibleParameters: [],
+      selectedParameterIndex: 0,
+      inlineControls: createElement("div", { "aria-label": "probe-control" }, "时长"),
+      onToggleLineCommandMenu: () => {},
+      onInsertCommand: () => {},
+      onInsertParameter: () => {},
+      onInsertTemplate: () => {},
+      onScenarioTextChange: () => {},
+      onJsonTextChange: () => {},
+      onSyncCursor: () => {},
+      onKeyDown: () => {},
+      onScroll: () => {},
+    }));
+
+    expect(html).toContain('data-region="scenario-inline-controls"');
+    expect(html).toContain('aria-label="probe-control"');
+  });
+
   it("renders parameter completion with its active keyboard selection", () => {
     const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
       mode: "scenario",
@@ -83,6 +113,7 @@ describe("ScenarioTextEditor empty guide", () => {
         { id: "classroom_evening", label: "黄昏教室", detail: "classroom_evening" },
       ],
       selectedParameterIndex: 1,
+      inlineControls: undefined,
       onToggleLineCommandMenu: () => {},
       onInsertCommand: () => {},
       onInsertParameter: () => {},

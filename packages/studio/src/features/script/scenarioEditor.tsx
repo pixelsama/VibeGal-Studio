@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode, Ref } from "react";
+import type { CSSProperties, ComponentProps, ReactNode, Ref } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   formatScenarioInstruction,
@@ -153,6 +153,113 @@ export function ScenarioNodeLayout({
       {resizeHandle}
     </div>
   );
+}
+
+export function ScenarioInlineControls({
+  instruction,
+  manifest,
+  variables,
+  onChange,
+}: {
+  instruction: Instruction;
+  manifest: Manifest;
+  variables?: VariableRegistry;
+  onChange: (instruction: Instruction) => void;
+}) {
+  return (
+    <div style={inlinePanelStyle} aria-label="当前行可视化控件">
+      <span style={inlineTitleStyle}>{inlineInstructionTitle(instruction)}</span>
+      <div style={inlineFieldsStyle}>
+        {inlineInstructionFields(instruction, manifest, variables, onChange)}
+      </div>
+    </div>
+  );
+}
+
+function inlineInstructionFields(
+  instruction: Instruction,
+  manifest: Manifest,
+  variables: VariableRegistry | undefined,
+  onChange: (instruction: Instruction) => void,
+): ReactNode {
+  switch (instruction.t) {
+    case "say":
+      return <>
+        <CompactResourcePicker label="角色" manifest={manifest} kind="character" value={instruction.who} onChange={(who) => onChange({ ...instruction, who })} />
+        <CompactResourcePicker label="表情" manifest={manifest} kind="expression" characterId={instruction.who} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
+        <CompactNumber label="停顿" value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />
+      </>;
+    case "narrate":
+      return <CompactNumber label="停顿" value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />;
+    case "bg":
+      return <>
+        <CompactResourcePicker label="背景" manifest={manifest} kind="background" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactSelect label="转场" value={instruction.trans ?? "fade"} options={["fade", "cut", "dissolve"]} onChange={(trans) => onChange({ ...instruction, trans: trans as typeof instruction.trans })} />
+        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.bg.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+      </>;
+    case "char":
+      return <>
+        <CompactResourcePicker label="角色" manifest={manifest} kind="character" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactResourcePicker label="表情" manifest={manifest} kind="expression" characterId={instruction.id} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
+        <CompactSelect label="位置" value={instruction.pos ?? "center"} options={["left", "center", "right"]} onChange={(pos) => onChange({ ...instruction, pos })} />
+        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+        <CompactSwitch label="清场" checked={instruction.clear ?? false} onChange={(clear) => onChange({ ...instruction, clear })} />
+        <CompactSwitch label="退场" checked={instruction.remove ?? false} onChange={(remove) => onChange({ ...instruction, remove })} />
+      </>;
+    case "bgm":
+      return <>
+        <CompactResourcePicker label="BGM" manifest={manifest} kind="bgm" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactNumber label="淡入" value={instruction.fade ?? INSTRUCTION_DEFAULTS.bgm.fade} onChange={(fade) => onChange({ ...instruction, fade })} />
+        <CompactSwitch label="循环" checked={instruction.loop ?? true} onChange={(loop) => onChange({ ...instruction, loop })} />
+      </>;
+    case "sfx":
+    case "voice":
+      return <CompactResourcePicker label={instruction.t === "sfx" ? "音效" : "语音"} manifest={manifest} kind={instruction.t} value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />;
+    case "showCg":
+      return <CompactResourcePicker label="CG" manifest={manifest} kind="cg" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />;
+    case "playVideo":
+      return <>
+        <CompactResourcePicker label="视频" manifest={manifest} kind="video" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactSwitch label="可跳过" checked={instruction.skippable ?? true} onChange={(skippable) => onChange({ ...instruction, skippable })} />
+      </>;
+    case "wait":
+      return <CompactNumber label="等待毫秒" value={instruction.ms} onChange={(ms) => onChange({ ...instruction, ms })} />;
+    case "effect":
+      return <>
+        <CompactSelect label="效果" value={instruction.type} options={["shake", "flash", "blur"]} onChange={(type) => onChange({ ...instruction, type: type as typeof instruction.type })} />
+        <CompactNumber label="强度" value={instruction.intensity ?? INSTRUCTION_DEFAULTS.effect.intensity} onChange={(intensity) => onChange({ ...instruction, intensity })} />
+        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.effect.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+      </>;
+    case "transition":
+      return <>
+        <CompactSelect label="转场" value={instruction.type} options={["fade_in", "fade_out", "white_in", "white_out", "black"]} onChange={(type) => onChange({ ...instruction, type: type as typeof instruction.type })} />
+        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.transition.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+      </>;
+    case "set":
+      return <StateChangeEditor instruction={instruction} variables={variables} onChange={onChange} />;
+    default:
+      return <span style={mutedTextStyle}>更多参数可在属性面板中编辑。</span>;
+  }
+}
+
+function CompactResourcePicker(props: ComponentProps<typeof ResourcePicker>) {
+  return <div style={inlineFieldStyle}><ResourcePicker {...props} /></div>;
+}
+
+function CompactNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return <label style={inlineFieldStyle}><span>{label}</span><NumberInput aria-label={label} value={value} min={0} onChange={(next) => onChange(Math.max(0, Math.round(next)))} /></label>;
+}
+
+function CompactSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return <label style={inlineFieldStyle}><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+}
+
+function CompactSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label style={inlineSwitchStyle}><span>{label}</span><Switch aria-label={label} checked={checked} onChange={onChange} /></label>;
+}
+
+function inlineInstructionTitle(instruction: Instruction): string {
+  return ({ say: "台词", narrate: "旁白", bg: "背景", char: "角色", bgm: "背景音乐", sfx: "音效", voice: "语音", showCg: "CG", playVideo: "视频", wait: "等待", effect: "画面效果", transition: "转场", set: "改变故事状态" } as Record<string, string>)[instruction.t] ?? instruction.t;
 }
 
 export function ScenarioInspector({
@@ -651,6 +758,42 @@ function lineNumberAtOffset(text: string, cursorOffset: number): number {
 function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, "\n").split("\n");
 }
+
+const inlinePanelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-end",
+  gap: "var(--space-2)",
+  maxWidth: "100%",
+};
+
+const inlineTitleStyle: CSSProperties = {
+  alignSelf: "center",
+  flexShrink: 0,
+  color: "var(--text-bright)",
+  fontSize: "var(--text-sm)",
+  fontWeight: 700,
+};
+
+const inlineFieldsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-end",
+  gap: "var(--space-2)",
+  maxWidth: "100%",
+  overflowX: "auto",
+};
+
+const inlineFieldStyle: CSSProperties = {
+  display: "grid",
+  gap: 2,
+  minWidth: 96,
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-xs)",
+};
+
+const inlineSwitchStyle: CSSProperties = {
+  ...inlineFieldStyle,
+  minWidth: 60,
+};
 
 const layoutStyle: CSSProperties = {
   display: "grid",
