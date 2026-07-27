@@ -36,6 +36,7 @@ pnpm-debug.log*
 # ── 编辑器 / 系统 ────────────────────
 .vscode/
 .idea/
+.claude/worktrees/
 .DS_Store
 Thumbs.db
 

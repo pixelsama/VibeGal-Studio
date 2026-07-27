@@ -6,7 +6,7 @@
  * 契约稳定后，换皮 = 换一个遵守本契约的目录，引擎与剧本不动。
  */
 import type { ComponentType } from "react";
-import type { NovelState } from "./state";
+import type { NovelState, RuntimeTextToken } from "./state";
 import type { Manifest, Meta, VariableRegistry } from "./types";
 import { variableDefaults } from "./variables";
 import {
@@ -46,6 +46,7 @@ export type UnlockKind = "cg" | "music" | "replay" | "ending" | "endings";
 export interface RuntimeControls {
   advance(): void;
   choose(toNodeId: string): void;
+  submitName(value: string): boolean | void;
   setAutoPlay(on: boolean): void;
   setSkipMode(mode: SkipMode): void;
   rollbackTo(point: StoryPointId): void;
@@ -80,6 +81,7 @@ export interface BacklogEntry {
   storyPoint: StoryPointId;
   speakerName?: string;
   text: string;
+  tokens?: RuntimeTextToken[];
   voiceId?: string;
   readKey?: ReadTextKey;
   createdOrder?: number;
@@ -763,9 +765,12 @@ function readKeyId(key: ReadTextKey): string {
 }
 
 function savePreviewFromState(state: NovelState): SavePreview {
-  const text = state.dialogue?.text ?? state.narration?.text;
+  const runtimeText = state.dialogue ?? state.narration;
+  const text = runtimeText?.text;
+  const tokens = runtimeText?.tokens?.filter((token) => token.type === "text");
   return {
     ...(text ? { text } : {}),
+    ...(tokens?.length ? { tokens } : {}),
     background: state.background,
   };
 }

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { resolveAsset, type Manifest } from "@vibegal/engine";
+import { renderRuntimeTextTokens, resolveAsset, type Manifest } from "@vibegal/engine";
 import type { PlayerSlotView } from "./playerUiModel";
 import {
   cardStyle,
@@ -112,7 +112,14 @@ function SlotCard({
           <>
             <p style={metaStyle}>{formatDate(slot.summary?.updatedAt)}</p>
             <p style={positionStyle}>{position ? `${position.nodeId} / ${position.instructionId}` : "未知位置"}</p>
-            <p style={previewTextStyle}>{slot.summary?.preview?.text ?? "无文本预览"}</p>
+            <p style={previewTextStyle}>
+              {slot.summary?.preview?.text
+                ? renderRuntimeTextTokens(
+                    slot.summary.preview.tokens,
+                    slot.summary.preview.text,
+                  )
+                : "无文本预览"}
+            </p>
           </>
         )}
         <div style={actionsStyle}>

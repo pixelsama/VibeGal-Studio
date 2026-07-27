@@ -388,7 +388,11 @@ describe("web export runtime host", () => {
     ]);
 
     const snapshot = await adapter.readSaveSlot("project-a", "auto:choice");
-    expect(snapshot?.preview).toEqual({ text: "right", background: null });
+    expect(snapshot?.preview).toEqual({
+      text: "right",
+      tokens: [{ type: "text", text: "right" }],
+      background: null,
+    });
     await runtime.rendererProps().runtime?.save.load("auto:choice");
     runtime.rendererProps().controls.rollbackTo(snapshot!.position!);
     expect(writeSaveSlot).toHaveBeenCalledTimes(3);
@@ -694,6 +698,37 @@ describe("web export runtime host", () => {
       media: "loaded",
     }));
     expect(fetcher).toHaveBeenCalledWith("./content/cg_001.png");
+    runtime.dispose();
+  });
+
+  it("behavior smoke submits player naming input before advancing", async () => {
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest,
+      graph: runtimeGraph([]),
+      nodes: [{
+        id: "start",
+        instructions: [
+          { t: "inputName", id: "ask_name", key: "playerName", prompt: "你的名字？", maxLength: 20 },
+          { t: "narrate", id: "greeting", text: "你好，{playerName}。" },
+        ],
+      }],
+      variables: {
+        version: 1,
+        variables: {
+          playerName: { kind: "text", type: "string", scope: "run", default: "旅行者" },
+        },
+      },
+      contentBase: "./content",
+      projectId: "smoke-player-name",
+      storage: createWebStorageAdapter("smoke-player-name", new MemoryStorage()),
+    });
+
+    const result = await runWebRuntimeBehaviorSmoke(runtime, async () => new Response("image", { status: 200 }));
+
+    expect(result.advanced).toBe(true);
+    expect(runtime.getState().nameInput).toBeNull();
+    expect(runtime.getState().vars.playerName).toBe("Smoke Player");
     runtime.dispose();
   });
 

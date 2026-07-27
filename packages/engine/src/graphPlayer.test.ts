@@ -19,6 +19,28 @@ const meta: Meta = {
   stage: { width: 1280, height: 720 },
 };
 
+const registry = {
+  version: 1 as const,
+  variables: {
+    playerName: {
+      kind: "text" as const,
+      label: "玩家名字",
+      type: "string" as const,
+      default: "旅行者",
+      nullable: false,
+      scope: "run" as const,
+    },
+    affection: {
+      kind: "meter" as const,
+      label: "好感度",
+      type: "number" as const,
+      default: 0,
+      nullable: false,
+      scope: "run" as const,
+    },
+  },
+};
+
 const baseGraph: ProjectGraphData = {
   version: 1,
   entryNodeId: "start",
@@ -251,6 +273,199 @@ describe("GraphNovelPlayer playback history and skip", () => {
     expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "line_02" });
     expect(player.getLastStableStoryPoint()).toEqual({ nodeId: "start", instructionId: "line_02" });
     expect(player.getCurrentReadKey()).toEqual(readKey("line_02", "风停了。"));
+    player.dispose();
+  });
+
+  it("interpolatesAndFormatsRuntimeTextAcrossDisplayAndBacklog", () => {
+    const player = new GraphNovelPlayer({
+      manifest: {
+        ...manifest,
+        uiSkins: { default: { assets: {}, tokens: { accent: "#123abc" } } },
+      },
+      meta,
+      variables: registry,
+    });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [{
+        t: "say",
+        id: "line_01",
+        who: "hero",
+        expr: "default",
+        text: "你好，[b]{玩家名字}[/b][pause=250][color=accent]！[/color]",
+      }],
+    }]);
+    player.startDebugSession({
+      nodeId: "start",
+      variableOverrides: { playerName: "小满" },
+      suppressPersistentEffects: true,
+    });
+
+    player.advance();
+
+    expect(player.getState().dialogue).toEqual(expect.objectContaining({
+      text: "你好，小满！",
+      sourceText: "你好，[b]{玩家名字}[/b][pause=250][color=accent]！[/color]",
+      tokens: [
+        { type: "text", text: "你好，" },
+        { type: "text", text: "小满", bold: true },
+        { type: "pause", ms: 250 },
+        { type: "text", text: "！", color: "#123ABC" },
+      ],
+    }));
+    expect(player.getBacklog()[0]).toEqual(expect.objectContaining({
+      text: "你好，小满！",
+      tokens: expect.any(Array),
+      readKey: readKey("line_01", "你好，[b]{玩家名字}[/b][pause=250][color=accent]！[/color]"),
+    }));
+    player.dispose();
+  });
+
+  it("reportsRuntimeTextDiagnosticsOncePerStoryPoint", () => {
+    const diagnostics = vi.fn();
+    const player = new GraphNovelPlayer({
+      manifest,
+      meta,
+      variables: registry,
+      onRuntimeTextDiagnostic: diagnostics,
+    });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [{
+        t: "narrate",
+        id: "line_01",
+        text: "你好，{missing}。[unknown]",
+      }],
+    }]);
+
+    player.advance();
+    player.seekToInstruction(1);
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "line_01" });
+
+    expect(diagnostics).toHaveBeenCalledTimes(2);
+    expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      storyPoint: { nodeId: "start", instructionId: "line_01" },
+      diagnostic: expect.objectContaining({ code: "text_unknown_variable" }),
+    }));
+    expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      diagnostic: expect.objectContaining({ code: "text_unknown_markup" }),
+    }));
+    player.dispose();
+  });
+
+  it("honorsInlinePauseBeforeRevealingTheFollowingCharacter", async () => {
+    vi.useFakeTimers();
+    try {
+      const player = new GraphNovelPlayer({ manifest, meta: { ...meta, typingSpeedCps: 10 } });
+      player.loadGraph(baseGraph, [{
+        id: "start",
+        instructions: [{ t: "narrate", id: "line_01", text: "前[pause=500]后" }],
+      }]);
+
+      player.advance();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(player.getState().narration?.typedLen).toBe(1);
+      await vi.advanceTimersByTimeAsync(599);
+      expect(player.getState().narration?.typedLen).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(player.getState().narration?.typedLen).toBe(2);
+      player.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("blocksForPlayerNamingAndRestoresThePreviousValueOnRollback", () => {
+    const player = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [
+        {
+          t: "inputName",
+          id: "ask_name",
+          key: "playerName",
+          prompt: "怎么称呼你？",
+          maxLength: 3,
+        },
+        { t: "narrate", id: "line_01", text: "你好，{玩家名字}。" },
+      ],
+    }]);
+
+    player.advance();
+    expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "ask_name" });
+    expect(player.getState().nameInput).toEqual(expect.objectContaining({ key: "playerName" }));
+    expect(player.submitName("   ")).toBe(false);
+    expect(player.getState().nameInput?.error).toBe("请输入名字。");
+    expect(player.submitName("四个字符")).toBe(false);
+    expect(player.getState().nameInput?.error).toContain("3");
+
+    expect(player.submitName("小满")).toBe(true);
+    expect(player.getState().vars.playerName).toBe("小满");
+    expect(player.getState().narration?.text).toBe("你好，小满。");
+
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "ask_name" });
+    expect(player.getState().nameInput).not.toBeNull();
+    expect(player.getState().vars.playerName).toBe("旅行者");
+    player.dispose();
+  });
+
+  it("restoresThePreInputValueAfterSavingAndLoadingAtPlayerNaming", () => {
+    const instructions = [
+      {
+        t: "inputName" as const,
+        id: "ask_name",
+        key: "playerName",
+        prompt: "怎么称呼你？",
+        maxLength: 20,
+      },
+      { t: "narrate" as const, id: "line_01", text: "你好，{玩家名字}。" },
+    ];
+    const original = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    original.loadGraph(baseGraph, [{ id: "start", instructions }]);
+    original.advance();
+    const snapshot = original.createSnapshot();
+    expect(snapshot.nameInputOrigin).toEqual({
+      instructionId: "ask_name",
+      key: "playerName",
+      value: "旅行者",
+    });
+
+    const restored = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    restored.loadGraph(baseGraph, [{ id: "start", instructions }]);
+    expect(restored.restoreSnapshot(snapshot).warnings).toEqual([]);
+    expect(restored.getState().nameInput?.key).toBe("playerName");
+    expect(restored.submitName("小满")).toBe(true);
+    expect(restored.getState().vars.playerName).toBe("小满");
+
+    restored.jumpToStoryPoint({ nodeId: "start", instructionId: "ask_name" });
+    expect(restored.getState().vars.playerName).toBe("旅行者");
+    original.dispose();
+    restored.dispose();
+  });
+
+  it("usesTheDefaultNameAndRejectsNonTextStoryState", () => {
+    const player = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [
+        {
+          t: "inputName",
+          id: "ask_default",
+          key: "playerName",
+          prompt: "怎么称呼你？",
+          default: "旅人",
+          maxLength: 20,
+        },
+        { t: "inputName", id: "ask_number", key: "affection", prompt: "数值？", maxLength: 20 },
+      ],
+    }]);
+
+    player.advance();
+    expect(player.submitName(" ")).toBe(true);
+    expect(player.getState().vars.playerName).toBe("旅人");
+    expect(player.getState().nameInput?.key).toBe("affection");
+    expect(player.submitName("1")).toBe(false);
+    expect(player.getState().nameInput?.error).toContain("不是可命名的文本状态");
     player.dispose();
   });
 

@@ -1,5 +1,6 @@
 import type { Meta, Manifest, Instruction, LocaleTable, ProjectGraphData, GraphEdgeData, SetInstr, VariableRegistry } from "./types";
 import { localizeInstruction } from "./localization";
+import { formatRuntimeText, runtimeTextPauseAt } from "./runtimeText";
 import type { GraphRouteValue } from "./graphRouting";
 import type { NovelState } from "./state";
 import { createInitialState } from "./state";
@@ -22,7 +23,7 @@ import {
   type StoryPointId,
   createPlaythroughId,
 } from "./runtimeContract";
-import { assertVariableValue, clampVariableValue, effectiveVariables, isReadonlyVariableName, storyExperienceVariables, variableDefaults, type StateWriteEvent } from "./variables";
+import { assertVariableValue, clampVariableValue, effectiveVariables, isReadonlyVariableName, storyExperienceVariables, variableDefaults, variableKind, type StateWriteEvent } from "./variables";
 import type { BacklogEntry, SkipMode } from "./renderer";
 
 export interface GraphPlayerPersistentBridge {
@@ -37,6 +38,7 @@ export interface GraphPlayerDeps extends InterpreterDeps {
   persistent?: GraphPlayerPersistentBridge;
   replayVoice?: (voiceId: string) => void;
   onRuntimeEffect?: RuntimeEffectHandler;
+  onRuntimeTextDiagnostic?: (diagnostic: RuntimeTextDiagnosticEvent) => void;
   onStableCheckpoint?: (event: GraphPlayerStableCheckpointEvent) => void;
   onEndingCommitted?: () => void | Promise<void>;
   variables?: VariableRegistry;
@@ -53,6 +55,15 @@ export interface GraphPlayerStableCheckpointEvent {
   storyPoint: StoryPointId;
 }
 
+export interface RuntimeTextDiagnosticEvent {
+  storyPoint: StoryPointId;
+  diagnostic: {
+    code: string;
+    message: string;
+    offset: number;
+  };
+}
+
 export interface GraphPlayerNode {
   id: string;
   instructions: Instruction[];
@@ -66,7 +77,7 @@ export interface DebugSessionOptions {
 }
 
 type Listener = (state: NovelState) => void;
-type StableInstruction = Extract<Instruction, { t: "say" | "narrate" | "wait" | "pause" }>;
+type StableInstruction = Extract<Instruction, { t: "say" | "narrate" | "wait" | "pause" | "inputName" }>;
 
 export class GraphNovelPlayer {
   private deps: GraphPlayerDeps;
@@ -92,6 +103,8 @@ export class GraphNovelPlayer {
   private backlog: BacklogEntry[] = [];
   private backlogOrder = 0;
   private pendingVoiceId: string | undefined;
+  private nameInputOrigins = new Map<string, GraphRouteValue | undefined>();
+  private reportedRuntimeTextDiagnostics = new Set<string>();
   private markedReadKeys = new Set<string>();
   private skipMode: SkipMode = "off";
   private skipTimer: ReturnType<typeof setTimeout> | null = null;
@@ -137,6 +150,8 @@ export class GraphNovelPlayer {
     this.backlog = [];
     this.backlogOrder = 0;
     this.pendingVoiceId = undefined;
+    this.nameInputOrigins.clear();
+    this.reportedRuntimeTextDiagnostics.clear();
     this.markedReadKeys.clear();
     this.skipMode = "off";
     this.skipBudget = 0;
@@ -207,9 +222,8 @@ export class GraphNovelPlayer {
     );
     const instruction = instructions[index];
     if (!instruction || (instruction.t !== "say" && instruction.t !== "narrate")) return;
-    const localized = this.localizedInstruction(instruction);
-    this.state = applyInstruction(this.state, localized, this.deps);
-    this.state = revealFully(this.state);
+    const next = this.applyRuntimeInstruction(this.state, instruction);
+    this.state = revealFully(next);
     this.emit();
   }
 
@@ -248,7 +262,7 @@ export class GraphNovelPlayer {
     return createRuntimeSnapshot({ ...this.state, vars: runVars }, {
       currentNodeId: this.currentNodeId ?? "entry",
       currentStoryPoint: this.getCurrentStoryPoint(),
-    }, this.playthroughId);
+    }, this.playthroughId, this.currentNameInputOrigin());
   }
 
   restoreSnapshot(snapshot: RuntimeSnapshot): RuntimeRestoreResult {
@@ -316,9 +330,17 @@ export class GraphNovelPlayer {
    * 条件也会因此求值失败。
    */
   private stateForRollback(): NovelState {
+    const currentInput = this.state.nameInput;
+    const inputOrigin = currentInput && this.currentNodeId
+      ? this.nameInputOrigins.get(`${this.currentNodeId}\u0000${currentInput.instructionId}`)
+      : undefined;
     const carried = Object.fromEntries(
       Object.entries(this.state.vars).filter(([name]) => !isReadonlyVariableName(name)),
     );
+    if (currentInput && this.currentNodeId && this.nameInputOrigins.has(`${this.currentNodeId}\u0000${currentInput.instructionId}`)) {
+      if (inputOrigin === undefined) delete carried[currentInput.key];
+      else carried[currentInput.key] = inputOrigin;
+    }
     const global = this.deps.globalState?.() ?? { vars: {}, playthroughCount: 0, lastEndingId: null };
     return {
       ...createInitialState(),
@@ -443,7 +465,7 @@ export class GraphNovelPlayer {
   advance() {
     if (this.persistentBarrier) return;
     if (this.state.flags.isWaiting) return;
-    if (this.state.choice) return;
+    if (this.state.choice || this.state.nameInput) return;
     if (!this.isCurrentTextDone()) {
       this.clearTyping();
       this.state = revealFully(this.state);
@@ -471,6 +493,57 @@ export class GraphNovelPlayer {
     this.pendingChoiceCheckpoint = true;
     this.jumpToNode(toNodeId);
     this.stepNext(0);
+  }
+
+  submitName(value: string): boolean {
+    const input = this.state.nameInput;
+    if (!input) return false;
+    const normalized = value.trim() || input.default?.trim() || "";
+    const length = Array.from(normalized).length;
+    if (!normalized) {
+      this.state = {
+        ...this.state,
+        nameInput: { ...input, error: "请输入名字。" },
+      };
+      this.emit();
+      return false;
+    }
+    if (length > input.maxLength) {
+      this.state = {
+        ...this.state,
+        nameInput: { ...input, error: `名字不能超过 ${input.maxLength} 个字符。` },
+      };
+      this.emit();
+      return false;
+    }
+
+    const declaration = this.deps.variables?.variables[input.key];
+    if (!declaration || variableKind(declaration) !== "text" || declaration.type !== "string") {
+      this.state = {
+        ...this.state,
+        nameInput: { ...input, error: `故事状态 ${input.key} 不是可命名的文本状态。` },
+      };
+      this.emit();
+      return false;
+    }
+    try {
+      assertVariableValue(input.key, normalized, declaration);
+    } catch (error) {
+      this.state = {
+        ...this.state,
+        nameInput: { ...input, error: error instanceof Error ? error.message : String(error) },
+      };
+      this.emit();
+      return false;
+    }
+    this.state = {
+      ...this.state,
+      vars: { ...this.state.vars, [input.key]: normalized },
+      nameInput: null,
+    };
+    this.emit();
+    this.stepNext(0);
+    return true;
   }
 
   restart() {
@@ -514,6 +587,13 @@ export class GraphNovelPlayer {
     }
     nextState.flags.isWaiting = false;
     nextState.flags.progress.current = clamped;
+    if (lastStable?.instruction.t === "inputName" && this.currentNodeId) {
+      nextState = this.restoreNameInputOrigin(
+        { nodeId: this.currentNodeId, instructionId: lastStable.instruction.id },
+        lastStable.instruction,
+        nextState,
+      );
+    }
     nextState = this.withRestoredAudio(nextState);
 
     this.ip = clamped;
@@ -551,9 +631,13 @@ export class GraphNovelPlayer {
     const index = this.ip;
     const instr = this.currentInstructions()[index];
     this.ip += 1;
+    if (instr.t === "inputName") {
+      this.nameInputOrigins.set(this.storyPointKey(instr.id), this.state.vars[instr.key]);
+    }
     try {
       this.state = this.applyRuntimeInstruction(this.state, instr, index);
     } catch (error) {
+      if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id));
       this.stopOnAssignmentError(error, index);
       return;
     }
@@ -598,6 +682,7 @@ export class GraphNovelPlayer {
       speaker: null,
       dialogue: null,
       narration: null,
+      nameInput: null,
       choice: null,
       flags: {
         ...this.state.flags,
@@ -636,9 +721,13 @@ export class GraphNovelPlayer {
       const index = this.ip;
       const instr = instructions[index];
       this.ip += 1;
+      if (instr.t === "inputName") {
+        this.nameInputOrigins.set(this.storyPointKey(instr.id), this.state.vars[instr.key]);
+      }
       try {
         this.state = this.applyRuntimeInstruction(this.state, instr, index);
       } catch (error) {
+        if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id));
         this.stopOnAssignmentError(error, index);
         return;
       }
@@ -755,6 +844,7 @@ export class GraphNovelPlayer {
         this.startWait(instr.ms);
         return true;
       case "pause":
+      case "inputName":
         this.clearAuto();
         return true;
       default:
@@ -781,11 +871,6 @@ export class GraphNovelPlayer {
     const baseInterval = Math.max(8, Math.round(1000 / this.playbackTiming.textSpeedCps));
 
     const tick = () => {
-      const next = this.peekNextChar();
-      const delay = next && next in GraphNovelPlayer.PUNCT_DELAY
-        ? GraphNovelPlayer.PUNCT_DELAY[next]
-        : baseInterval;
-
       this.state = advanceTyping(this.state);
       this.markCurrentReadIfRevealed();
       this.emit();
@@ -795,9 +880,28 @@ export class GraphNovelPlayer {
         this.kickAuto();
         return;
       }
-      this.typingTimer = setTimeout(tick, delay);
+      this.typingTimer = setTimeout(tick, this.nextRuntimeTextDelay(baseInterval));
     };
-    this.typingTimer = setTimeout(tick, baseInterval);
+    this.typingTimer = setTimeout(tick, this.nextRuntimeTextDelay(baseInterval));
+  }
+
+  private nextRuntimeTextDelay(baseInterval: number): number {
+    const next = this.peekNextChar();
+    const punctuationDelay = next && next in GraphNovelPlayer.PUNCT_DELAY
+      ? GraphNovelPlayer.PUNCT_DELAY[next]
+      : 0;
+    return baseInterval + punctuationDelay + this.currentRuntimeTextPause();
+  }
+
+  private currentRuntimeTextPause(): number {
+    const text = this.state.dialogue ?? this.state.narration;
+    if (!text?.tokens) return 0;
+    return runtimeTextPauseAt({
+      source: text.sourceText ?? text.text,
+      plainText: text.text,
+      tokens: text.tokens,
+      diagnostics: text.diagnostics ?? [],
+    }, text.typedLen);
   }
 
   private peekNextChar(): string | null {
@@ -825,7 +929,7 @@ export class GraphNovelPlayer {
   private kickAuto() {
     this.clearAuto();
     if (!this.state.flags.isAutoPlay && !this.state.flags.isRecording) return;
-    if (this.state.flags.isWaiting || this.state.choice) return;
+    if (this.state.flags.isWaiting || this.state.choice || this.state.nameInput) return;
     const cueMs = this.state.currentCueMs ?? this.playbackTiming.autoAdvanceMs;
     const delay = this.state.flags.isRecording ? cueMs + 400 : cueMs;
     this.autoTimer = setTimeout(() => this.advance(), delay);
@@ -884,7 +988,28 @@ export class GraphNovelPlayer {
     origin?: { nodeId: string; edgeId: string },
   ): NovelState {
     if (instr.t === "say" || instr.t === "narrate") {
-      return applyInstruction(state, this.localizedInstruction(instr), this.deps);
+      const localized = this.localizedInstruction(instr);
+      const formatted = formatRuntimeText(
+        localized.text,
+        state.vars,
+        this.deps.variables,
+        this.runtimeThemeColors(),
+      );
+      if (instructionIndex != null) {
+        this.reportRuntimeTextDiagnostics(instr, instructionIndex, formatted.diagnostics);
+      }
+      const next = applyInstruction(state, { ...localized, text: formatted.plainText }, this.deps);
+      const runtimeText = {
+        text: formatted.plainText,
+        sourceText: localized.text,
+        tokens: formatted.tokens,
+        diagnostics: formatted.diagnostics,
+        typedLen: 0,
+        fullyRevealed: false,
+      };
+      return instr.t === "say"
+        ? { ...next, dialogue: runtimeText }
+        : { ...next, narration: runtimeText };
     }
     if (instr.t !== "set") return applyInstruction(state, instr, this.deps);
     const declaration = this.deps.variables?.variables[instr.key];
@@ -1002,6 +1127,7 @@ export class GraphNovelPlayer {
 
     const normalized = this.normalizeSavedRunVariables(snapshot.vars);
     warnings.push(...normalized.warnings);
+    this.restoreSavedNameInputOrigin(snapshot);
     const baseState = this.stateFromSnapshot(snapshot, normalized.vars);
     if (snapshot.currentStoryPoint) {
       const result = this.applyStoryPoint(snapshot.currentStoryPoint, baseState);
@@ -1061,7 +1187,14 @@ export class GraphNovelPlayer {
     // 落到节点中间（读档/回滚/调试起点）时，把 baseState 当作本节点的入口状态，
     // 后续 seekToInstruction 才有正确的重放起点。
     this.varsAtNodeEntry = { ...baseState.vars };
-    this.state = this.applyRuntimeInstruction(baseState, instr);
+    const restoredBase = instr.t === "inputName"
+      ? this.restoreNameInputOrigin(point, instr, baseState)
+      : baseState;
+    this.varsAtNodeEntry = { ...restoredBase.vars };
+    if (instr.t === "inputName" && !this.nameInputOrigins.has(`${point.nodeId}\u0000${instr.id}`)) {
+      this.nameInputOrigins.set(`${point.nodeId}\u0000${instr.id}`, restoredBase.vars[instr.key]);
+    }
+    this.state = this.applyRuntimeInstruction(restoredBase, instr);
     if (instr.t === "say" || instr.t === "narrate") this.state = revealFully(this.state);
     if (instr.t === "wait") this.state = { ...this.state, flags: { ...this.state.flags, isWaiting: false } };
     this.state = this.withRestoredProgress(this.state, index + 1, instructions.length);
@@ -1195,12 +1328,19 @@ export class GraphNovelPlayer {
     if (!this.currentStoryPoint) this.updateCurrentStoryPoint(instr, index);
     if (!this.currentStoryPoint || !this.currentReadKey) return;
     const localized = this.localizedInstruction(instr);
+    const formatted = formatRuntimeText(
+      localized.text,
+      this.state.vars,
+      this.deps.variables,
+      this.runtimeThemeColors(),
+    );
     const createdOrder = ++this.backlogOrder;
     const entry: BacklogEntry = {
       id: `history:${createdOrder}`,
       storyPoint: { ...this.currentStoryPoint },
       speakerName: instr.t === "say" ? this.state.speaker?.name ?? instr.who : undefined,
-      text: localized.text,
+      text: formatted.plainText,
+      tokens: formatted.tokens,
       voiceId: instr.t === "say" ? instr.voice ?? this.pendingVoiceId : this.pendingVoiceId,
       readKey: { ...this.currentReadKey },
       createdOrder,
@@ -1217,6 +1357,73 @@ export class GraphNovelPlayer {
       defaultLocale: this.deps.meta.locale?.default,
       tables: this.deps.locales,
     });
+  }
+
+  private runtimeThemeColors(): Readonly<Record<string, string | number>> | undefined {
+    const skins = this.deps.manifest.uiSkins ?? {};
+    return (skins.default ?? skins[Object.keys(skins)[0] ?? ""])?.tokens;
+  }
+
+  private reportRuntimeTextDiagnostics(
+    instruction: Extract<Instruction, { t: "say" | "narrate" }>,
+    instructionIndex: number,
+    diagnostics: readonly { code: string; message: string; offset: number }[],
+  ) {
+    const instructionId = getInstructionStoryPointId(instruction, instructionIndex);
+    if (!instructionId || !this.currentNodeId) return;
+    const storyPoint = { nodeId: this.currentNodeId, instructionId };
+    for (const diagnostic of diagnostics) {
+      const id = `${storyPoint.nodeId}\u0000${storyPoint.instructionId}\u0000${diagnostic.code}\u0000${diagnostic.offset}`;
+      if (this.reportedRuntimeTextDiagnostics.has(id)) continue;
+      this.reportedRuntimeTextDiagnostics.add(id);
+      this.deps.onRuntimeTextDiagnostic?.({
+        storyPoint: { ...storyPoint },
+        diagnostic: { ...diagnostic },
+      });
+    }
+  }
+
+  private currentNameInputOrigin(): RuntimeSnapshot["nameInputOrigin"] {
+    const point = this.currentStoryPoint;
+    if (!point) return undefined;
+    const instruction = this.instructionsByNodeId
+      .get(point.nodeId)
+      ?.find((candidate) => candidate.t === "inputName" && candidate.id === point.instructionId);
+    if (!instruction || instruction.t !== "inputName") return undefined;
+    const id = `${point.nodeId}\u0000${instruction.id}`;
+    if (!this.nameInputOrigins.has(id)) return undefined;
+    const value = this.nameInputOrigins.get(id);
+    return {
+      instructionId: instruction.id,
+      key: instruction.key,
+      ...(value === undefined ? {} : { value }),
+    };
+  }
+
+  private restoreSavedNameInputOrigin(snapshot: RuntimeSnapshot) {
+    const origin = snapshot.nameInputOrigin;
+    if (!origin || !snapshot.currentStoryPoint) return;
+    if (origin.instructionId !== snapshot.currentStoryPoint.instructionId) return;
+    const id = `${snapshot.currentNodeId}\u0000${origin.instructionId}`;
+    this.nameInputOrigins.set(id, origin.value);
+  }
+
+  private storyPointKey(instructionId: string): string {
+    return `${this.currentNodeId ?? ""}\u0000${instructionId}`;
+  }
+
+  private restoreNameInputOrigin(
+    point: StoryPointId,
+    instruction: Extract<Instruction, { t: "inputName" }>,
+    state: NovelState,
+  ): NovelState {
+    const key = `${point.nodeId}\u0000${instruction.id}`;
+    if (!this.nameInputOrigins.has(key)) return state;
+    const previous = this.nameInputOrigins.get(key);
+    const vars = { ...state.vars };
+    if (previous === undefined) delete vars[instruction.key];
+    else vars[instruction.key] = previous;
+    return { ...state, vars };
   }
 
   private markCurrentReadIfRevealed() {
@@ -1278,7 +1485,7 @@ export class GraphNovelPlayer {
 
   private shouldStopSkip(): boolean {
     if (this.routeError) return true;
-    if (this.state.choice) return true;
+    if (this.state.choice || this.state.nameInput) return true;
     if (this.currentStableKind === "pause") return true;
     if (this.skipMode === "read" && this.currentReadKey && !this.isRead(this.currentReadKey)) return true;
     return false;
@@ -1340,6 +1547,7 @@ function getInstructionStoryPointId(instr: Instruction, index: number): string |
     case "narrate":
     case "wait":
     case "pause":
+    case "inputName":
     case "completeEnding":
       return instr.id ?? (index >= 0 ? `index:${index}` : null);
     default:
@@ -1353,7 +1561,11 @@ function cloneDecisionEvent(event: DecisionLogEvent): DecisionLogEvent {
 }
 
 function isStableInstruction(instr: Instruction): instr is StableInstruction {
-  return instr.t === "say" || instr.t === "narrate" || instr.t === "wait" || instr.t === "pause";
+  return instr.t === "say"
+    || instr.t === "narrate"
+    || instr.t === "wait"
+    || instr.t === "pause"
+    || instr.t === "inputName";
 }
 
 function readKeyId(key: ReadTextKey): string {

@@ -12,6 +12,8 @@ export * from "./instructionDefaults";
 export * from "./player";
 export * from "./graphPlayer";
 export * from "./localization";
+export * from "./runtimeText";
+export * from "./runtimeTextView";
 export * from "./graphRouting";
 export * from "./expression";
 export * from "./variables";

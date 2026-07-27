@@ -199,6 +199,7 @@ export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions:
   // API，fixture 的 persistent/backlog 瘦身快照在这里映射进面板数据。
   const controls: RuntimeControls = {
     advance: () => {},
+    submitName: () => false,
     choose: () => {},
     setAutoPlay: () => {},
     setSkipMode: () => {},

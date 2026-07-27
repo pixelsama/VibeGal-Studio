@@ -111,6 +111,20 @@ describe("default renderer player UI", () => {
     };
 
     expect(createCurrentSavePreview(state)).toEqual({ text: "Current line", background: "school" });
+
+    expect(createCurrentSavePreview({
+      ...state,
+      dialogue: {
+        text: "Current line",
+        tokens: [{ type: "text", text: "Current", bold: true }, { type: "pause", ms: 200 }],
+        typedLen: 12,
+        fullyRevealed: true,
+      },
+    })).toEqual({
+      text: "Current line",
+      tokens: [{ type: "text", text: "Current", bold: true }],
+      background: "school",
+    });
   });
 
   it("controllerUsesFixedQuickSlotAndRejectsReentry", async () => {
@@ -252,6 +266,34 @@ describe("default renderer player UI", () => {
     expect(settingsHtml).not.toContain("CPS");
     expect(settingsHtml).not.toMatch(/\bms\b/);
     expect(settingsHtml).not.toContain("应用设置");
+
+    const richSlotHtml = renderToStaticMarkup(
+      <SaveLoadPanel
+        slots={buildPlayerSlots([{
+          slotId: "manual-01",
+          updatedAt: "2026-07-10T00:00:00.000Z",
+          position: null,
+          preview: {
+            text: "<script>世界",
+            tokens: [
+              { type: "text", text: "<script>", bold: true },
+              { type: "text", text: "世界", ruby: "せかい" },
+            ],
+          },
+        }])}
+        busy={false}
+        manifest={{ characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } }}
+        contentBase="./content"
+        onSave={vi.fn()}
+        onLoad={vi.fn()}
+        onDelete={vi.fn()}
+        onQuickSave={vi.fn()}
+        onQuickLoad={vi.fn()}
+      />,
+    );
+    expect(richSlotHtml).toContain("<strong>&lt;script&gt;</strong>");
+    expect(richSlotHtml).toContain("<ruby>世界<rt>せかい</rt></ruby>");
+    expect(richSlotHtml).not.toContain("<script>");
   });
 
   it("rendersGalleryReplayMusicAndEndingPagesFromUnlockRegistries", async () => {
@@ -343,7 +385,8 @@ describe("default renderer player UI", () => {
           stage={{ width: 1280, height: 720 }}
           controls={{
             advance: vi.fn(),
-            choose: vi.fn(),
+            submitName: () => false,
+    choose: vi.fn(),
             setAutoPlay: vi.fn(),
             setSkipMode: vi.fn(),
             rollbackTo: vi.fn(),

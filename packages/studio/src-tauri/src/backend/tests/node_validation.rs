@@ -169,6 +169,78 @@ fn validate_node_contents_matches_shared_contract_fixture() {
 }
 
 #[test]
+fn validate_node_contents_accepts_text_player_name_input() {
+    let graph = one_node_graph();
+    let nodes = vec![node_entry(
+        "nodes/start.json",
+        serde_json::json!([{ "t": "inputName", "id": "ask_name", "key": "playerName", "prompt": "怎么称呼你？" }]),
+    )];
+    let variables = serde_json::json!({
+        "version": 1,
+        "variables": {
+            "playerName": {
+                "kind": "text",
+                "label": "玩家名字",
+                "type": "string",
+                "default": "旅行者",
+                "nullable": false,
+                "scope": "run"
+            }
+        }
+    });
+
+    let issues =
+        validate_node_contents_with_variables(&graph, &nodes, &manifest_with_refs(), &variables);
+
+    assert!(
+        issues.is_empty(),
+        "text 故事状态应可接收玩家命名: {issues:?}"
+    );
+}
+
+#[test]
+fn validate_node_contents_rejects_missing_or_non_text_player_name_state() {
+    let graph = one_node_graph();
+    let nodes = vec![node_entry(
+        "nodes/start.json",
+        serde_json::json!([
+            { "t": "inputName", "id": "ask_missing", "key": "missing", "prompt": "名字？" },
+            { "t": "inputName", "id": "ask_meter", "key": "affection", "prompt": "名字？" }
+        ]),
+    )];
+    let variables = serde_json::json!({
+        "version": 1,
+        "variables": {
+            "affection": {
+                "kind": "meter",
+                "label": "好感度",
+                "type": "number",
+                "default": 0,
+                "nullable": false,
+                "scope": "run"
+            }
+        }
+    });
+
+    let issues =
+        validate_node_contents_with_variables(&graph, &nodes, &manifest_with_refs(), &variables);
+
+    assert_eq!(
+        issues
+            .iter()
+            .map(|issue| issue.code.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "input_name_variable_missing",
+            "input_name_variable_not_text"
+        ],
+    );
+    assert_eq!(issues[0].json_path.as_deref(), Some("$[0].key"));
+    assert_eq!(issues[1].json_path.as_deref(), Some("$[1].key"));
+    assert!(issues.iter().all(|issue| issue.source == "variables"));
+}
+
+#[test]
 fn validate_node_contents_flags_invalid_set_value() {
     let graph = one_node_graph();
     let nodes = vec![node_entry(

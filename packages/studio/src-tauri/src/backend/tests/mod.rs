@@ -11,6 +11,7 @@ mod path_security;
 mod project_loading;
 mod renderer;
 mod revision_public;
+mod runtime_text_validation;
 mod variable_rename;
 mod settings_cli;
 mod support;

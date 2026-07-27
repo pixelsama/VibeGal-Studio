@@ -44,6 +44,35 @@ export interface Speaker {
   expr: string;
 }
 
+export type RuntimeTextToken =
+  | { type: "text"; text: string; bold?: boolean; color?: string; ruby?: string }
+  | { type: "pause"; ms: number };
+
+export interface RuntimeTextDiagnostic {
+  code: string;
+  message: string;
+  offset: number;
+}
+
+export interface RuntimeTextState {
+  text: string;
+  /** Additive rich-text metadata. Older/custom renderers may provide only text + typing state. */
+  sourceText?: string;
+  tokens?: RuntimeTextToken[];
+  diagnostics?: RuntimeTextDiagnostic[];
+  typedLen: number;
+  fullyRevealed: boolean;
+}
+
+export interface PendingNameInput {
+  instructionId: string;
+  key: string;
+  prompt: string;
+  default?: string;
+  maxLength: number;
+  error?: string;
+}
+
 /** 一段特效，组件播放后即从数组移除（由 useNovel 通过版本号驱动）。 */
 export interface PendingEffect {
   id: number; // 唯一标识，组件用它判断「是不是新特效」
@@ -75,18 +104,13 @@ export interface NovelState {
   speaker: Speaker | null;
 
   /** 对话正文（已打字机化的部分由 typedLen 控制） */
-  dialogue: {
-    text: string;
-    typedLen: number; // 0..text.length；等于 text.length 表示该句已打完
-    fullyRevealed: boolean; // 玩家是否已点击跳过打字（整句直接显示）
-  } | null;
+  dialogue: RuntimeTextState | null;
 
   /** 旁白（无说话人时显示）。打字机同样用 typedLen */
-  narration: {
-    text: string;
-    typedLen: number;
-    fullyRevealed: boolean;
-  } | null;
+  narration: RuntimeTextState | null;
+
+  /** 阻塞式玩家命名请求；提交前播放器不能继续推进。 */
+  nameInput: PendingNameInput | null;
 
   /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。 */
   choice: {
@@ -129,6 +153,7 @@ export function createInitialState(): NovelState {
     speaker: null,
     dialogue: null,
     narration: null,
+    nameInput: null,
     choice: null,
     effects: [],
     transitions: [],

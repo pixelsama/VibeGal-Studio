@@ -11,8 +11,9 @@
  */
 import type { Instruction, Manifest } from "./types";
 // Manifest 仅作为 InterpreterDeps 的类型来源使用
-import type { NovelState, ActiveSprite, Speaker, PendingEffect, PendingTransition } from "./state";
+import type { NovelState, ActiveSprite, Speaker, PendingEffect, PendingTransition, RuntimeTextState } from "./state";
 import { createInitialState } from "./state";
+import { parseRuntimeText } from "./runtimeText";
 import { evaluateExpressionValue, parseExpression } from "./expression";
 import { INSTRUCTION_DEFAULTS } from "./instructionDefaults";
 
@@ -32,6 +33,18 @@ function charTrans(instr: { trans?: "fade" | "cut" | "slide" }): "fade" | "cut" 
   return instr.trans ?? INSTRUCTION_DEFAULTS.char.trans;
 }
 
+function runtimeTextState(sourceText: string): RuntimeTextState {
+  const content = parseRuntimeText(sourceText);
+  return {
+    text: content.plainText,
+    sourceText,
+    tokens: content.tokens,
+    diagnostics: content.diagnostics,
+    typedLen: 0,
+    fullyRevealed: false,
+  };
+}
+
 export interface InterpreterDeps {
   manifest: Manifest;
 }
@@ -48,8 +61,8 @@ export function applyInstruction(
   instr: Instruction,
   deps: InterpreterDeps,
 ): NovelState {
-  if (state.choice) {
-    state = { ...state, choice: null };
+  if (state.choice || state.nameInput) {
+    state = { ...state, choice: null, nameInput: null };
   }
 
   switch (instr.t) {
@@ -133,7 +146,7 @@ export function applyInstruction(
         // say 时若有旁白则清掉，二者不并显
         narration: null,
         choice: null,
-        dialogue: { text: instr.text, typedLen: 0, fullyRevealed: false },
+        dialogue: runtimeTextState(instr.text),
         currentCueMs: instr.ms ?? null, // null = 跟随全局 autoAdvanceMs
         audio: instr.voice
           ? { ...state.audio, voice: { id: instr.voice, seq: nextSeq() } }
@@ -148,7 +161,7 @@ export function applyInstruction(
         speaker: null,
         dialogue: null,
         choice: null,
-        narration: { text: instr.text, typedLen: 0, fullyRevealed: false },
+        narration: runtimeTextState(instr.text),
         currentCueMs: instr.ms ?? null,
       };
 
@@ -221,6 +234,21 @@ export function applyInstruction(
       };
 
     case "inputName":
+      return {
+        ...state,
+        speaker: null,
+        dialogue: null,
+        narration: null,
+        choice: null,
+        nameInput: {
+          instructionId: instr.id,
+          key: instr.key,
+          prompt: instr.prompt,
+          default: instr.default,
+          maxLength: instr.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength,
+        },
+        currentCueMs: null,
+      };
     case "unlock":
     case "showCg":
     case "playVideo":

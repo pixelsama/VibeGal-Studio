@@ -84,6 +84,10 @@ export class NovelPlayer {
     this.graphPlayer.advance();
   }
 
+  submitName(value: string): boolean {
+    return this.graphPlayer.submitName(value);
+  }
+
   restart() {
     this.load(this.chapters);
   }

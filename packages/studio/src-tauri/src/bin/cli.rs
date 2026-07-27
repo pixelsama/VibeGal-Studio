@@ -6376,6 +6376,52 @@ mod tests {
     }
 
     #[test]
+    fn validate_reports_runtime_text_diagnostics_with_story_locations() {
+        let dir = unique_temp_dir("cli-runtime-text-report");
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","chapters":[{"id":"chapter_1","title":"第一章"}],"nodes":[{"id":"a","title":"开场","file":"nodes/a.json","position":{"x":0,"y":0},"chapterId":"chapter_1"}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            r#"[{"t":"narrate","id":"broken_text","text":"[pause=oops][script]"}]"#,
+        );
+
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let issues = project.project_report.unwrap().project_issues;
+        let invalid = issues
+            .iter()
+            .find(|issue| issue.code == "text_invalid_markup_value")
+            .expect("invalid pause warning");
+        assert_eq!(invalid.node_id.as_deref(), Some("a"));
+        assert_eq!(invalid.file.as_deref(), Some("content/nodes/a.json"));
+        assert_eq!(invalid.json_path.as_deref(), Some("$[0].text"));
+        assert!(issues.iter().any(|issue| issue.code == "text_unknown_markup"));
+        assert_eq!(run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Text), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn strict_build_rejects_runtime_text_warnings() {
+        let dir = unique_temp_dir("cli-runtime-text-strict");
+        let out = dir.join("dist-game");
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("content/nodes/start.json"),
+            r#"[{"t":"narrate","id":"broken_text","text":"[pause=oops]"}]"#,
+        );
+        let mut options = build_options(&dir, &out);
+        options.strict = true;
+
+        let error = build_web_project(options).expect_err("strict build must reject runtime text warnings");
+        assert_eq!(error.code, "project_validation_warnings");
+        assert!(error.issues.iter().any(|issue| issue.code == "text_invalid_markup_value"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn strict_build_rejects_localization_warnings() {
         let dir = unique_temp_dir("cli-localization-strict");
         let out = dir.join("dist-game");
@@ -6581,7 +6627,11 @@ mod tests {
             .unwrap()
             .project_issues
             .iter()
-            .filter(|issue| issue.source == "node")
+            .filter(|issue| {
+                issue.source == "node"
+                    && issue.code != "voice_missing_coverage"
+                    && !issue.code.starts_with("text_")
+            })
             .map(|issue| {
                 serde_json::json!({
                     "code": issue.code,

@@ -33,7 +33,7 @@ describe("applyInstruction: say", () => {
     expect(state.speaker).not.toBeNull();
     expect(state.speaker?.name).toBe("野生舰娘");
     expect(state.speaker?.color).toBe("#9fc8e3");
-    expect(state.dialogue).toEqual({ text: "你好", typedLen: 0, fullyRevealed: false });
+    expect(state.dialogue).toEqual(expect.objectContaining({ text: "你好", typedLen: 0, fullyRevealed: false }));
     // say 时旁白应被清空
     expect(state.narration).toBeNull();
   });

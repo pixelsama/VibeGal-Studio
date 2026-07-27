@@ -10,7 +10,7 @@
  * 是舞台坐标系内绝对定位的可拖拽部件（data-ui-part），token 缺失时回退默认值。
  */
 import { memo } from "react";
-import type { Manifest, NovelState } from "@vibegal/engine";
+import { RuntimeTextView, type Manifest, type NovelState } from "@vibegal/engine";
 import { useUiTokens } from "./useUiTokens";
 import { palette } from "./uiTheme";
 
@@ -25,7 +25,6 @@ function DialogueBoxImpl({ state, manifest }: Props) {
   const visible = dialogue ?? narration;
   if (!visible) return null;
 
-  const text = visible.text.slice(0, visible.typedLen);
   const isNarration = !dialogue;
   const box = tokens.dialogueBox;
   const name = tokens.nameBox;
@@ -81,7 +80,7 @@ function DialogueBoxImpl({ state, manifest }: Props) {
           }}
         />
         <p style={{ margin: 0, whiteSpace: "pre-wrap", minHeight: "1.8em", opacity: isNarration ? 0.85 : 1 }}>
-          {text}
+          <RuntimeTextView text={visible} />
           <span
             style={{
               display: visible.fullyRevealed ? "none" : "inline-block",

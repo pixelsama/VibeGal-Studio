@@ -69,7 +69,8 @@ function renderStage(state: NovelState, manifest: Manifest, uiHint?: unknown, ti
         stage={STAGE_META.stage}
         controls={{
           advance: vi.fn(),
-          choose: vi.fn(),
+          submitName: () => false,
+    choose: vi.fn(),
           setAutoPlay: vi.fn(),
           setSkipMode: vi.fn(),
           rollbackTo: vi.fn(),

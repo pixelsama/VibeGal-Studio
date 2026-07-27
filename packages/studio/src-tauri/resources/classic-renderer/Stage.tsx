@@ -6,6 +6,7 @@ import { DialogueBox } from "./DialogueBox";
 import { Effects } from "./Effects";
 import { EndingsPanel, GalleryPanel, MusicRoomPanel, ReplayPanel } from "./GalleryPanels";
 import { HistoryPanel } from "./HistoryPanel";
+import { NameInputOverlay } from "./NameInputOverlay";
 import { PlayerHud } from "./PlayerHud";
 import { ConfirmDialog, PlayerMenu, SystemPanel, type PlayerNotice } from "./PlayerMenu";
 import { RuntimeSettingsPanel } from "./RuntimeSettingsPanel";
@@ -491,7 +492,7 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
     <div
       data-player-stage="true"
       data-player-screen={screen}
-      data-player-blocking={screen === "title" || menuPage != null || confirmAction != null || busy ? "true" : "false"}
+      data-player-blocking={screen === "title" || state.nameInput != null || menuPage != null || confirmAction != null || busy ? "true" : "false"}
       tabIndex={0}
       onClick={() => {
         if (screen === "story" && !menuPage && !confirmAction && !busy) controls.advance();
@@ -538,6 +539,14 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
           </div>
           <Effects state={state} />
       <style>{shakeKeyframes}</style>
+
+      {state.nameInput && (
+        <NameInputOverlay
+          input={state.nameInput}
+          disabled={busy || menuPage != null || confirmAction != null}
+          onSubmit={(value) => controls.submitName(value)}
+        />
+      )}
 
       {state.choice && (
         <div

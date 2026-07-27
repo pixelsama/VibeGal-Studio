@@ -61,6 +61,7 @@ export interface WebRuntimePlayer {
   getState(): NovelState;
   subscribe(listener: (state: NovelState) => void): () => void;
   advance(): void;
+  submitName(value: string): boolean | void;
   choose(toNodeId: string): void;
   restart(): void;
   toggleAuto(): void;
@@ -292,6 +293,13 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
       markRead: (key) => runtimeServices?.persistent.markRead(key),
     },
     replayVoice: (voiceId) => audio?.replayVoice(voiceId),
+    onRuntimeTextDiagnostic: ({ storyPoint, diagnostic }) => {
+      runtimeServices?.status?.report({
+        level: "warning",
+        code: diagnostic.code,
+        message: `${storyPoint.nodeId} / ${storyPoint.instructionId}: ${diagnostic.message}`,
+      });
+    },
     onRuntimeEffect: (effect) => {
       if (effect.type === "unlock") {
         void runtimeServices?.persistent.unlock(effect.kind, effect.id);
@@ -358,6 +366,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
 
   const controls: RuntimeControls = {
     advance: () => player.advance(),
+    submitName: (value) => player.submitName(value),
     choose: (toNodeId) => player.choose(toNodeId),
     setAutoPlay: (on) => player.setAutoPlay(on),
     setSkipMode: (mode) => player.setSkipMode(mode),
@@ -422,6 +431,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
       return () => listeners.delete(listener);
     },
     advance: () => player.advance(),
+    submitName: (value) => player.submitName(value),
     choose: (toNodeId) => player.choose(toNodeId),
     restart: () => player.restart(),
     toggleAuto: () => player.setAutoPlay(!player.getState().flags.isAutoPlay),
@@ -447,7 +457,11 @@ export async function runWebRuntimeBehaviorSmoke(
   let advanced = false;
   let branch: WebRuntimeBehaviorSmokeResult["branch"] = "not-present";
   for (let attempt = 0; attempt < 128; attempt += 1) {
-    runtime.advance();
+    if (runtime.getState().nameInput) {
+      runtime.submitName("Smoke Player");
+    } else {
+      runtime.advance();
+    }
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const choice = runtime.getState().choice?.choices[0];
     if (choice) {
@@ -697,6 +711,12 @@ async function advanceUiToDifferentText(
       && document.querySelector('[data-vibegal-confirm]') == null;
   }, "player UI remained blocked after closing the menu");
   for (let attempt = 0; attempt < 16; attempt += 1) {
+    if (runtime.getState().nameInput) {
+      runtime.submitName("Smoke Player");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (visibleRuntimeText(runtime) !== currentText && visibleRuntimeText(runtime) != null) return;
+      continue;
+    }
     if (runtime.getState().flags.isWaiting) {
       await waitForCondition(() => !runtime.getState().flags.isWaiting, "story wait did not complete", 3_000);
       if (visibleRuntimeText(runtime) !== currentText && visibleRuntimeText(runtime) != null) return;

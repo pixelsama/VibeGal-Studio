@@ -36,7 +36,8 @@ describe("renderer contract", () => {
       stage: { width: 1280, height: 720 },
       controls: {
         advance,
-        choose: vi.fn(),
+        submitName: () => false,
+    choose: vi.fn(),
         setAutoPlay: vi.fn(),
         setSkipMode: vi.fn(),
         rollbackTo: vi.fn(),
@@ -451,6 +452,42 @@ describe("renderer contract", () => {
     }));
     await expect(runtime.save.listSlots()).resolves.toEqual([
       expect.objectContaining({ slotId: "slot-1", label: "Slot 1", position: { nodeId: "start", instructionId: "line_01" } }),
+    ]);
+  });
+
+  it("saveServiceKeepsSafeRichTextTokensInItsPreview", async () => {
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "project-a",
+      getState: () => ({
+        ...createInitialState(),
+        dialogue: {
+          text: "你好，世界",
+          tokens: [
+            { type: "text", text: "你好，", bold: true },
+            { type: "pause", ms: 250 },
+            { type: "text", text: "世界", ruby: "せかい" },
+          ],
+          typedLen: 5,
+          fullyRevealed: true,
+        },
+      }),
+      now: () => "2026-07-08T00:00:00.000Z",
+    });
+
+    await runtime.save.quickSave();
+
+    await expect(runtime.save.listSlots()).resolves.toEqual([
+      expect.objectContaining({
+        slotId: "quick",
+        preview: {
+          text: "你好，世界",
+          tokens: [
+            { type: "text", text: "你好，", bold: true },
+            { type: "text", text: "世界", ruby: "せかい" },
+          ],
+          background: null,
+        },
+      }),
     ]);
   });
 

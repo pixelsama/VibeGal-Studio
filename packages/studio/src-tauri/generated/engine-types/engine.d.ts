@@ -8,7 +8,7 @@
 declare module "@vibegal/engine" {
 
 // React 类型由 .galstudio/types/react.d.ts（最小 shim）提供。
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
   /** 台上一个立绘。pos 是剧本原始槽名（如 "center"），坐标由组件自行解释。
    *
@@ -58,6 +58,7 @@ import type { ComponentType } from "react";
     storyPoint: StoryPointId;
     speakerName?: string;
     text: string;
+    tokens?: RuntimeTextToken[];
     voiceId?: string;
     readKey?: ReadTextKey;
     createdOrder?: number;
@@ -83,7 +84,7 @@ import type { ComponentType } from "react";
     jumpTo(point: StoryPointId): void;
   }
 
-  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; };
+  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; };
 
   export type EffectInstr = { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; };
 
@@ -143,7 +144,12 @@ import type { ComponentType } from "react";
 
   export type Instruction = { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; } | { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; scale: number; flip: boolean; exprMs: number; moveFrom?: string | undefined; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; textKey?: string | undefined; voice?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; textKey?: string | undefined; ms?: number | undefined; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "inputName"; id: string; key: string; prompt: string; maxLength: number; default?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; } | { t: "completeEnding"; id: string; endingId: string; };
 
-  export type InstructionType = "bg" | "bgm" | "sfx" | "voice" | "char" | "say" | "narrate" | "set" | "wait" | "effect" | "transition" | "pause" | "inputName" | "unlock" | "showCg" | "playVideo" | "completeEnding";
+  export type InstructionType = "pause" | "bg" | "bgm" | "sfx" | "voice" | "char" | "say" | "narrate" | "set" | "wait" | "effect" | "transition" | "inputName" | "unlock" | "showCg" | "playVideo" | "completeEnding";
+
+  export interface InterpolatedText {
+    text: string;
+    diagnostics: RuntimeTextDiagnostic[];
+  }
 
   export type LocaleConfig = { default: string; available: string[]; };
 
@@ -176,18 +182,13 @@ import type { ComponentType } from "react";
     speaker: Speaker | null;
 
     /** 对话正文（已打字机化的部分由 typedLen 控制） */
-    dialogue: {
-      text: string;
-      typedLen: number; // 0..text.length；等于 text.length 表示该句已打完
-      fullyRevealed: boolean; // 玩家是否已点击跳过打字（整句直接显示）
-    } | null;
+    dialogue: RuntimeTextState | null;
 
     /** 旁白（无说话人时显示）。打字机同样用 typedLen */
-    narration: {
-      text: string;
-      typedLen: number;
-      fullyRevealed: boolean;
-    } | null;
+    narration: RuntimeTextState | null;
+
+    /** 阻塞式玩家命名请求；提交前播放器不能继续推进。 */
+    nameInput: PendingNameInput | null;
 
     /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。 */
     choice: {
@@ -230,6 +231,15 @@ import type { ComponentType } from "react";
     ms: number;
   }
 
+  export interface PendingNameInput {
+    instructionId: string;
+    key: string;
+    prompt: string;
+    default?: string;
+    maxLength: number;
+    error?: string;
+  }
+
   /** 转场覆盖层。 */
   export interface PendingTransition {
     id: number;
@@ -258,6 +268,10 @@ import type { ComponentType } from "react";
   export type ProjectGraphData = { version: number; entryNodeId: string; chapters: { id: string; title: string; checkpoint?: { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; } | undefined; }[]; nodes: { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; }[]; };
 
   export const RENDERER_CONTRACT_VERSION: 1;
+
+  export const RUNTIME_TEXT_MAX_DEPTH: 8;
+
+  export const RUNTIME_TEXT_MAX_TOKENS: 512;
 
   export type ReadTextKey = { nodeId: string; instructionId: string; textHash: string; };
 
@@ -341,6 +355,7 @@ import type { ComponentType } from "react";
   export interface RuntimeControls {
     advance(): void;
     choose(toNodeId: string): void;
+    submitName(value: string): boolean | void;
     setAutoPlay(on: boolean): void;
     setSkipMode(mode: SkipMode): void;
     rollbackTo(point: StoryPointId): void;
@@ -395,14 +410,14 @@ import type { ComponentType } from "react";
     debug?: DebugService;
   }
 
-  export type RuntimeSettingsRecord = { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; };
+  export type RuntimeSettingsRecord = { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; currentLocale?: string | undefined; fullscreen?: boolean | undefined; };
 
   export interface RuntimeSettingsService {
     getSettings(): RuntimeSettingsRecord;
     updateSettings(patch: Partial<RuntimeSettingsRecord>): Promise<void>;
   }
 
-  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; };
+  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; };
 
   export interface RuntimeStatusNotice {
     id: number;
@@ -423,12 +438,45 @@ import type { ComponentType } from "react";
     removeItem(key: string): void;
   }
 
+  export interface RuntimeTextContent {
+    source: string;
+    plainText: string;
+    tokens: RuntimeTextToken[];
+    diagnostics: RuntimeTextDiagnostic[];
+  }
+
+  export interface RuntimeTextDiagnostic {
+    code: string;
+    message: string;
+    offset: number;
+  }
+
+  export interface RuntimeTextState {
+    text: string;
+    /** Additive rich-text metadata. Older/custom renderers may provide only text + typing state. */
+    sourceText?: string;
+    tokens?: RuntimeTextToken[];
+    diagnostics?: RuntimeTextDiagnostic[];
+    typedLen: number;
+    fullyRevealed: boolean;
+  }
+
+  export type RuntimeTextToken = { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; } | { type: "pause"; ms: number; };
+
+  /** Render the safe runtime-text token stream without HTML or innerHTML. */
+  export const RuntimeTextView: ({ text, reveal }: RuntimeTextViewProps) => ReactNode;
+
+  export interface RuntimeTextViewProps {
+    text: Pick<RuntimeTextState, "text" | "typedLen" | "tokens">;
+    reveal?: number;
+  }
+
   export interface SaveOptions {
     label?: string;
     preview?: SavePreview;
   }
 
-  export type SavePreview = { text?: string | undefined; background?: string | null | undefined; };
+  export type SavePreview = { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; };
 
   export interface SaveService {
     listSlots(): Promise<SaveSlotSummary[]>;
@@ -440,7 +488,7 @@ import type { ComponentType } from "react";
     autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
   }
 
-  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; }; label?: string | undefined; preview?: { text?: string | undefined; background?: string | null | undefined; } | undefined; };
+  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; } | undefined; };
 
   export interface SaveSlotSummary {
     slotId: string;
@@ -505,11 +553,21 @@ import type { ComponentType } from "react";
 
   export const createInitialState: () => NovelState;
 
-  export const defaultRuntimeSettings: () => { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; };
+  export const defaultRuntimeSettings: () => { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; currentLocale?: string | undefined; fullscreen?: boolean | undefined; };
+
+  export const formatRuntimeText: (source: string, values: Readonly<Record<string, string | number | boolean | null>>, registry?: { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; kind?: "text" | "flag" | "meter" | "state" | "counter" | undefined; label?: string | undefined; description?: string | undefined; of?: string | undefined; min?: number | undefined; max?: number | undefined; bands?: { id: string; label: string; upTo?: number | undefined; }[] | undefined; options?: { id: string; label: string; }[] | undefined; displayOnly?: boolean | undefined; }>; } | undefined, themeColors?: Readonly<Record<string, string | number>> | undefined) => RuntimeTextContent;
+
+  export const interpolateRuntimeText: (source: string, values: Readonly<Record<string, string | number | boolean | null>>, registry?: { version: 1; variables: Record<string, { type: "string" | "number" | "boolean"; default: string | number | boolean | null; nullable: boolean; scope: "run" | "global"; kind?: "text" | "flag" | "meter" | "state" | "counter" | undefined; label?: string | undefined; description?: string | undefined; of?: string | undefined; min?: number | undefined; max?: number | undefined; bands?: { id: string; label: string; upTo?: number | undefined; }[] | undefined; options?: { id: string; label: string; }[] | undefined; displayOnly?: boolean | undefined; }>; } | undefined) => InterpolatedText;
+
+  export const parseRuntimeText: (source: string, themeColors?: Readonly<Record<string, string | number>> | undefined) => RuntimeTextContent;
+
+  export const renderRuntimeTextTokens: (tokens: readonly RuntimeTextToken[] | undefined, plainText: string, reveal?: number) => ReactNode;
 
   export const resolveAsset: (contentBase: string, rel: string) => string;
 
-  export const resolveRuntimeSettings: (settings: { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }, fallback?: Pick<Required<{ schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }>, "autoAdvanceMs" | "textSpeedCps">) => { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; } & Required<Pick<{ schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; fullscreen?: boolean | undefined; }, "autoAdvanceMs" | "textSpeedCps">>;
+  export const resolveRuntimeSettings: (settings: { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; currentLocale?: string | undefined; fullscreen?: boolean | undefined; }, fallback?: Pick<Required<{ schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; currentLocale?: string | undefined; fullscreen?: boolean | undefined; }>, "autoAdvanceMs" | "textSpeedCps">) => { schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; currentLocale?: string | undefined; fullscreen?: boolean | undefined; } & Required<Pick<{ schemaVersion: 2; volumes: { master: number; bgm: number; sfx: number; voice: number; }; textSpeedCps?: number | undefined; autoAdvanceMs?: number | undefined; currentLocale?: string | undefined; fullscreen?: boolean | undefined; }, "autoAdvanceMs" | "textSpeedCps">>;
+
+  export const runtimeTextPauseAt: (content: RuntimeTextContent, plainTextOffset: number) => number;
 
   export const validateRendererManifestContract: (raw: unknown) => RendererManifestIssue[];
 

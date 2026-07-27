@@ -121,6 +121,7 @@ export function useNodePreview(
 
   const controls: RuntimeControls = {
     advance,
+    submitName: (value) => playerRef.current?.submitName(value) ?? false,
     choose: () => {
       throw new RuntimeServiceUnavailableError("controls", "choose");
     },

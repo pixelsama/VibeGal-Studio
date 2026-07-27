@@ -161,9 +161,12 @@ export function formatSlotTime(updatedAt: string): string {
 }
 
 export function createCurrentSavePreview(state: NovelState): SavePreview {
-  const text = state.dialogue?.text ?? state.narration?.text;
+  const runtimeText = state.dialogue ?? state.narration;
+  const text = runtimeText?.text;
+  const tokens = runtimeText?.tokens?.filter((token) => token.type === "text");
   return {
     ...(text ? { text } : {}),
+    ...(tokens?.length ? { tokens } : {}),
     background: state.background,
   };
 }

@@ -87,6 +87,27 @@ describe("runtime contract", () => {
     expect(json).not.toContain("seq");
     expect(json).not.toContain("changeId");
     expect(json).not.toContain("justEntered");
+    expect(json).not.toContain("nameInputOrigin");
+  });
+
+  it("storesOnlyTheStablePlayerNameOriginNeededForRollback", () => {
+    const state = { ...createInitialState(), vars: { playerName: "旅行者" } };
+    const snapshot = createRuntimeSnapshot(
+      state,
+      {
+        currentNodeId: "start",
+        currentStoryPoint: { nodeId: "start", instructionId: "ask_name" },
+      },
+      "run:test",
+      { instructionId: "ask_name", key: "playerName", value: "旅行者" },
+    );
+
+    expect(snapshot.nameInputOrigin).toEqual({
+      instructionId: "ask_name",
+      key: "playerName",
+      value: "旅行者",
+    });
+    expect(snapshot).not.toHaveProperty("nameInput");
   });
 
   it("decisionLogRestoresChoiceRoute", () => {

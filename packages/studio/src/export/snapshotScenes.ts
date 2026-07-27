@@ -222,6 +222,7 @@ function createSnapshotBaseState(): NovelState {
     dialogue: null,
     narration: null,
     choice: null,
+    nameInput: null,
     effects: [],
     transitions: [],
     audio: { bgm: null, sfx: [], voice: null },

@@ -59,7 +59,8 @@ function renderStage(state: NovelState, screen: "title" | "story" | { panel: "sa
         stage={{ width: 1280, height: 720 }}
         controls={{
           advance: vi.fn(),
-          choose: vi.fn(),
+          submitName: () => false,
+    choose: vi.fn(),
           setAutoPlay: vi.fn(),
           setSkipMode: vi.fn(),
           rollbackTo: vi.fn(),

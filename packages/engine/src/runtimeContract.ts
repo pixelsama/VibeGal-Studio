@@ -66,6 +66,11 @@ export const RuntimeSnapshotSchema = z.strictObject({
   background: z.string().nullable(),
   sprites: z.array(SerializableSpriteSchema),
   bgm: SerializableBgmSchema.nullable(),
+  nameInputOrigin: z.strictObject({
+    instructionId: z.string().min(1),
+    key: z.string().min(1),
+    value: VariableValueSchema.optional(),
+  }).optional(),
 });
 export type RuntimeSnapshot = z.infer<typeof RuntimeSnapshotSchema>;
 
@@ -87,8 +92,17 @@ export const DecisionLogEventSchema = z.discriminatedUnion("type", [
 ]);
 export type DecisionLogEvent = z.infer<typeof DecisionLogEventSchema>;
 
+export const SavePreviewTextTokenSchema = z.strictObject({
+  type: z.literal("text"),
+  text: z.string(),
+  bold: z.boolean().optional(),
+  color: z.string().optional(),
+  ruby: z.string().optional(),
+});
+
 export const SavePreviewSchema = z.strictObject({
   text: z.string().optional(),
+  tokens: z.array(SavePreviewTextTokenSchema).optional(),
   background: z.string().nullable().optional(),
 });
 export type SavePreview = z.infer<typeof SavePreviewSchema>;
@@ -216,6 +230,7 @@ export function createRuntimeSnapshot(
   state: NovelState,
   position: Pick<RuntimeSnapshot, "currentNodeId" | "currentStoryPoint">,
   playthroughId = createPlaythroughId(),
+  nameInputOrigin?: RuntimeSnapshot["nameInputOrigin"],
 ): RuntimeSnapshot {
   return RuntimeSnapshotSchema.parse({
     playthroughId,
@@ -227,6 +242,7 @@ export function createRuntimeSnapshot(
       .filter((sprite) => !sprite.leaving)
       .map((sprite) => ({ id: sprite.id, pos: sprite.pos, expr: sprite.expr })),
     bgm: state.audio.bgm ? { id: state.audio.bgm.id, loop: state.audio.bgm.loop } : null,
+    nameInputOrigin,
   });
 }
 

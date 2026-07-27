@@ -15,10 +15,12 @@
   },
   "dependencies": {
     "@vibegal/contracts": "workspace:*",
+    "react": "^19.2.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
+    "react-dom": "^19.2.7",
     "vitest": "^4.1.9"
   },
   "peerDependencies": {

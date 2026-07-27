@@ -54,6 +54,7 @@ function createContractProgram() {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
+    jsx: ts.JsxEmit.ReactJSX,
     esModuleInterop: true,
     baseUrl: repoRoot,
     paths: {
@@ -190,7 +191,7 @@ export function generateEngineTypesSource() {
     'declare module "@vibegal/engine" {',
     "",
     "// React 类型由 .galstudio/types/react.d.ts（最小 shim）提供。",
-    'import type { ComponentType } from "react";',
+    'import type { ComponentType, ReactNode } from "react";',
     "",
     chunks.map((chunk) => chunk
       .replace(/\r/g, "")

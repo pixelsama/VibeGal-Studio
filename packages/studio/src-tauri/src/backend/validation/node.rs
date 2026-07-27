@@ -112,6 +112,25 @@ fn validate_node_contents_internal(
                     }
                     if global { collect_persistent_id(&mut issues, &mut persistent_ids, instruction, &file, &graph_node.id, instruction_index); }
                 }
+                if instruction_type == Some("inputName") {
+                    let key = instruction.get("key").and_then(serde_json::Value::as_str).unwrap_or("");
+                    let declaration = declarations.and_then(|items| items.get(key));
+                    if variables.is_some() && declaration.is_none() {
+                        let mut issue = simple_node_issue("input_name_variable_missing", "玩家命名必须引用已声明的文本故事状态", &file, &graph_node.id, instruction_index);
+                        issue.source = "variables".to_string();
+                        issue.json_path = Some(format!("$[{instruction_index}].key"));
+                        issues.push(issue);
+                    } else if let Some(declaration) = declaration {
+                        let variable_type = declaration.get("type").and_then(serde_json::Value::as_str);
+                        let kind = declaration.get("kind").and_then(serde_json::Value::as_str).unwrap_or("");
+                        if variable_type != Some("string") || (!kind.is_empty() && kind != "text") {
+                            let mut issue = simple_node_issue("input_name_variable_not_text", "玩家命名只能写入 text 用途的字符串故事状态", &file, &graph_node.id, instruction_index);
+                            issue.source = "variables".to_string();
+                            issue.json_path = Some(format!("$[{instruction_index}].key"));
+                            issues.push(issue);
+                        }
+                    }
+                }
                 if instruction_type == Some("completeEnding") {
                     collect_persistent_id(&mut issues, &mut persistent_ids, instruction, &file, &graph_node.id, instruction_index);
                 }

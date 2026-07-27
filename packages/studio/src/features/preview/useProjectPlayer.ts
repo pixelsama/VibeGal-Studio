@@ -248,6 +248,13 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
           markRead: (key) => runtimeRef.current?.persistent.markRead(key),
         },
         replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
+        onRuntimeTextDiagnostic: ({ storyPoint, diagnostic }) => {
+          runtimeRef.current?.status?.report({
+            level: "warning",
+            code: diagnostic.code,
+            message: `${storyPoint.nodeId} / ${storyPoint.instructionId}：${diagnostic.message}`,
+          });
+        },
         onStableCheckpoint: (event) => {
           void runtimeRef.current?.save.autoSave(event.reason).catch((autoSaveError) => {
             runtimeRef.current?.status?.report({
@@ -333,6 +340,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const controls: RuntimeControls = {
     advance,
     choose,
+    submitName: (value) => playerRef.current?.submitName(value) ?? false,
     setAutoPlay: (on) => playerRef.current?.setAutoPlay(on),
     setSkipMode: (mode) => playerRef.current?.setSkipMode(mode),
     rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point) ?? { warnings: [] },

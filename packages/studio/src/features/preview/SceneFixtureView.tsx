@@ -112,6 +112,7 @@ export function fixtureScenesForPreview(project: ProjectData): FixtureScene[] {
 const FIXTURE_CONTROLS: RuntimeControls = {
   advance: () => {},
   choose: () => {},
+  submitName: () => false,
   setAutoPlay: () => {},
   setSkipMode: () => {},
   rollbackTo: () => {},

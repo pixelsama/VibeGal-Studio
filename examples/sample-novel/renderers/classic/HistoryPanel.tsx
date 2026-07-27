@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { BacklogEntry } from "@vibegal/engine";
+import { renderRuntimeTextTokens, type BacklogEntry } from "@vibegal/engine";
 import {
   cardStyle,
   emptyStateStyle,
@@ -35,7 +35,7 @@ export function HistoryPanel({
         <article key={entry.id} role="listitem" data-history-entry={entry.id} style={entryStyle}>
           <div style={copyStyle}>
             <div style={speakerStyle}>{entry.speakerName ?? "旁白"}</div>
-            <p style={textStyle}>{entry.text}</p>
+            <p style={textStyle}>{renderRuntimeTextTokens(entry.tokens, entry.text)}</p>
             <code style={positionStyle}>{entry.storyPoint.nodeId} / {entry.storyPoint.instructionId}</code>
           </div>
           <div style={actionsStyle}>

@@ -10,6 +10,8 @@
  */
 export * from "./state";
 export * from "./renderer";
+export * from "./runtimeText";
+export * from "./runtimeTextView";
 export type * from "./runtimeContract";
 export type * from "./types";
 export { resolveAsset } from "./assetPath";
