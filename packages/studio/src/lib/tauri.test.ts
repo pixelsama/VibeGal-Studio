@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   buildDesktopGame,
   buildWebGame,
@@ -8,6 +9,7 @@ import {
   isDesktopBuildResult,
   normalizeDesktopBuildFailure,
   openProject,
+  pickOverviewAssetFiles,
   readRendererSource,
   rendererSourceFingerprint,
   repairProjectSupportFiles,
@@ -31,6 +33,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const openMock = vi.mocked(open);
 
 const successResult: DesktopBuildResult = {
   ok: true,
@@ -55,6 +58,22 @@ const webSuccessResult: WebBuildResult = {
 
 beforeEach(() => {
   invokeMock.mockReset();
+  openMock.mockReset();
+});
+
+describe("pickOverviewAssetFiles", () => {
+  it("opens one multi-file picker for every auto-classified asset extension", async () => {
+    openMock.mockResolvedValue(["/tmp/bg.png", "/tmp/theme.ogg"]);
+
+    await expect(pickOverviewAssetFiles()).resolves.toEqual(["/tmp/bg.png", "/tmp/theme.ogg"]);
+    expect(openMock).toHaveBeenCalledWith({
+      multiple: true,
+      filters: [{
+        name: "Assets",
+        extensions: expect.arrayContaining(["png", "mp3", "mp4", "ttf"]),
+      }],
+    });
+  });
 });
 
 describe("saveNode", () => {

@@ -8,9 +8,11 @@
  * 所有改动通过 onChange(manifest) 上抛为父组件本地草稿，由用户显式保存。
  */
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, UserRoundPlus } from "lucide-react";
 import type { Manifest, ManifestCharacter } from "../../lib/types";
 import { importAsset, pickAssetFiles } from "../../lib/tauri";
+import { Button } from "../common/Button";
+import { EmptyState } from "../common/EmptyState";
 import type { ToastInput } from "../common/Toast";
 import { AssetImagePreview } from "./AssetImagePreview";
 
@@ -162,8 +164,15 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
             char={selected}
             projectPath={projectPath}
           />
+        ) : characterIds.length === 0 ? (
+          <EmptyState
+            icon={UserRoundPlus}
+            title="还没有角色"
+            description="新建第一个角色，再导入不同表情的立绘图片。"
+            action={!disabled ? <Button variant="primary" onClick={addCharacter}>新建第一个角色</Button> : undefined}
+          />
         ) : (
-          <div style={emptyStageStyle}>选择或新建一个角色</div>
+          <div style={emptyStageStyle}>选择一个角色</div>
         )}
       </div>
 

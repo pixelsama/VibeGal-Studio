@@ -2,7 +2,7 @@
  * AssetsToolbar —— 资产页工具栏：搜索框 + 导入按钮 + 计数。
  *
  * 导入按钮按当前 section 决定文件类型过滤器。
- * - overview（总览）：纯浏览视图，隐藏导入（从具体分类进入才能确定导入类型）
+ * - overview（总览）：显示通用「导入资产」，由扩展名自动分类
  * - character（角色）：隐藏导入（角色是实体，通过角色编辑器加表情）
  * - 其余分类：显示「导入<分类名>」
  */
@@ -18,7 +18,6 @@ interface AssetsToolbarProps {
   orphanCount?: number;
   danglingCount?: number;
   onRegisterOrphans?: () => void;
-  onRemoveDanglingRefs?: () => void;
   onDeleteOrphans?: () => void;
   disabled?: boolean;
 }
@@ -32,14 +31,15 @@ export function AssetsToolbar({
   orphanCount = 0,
   danglingCount = 0,
   onRegisterOrphans,
-  onRemoveDanglingRefs,
   onDeleteOrphans,
   disabled = false,
 }: AssetsToolbarProps) {
   const importLabel =
-    section === "overview" || section === "character" || section === "unknown"
+    section === "character" || section === "unknown"
       ? null
-      : `导入${sectionLabel(section)}`;
+      : section === "overview"
+        ? "导入资产"
+        : `导入${sectionLabel(section)}`;
 
   return (
     <div style={toolbarStyle}>
@@ -68,10 +68,8 @@ export function AssetsToolbar({
           {`登记 ${orphanCount} 个孤儿`}
         </Button>
       )}
-      {danglingCount > 0 && onRemoveDanglingRefs && (
-        <Button style={actionButtonStyle} onClick={onRemoveDanglingRefs} disabled={disabled}>
-          {`清理 ${danglingCount} 个悬空引用`}
-        </Button>
+      {danglingCount > 0 && (
+        <span style={warningCountStyle}>{`${danglingCount} 个文件缺失登记待清理`}</span>
       )}
       {orphanCount > 0 && onDeleteOrphans && (
         <Button variant="danger" style={actionButtonStyle} onClick={onDeleteOrphans} disabled={disabled}>
@@ -129,6 +127,11 @@ const searchInputStyle: React.CSSProperties = {
 const countStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
+};
+
+const warningCountStyle: React.CSSProperties = {
+  fontSize: "var(--text-xs)",
+  color: "var(--status-warn-text)",
 };
 
 /* 按钮颜色/悬停/禁用统一走 .gs-btn；这里只覆盖字号。 */

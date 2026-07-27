@@ -19,6 +19,7 @@ import {
   deleteAsset,
   importAsset,
   pickAssetFiles,
+  pickOverviewAssetFiles,
   saveManifest,
 } from "../../lib/tauri";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
@@ -211,10 +212,10 @@ export function AssetsWorkspace({
   const cleanupProposal = useMemo(
     () => buildAssetCleanupProposal(manifest, {
       unusedManifestPaths: assetUsage.unusedManifestPaths,
-      missingManifestSources: filteredDangling.map((entry) => entry.source),
-      unregisteredDiskPaths: filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath)).map((entry) => entry.relPath),
+      missingManifestSources: view.dangling.map((entry) => entry.source),
+      unregisteredDiskPaths: view.onDisk.filter((entry) => view.orphanPaths.has(entry.relPath)).map((entry) => entry.relPath),
     }),
-    [assetUsage.unusedManifestPaths, filteredDangling, filteredDisk, manifest, view.orphanPaths],
+    [assetUsage.unusedManifestPaths, manifest, view.dangling, view.onDisk, view.orphanPaths],
   );
 
   // 导入管线：导入按钮与文件拖放共用。
@@ -266,19 +267,7 @@ export function AssetsWorkspace({
     await onSaved();
   }
 
-  async function handleImport() {
-    if (readOnly) return;
-    const kind = section === "overview" ? "background" : section;
-    if (!isRegistrableSection(kind)) return;
-    const files = await pickAssetFiles(kind);
-    if (files.length === 0) return;
-    await importAssetFiles(files.map((src) => ({ src, kind })), draftVersionRef.current);
-  }
-
-  // 文件拖放导入：具体分类全部归入该分类，总览按扩展名推断（assetDrop.planAssetDrop）
-  async function handleDropPaths(paths: string[]) {
-    if (readOnly || paths.length === 0) return;
-    const plan = planAssetDrop(paths, section);
+  function notifyDropPlan(plan: ReturnType<typeof planAssetDrop>) {
     if (plan.rejected.length > 0) {
       notify({
         kind: "info",
@@ -286,6 +275,27 @@ export function AssetsWorkspace({
         detail: plan.rejected.join("\n"),
       });
     }
+  }
+
+  async function handleImport() {
+    if (readOnly) return;
+    const files = section === "overview"
+      ? await pickOverviewAssetFiles()
+      : isRegistrableSection(section)
+        ? await pickAssetFiles(section)
+        : [];
+    if (files.length === 0) return;
+    const plan = planAssetDrop(files, section);
+    notifyDropPlan(plan);
+    if (plan.items.length === 0) return;
+    await importAssetFiles(plan.items, draftVersionRef.current);
+  }
+
+  // 文件拖放导入：具体分类全部归入该分类，总览按扩展名推断（assetDrop.planAssetDrop）
+  async function handleDropPaths(paths: string[]) {
+    if (readOnly || paths.length === 0) return;
+    const plan = planAssetDrop(paths, section);
+    notifyDropPlan(plan);
     if (plan.items.length === 0) return;
     await importAssetFiles(plan.items, draftVersionRef.current);
   }
@@ -338,11 +348,6 @@ export function AssetsWorkspace({
     const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
     if (candidates.length === 0) return;
     await persistManifest(registerOrphanAssets(manifest, candidates));
-  }
-
-  async function handleRemoveAllDanglingRefs() {
-    if (readOnly || filteredDangling.length === 0) return;
-    await persistManifest(removeDanglingRefs(manifest, filteredDangling.map((entry) => entry.source)));
   }
 
   function handleCleanupManifestEntries() {
@@ -424,7 +429,6 @@ export function AssetsWorkspace({
               orphanCount={filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath)).length}
               danglingCount={filteredDangling.length}
               onRegisterOrphans={handleRegisterAllOrphans}
-              onRemoveDanglingRefs={handleRemoveAllDanglingRefs}
               onDeleteOrphans={handleDeleteAllOrphans}
               disabled={readOnly}
             />
@@ -436,41 +440,66 @@ export function AssetsWorkspace({
                 onChange={handleStageManifestDraft}
               />
             )}
+            <div style={assetCountHelpStyle} role="note" aria-label="资源计数说明">
+              登记：资源登记表中指向该文件的条目数；剧本：故事内容实际使用次数；未使用：已登记但故事内容没有引用。
+            </div>
             {cleanupProposal.removeSources.length > 0 && (
               <div style={cleanupBarStyle}>
-                <span>{`清理预览：${cleanupProposal.removeSources.length} 个资源登记条目可清理，${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未登记`}</span>
+                <span>{`全局清理预览：将从资源登记表移除 ${cleanupProposal.removeSources.length} 个未使用或文件缺失条目；${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未登记，不会被删除`}</span>
                 <button type="button" style={cleanupButtonStyle} onClick={handleCleanupManifestEntries} disabled={readOnly}>
                   确认清理登记条目
                 </button>
               </div>
             )}
             <div style={scrollStyle}>
-              <AssetGrid emptyHint="没有匹配的资源">
-                {filteredDisk.map((entry) => (
-                  <AssetCard
-                    key={entry.relPath}
-                    entry={entry}
-                    projectPath={project.path}
-                    isOrphan={view.orphanPaths.has(entry.relPath)}
-                    refCount={refCountByPath.get(entry.relPath) ?? 0}
-                    usageCount={assetUsage.usageCountByPath.get(entry.relPath) ?? 0}
-                    unusedInStory={assetUsage.unusedManifestPaths.has(entry.relPath)}
-                    readOnly={readOnly}
-                    onDelete={handleDelete}
-                    onRegisterOrphan={handleRegisterOrphan}
+              {totalShown === 0 ? (
+                search.trim() ? (
+                  <EmptyState
+                    icon={Inbox}
+                    title="没有匹配的资源"
+                    description="换个关键词，或清除搜索查看全部资源。"
+                    action={<button type="button" className="gs-btn gs-btn--primary" onClick={() => setSearch("")}>清除搜索</button>}
                   />
-                ))}
-                {filteredDangling.map((d) => (
-                  <DanglingCard
-                    key={`dangling-${d.source}`}
-                    id={d.id}
-                    path={d.path}
-                    source={d.source}
-                    readOnly={readOnly}
-                    onRemoveRef={handleRemoveDanglingRef}
+                ) : (
+                  <EmptyState
+                    icon={Upload}
+                    title={section === "overview" ? "还没有资源" : `还没有${SECTIONS.find((item) => item.id === section)?.label ?? "资源"}`}
+                    description={section === "overview" ? "导入图片、音频、视频或字体；Studio 会按文件类型自动分类。" : "导入后会复制到项目并加入资源登记表。"}
+                    action={!readOnly ? (
+                      <button type="button" className="gs-btn gs-btn--primary" onClick={() => void handleImport()}>
+                        {section === "overview" ? "导入资产" : `导入${SECTIONS.find((item) => item.id === section)?.label ?? "资产"}`}
+                      </button>
+                    ) : undefined}
                   />
-                ))}
-              </AssetGrid>
+                )
+              ) : (
+                <AssetGrid emptyHint="没有匹配的资源">
+                  {filteredDisk.map((entry) => (
+                    <AssetCard
+                      key={entry.relPath}
+                      entry={entry}
+                      projectPath={project.path}
+                      isOrphan={view.orphanPaths.has(entry.relPath)}
+                      refCount={refCountByPath.get(entry.relPath) ?? 0}
+                      usageCount={assetUsage.usageCountByPath.get(entry.relPath) ?? 0}
+                      unusedInStory={assetUsage.unusedManifestPaths.has(entry.relPath)}
+                      readOnly={readOnly}
+                      onDelete={handleDelete}
+                      onRegisterOrphan={handleRegisterOrphan}
+                    />
+                  ))}
+                  {filteredDangling.map((d) => (
+                    <DanglingCard
+                      key={`dangling-${d.source}`}
+                      id={d.id}
+                      path={d.path}
+                      source={d.source}
+                      readOnly={readOnly}
+                      onRemoveRef={handleRemoveDanglingRef}
+                    />
+                  ))}
+                </AssetGrid>
+              )}
             </div>
           </>
         )}
@@ -1296,6 +1325,14 @@ const mainStyle: React.CSSProperties = {
 const scrollStyle: React.CSSProperties = {
   flex: 1,
   overflowY: "auto",
+};
+
+const assetCountHelpStyle: React.CSSProperties = {
+  padding: "6px 14px",
+  borderBottom: "1px solid var(--border)",
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
+  background: "var(--bg-app)",
 };
 
 const cleanupBarStyle: React.CSSProperties = {

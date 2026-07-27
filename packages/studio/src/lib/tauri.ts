@@ -61,6 +61,22 @@ export async function pickAssetFiles(kind: Exclude<AssetKind, "unknown">): Promi
   return Array.isArray(selected) ? selected : [selected];
 }
 
+/** 总览导入选择所有可自动分类的资产，再交给 planAssetDrop 统一规划。 */
+export async function pickOverviewAssetFiles(): Promise<string[]> {
+  const extensions = [...new Set([
+    ...ASSET_FILTERS.background.extensions,
+    ...ASSET_FILTERS.bgm.extensions,
+    ...ASSET_FILTERS.video.extensions,
+    ...ASSET_FILTERS.font.extensions,
+  ])];
+  const selected = await openDialog({
+    multiple: true,
+    filters: [{ name: "Assets", extensions }],
+  });
+  if (selected === null) return [];
+  return Array.isArray(selected) ? selected : [selected];
+}
+
 /** 扫描某个工作区目录下的所有项目（含 gal.project.json 的子目录） */
 export async function listProjects(workspaceDir: string): Promise<ProjectListItem[]> {
   return invoke<ProjectListItem[]>("list_projects", { workspaceDir });

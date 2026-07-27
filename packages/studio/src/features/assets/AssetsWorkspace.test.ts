@@ -669,6 +669,18 @@ describe("read-only asset UI", () => {
     expect(html).not.toContain("UI Skin");
   });
 
+  it("shows a generic import action in overview", () => {
+    const html = renderToStaticMarkup(createElement(AssetsToolbar, {
+      section: "overview",
+      search: "",
+      onSearch: () => {},
+      onImport: () => {},
+      count: 0,
+    }));
+
+    expect(html).toContain("导入资产");
+  });
+
   it("shows import controls for extended asset sections", () => {
     const html = renderToStaticMarkup(createElement(AssetsToolbar, {
       section: "cg",
@@ -693,6 +705,33 @@ describe("read-only asset UI", () => {
 
     expect(html).toContain("disabled");
     expect(html).toContain("资源登记表结构异常");
+  });
+
+  it("explains resource counts and offers the actionable overview empty state", () => {
+    const project: ProjectData = {
+      path: "/project",
+      meta: { name: "T", activeRendererId: "default", createdAt: "0" },
+      content: {
+        manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
+        meta: {},
+      },
+      rendererIds: ["default"],
+      nodes: [],
+    };
+
+    const html = renderToStaticMarkup(createElement(AssetsWorkspace, {
+      project,
+      refreshKey: 0,
+      sidebarCollapsed: false,
+      onSidebarCollapsedChange: () => {},
+      onSaved: () => {},
+    }));
+
+    expect(html).toContain('aria-label="资源计数说明"');
+    expect(html).toContain("登记：资源登记表中指向该文件的条目数");
+    expect(html).toContain("还没有资源");
+    expect(html).toContain("Studio 会按文件类型自动分类");
+    expect(html).toContain(">导入资产</button>");
   });
 
   it("hides asset mutation buttons in read-only cards", () => {
@@ -732,6 +771,19 @@ describe("read-only asset UI", () => {
 });
 
 describe("character sprite import UI", () => {
+  it("offers one primary action when there are no characters", () => {
+    const html = renderToStaticMarkup(createElement(CharacterEditor, {
+      projectPath: "/project",
+      manifest: {
+        characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} },
+      },
+      onChange: () => {},
+    }));
+
+    expect(html).toContain("还没有角色");
+    expect(html).toContain("新建第一个角色");
+  });
+
   it("keeps choose image clickable when expression name is empty", () => {
     const html = renderToStaticMarkup(createElement(CharacterEditor, {
       projectPath: "/project",
