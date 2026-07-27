@@ -1389,6 +1389,7 @@ fn source_label(source: &str) -> &str {
         "node" => "节点内容",
         "asset" => "资产",
         "manifest" => "manifest",
+        "locale" => "本地化",
         _ => source,
     }
 }
@@ -6320,6 +6321,76 @@ mod tests {
             renderer_id: renderer_id.map(|id| id.to_string()),
             compile: true,
         }
+    }
+
+    #[test]
+    fn validate_reports_localization_and_voice_coverage_with_story_locations() {
+        let dir = unique_temp_dir("cli-localization-report");
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"a","chapters":[{"id":"chapter_1","title":"第一章"}],"nodes":[{"id":"a","title":"开场","file":"nodes/a.json","position":{"x":0,"y":0},"chapterId":"chapter_1"}],"edges":[]}"#,
+            ),
+        );
+        write_text(
+            &dir.join("content/meta.json"),
+            r#"{"title":"T","typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500,"locale":{"default":"zh-CN","available":["zh-CN","en"]}}"#,
+        );
+        write_text(
+            &dir.join("content/nodes/a.json"),
+            r#"[{"t":"say","id":"hello","who":"hero","text":"早上好。","textKey":"opening.hello"},{"t":"narrate","id":"wind","text":"风停了。"}]"#,
+        );
+        write_text(
+            &dir.join("content/manifest.json"),
+            r##"{"characters":{"hero":{"name":"Hero","color":"#ffffff","sprites":{"default":"assets/characters/hero.png"}}},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{"hello":"assets/audio/voice/hello.ogg"}}}"##,
+        );
+        write_text(&dir.join("content/assets/audio/voice/hello.ogg"), "voice bytes");
+        write_text(&dir.join("content/assets/characters/hero.png"), "hero image bytes");
+        write_text(
+            &dir.join("content/locales/zh-CN.json"),
+            r#"{"opening.hello":"漂移文本","unused":"孤立译文"}"#,
+        );
+        write_text(
+            &dir.join("content/locales/en.json"),
+            r#"{"unused":"Unused"}"#,
+        );
+
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let issues = project.project_report.unwrap().project_issues;
+        let codes = issues.iter().map(|issue| issue.code.as_str()).collect::<Vec<_>>();
+
+        assert!(codes.contains(&"locale_missing_text_key"));
+        assert!(codes.contains(&"locale_missing_translation"));
+        assert!(codes.contains(&"locale_orphan_translation"));
+        assert!(codes.contains(&"locale_default_text_drift"));
+        assert!(codes.contains(&"voice_missing_coverage"));
+        let missing = issues
+            .iter()
+            .find(|issue| issue.code == "locale_missing_translation")
+            .unwrap();
+        assert_eq!(missing.node_id.as_deref(), Some("a"));
+        assert_eq!(missing.file.as_deref(), Some("content/nodes/a.json"));
+        assert!(missing.message.contains("第一章 / 开场 / hello"));
+        assert_eq!(run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Text), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn strict_build_rejects_localization_warnings() {
+        let dir = unique_temp_dir("cli-localization-strict");
+        let out = dir.join("dist-game");
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("content/meta.json"),
+            r#"{"title":"T","typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500,"locale":{"default":"zh-CN","available":["zh-CN","en"]}}"#,
+        );
+        let mut options = build_options(&dir, &out);
+        options.strict = true;
+
+        let error = build_web_project(options).expect_err("strict build must reject localization warnings");
+        assert_eq!(error.code, "project_validation_warnings");
+        assert!(error.issues.iter().any(|issue| issue.code == "locale_missing_text_key"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -314,6 +314,37 @@ describe("GraphNovelPlayer playback history and skip", () => {
     player.dispose();
   });
 
+  it("seekAndRestoreDoNotReplayLineVoice", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [
+        { t: "bgm", id: "theme", fade: 0, loop: true },
+        {
+          t: "say",
+          id: "line_01",
+          who: "hero",
+          expr: "default",
+          text: "逐行语音。",
+          voice: "lineVoice",
+        },
+      ],
+    }]);
+
+    player.advance();
+    expect(player.getState().audio.voice?.id).toBe("lineVoice");
+    const snapshot = player.createSnapshot();
+
+    player.seekToInstruction(2);
+    expect(player.getState().audio.bgm?.id).toBe("theme");
+    expect(player.getState().audio.voice).toBeNull();
+
+    player.restoreSnapshot(snapshot);
+    expect(player.getState().dialogue?.text).toBe("逐行语音。");
+    expect(player.getState().audio.voice).toBeNull();
+    player.dispose();
+  });
+
   it("historyDoesNotAddPauseOnlyEntry", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(baseGraph, [

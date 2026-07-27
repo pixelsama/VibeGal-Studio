@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { LocaleTable, ProjectData } from "../../lib/types";
 import { Button } from "../common/Button";
 import {
@@ -29,7 +29,18 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
   const [draft, setDraft] = useState<LocaleTable>(() => ({ ...(tables[targetLocale] ?? {}) }));
   const [status, setStatus] = useState("");
   const currentTarget = targetLocales.includes(targetLocale) ? targetLocale : targetLocales[0] ?? targetLocale;
-  const targetTable = currentTarget === targetLocale ? draft : { ...(tables[currentTarget] ?? {}) };
+  const sourceTable = tables[currentTarget] ?? {};
+  const sourceIdentity = localeTableIdentity(sourceTable);
+  const observedIdentityRef = useRef(sourceIdentity);
+  const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (observedIdentityRef.current === sourceIdentity) return;
+    observedIdentityRef.current = sourceIdentity;
+    if (!dirtyRef.current) setDraft({ ...sourceTable });
+  }, [sourceIdentity, sourceTable]);
+
+  const targetTable = currentTarget === targetLocale ? draft : { ...sourceTable };
   const defaultTable = localeConfig ? tables[localeConfig.default] ?? {} : {};
   const report = buildTranslationReport(rows, targetTable, defaultTable);
   const usedKeys = new Set([
@@ -48,8 +59,11 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
   }
 
   const chooseLocale = (locale: string) => {
+    const nextTable = tables[locale] ?? {};
     setTargetLocale(locale);
-    setDraft({ ...(tables[locale] ?? {}) });
+    setDraft({ ...nextTable });
+    observedIdentityRef.current = localeTableIdentity(nextTable);
+    dirtyRef.current = false;
     setStatus("");
   };
 
@@ -71,7 +85,11 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
           onClick={() => {
             setStatus("保存中…");
             void onSaveLocale(currentTarget, targetTable)
-              .then(() => setStatus("译文已保存"))
+              .then(() => {
+                observedIdentityRef.current = localeTableIdentity(targetTable);
+                dirtyRef.current = false;
+                setStatus("译文已保存");
+              })
               .catch((error) => setStatus(`保存失败：${error instanceof Error ? error.message : String(error)}`));
           }}
         >
@@ -115,7 +133,10 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
                     aria-label={`${row.nodeTitle} 的 ${currentTarget} 译文`}
                     value={targetTable[key] ?? ""}
                     placeholder="输入译文；留空时运行时回退到默认语言或原文"
-                    onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
+                    onChange={(event) => {
+                      dirtyRef.current = true;
+                      setDraft((current) => ({ ...current, [key]: event.target.value }));
+                    }}
                     style={textareaStyle}
                   />
                 ) : (
@@ -129,6 +150,10 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
       </div>
     </section>
   );
+}
+
+function localeTableIdentity(table: LocaleTable): string {
+  return JSON.stringify(Object.entries(table).sort(([left], [right]) => left.localeCompare(right)));
 }
 
 function readLocaleConfig(meta: unknown): { default: string; available: string[] } | null {

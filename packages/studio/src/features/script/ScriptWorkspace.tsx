@@ -830,7 +830,11 @@ export function ScriptWorkspace({
             }}
             onSaveLocale={async (locale, value: LocaleTable) => {
               const existing = project.locales?.find((entry) => entry.locale === locale);
-              await saveLocale(project.path, locale, value, existing?.revision ?? null);
+              const expectedRevision = existing ? existing.revision : null;
+              if (existing && !expectedRevision) {
+                throw new Error("语言文件版本未知，请刷新项目后重试。");
+              }
+              await saveLocale(project.path, locale, value, expectedRevision);
               onSaved();
             }}
           />

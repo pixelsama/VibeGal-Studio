@@ -4,6 +4,7 @@ mod asset;
 mod data;
 mod expression;
 mod graph;
+mod localization;
 mod node;
 
 pub(crate) use asset::validate_assets;
@@ -14,6 +15,7 @@ pub(crate) use data::{
 pub(crate) use expression::parse_expression;
 pub(crate) use expression::rename_identifier;
 pub(crate) use graph::validate_graph;
+pub(crate) use localization::validate_localization_and_voice;
 #[cfg(test)]
 pub(crate) use node::validate_node_contents;
 pub(crate) use node::validate_node_contents_with_variables;

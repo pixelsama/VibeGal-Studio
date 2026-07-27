@@ -514,6 +514,7 @@ export class GraphNovelPlayer {
     }
     nextState.flags.isWaiting = false;
     nextState.flags.progress.current = clamped;
+    nextState = this.withRestoredAudio(nextState);
 
     this.ip = clamped;
     this.state = nextState;
@@ -1144,14 +1145,21 @@ export class GraphNovelPlayer {
     return { vars, warnings };
   }
 
-  private withRestoredProgress(state: NovelState, current: number, total: number): NovelState {
+  private withRestoredAudio(state: NovelState): NovelState {
     return {
       ...state,
       effects: [],
       transitions: [],
       audio: { ...state.audio, sfx: [], voice: null },
+    };
+  }
+
+  private withRestoredProgress(state: NovelState, current: number, total: number): NovelState {
+    const restored = this.withRestoredAudio(state);
+    return {
+      ...restored,
       flags: {
-        ...state.flags,
+        ...restored.flags,
         isWaiting: false,
         progress: { current, total },
       },

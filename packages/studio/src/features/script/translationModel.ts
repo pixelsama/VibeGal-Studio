@@ -80,13 +80,20 @@ export function assignInstructionTextKey(
   textKey: string,
 ): Instruction[] | null {
   if (!Array.isArray(data) || instructionIndex < 0 || instructionIndex >= data.length) return null;
-  const parsed = data.map((raw) => InstructionSchema.safeParse(raw));
-  if (parsed.some((result) => !result.success)) return null;
-  const instructions = parsed.map((result) => result.data as Instruction);
-  const instruction = instructions[instructionIndex];
-  if (instruction.t !== "say" && instruction.t !== "narrate") return null;
+  if (data.some((raw) => !InstructionSchema.safeParse(raw).success)) return null;
+  const instruction = data[instructionIndex];
+  if (!isLocalizableInstruction(instruction)) return null;
+  const instructions = data.map((raw) => ({ ...(raw as Instruction) }));
   instructions[instructionIndex] = { ...instruction, textKey };
   return instructions;
+}
+
+function isLocalizableInstruction(
+  value: unknown,
+): value is Extract<Instruction, { t: "say" | "narrate" }> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const type = (value as { t?: unknown }).t;
+  return type === "say" || type === "narrate";
 }
 
 function hasOwn(table: LocaleTable, key: string): boolean {

@@ -269,6 +269,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let manifest_node_issues = validate_manifest_node_references(&manifest, &graph);
     let completion_issues = validate_ending_completions(&manifest, &nodes);
     let condition_variable_issues = validate_condition_variables(&variables, &graph, &nodes);
+    let localization_issues = validate_localization_and_voice(&meta_json, &manifest, &graph, &nodes, &locales);
     // 单 skin 收敛（Spec 19 §4.4）：多套 uiSkins 只提示不迁移
     let ui_skin_issues = validate_ui_skin_convergence(&manifest);
     let mut project_issues: Vec<ProjectIssue> = vec![];
@@ -294,6 +295,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     project_issues.extend(ui_skin_issues);
     project_issues.extend(fixture_issues);
     project_issues.extend(locale_issues);
+    project_issues.extend(localization_issues);
     project_issues.sort_by(|a, b| {
         (
             project_issue_source_order(&a.source),
@@ -423,8 +425,8 @@ use super::super::model::{
 };
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_locale_structure,
-    validate_manifest_structure, parse_expression, validate_meta_structure,
-    validate_node_contents_with_variables, validate_ui_skin_convergence,
+    validate_localization_and_voice, validate_manifest_structure, parse_expression,
+    validate_meta_structure, validate_node_contents_with_variables, validate_ui_skin_convergence,
 };
 use super::{legacy_chapter_layout_issues, load_project_graph_data};
 use std::collections::HashMap;

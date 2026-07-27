@@ -62,4 +62,17 @@ describe("translation model", () => {
     });
     expect((nodes[0].data as unknown[])[1]).not.toHaveProperty("textKey");
   });
+
+  it("assigns only the requested text key without materializing schema defaults", () => {
+    const data = [
+      { t: "bg", id: "room" },
+      { t: "say", who: "hero", text: "早上好。" },
+    ];
+
+    expect(assignInstructionTextKey(data, 1, "opening.hello")).toEqual([
+      { t: "bg", id: "room" },
+      { t: "say", who: "hero", text: "早上好。", textKey: "opening.hello" },
+    ]);
+    expect(data[1]).not.toHaveProperty("textKey");
+  });
 });
