@@ -1,6 +1,6 @@
 # Review 28 — 产品现状评审与开发路线图
 
-> 状态：评审稿，待用户确认后拆成可实施 spec。
+> 状态：路线图已确认；P0 已完成，P1 由 [Spec 29](./29-writing-loop.spec.md) 实施。
 > 日期：2026-07-26。
 > 方法：通读仓库 + 实际运行 `pnpm tauri dev`（示例项目 `examples/sample-novel`）逐工作台截图，
 > 并对照 `title-preview/` 的默认渲染层快照。全量测试通过（vitest 852 + node:test 19）。

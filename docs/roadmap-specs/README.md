@@ -2,7 +2,8 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-- [Review 28 — 产品现状评审与开发路线图](./28-product-review-and-roadmap.md)（评审稿，待拍板后拆成实施 spec）
+- [Review 28 — 产品现状评审与开发路线图](./28-product-review-and-roadmap.md)（P0 已完成，P1 已拆为实施 spec）
+- [Spec 29 — Writing Loop（写作主循环）](./29-writing-loop.spec.md)（P1，实施中）
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
