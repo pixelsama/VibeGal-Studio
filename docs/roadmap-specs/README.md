@@ -2,8 +2,11 @@
 
 本目录存放仍在规划或开发中的 roadmap spec。
 
-- [Review 28 — 产品现状评审与开发路线图](./28-product-review-and-roadmap.md)（P0 已完成，P1 已拆为实施 spec）
-- [Spec 29 — Writing Loop（写作主循环）](./29-writing-loop.spec.md)（P1，实施中）
+- [Review 28 — 产品现状评审与开发路线图](./28-product-review-and-roadmap.md)（P0/P1 已完成，P2–P4 已拆为实施 spec）
+- [Spec 29 — Writing Loop（写作主循环）](./29-writing-loop.spec.md)（P1，已完成）
+- [Spec 30 — Facade（产品门面）](./30-facade.spec.md)（P2，实施中）
+- [Spec 31 — Genre Capabilities（品类能力）](./31-genre-capabilities.spec.md)（P3，待实施）
+- [Spec 32 — Scale & Distribution（规模与分发）](./32-scale-and-distribution.spec.md)（P4，待实施）
 
 已完成并通过主审的 spec 归档在 [archive](./archive/)：
 
