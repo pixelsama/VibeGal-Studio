@@ -13,6 +13,7 @@ interface StoryOutlineProps {
   onScopeChange: (scope: ChapterScope) => void;
   onSelectNode: (nodeId: string) => void;
   onSelectEdge?: (edgeId: string) => void;
+  onCreateNode: () => void;
   onCreateChapter: () => void;
   onRenameChapter: (chapterId: string) => void;
   onMoveChapter: (chapterId: string, offset: -1 | 1) => void;
@@ -28,6 +29,7 @@ export function StoryOutline({
   onScopeChange,
   onSelectNode,
   onSelectEdge,
+  onCreateNode,
   onCreateChapter,
   onRenameChapter,
   onMoveChapter,
@@ -124,7 +126,13 @@ export function StoryOutline({
               </button>
             ))
           ) : visibleNodes.length === 0 ? (
-            <div style={emptyStyle}>这个章节还没有节点</div>
+            <div style={emptyStyle}>
+              <span>这个章节还没有节点。节点用来承载剧情内容。</span>
+              <button type="button" className="gs-btn gs-btn--primary" onClick={onCreateNode} style={emptyActionStyle}>
+                <Plus size={14} />
+                新建节点
+              </button>
+            </div>
           ) : visibleNodes.map((node) => (
             <button
               key={node.id}
@@ -207,4 +215,5 @@ const searchResultStyle: React.CSSProperties = { display: "flex", flexDirection:
 const searchMetaStyle: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--text-xs)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const nodeTitleStyle: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const badgeStyle: React.CSSProperties = { padding: "1px 6px", borderRadius: "var(--radius-pill)", background: "var(--bg-accent-soft)", color: "var(--accent-bright)", fontSize: "var(--text-xs)" };
-const emptyStyle: React.CSSProperties = { padding: "var(--space-3)", color: "var(--text-muted)", fontSize: "var(--text-sm)" };
+const emptyStyle: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--space-2)", padding: "var(--space-3)", color: "var(--text-muted)", fontSize: "var(--text-sm)" };
+const emptyActionStyle: React.CSSProperties = { fontSize: "var(--text-sm)" };

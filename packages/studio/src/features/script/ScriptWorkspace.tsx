@@ -835,6 +835,7 @@ export function ScriptWorkspace({
                   onScopeChange={handleChapterScopeChange}
                   onSelectNode={handleSelect}
                   onSelectEdge={handleSelectEdge}
+                  onCreateNode={() => void handleCreateNode()}
                   onCreateChapter={handleCreateChapter}
                   onRenameChapter={handleRenameChapter}
                   onMoveChapter={handleMoveChapter}

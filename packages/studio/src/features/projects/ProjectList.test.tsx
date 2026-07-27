@@ -5,7 +5,9 @@ import {
   formatRecentProjectOpenedAt,
   ProjectList,
   ProjectTemplatePicker,
+  projectOpenOptionsForCreatedTemplate,
   RecentProjectList,
+  WorkspaceEmptyState,
   WorkspaceProjectList,
   resolveProjectDirectory,
 } from "./ProjectList";
@@ -68,6 +70,11 @@ describe("ProjectList entry page", () => {
 });
 
 describe("ProjectTemplatePicker", () => {
+  it("starts the guide only for a newly created blank template", () => {
+    expect(projectOpenOptionsForCreatedTemplate("blank")).toEqual({ startBlankProjectGuide: true });
+    expect(projectOpenOptionsForCreatedTemplate("example")).toBeUndefined();
+  });
+
   it("defaults creators to a blank project and explains the runnable example", () => {
     const html = renderToStaticMarkup(
       <ProjectTemplatePicker value="blank" onChange={() => {}} />,
@@ -98,6 +105,14 @@ describe("RecentProjectList", () => {
 });
 
 describe("WorkspaceProjectList", () => {
+  it("offers project creation in an empty workspace directory", () => {
+    const html = renderToStaticMarkup(<WorkspaceEmptyState onCreate={() => {}} />);
+
+    expect(html).toContain("这个目录下还没有项目");
+    expect(html).toContain("在这个工作区新建项目");
+    expect(html).toContain(">新建项目</button>");
+  });
+
   it("lists projects sorted by name together with their paths", () => {
     const html = renderToStaticMarkup(
       <WorkspaceProjectList

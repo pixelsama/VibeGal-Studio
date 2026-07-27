@@ -22,8 +22,18 @@ import { Button, IconButton } from "../common/Button";
 import { ConfirmDialog } from "../common/Dialogs";
 import { EmptyState } from "../common/EmptyState";
 
+export interface ProjectOpenOptions {
+  startBlankProjectGuide?: boolean;
+}
+
+export function projectOpenOptionsForCreatedTemplate(
+  template: ProjectTemplate,
+): ProjectOpenOptions | undefined {
+  return template === "blank" ? { startBlankProjectGuide: true } : undefined;
+}
+
 interface Props {
-  onOpen: (project: ProjectData) => void;
+  onOpen: (project: ProjectData, options?: ProjectOpenOptions) => void;
   canGoForward?: boolean;
   onForward?: () => void;
   onOpenSettings?: () => void;
@@ -71,9 +81,9 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   const [workspaceProjects, setWorkspaceProjects] = useState<ProjectListItem[] | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => loadRecentProjects());
 
-  const completeOpen = useCallback((project: ProjectData) => {
+  const completeOpen = useCallback((project: ProjectData, options?: ProjectOpenOptions) => {
     setRecentProjects(rememberRecentProject(project));
-    onOpen(project);
+    onOpen(project, options);
   }, [onOpen]);
 
   const openDirectory = useCallback(async (dir: string) => {
@@ -160,13 +170,17 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     await openDirectory(dir);
   };
 
-  const handleNew = async () => {
-    const parentDir = await pickDirectory();
-    if (!parentDir) return;
+  const openNewProjectForm = useCallback((parentDir: string) => {
     setError(null);
     setNewProjectParent(parentDir);
     setNewProjectName("");
     setNewProjectTemplate("blank");
+  }, []);
+
+  const handleNew = async () => {
+    const parentDir = await pickDirectory();
+    if (!parentDir) return;
+    openNewProjectForm(parentDir);
   };
 
   const handleCreateProject = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -177,7 +191,8 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setLoading(true);
     setError(null);
     try {
-      completeOpen(await createProject(newProjectParent, projectName, newProjectTemplate));
+      const created = await createProject(newProjectParent, projectName, newProjectTemplate);
+      completeOpen(created, projectOpenOptionsForCreatedTemplate(newProjectTemplate));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -248,10 +263,9 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
                 <div className="gs-skeleton" style={{ height: 56 }} />
               </div>
             ) : workspaceProjects.length === 0 ? (
-              <EmptyState
-                icon={FolderOpen}
-                title="这个目录下还没有项目"
-                description="在别处新建项目，或把已有项目目录放进这个工作区。"
+              <WorkspaceEmptyState
+                disabled={loading}
+                onCreate={() => openNewProjectForm(workspaceDir)}
               />
             ) : (
               <WorkspaceProjectList
@@ -336,6 +350,28 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
         />
       )}
     </div>
+  );
+}
+
+export function WorkspaceEmptyState({
+  disabled = false,
+  onCreate,
+}: {
+  disabled?: boolean;
+  onCreate: () => void;
+}) {
+  return (
+    <EmptyState
+      icon={FolderOpen}
+      title="这个目录下还没有项目"
+      description="在这个工作区新建项目，或把已有项目目录放进来。"
+      action={(
+        <Button variant="primary" onClick={onCreate} disabled={disabled}>
+          <Plus size={15} />
+          新建项目
+        </Button>
+      )}
+    />
   );
 }
 

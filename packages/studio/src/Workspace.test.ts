@@ -33,9 +33,10 @@ vi.mock("./features/script/ScriptWorkspace", () => ({
 }));
 
 vi.mock("./features/assets/AssetsWorkspace", () => ({
-  AssetsWorkspace: ({ sidebarCollapsed }: { sidebarCollapsed: boolean }) => createElement("div", {
+  AssetsWorkspace: ({ sidebarCollapsed, initialSection }: { sidebarCollapsed: boolean; initialSection?: string }) => createElement("div", {
     "data-testid": "assets-workspace",
     "data-sidebar-collapsed": String(sidebarCollapsed),
+    "data-initial-section": initialSection,
   }),
 }));
 
@@ -150,6 +151,7 @@ const project: ProjectData = {
   content: {
     manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
     meta: {},
+    variables: {} as ProjectData["content"]["variables"],
   },
   rendererIds: ["default", "mobile"],
 };
@@ -250,6 +252,42 @@ describe("Workspace renderer chrome", () => {
     expect(html).toContain('aria-label="设置"');
     expect(html).toContain("lucide-settings");
     expect(html).toContain("项目设置内容");
+  });
+
+  it("shows the guide only when explicitly activated and focuses background import", () => {
+    const blankProject: ProjectData = {
+      ...project,
+      graph: {
+        version: 1,
+        entryNodeId: "start",
+        chapters: [{ id: "chapter_1", title: "第一章" }],
+        nodes: [{ id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "chapter_1" }],
+        edges: [],
+      },
+      nodes: [{ relPath: "nodes/start.json", data: [{ t: "narrate", id: "sp_generated", text: "新的故事从这里开始。" }] }],
+    };
+    const baseProps = {
+      project: blankProject,
+      location: { type: "workspace", workspace: "assets" } as const,
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      onOpenSettings: () => {},
+    };
+
+    const ordinaryOpenHtml = renderToStaticMarkup(createElement(Workspace, baseProps));
+    const createdBlankHtml = renderToStaticMarkup(createElement(Workspace, {
+      ...baseProps,
+      blankProjectGuideActive: true,
+    }));
+
+    expect(ordinaryOpenHtml).not.toContain("新项目三步引导");
+    expect(createdBlankHtml).toContain('aria-label="新项目三步引导"');
+    expect(createdBlankHtml).toContain('data-initial-section="background"');
   });
 
   it("renders the export workspace for the export location", () => {

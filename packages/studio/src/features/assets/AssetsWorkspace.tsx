@@ -52,6 +52,7 @@ import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsave
 interface AssetsWorkspaceProps {
   project: ProjectData;
   refreshKey: number;
+  initialSection?: AssetSection;
   sidebarCollapsed: boolean;
   onSidebarCollapsedChange: (collapsed: boolean) => void;
   onSaved: () => void | Promise<void>;
@@ -67,12 +68,13 @@ function isExtendedAssetSection(section: AssetSection): section is ExtendedAsset
 export function AssetsWorkspace({
   project,
   refreshKey,
+  initialSection = "overview",
   sidebarCollapsed,
   onSidebarCollapsedChange,
   onSaved,
   onDirtyChange,
 }: AssetsWorkspaceProps) {
-  const [section, setSection] = useState<AssetSection>("overview");
+  const [section, setSection] = useState<AssetSection>(initialSection);
   const [search, setSearch] = useState("");
   const draftStorage = useMemo(getSessionDraftStorage, []);
   const draftStorageKey = useMemo(

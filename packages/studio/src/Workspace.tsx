@@ -39,9 +39,20 @@ import { sameLocation, workspaceFromLocation, type NavigationLocation } from "./
 import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPrefs } from "./lib/sidebarPrefs";
 import { RevisionedProjectMutationQueue } from "./lib/projectMutation";
 import { getDesktopPlatform } from "./lib/platform";
+import { BlankProjectGuide } from "./features/onboarding/BlankProjectGuide";
+import {
+  INITIAL_BLANK_PROJECT_ONBOARDING,
+  hasImportedBackground,
+  hasWrittenBlankProjectEntry,
+  loadBlankProjectOnboarding,
+  saveBlankProjectOnboarding,
+  type BlankProjectOnboardingRecord,
+} from "./lib/blankProjectOnboarding";
 
 interface Props {
   project: ProjectData;
+  blankProjectGuideActive?: boolean;
+  onBlankProjectGuideDismissed?: () => void;
   location: Exclude<NavigationLocation, { type: "project-list" } | { type: "settings" }>;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -133,6 +144,8 @@ const windowDragIgnoreSelector = [
 
 export function Workspace({
   project,
+  blankProjectGuideActive = false,
+  onBlankProjectGuideDismissed,
   location,
   canGoBack,
   canGoForward,
@@ -152,6 +165,9 @@ export function Workspace({
   const [unsavedNavigation, setUnsavedNavigation] = useState<{ action: () => void } | null>(null);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [blankProjectGuide, setBlankProjectGuide] = useState<BlankProjectOnboardingRecord>(() => (
+    loadBlankProjectOnboarding(project.path) ?? INITIAL_BLANK_PROJECT_ONBOARDING
+  ));
   const graphIssueFocusRequestIdRef = useRef(0);
   const projectMetaMutationQueue = useMemo(
     () => new RevisionedProjectMutationQueue(project.projectRevision),
@@ -163,6 +179,7 @@ export function Workspace({
   useEffect(() => {
     setHasUnsavedChanges(false);
     setUnsavedNavigation(null);
+    setBlankProjectGuide(loadBlankProjectOnboarding(project.path) ?? INITIAL_BLANK_PROJECT_ONBOARDING);
   }, [project.path]);
 
   useEffect(() => {
@@ -273,6 +290,59 @@ export function Workspace({
   const handleSaved = useCallback(async () => {
     await refreshProject(false);
   }, [refreshProject]);
+
+  const guideWritten = hasWrittenBlankProjectEntry(project);
+  const guideBackgroundImported = hasImportedBackground(project);
+  const guideVisible = blankProjectGuideActive
+    && !blankProjectGuide.skipped
+    && !blankProjectGuide.completed;
+
+  const updateBlankProjectGuide = useCallback((
+    update: (current: BlankProjectOnboardingRecord) => BlankProjectOnboardingRecord,
+  ) => {
+    setBlankProjectGuide((current) => {
+      const next = update(current);
+      saveBlankProjectOnboarding(project.path, next);
+      return next;
+    });
+  }, [project.path]);
+
+  useEffect(() => {
+    if (!blankProjectGuideActive) return;
+    if (!blankProjectGuide.skipped && !blankProjectGuide.completed) return;
+    onBlankProjectGuideDismissed?.();
+  }, [
+    blankProjectGuide.completed,
+    blankProjectGuide.skipped,
+    blankProjectGuideActive,
+    onBlankProjectGuideDismissed,
+  ]);
+
+  useEffect(() => {
+    if (!blankProjectGuideActive || blankProjectGuide.completed || blankProjectGuide.skipped) return;
+    if (!guideWritten || !guideBackgroundImported || !blankProjectGuide.previewConfirmed) return;
+    updateBlankProjectGuide((current) => ({ ...current, completed: true }));
+    onBlankProjectGuideDismissed?.();
+  }, [
+    blankProjectGuide.completed,
+    blankProjectGuide.previewConfirmed,
+    blankProjectGuide.skipped,
+    blankProjectGuideActive,
+    guideBackgroundImported,
+    guideWritten,
+    onBlankProjectGuideDismissed,
+    updateBlankProjectGuide,
+  ]);
+
+  const skipBlankProjectGuide = useCallback(() => {
+    updateBlankProjectGuide((current) => ({ ...current, skipped: true }));
+    onBlankProjectGuideDismissed?.();
+  }, [onBlankProjectGuideDismissed, updateBlankProjectGuide]);
+
+  const confirmGuidePreview = useCallback(() => {
+    updateBlankProjectGuide((current) => ({ ...current, previewConfirmed: true }));
+    navigateWithGuard({ type: "workspace", workspace: "render" });
+  }, [navigateWithGuard, updateBlankProjectGuide]);
 
   const handleTitleBarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
     if (!shouldStartWindowDrag(event)) return;
@@ -454,9 +524,10 @@ export function Workspace({
         )}
         {workspace === "assets" && (
           <AssetsWorkspace
-            key={project.path}
+            key={`${project.path}-${guideVisible && !guideBackgroundImported ? "guide-background" : "default"}`}
             project={project}
             refreshKey={refreshKey}
+            initialSection={guideVisible && !guideBackgroundImported ? "background" : "overview"}
             sidebarCollapsed={sidebarPrefs.assetsSidebarCollapsed}
             onSidebarCollapsedChange={handleAssetsSidebarCollapsedChange}
             onSaved={handleSaved}
@@ -487,6 +558,23 @@ export function Workspace({
           />
         )}
       </div>
+
+      {guideVisible && (
+        <BlankProjectGuide
+          written={guideWritten}
+          backgroundImported={guideBackgroundImported}
+          previewConfirmed={blankProjectGuide.previewConfirmed}
+          onWrite={() => {
+            const entryNodeId = project.graph?.entryNodeId;
+            navigateWithGuard(entryNodeId
+              ? { type: "script-node", nodeId: entryNodeId }
+              : { type: "script-graph" });
+          }}
+          onImportBackground={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}
+          onPreview={confirmGuidePreview}
+          onSkip={skipBlankProjectGuide}
+        />
+      )}
 
       {/* 全局状态指示器：汇总图结构 + 资产 + manifest 三类问题。
           绿勾=全项目无问题，红图标=有某处问题，点开按来源分组。 */}

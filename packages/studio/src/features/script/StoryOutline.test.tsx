@@ -27,6 +27,7 @@ describe("StoryOutline", () => {
       selectedNodeId: null,
       onScopeChange: () => {},
       onSelectNode: () => {},
+      onCreateNode: () => {},
       onCreateChapter: () => {},
       onRenameChapter: () => {},
       onMoveChapter: () => {},
@@ -41,5 +42,28 @@ describe("StoryOutline", () => {
     expect(html).toContain('aria-current="true"');
     expect(html).toContain('aria-label="新建章节"');
     expect(html).toContain('aria-label="搜索故事"');
+  });
+
+  it("offers node creation when the selected chapter is empty", () => {
+    const emptyChapterGraph: ProjectGraph = {
+      ...graph,
+      nodes: graph.nodes.filter((node) => node.chapterId === "prologue"),
+    };
+    const html = renderToStaticMarkup(createElement(StoryOutline, {
+      graph: emptyChapterGraph,
+      scope: { kind: "chapter", chapterId: "choice" },
+      selectedNodeId: null,
+      onScopeChange: () => {},
+      onSelectNode: () => {},
+      onCreateNode: () => {},
+      onCreateChapter: () => {},
+      onRenameChapter: () => {},
+      onMoveChapter: () => {},
+      onDeleteChapter: () => {},
+    }));
+
+    expect(html).toContain("这个章节还没有节点");
+    expect(html).toContain("节点用来承载剧情内容");
+    expect(html).toContain(">新建节点</button>");
   });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ProjectList } from "./features/projects/ProjectList";
+import { ProjectList, type ProjectOpenOptions } from "./features/projects/ProjectList";
 import { Settings } from "./features/settings/Settings";
 import { ErrorBoundary } from "./features/common/ErrorBoundary";
 import { Workspace } from "./Workspace";
@@ -19,6 +19,7 @@ import {
 
 export default function App() {
   const [project, setProject] = useState<ProjectData | null>(null);
+  const [blankProjectGuidePath, setBlankProjectGuidePath] = useState<string | null>(null);
   const [navigation, setNavigation] = useState(createNavigationState);
   const { settings, loading, updateSettings } = useAppSettings();
   const location = currentLocation(navigation);
@@ -34,8 +35,9 @@ export default function App() {
     setNavigation((state) => replaceLocation(state, next));
   }, []);
 
-  const handleOpenProject = useCallback((nextProject: ProjectData) => {
+  const handleOpenProject = useCallback((nextProject: ProjectData, options?: ProjectOpenOptions) => {
     setProject(nextProject);
+    setBlankProjectGuidePath(options?.startBlankProjectGuide ? nextProject.path : null);
     setNavigation((state) => pushLocation(state, { type: "workspace", workspace: "render" }));
   }, []);
 
@@ -89,6 +91,8 @@ export default function App() {
     <ErrorBoundary title="工作区渲染出错">
       <Workspace
         project={project}
+        blankProjectGuideActive={blankProjectGuidePath === project.path}
+        onBlankProjectGuideDismissed={() => setBlankProjectGuidePath(null)}
         location={location}
         canGoBack={backEnabled}
         canGoForward={forwardEnabled}
