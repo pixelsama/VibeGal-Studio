@@ -609,7 +609,12 @@ const recentProjectListItemStyle: React.CSSProperties = {
 };
 const recentProjectOpenStyle: React.CSSProperties = { paddingRight: "var(--space-12)" };
 const projectNameStyle: React.CSSProperties = { fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-bright)" };
-const projectPathStyle: React.CSSProperties = { fontSize: "var(--text-sm)", color: "var(--text-muted)", wordBreak: "break-all" };
+const projectPathStyle: React.CSSProperties = {
+  minWidth: 0,
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
+  overflowWrap: "anywhere",
+};
 const recentTimeStyle: React.CSSProperties = { fontSize: "var(--text-xs)", color: "var(--text-muted)" };
 const recentRemoveStyle: React.CSSProperties = {
   position: "absolute",
@@ -655,7 +660,13 @@ const containedProjectsActionsStyle: React.CSSProperties = {
   marginTop: "var(--space-4)",
 };
 const modalHeaderStyle: React.CSSProperties = { fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "var(--space-2)" };
-const parentPathStyle: React.CSSProperties = { fontSize: "var(--text-sm)", color: "var(--text-muted)", marginBottom: "var(--space-3)", wordBreak: "break-all" };
+const parentPathStyle: React.CSSProperties = {
+  minWidth: 0,
+  marginBottom: "var(--space-3)",
+  fontSize: "var(--text-sm)",
+  color: "var(--text-muted)",
+  overflowWrap: "anywhere",
+};
 const inputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",

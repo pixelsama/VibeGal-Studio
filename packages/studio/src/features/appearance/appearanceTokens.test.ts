@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_MANIFEST, type FileRevision, type Manifest } from "../../lib/types";
+import defaultRenderer from "../../../src-tauri/resources/default-renderer";
 import {
   APPEARANCE_PRESETS,
   APPEARANCE_TOKEN_GROUPS,
@@ -154,6 +155,13 @@ describe("renderer appearance defaults and presets", () => {
     ]);
     expect(rendererSupportsAppearancePresets(defaults)).toBe(true);
     expect(rendererSupportsAppearancePresets({ "caption.color": "red" })).toBe(false);
+  });
+
+  it("canonical default renderer supports themes even when a dynamic fallback has no fixed default", () => {
+    const rendererDefaults = defaultRenderer.appearance?.defaults ?? {};
+
+    expect(rendererDefaults).not.toHaveProperty("nameBox.bgColor");
+    expect(rendererSupportsAppearancePresets(rendererDefaults)).toBe(true);
   });
 
   it("应用预设写入 renderer 完整默认值后仍可单字段微调，并移除旧标准 token", () => {

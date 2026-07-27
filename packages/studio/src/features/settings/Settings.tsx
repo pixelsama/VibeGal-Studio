@@ -90,7 +90,7 @@ export function Settings({
   }, [cliStatus]);
 
   const content = (
-    <div style={contentStyle}>
+    <div className="gs-settings-grid" style={contentStyle}>
       <AppearanceSection settings={settings} onUpdate={onUpdate} />
 
       <CommandLineToolSection
@@ -138,9 +138,9 @@ export function AppearanceSection({
   onUpdate: (next: Partial<AppSettings>) => void | Promise<void>;
 }) {
   return (
-    <section style={sectionStyle}>
-      <h2 style={sectionTitleStyle}>外观</h2>
-      <p style={sectionDescStyle}>选择编辑器界面的配色主题。游戏的界面风格不受影响。</p>
+    <section className="gs-settings-card" style={sectionStyle}>
+      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>外观</h2>
+      <p className="gs-settings-card__desc" style={sectionDescStyle}>选择编辑器界面的配色主题。游戏的界面风格不受影响。</p>
       <div style={themeCardRowStyle}>
         <ThemeCard
           mode="system"
@@ -207,9 +207,9 @@ export function CommandLineToolSection({
     busy || !status?.cliAvailable || Boolean(status.installed) || Boolean(status?.linkOccupied);
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={sectionTitleStyle}>命令行工具</h2>
-      <p style={sectionDescStyle}>安装后可在终端使用 vibegal-cli validate 校验项目。</p>
+    <section className="gs-settings-card" style={sectionStyle}>
+      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>命令行工具</h2>
+      <p className="gs-settings-card__desc" style={sectionDescStyle}>安装后可在终端使用 vibegal-cli validate 校验项目。</p>
       <div style={cliPanelStyle}>
         <div style={cliStatusRowStyle}>
           <div>
@@ -270,9 +270,10 @@ function ThemeCard({
       type="button"
       onClick={onSelect}
       aria-pressed={active}
+      className="gs-selected-surface"
       style={{
         ...themeCardStyle,
-        borderColor: active ? "var(--accent)" : "var(--border-input)",
+        borderColor: active ? "var(--accent-secondary)" : "var(--border-input)",
       }}
     >
       <div style={previewStyle}>
@@ -339,30 +340,15 @@ const contentStyle: React.CSSProperties = {
   flex: 1,
   overflowY: "auto",
   padding: "var(--space-8) var(--space-12)",
-  display: "flex",
-  flexDirection: "column",
-  gap: 28,
 };
 
 const sectionStyle: React.CSSProperties = {
-  maxWidth: 560,
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-2)",
+  maxWidth: "none",
 };
 
-const sectionTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: "var(--text-md)",
-  fontWeight: 600,
-  color: "var(--text-bright)",
-};
+const sectionTitleStyle: React.CSSProperties = {};
 
-const sectionDescStyle: React.CSSProperties = {
-  margin: "0 0 var(--space-3)",
-  fontSize: "var(--text-sm)",
-  color: "var(--text-muted)",
-};
+const sectionDescStyle: React.CSSProperties = {};
 
 const themeCardRowStyle: React.CSSProperties = {
   display: "grid",
@@ -435,8 +421,8 @@ const activeTagStyle: React.CSSProperties = {
   fontSize: "var(--text-xs)",
   padding: "1px var(--space-1)",
   borderRadius: "var(--radius-xs)",
-  background: "var(--bg-accent-soft)",
-  color: "var(--accent-bright)",
+  background: "var(--accent-secondary-soft)",
+  color: "var(--accent-secondary-bright)",
 };
 
 const cliPanelStyle: React.CSSProperties = {
@@ -485,7 +471,7 @@ const cliPathStyle: React.CSSProperties = {
   margin: 0,
   fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
-  wordBreak: "break-all",
+  overflowWrap: "anywhere",
 };
 
 const cliIssueStyle: React.CSSProperties = {

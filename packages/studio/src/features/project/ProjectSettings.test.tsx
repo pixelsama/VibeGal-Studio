@@ -31,7 +31,10 @@ describe("ProjectSettings", () => {
   it("renders project-level stage resolution controls", () => {
     const html = renderToStaticMarkup(<ProjectSettings project={project} onSaved={() => {}} />);
 
-    expect(html).toContain("项目");
+    expect(html).toContain("项目设置");
+    expect(html).toContain('class="gs-settings-grid"');
+    expect(html.match(/class="gs-settings-card"/g)).toHaveLength(2);
+    expect(html).toContain('class="gs-selected-surface"');
     expect(html).toContain("作品标题");
     expect(html).toContain("默认打字速度");
     expect(html).toContain("默认自动播放间隔");

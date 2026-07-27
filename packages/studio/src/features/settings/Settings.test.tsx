@@ -23,6 +23,9 @@ describe("Settings", () => {
     expect(html).toContain("浅色");
     // 深色卡片应标记为当前选中
     expect(html).toContain("当前");
+    expect(html).toContain('class="gs-settings-grid"');
+    expect(html.match(/gs-settings-card/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("gs-selected-surface");
   });
 
   it("浅色主题下，浅色卡片被选中", () => {

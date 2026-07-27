@@ -382,10 +382,10 @@ export function ProjectSettings({
   };
 
   return (
-    <div style={pageStyle}>
+    <div className="gs-page-shell" style={pageStyle}>
       <section style={sectionStyle}>
         <div style={headerRowStyle}>
-          <h2 style={sectionTitleStyle}>项目</h2>
+          <h2 className="gs-page-title" style={sectionTitleStyle}>项目设置</h2>
           {status && <span style={statusStyle}>{status}</span>}
         </div>
 
@@ -418,93 +418,96 @@ export function ProjectSettings({
           </div>
         )}
 
-        <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>基础信息</span>
-          <TextField
-            label="作品标题"
-            hint="玩家在标题画面和导出物里看到的名字。左上角的项目名只是磁盘上的文件夹标识。"
-            value={titleText}
-            onChange={(value) => setDraftText(setTitleText, value)}
-          />
-          <div style={numberRowStyle}>
-            <NumberField
-              label="默认打字速度"
-              hint="每秒显示几个字"
-              value={typingSpeedText}
-              min={0.1}
-              step={0.1}
-              onChange={(value) => setDraftText(setTypingSpeedText, value)}
+        <div className="gs-settings-grid">
+          <div className="gs-settings-card" style={fieldGroupStyle}>
+            <span style={fieldLabelStyle}>基础信息</span>
+            <TextField
+              label="作品标题"
+              hint="玩家在标题画面和导出物里看到的名字。左上角的项目名只是磁盘上的文件夹标识。"
+              value={titleText}
+              onChange={(value) => setDraftText(setTitleText, value)}
             />
-            <NumberField
-              label="默认自动播放间隔"
-              hint="自动播放时每句停留的毫秒数"
-              value={autoAdvanceText}
-              min={0}
-              step={1}
-              onChange={(value) => setDraftText(setAutoAdvanceText, value)}
-            />
-            <NumberField
-              label="章节间隔"
-              hint="切换章节时的停顿毫秒数"
-              value={chapterGapText}
-              min={0}
-              step={1}
-              onChange={(value) => setDraftText(setChapterGapText, value)}
-            />
+            <div style={numberRowStyle}>
+              <NumberField
+                label="默认打字速度"
+                hint="每秒显示几个字"
+                value={typingSpeedText}
+                min={0.1}
+                step={0.1}
+                onChange={(value) => setDraftText(setTypingSpeedText, value)}
+              />
+              <NumberField
+                label="默认自动播放间隔"
+                hint="自动播放时每句停留的毫秒数"
+                value={autoAdvanceText}
+                min={0}
+                step={1}
+                onChange={(value) => setDraftText(setAutoAdvanceText, value)}
+              />
+              <NumberField
+                label="章节间隔"
+                hint="切换章节时的停顿毫秒数"
+                value={chapterGapText}
+                min={0}
+                step={1}
+                onChange={(value) => setDraftText(setChapterGapText, value)}
+              />
+            </div>
           </div>
-        </div>
 
-        <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>舞台分辨率</span>
-          <div style={presetRowStyle}>
-            {STAGE_PRESETS.map((preset) => {
-              const active = activePreset === preset;
-              return (
-                <button
-                  key={`${preset.width}x${preset.height}`}
-                  type="button"
-                  onClick={() => handlePreset(preset)}
-                  aria-pressed={active}
-                  style={{
-                    ...presetButtonStyle,
-                    borderColor: active ? "var(--accent)" : "var(--border-strong)",
-                    color: active ? "var(--text-bright)" : "var(--text-secondary)",
-                  }}
-                >
-                  {preset.width} x {preset.height}
-                </button>
-              );
-            })}
-          </div>
-          <div style={numberRowStyle}>
-            <NumberField
-              label="宽"
-              value={widthText}
-              min={STAGE_WIDTH_RANGE.min}
-              max={STAGE_WIDTH_RANGE.max}
-              step={1}
-              onChange={handleWidthChange}
-            />
-            <NumberField
-              label="高"
-              value={heightText}
-              min={STAGE_HEIGHT_RANGE.min}
-              max={STAGE_HEIGHT_RANGE.max}
-              step={1}
-              onChange={handleHeightChange}
-            />
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={!draft || saving}
-              style={{
-                ...saveButtonStyle,
-                opacity: !draft || saving ? 0.55 : 1,
-                cursor: !draft || saving ? "default" : "pointer",
-              }}
-            >
-              {saving ? "保存中" : "保存"}
-            </button>
+          <div className="gs-settings-card" style={fieldGroupStyle}>
+            <span style={fieldLabelStyle}>舞台分辨率</span>
+            <div style={presetRowStyle}>
+              {STAGE_PRESETS.map((preset) => {
+                const active = activePreset === preset;
+                return (
+                  <button
+                    key={`${preset.width}x${preset.height}`}
+                    type="button"
+                    className="gs-selected-surface"
+                    onClick={() => handlePreset(preset)}
+                    aria-pressed={active}
+                    style={{
+                      ...presetButtonStyle,
+                      borderColor: active ? "var(--accent-secondary)" : "var(--border-strong)",
+                      color: active ? "var(--accent-secondary-bright)" : "var(--text-secondary)",
+                    }}
+                  >
+                    {preset.width} x {preset.height}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={numberRowStyle}>
+              <NumberField
+                label="宽"
+                value={widthText}
+                min={STAGE_WIDTH_RANGE.min}
+                max={STAGE_WIDTH_RANGE.max}
+                step={1}
+                onChange={handleWidthChange}
+              />
+              <NumberField
+                label="高"
+                value={heightText}
+                min={STAGE_HEIGHT_RANGE.min}
+                max={STAGE_HEIGHT_RANGE.max}
+                step={1}
+                onChange={handleHeightChange}
+              />
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={!draft || saving}
+                style={{
+                  ...saveButtonStyle,
+                  opacity: !draft || saving ? 0.55 : 1,
+                  cursor: !draft || saving ? "default" : "pointer",
+                }}
+              >
+                {saving ? "保存中" : "保存"}
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -606,18 +609,16 @@ function NumberField({
 }
 
 const pageStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  overflowY: "auto",
-  background: "var(--bg-app)",
-  padding: "var(--space-8) var(--space-12)",
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-6)",
 };
 
 const sectionStyle: CSSProperties = {
-  maxWidth: 720,
+  width: "100%",
   display: "flex",
   flexDirection: "column",
-  gap: 20,
+  gap: "var(--space-5)",
 };
 
 const headerRowStyle: CSSProperties = {
@@ -626,12 +627,7 @@ const headerRowStyle: CSSProperties = {
   gap: "var(--space-3)",
 };
 
-const sectionTitleStyle: CSSProperties = {
-  margin: 0,
-  fontSize: "var(--text-lg)",
-  fontWeight: 650,
-  color: "var(--text-bright)",
-};
+const sectionTitleStyle: CSSProperties = {};
 
 const statusStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
@@ -694,9 +690,9 @@ const fieldGroupStyle: CSSProperties = {
 };
 
 const fieldLabelStyle: CSSProperties = {
-  fontSize: "var(--text-base)",
-  fontWeight: 600,
-  color: "var(--text-primary)",
+  fontSize: "var(--text-lg)",
+  fontWeight: 700,
+  color: "var(--text-bright)",
 };
 
 const presetRowStyle: CSSProperties = {
@@ -728,10 +724,9 @@ const numberFieldStyle: CSSProperties = {
 };
 
 const numberLabelStyle: CSSProperties = {
-  // 字段名比字段值更该被扫到：此前 label 用 --text-muted，看起来像禁用态。
   fontSize: "var(--text-sm)",
-  fontWeight: 600,
-  color: "var(--text-secondary)",
+  fontWeight: 650,
+  color: "var(--text-primary)",
 };
 
 const fieldHintStyle: CSSProperties = {

@@ -190,11 +190,22 @@ export const APPEARANCE_PRESETS = [
 
 export type AppearancePreset = (typeof APPEARANCE_PRESETS)[number];
 
+const APPEARANCE_PRESET_COMPATIBILITY_KEYS = [
+  "dialogueBox.bgColor",
+  "dialogueBox.textColor",
+  "nameBox.textColor",
+  "choiceButton.bgColor",
+  "choiceButton.textColor",
+  "hud.bgColor",
+  "hud.textColor",
+  "titleScreen.bgColor",
+  "titleScreen.titleColor",
+  "titleScreen.buttonBgColor",
+  "titleScreen.buttonTextColor",
+] as const;
+
 export function rendererSupportsAppearancePresets(defaults: RendererAppearanceDefaults): boolean {
-  const requiredKeys = new Set(
-    APPEARANCE_PRESETS.flatMap((preset) => Object.keys(preset.tokens)),
-  );
-  return [...requiredKeys].every((key) => key in defaults);
+  return APPEARANCE_PRESET_COMPATIBILITY_KEYS.every((key) => key in defaults);
 }
 
 export function applyAppearancePreset(

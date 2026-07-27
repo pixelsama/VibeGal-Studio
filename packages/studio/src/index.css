@@ -25,9 +25,13 @@
   --text-dim: #6a7280;
   --text-on-accent: #ffffff;
 
-  /* 强调 */
+  /* 强调：主强调承载提交/创建等动作，次强调只承载当前位置和选中态。 */
   --accent: #3a6ea5;
   --accent-bright: #9fc8e3;
+  --accent-secondary: #58b8aa;
+  --accent-secondary-bright: #9addd3;
+  --accent-secondary-soft: rgba(88, 184, 170, 0.14);
+  --focus-halo: rgba(159, 200, 227, 0.24);
 
   /* 状态 */
   --status-ok: #4caf7a;
@@ -42,7 +46,7 @@
   --border-ok: #2f5942;
   --bg-error-soft: #1a1212;
 
-  /* 危险操作 */
+  /* 危险操作默认保持克制，只有最终确认动作才应使用实心 danger 按钮。 */
   --destructive: #a04848;
   --text-on-destructive: #ffffff;
   --text-on-error: #ffffff;
@@ -135,6 +139,10 @@
 
   --accent: #2a6db0;
   --accent-bright: #1a5694;
+  --accent-secondary: #168477;
+  --accent-secondary-bright: #086c61;
+  --accent-secondary-soft: rgba(22, 132, 119, 0.12);
+  --focus-halo: rgba(42, 109, 176, 0.22);
 
   --status-ok: #2d9d63;
   --status-ok-text: #1d8a52;
@@ -276,11 +284,12 @@ body,
   background-color: var(--bg-active);
 }
 
-/* 键盘焦点环：组件按钮 + 全局兜底（未迁移的原生 button 也可见焦点） */
+/* 键盘焦点环不仅变色，还有外扩间距与 halo，深浅背景上都可辨认。 */
 .gs-btn:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--accent-bright);
-  outline-offset: 1px;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-halo);
 }
 
 /* ── 顶部工作台切换标签（Workspace） ── */
@@ -303,8 +312,10 @@ button:focus-visible {
   color: var(--text-secondary);
 }
 .gs-tab--active {
-  background: var(--bg-hover);
-  color: var(--accent-bright);
+  background: var(--accent-secondary-soft);
+  color: var(--accent-secondary-bright);
+  box-shadow: inset 0 -2px 0 var(--accent-secondary);
+  font-weight: 650;
 }
 
 /* ── 外观宫格场景卡片：整卡可点，点击跳转单场景设计面（AppearanceWorkspace） ── */
@@ -434,6 +445,71 @@ textarea,
   .gs-anim-toast,
   .gs-skeleton {
     animation: none;
+  }
+}
+
+/* ── 页面与设置卡片：标题 / 分区 / 内容三级层次 ── */
+.gs-page-shell {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-app);
+  padding: var(--space-8) var(--space-12);
+}
+.gs-page-title {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.gs-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  align-items: start;
+  gap: var(--space-5);
+  width: min(1120px, 100%);
+}
+.gs-settings-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025), 0 12px 28px rgba(0, 0, 0, 0.14);
+}
+.gs-settings-card__title {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+.gs-settings-card__desc {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.gs-id-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.gs-selected-surface[aria-pressed="true"],
+.gs-selected-surface[data-selected="true"] {
+  border-color: var(--accent-secondary) !important;
+  background: var(--accent-secondary-soft) !important;
+  box-shadow: 0 0 0 1px var(--accent-secondary);
+}
+@media (max-width: 820px) {
+  .gs-page-shell {
+    padding: var(--space-6) var(--space-4);
+  }
+  .gs-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -708,8 +784,9 @@ select:focus-visible {
   gap: var(--space-2);
 }
 .gs-field__label {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--text-primary);
 }
 .gs-field__message {
   font-size: var(--text-xs);
@@ -846,9 +923,10 @@ select:focus-visible {
   background: var(--bg-hover);
 }
 .gs-segmented__item--active {
-  background: var(--bg-active);
-  color: var(--accent-bright);
-  font-weight: 600;
+  background: var(--accent-secondary-soft);
+  color: var(--accent-secondary-bright);
+  box-shadow: inset 0 0 0 1px var(--accent-secondary);
+  font-weight: 650;
 }
 .gs-segmented__item:disabled {
   opacity: 0.55;
