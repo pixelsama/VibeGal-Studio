@@ -1,18 +1,18 @@
 /**
- * 桌面构建状态 store（模块级，按项目路径隔离）。
+ * 游戏构建状态 store（模块级，按项目路径隔离）。
  *
- * 为什么挂在模块上而不是组件 state：Workspace 切换工作台时用 key 整体重挂载，
- * 组件内 state 会丢失；构建可能耗时数分钟（Electron 首次下载运行时），
- * 期间用户切走再切回必须还能看到「构建中」与上一次的结果。
- * 同时这里保证同一项目同一时刻只有一个构建、一个 smoke。
+ * Workspace 切换工作台时会整体重挂载，构建状态必须跨组件生命周期保留。
+ * Web 与桌面构建共用同一项目槽位，保证同一项目同一时刻只写一个输出目标。
  */
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import {
   buildDesktopGame,
+  buildWebGame,
   cancelDesktopGameBuild,
   DESKTOP_BUILD_PROGRESS_EVENT,
   smokeDesktopGame,
+  smokeWebGame,
   type DesktopBuildFailure,
   type DesktopBuildOutcome,
   type DesktopBuildProgressPayload,
@@ -20,11 +20,15 @@ import {
   type DesktopBuildResult,
   type DesktopSmokeOutcome,
   type DesktopSmokeRequest,
+  type WebBuildOutcome,
+  type WebBuildRequest,
+  type WebSmokeOutcome,
+  type WebSmokeRequest,
 } from "../../lib/tauri";
+import type { ExportTarget } from "../../lib/exportPrefs";
 
 export type DesktopBuildPhase = "idle" | "building" | "success" | "failure" | "cancelled";
 
-/** 最新一条构建进度事件（对应后端转发的 desktop_build_progress） */
 export interface DesktopBuildProgressState {
   step: string;
   phase: string;
@@ -37,7 +41,6 @@ export type DesktopSmokePhase = "idle" | "running" | "passed" | "failed";
 export interface DesktopSmokeState {
   phase: DesktopSmokePhase;
   checks: string[];
-  /** phase 为 failed 时的错误说明 */
   message: string | null;
 }
 
@@ -49,13 +52,11 @@ export const IDLE_DESKTOP_SMOKE_STATE: DesktopSmokeState = {
 
 export interface DesktopBuildState {
   phase: DesktopBuildPhase;
-  /** 当前/上一次构建的标识，用于进度事件关联与取消 */
+  /** 当前/上一次构建目标；idle 时为 null。 */
+  target: ExportTarget | null;
   buildId: string | null;
-  /** 构建开始时间戳（ms），用于已用时间展示；非构建中为 null */
   startedAt: number | null;
-  /** 最新进度事件；非构建中为 null */
   progress: DesktopBuildProgressState | null;
-  /** 已完成的阶段（validate / web-build / desktop-package） */
   completedSteps: string[];
   result: DesktopBuildResult | null;
   failure: DesktopBuildFailure | null;
@@ -64,6 +65,7 @@ export interface DesktopBuildState {
 
 export const IDLE_DESKTOP_BUILD_STATE: DesktopBuildState = {
   phase: "idle",
+  target: null,
   buildId: null,
   startedAt: null,
   progress: null,
@@ -73,9 +75,10 @@ export const IDLE_DESKTOP_BUILD_STATE: DesktopBuildState = {
   smoke: IDLE_DESKTOP_SMOKE_STATE,
 };
 
-/** 可注入的构建执行器，测试时替换为假实现 */
 export type DesktopBuildRunner = (request: DesktopBuildRequest) => Promise<DesktopBuildOutcome>;
+export type WebBuildRunner = (request: WebBuildRequest) => Promise<WebBuildOutcome>;
 export type DesktopSmokeRunner = (request: DesktopSmokeRequest) => Promise<DesktopSmokeOutcome>;
+export type WebSmokeRunner = (request: WebSmokeRequest) => Promise<WebSmokeOutcome>;
 
 interface BuildEntry {
   state: DesktopBuildState;
@@ -111,11 +114,6 @@ export function subscribeDesktopBuild(projectPath: string, listener: () => void)
   };
 }
 
-// ──────────────────────────────────────────────
-// 进度事件
-// ──────────────────────────────────────────────
-
-/** 纯函数：把一条进度事件折算进构建状态（buildId 不匹配或非构建中则原样返回） */
 export function reduceDesktopBuildProgress(
   state: DesktopBuildState,
   payload: DesktopBuildProgressPayload,
@@ -151,29 +149,21 @@ function ensureProgressListener(): void {
       if (next !== entry.state) setState(projectPath, next);
     },
   );
-  // 非 Tauri 环境（纯浏览器/测试）中订阅会失败，静默降级为无进度展示
   progressListenerReady.catch(() => {
     progressListenerReady = null;
   });
 }
 
-// ──────────────────────────────────────────────
-// 构建与取消
-// ──────────────────────────────────────────────
-
 export function generateDesktopBuildId(now = Date.now(), random = Math.random()): string {
   return `desktop-${now.toString(36)}-${random.toString(36).slice(2, 10)}`;
 }
 
-/**
- * 发起构建。同一项目已有构建在进行时立即返回
- * code = "desktop_build_in_progress" 的失败，不真正执行。
- */
-export async function startDesktopBuild(
+async function startBuild<TRequest extends WebBuildRequest, TOutcome extends DesktopBuildOutcome>(
   projectPath: string,
-  request: DesktopBuildRequest,
-  run: DesktopBuildRunner = buildDesktopGame,
-): Promise<DesktopBuildOutcome> {
+  target: ExportTarget,
+  request: TRequest,
+  run: (request: TRequest) => Promise<TOutcome>,
+): Promise<TOutcome | DesktopBuildFailure> {
   if (getDesktopBuildState(projectPath).phase === "building") {
     return {
       ok: false,
@@ -187,6 +177,7 @@ export async function startDesktopBuild(
   const buildId = request.buildId ?? generateDesktopBuildId();
   setState(projectPath, {
     phase: "building",
+    target,
     buildId,
     startedAt: Date.now(),
     progress: null,
@@ -197,10 +188,10 @@ export async function startDesktopBuild(
   });
 
   const outcome = await run({ ...request, buildId });
-
   if (outcome.ok) {
     setState(projectPath, {
       phase: "success",
+      target,
       buildId,
       startedAt: null,
       progress: null,
@@ -213,6 +204,7 @@ export async function startDesktopBuild(
     const cancelled = outcome.code === "desktop_build_cancelled";
     setState(projectPath, {
       phase: cancelled ? "cancelled" : "failure",
+      target,
       buildId,
       startedAt: null,
       progress: null,
@@ -225,27 +217,37 @@ export async function startDesktopBuild(
   return outcome;
 }
 
-/** 取消当前项目正在进行的构建；没有进行中的构建时为空操作 */
+export function startWebBuild(
+  projectPath: string,
+  request: WebBuildRequest,
+  run: WebBuildRunner = buildWebGame,
+): Promise<WebBuildOutcome> {
+  return startBuild(projectPath, "web", request, run);
+}
+
+export function startDesktopBuild(
+  projectPath: string,
+  request: DesktopBuildRequest,
+  run: DesktopBuildRunner = buildDesktopGame,
+): Promise<DesktopBuildOutcome> {
+  return startBuild(projectPath, "desktop", request, run);
+}
+
 export async function cancelDesktopBuild(projectPath: string): Promise<void> {
   const state = getDesktopBuildState(projectPath);
   if (state.phase !== "building" || !state.buildId) return;
   try {
     await cancelDesktopGameBuild(state.buildId);
   } catch {
-    // 构建恰好已结束时后端会报 not_found，忽略——结果态马上由 startDesktopBuild 落定
+    // 构建恰好已结束时后端会报 not_found，结果态马上由 startBuild 落定。
   }
 }
 
-// ──────────────────────────────────────────────
-// 桌面 smoke
-// ──────────────────────────────────────────────
-
-/** 对构建产物运行 smoke。已有 smoke 在进行时立即返回失败，不真正执行 */
-export async function startDesktopSmoke(
+async function startSmoke<TRequest extends WebSmokeRequest, TOutcome extends DesktopSmokeOutcome>(
   projectPath: string,
-  request: DesktopSmokeRequest,
-  run: DesktopSmokeRunner = smokeDesktopGame,
-): Promise<DesktopSmokeOutcome> {
+  request: TRequest,
+  run: (request: TRequest) => Promise<TOutcome>,
+): Promise<TOutcome | DesktopBuildFailure> {
   if (getDesktopBuildState(projectPath).smoke.phase === "running") {
     return {
       ok: false,
@@ -262,21 +264,31 @@ export async function startDesktopSmoke(
 
   const outcome = await run(request);
   const current = getDesktopBuildState(projectPath);
-  if (outcome.ok) {
-    setState(projectPath, {
-      ...current,
-      smoke: { phase: "passed", checks: outcome.checks, message: null },
-    });
-  } else {
-    setState(projectPath, {
-      ...current,
-      smoke: { phase: "failed", checks: [], message: outcome.message },
-    });
-  }
+  setState(projectPath, {
+    ...current,
+    smoke: outcome.ok
+      ? { phase: "passed", checks: outcome.checks, message: null }
+      : { phase: "failed", checks: [], message: outcome.message },
+  });
   return outcome;
 }
 
-/** React 绑定：订阅指定项目的构建状态（SSR/静态渲染安全） */
+export function startWebSmoke(
+  projectPath: string,
+  request: WebSmokeRequest,
+  run: WebSmokeRunner = smokeWebGame,
+): Promise<WebSmokeOutcome> {
+  return startSmoke(projectPath, request, run);
+}
+
+export function startDesktopSmoke(
+  projectPath: string,
+  request: DesktopSmokeRequest,
+  run: DesktopSmokeRunner = smokeDesktopGame,
+): Promise<DesktopSmokeOutcome> {
+  return startSmoke(projectPath, request, run);
+}
+
 export function useDesktopBuildState(projectPath: string): DesktopBuildState {
   const [state, setLocalState] = useState<DesktopBuildState>(() => getDesktopBuildState(projectPath));
 

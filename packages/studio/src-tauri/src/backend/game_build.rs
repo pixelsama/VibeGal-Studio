@@ -15,6 +15,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) const DESKTOP_BUILD_PROGRESS_EVENT: &str = "desktop_build_progress";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BuildTarget {
+    Web,
+    Desktop,
+}
+
+impl BuildTarget {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Desktop => "desktop",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum DesktopRuntime {
@@ -46,6 +61,41 @@ pub(crate) struct DesktopBuildRequest {
     pub strict: bool,
     #[serde(default)]
     pub allow_warnings: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WebBuildRequest {
+    pub project_path: String,
+    pub out_dir: String,
+    #[serde(default)]
+    pub build_id: Option<String>,
+    #[serde(default)]
+    pub renderer_id: Option<String>,
+    #[serde(default)]
+    pub strict: bool,
+    #[serde(default)]
+    pub allow_warnings: bool,
+}
+
+impl From<WebBuildRequest> for DesktopBuildRequest {
+    fn from(request: WebBuildRequest) -> Self {
+        Self {
+            project_path: request.project_path,
+            out_dir: request.out_dir,
+            runtime: None,
+            build_id: request.build_id,
+            renderer_id: request.renderer_id,
+            strict: request.strict,
+            allow_warnings: request.allow_warnings,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WebSmokeRequest {
+    pub dist_dir: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -96,22 +146,25 @@ pub(crate) struct DesktopBuildRegistry {
     active: Arc<Mutex<HashMap<String, ActiveDesktopBuild>>>,
 }
 
-fn command_args(request: &DesktopBuildRequest) -> Vec<String> {
-    let runtime = request.runtime.unwrap_or(DesktopRuntime::Electron);
+fn command_args(target: BuildTarget, request: &DesktopBuildRequest) -> Vec<String> {
     let mut args = vec![
         "build".to_string(),
         request.project_path.clone(),
         "--target".to_string(),
-        "desktop".to_string(),
-        "--runtime".to_string(),
-        runtime.as_str().to_string(),
+        target.as_str().to_string(),
+    ];
+    if target == BuildTarget::Desktop {
+        let runtime = request.runtime.unwrap_or(DesktopRuntime::Electron);
+        args.extend(["--runtime".to_string(), runtime.as_str().to_string()]);
+    }
+    args.extend([
         "--out".to_string(),
         request.out_dir.clone(),
         "--format".to_string(),
         "json".to_string(),
         "--progress".to_string(),
         "jsonl".to_string(),
-    ];
+    ]);
     if let Some(renderer_id) = request.renderer_id.as_deref() {
         args.extend(["--renderer".to_string(), renderer_id.to_string()]);
     }
@@ -124,18 +177,19 @@ fn command_args(request: &DesktopBuildRequest) -> Vec<String> {
     args
 }
 
-fn smoke_command_args(request: &DesktopSmokeRequest) -> Vec<String> {
-    let runtime = request.runtime.unwrap_or(DesktopRuntime::Electron);
-    vec![
+fn smoke_command_args(target: BuildTarget, request: &DesktopSmokeRequest) -> Vec<String> {
+    let mut args = vec![
         "smoke".to_string(),
         request.dist_dir.clone(),
         "--target".to_string(),
-        "desktop".to_string(),
-        "--runtime".to_string(),
-        runtime.as_str().to_string(),
-        "--format".to_string(),
-        "json".to_string(),
-    ]
+        target.as_str().to_string(),
+    ];
+    if target == BuildTarget::Desktop {
+        let runtime = request.runtime.unwrap_or(DesktopRuntime::Electron);
+        args.extend(["--runtime".to_string(), runtime.as_str().to_string()]);
+    }
+    args.extend(["--format".to_string(), "json".to_string()]);
+    args
 }
 
 fn unavailable_failure(cli_path: &Path) -> DesktopBuildFailure {
@@ -334,7 +388,8 @@ impl DesktopBuildRegistry {
     }
 }
 
-pub(crate) fn build_desktop_game(
+fn build_game(
+    target: BuildTarget,
     cli_path: &Path,
     request: DesktopBuildRequest,
     registry: &DesktopBuildRegistry,
@@ -345,7 +400,7 @@ pub(crate) fn build_desktop_game(
     }
     let build_id = effective_build_id(&request);
     let mut child = Command::new(cli_path)
-        .args(command_args(&request))
+        .args(command_args(target, &request))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -426,6 +481,24 @@ pub(crate) fn build_desktop_game(
     Ok(result)
 }
 
+pub(crate) fn build_web_game(
+    cli_path: &Path,
+    request: WebBuildRequest,
+    registry: &DesktopBuildRegistry,
+    on_progress: impl FnMut(DesktopBuildProgress),
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    build_game(BuildTarget::Web, cli_path, request.into(), registry, on_progress)
+}
+
+pub(crate) fn build_desktop_game(
+    cli_path: &Path,
+    request: DesktopBuildRequest,
+    registry: &DesktopBuildRegistry,
+    on_progress: impl FnMut(DesktopBuildProgress),
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    build_game(BuildTarget::Desktop, cli_path, request, registry, on_progress)
+}
+
 pub(crate) fn desktop_build_preflight(
     cli_path: &Path,
 ) -> Result<serde_json::Value, DesktopBuildFailure> {
@@ -454,7 +527,8 @@ pub(crate) fn desktop_build_preflight(
     Ok(value)
 }
 
-pub(crate) fn smoke_desktop_game(
+fn smoke_game(
+    target: BuildTarget,
     cli_path: &Path,
     request: DesktopSmokeRequest,
 ) -> Result<serde_json::Value, DesktopBuildFailure> {
@@ -462,18 +536,43 @@ pub(crate) fn smoke_desktop_game(
         return Err(unavailable_failure(cli_path));
     }
     let output = Command::new(cli_path)
-        .args(smoke_command_args(&request))
+        .args(smoke_command_args(target, &request))
         .output()
         .map_err(spawn_failure)?;
     if !output.status.success() {
         return Err(cli_failure(
-            "desktop_smoke_failed",
+            if target == BuildTarget::Web {
+                "web_smoke_failed"
+            } else {
+                "desktop_smoke_failed"
+            },
             &String::from_utf8_lossy(&output.stderr),
         ));
     }
     serde_json::from_slice(&output.stdout).map_err(|error| {
         invalid_output_failure(format!("vibegal-cli smoke 返回了无效 JSON: {error}"))
     })
+}
+
+pub(crate) fn smoke_web_game(
+    cli_path: &Path,
+    request: WebSmokeRequest,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    smoke_game(
+        BuildTarget::Web,
+        cli_path,
+        DesktopSmokeRequest {
+            dist_dir: request.dist_dir,
+            runtime: None,
+        },
+    )
+}
+
+pub(crate) fn smoke_desktop_game(
+    cli_path: &Path,
+    request: DesktopSmokeRequest,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    smoke_game(BuildTarget::Desktop, cli_path, request)
 }
 
 #[cfg(test)]
@@ -534,7 +633,7 @@ mod tests {
 
     #[test]
     fn backend_defaults_to_compatible_electron() {
-        let args = command_args(&request(None));
+        let args = command_args(BuildTarget::Desktop, &request(None));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--runtime", "electron"]));
@@ -546,7 +645,7 @@ mod tests {
         request.renderer_id = Some("custom".to_string());
         request.strict = true;
         request.allow_warnings = true;
-        let args = command_args(&request);
+        let args = command_args(BuildTarget::Desktop, &request);
         assert!(args.windows(2).any(|pair| pair == ["--runtime", "tauri"]));
         assert!(args.windows(2).any(|pair| pair == ["--renderer", "custom"]));
         assert!(args.contains(&"--strict".to_string()));
@@ -555,14 +654,43 @@ mod tests {
 
     #[test]
     fn backend_build_enables_jsonl_progress_for_event_forwarding() {
-        let args = command_args(&request(None));
+        let args = command_args(BuildTarget::Desktop, &request(None));
         assert!(args.windows(2).any(|pair| pair == ["--progress", "jsonl"]));
         assert!(args.windows(2).any(|pair| pair == ["--format", "json"]));
     }
 
     #[test]
+    fn web_build_and_smoke_args_do_not_include_desktop_runtime() {
+        let build = command_args(
+            BuildTarget::Web,
+            &DesktopBuildRequest::from(WebBuildRequest {
+                project_path: "C:/game".to_string(),
+                out_dir: "C:/release-web".to_string(),
+                build_id: Some("web-1".to_string()),
+                renderer_id: Some("default".to_string()),
+                strict: false,
+                allow_warnings: false,
+            }),
+        );
+        assert!(build.windows(2).any(|pair| pair == ["--target", "web"]));
+        assert!(!build.contains(&"--runtime".to_string()));
+
+        let smoke = smoke_command_args(
+            BuildTarget::Web,
+            &DesktopSmokeRequest {
+                dist_dir: "C:/release-web".to_string(),
+                runtime: None,
+            },
+        );
+        assert_eq!(
+            smoke,
+            ["smoke", "C:/release-web", "--target", "web", "--format", "json"]
+        );
+    }
+
+    #[test]
     fn smoke_command_defaults_to_electron_and_keeps_json_contract() {
-        let args = smoke_command_args(&DesktopSmokeRequest {
+        let args = smoke_command_args(BuildTarget::Desktop, &DesktopSmokeRequest {
             dist_dir: "C:/release".to_string(),
             runtime: None,
         });

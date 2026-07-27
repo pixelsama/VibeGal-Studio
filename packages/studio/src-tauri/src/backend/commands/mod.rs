@@ -5,7 +5,7 @@ use super::desktop_system;
 use super::fs::ProjectRoot;
 use super::game_build::{
     self, DesktopBuildFailure, DesktopBuildRegistry, DesktopBuildRequest, DesktopSmokeRequest,
-    DESKTOP_BUILD_PROGRESS_EVENT,
+    WebBuildRequest, WebSmokeRequest, DESKTOP_BUILD_PROGRESS_EVENT,
 };
 use super::model::{
     AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, ProjectData,
@@ -334,6 +334,24 @@ pub(crate) fn save_app_settings(
 }
 
 #[tauri::command]
+pub(crate) async fn build_web_game(
+    app_handle: tauri::AppHandle,
+    request: WebBuildRequest,
+    builds: tauri::State<'_, DesktopBuildRegistry>,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    let cli_path = resources::cli_binary_path(&app_handle);
+    let builds = builds.inner().clone();
+    let event_handle = app_handle.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        game_build::build_web_game(&cli_path, request, &builds, |payload| {
+            let _ = event_handle.emit(DESKTOP_BUILD_PROGRESS_EVENT, payload);
+        })
+    })
+    .await
+    .map_err(desktop_task_failure)?
+}
+
+#[tauri::command]
 pub(crate) async fn build_desktop_game(
     app_handle: tauri::AppHandle,
     request: DesktopBuildRequest,
@@ -374,6 +392,17 @@ pub(crate) async fn desktop_build_preflight(
 ) -> Result<serde_json::Value, DesktopBuildFailure> {
     let cli_path = resources::cli_binary_path(&app_handle);
     tauri::async_runtime::spawn_blocking(move || game_build::desktop_build_preflight(&cli_path))
+        .await
+        .map_err(desktop_task_failure)?
+}
+
+#[tauri::command]
+pub(crate) async fn smoke_web_game(
+    app_handle: tauri::AppHandle,
+    request: WebSmokeRequest,
+) -> Result<serde_json::Value, DesktopBuildFailure> {
+    let cli_path = resources::cli_binary_path(&app_handle);
+    tauri::async_runtime::spawn_blocking(move || game_build::smoke_web_game(&cli_path, request))
         .await
         .map_err(desktop_task_failure)?
 }

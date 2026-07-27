@@ -304,21 +304,26 @@ export async function uninstallCliTool(): Promise<CliToolStatus> {
 }
 
 // ──────────────────────────────────────────────
-// 桌面游戏构建（后端 game_build.rs 的薄封装）
+// 游戏构建（后端 game_build.rs 的薄封装）
 // ──────────────────────────────────────────────
 
 export type DesktopRuntime = "electron" | "tauri";
 
-export interface DesktopBuildRequest {
+interface CommonBuildRequest {
   projectPath: string;
   outDir: string;
-  /** 缺省时后端按 electron（兼容模式）处理 */
-  runtime?: DesktopRuntime;
   /** 前端生成的构建标识；进度事件与取消命令靠它关联同一次构建 */
   buildId?: string;
   rendererId?: string;
   strict?: boolean;
   allowWarnings?: boolean;
+}
+
+export interface WebBuildRequest extends CommonBuildRequest {}
+
+export interface DesktopBuildRequest extends CommonBuildRequest {
+  /** 缺省时后端按 electron（兼容模式）处理 */
+  runtime?: DesktopRuntime;
 }
 
 /** CLI 桌面构建成功的结构化结果（对应 CLI BuildOutput，ok 恒为 true） */
@@ -332,6 +337,13 @@ export interface DesktopBuildResult {
   executable?: string;
   artifacts: string[];
   warnings: ProjectIssue[];
+}
+
+export interface WebBuildResult extends DesktopBuildResult {
+  target: "web";
+  runtime?: never;
+  mode?: never;
+  executable?: never;
 }
 
 /** CLI 渲染层诊断条目（BuildError.diagnostics 的元素） */
@@ -367,6 +379,7 @@ export interface DesktopBuildFailure {
 }
 
 /** 构建结果判别联合：用 ok 字段区分成功与失败 */
+export type WebBuildOutcome = WebBuildResult | DesktopBuildFailure;
 export type DesktopBuildOutcome = DesktopBuildResult | DesktopBuildFailure;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -393,6 +406,26 @@ export function normalizeDesktopBuildFailure(error: unknown): DesktopBuildFailur
 
 export function isDesktopBuildResult(value: unknown): value is DesktopBuildResult {
   return isRecord(value) && value.ok === true && typeof value.outDir === "string";
+}
+
+export function isWebBuildResult(value: unknown): value is WebBuildResult {
+  return isDesktopBuildResult(value) && value.target === "web";
+}
+
+/** 发起 Web 游戏构建；失败统一返回结构化结果而不抛异常。 */
+export async function buildWebGame(request: WebBuildRequest): Promise<WebBuildOutcome> {
+  try {
+    const value = await invoke<unknown>("build_web_game", { request });
+    if (isWebBuildResult(value)) return value;
+    return {
+      ok: false,
+      code: "desktop_build_invalid_output",
+      message: "构建工具返回了无法识别的 Web 结果",
+      cliError: null,
+    };
+  } catch (error) {
+    return normalizeDesktopBuildFailure(error);
+  }
 }
 
 /**
@@ -480,8 +513,11 @@ export async function desktopBuildPreflight(): Promise<DesktopBuildPreflight> {
   }
 }
 
-export interface DesktopSmokeRequest {
+export interface WebSmokeRequest {
   distDir: string;
+}
+
+export interface DesktopSmokeRequest extends WebSmokeRequest {
   /** 缺省时后端按 electron 处理 */
   runtime?: DesktopRuntime;
 }
@@ -497,10 +533,37 @@ export interface DesktopSmokeResult {
   checks: string[];
 }
 
+export interface WebSmokeResult extends DesktopSmokeResult {
+  target: "web";
+  runtime?: never;
+  mode?: never;
+}
+
+export type WebSmokeOutcome = WebSmokeResult | DesktopBuildFailure;
 export type DesktopSmokeOutcome = DesktopSmokeResult | DesktopBuildFailure;
 
 function isDesktopSmokeResult(value: unknown): value is DesktopSmokeResult {
   return isRecord(value) && value.ok === true && Array.isArray(value.checks);
+}
+
+function isWebSmokeResult(value: unknown): value is WebSmokeResult {
+  return isDesktopSmokeResult(value) && value.target === "web";
+}
+
+/** 对 Web 构建产物运行静态与浏览器 smoke。 */
+export async function smokeWebGame(request: WebSmokeRequest): Promise<WebSmokeOutcome> {
+  try {
+    const value = await invoke<unknown>("smoke_web_game", { request });
+    if (isWebSmokeResult(value)) return value;
+    return {
+      ok: false,
+      code: "desktop_build_invalid_output",
+      message: "smoke 工具返回了无法识别的 Web 结果",
+      cliError: null,
+    };
+  } catch (error) {
+    return normalizeDesktopBuildFailure(error);
+  }
 }
 
 /**

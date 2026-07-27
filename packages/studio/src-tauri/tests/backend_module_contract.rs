@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 34] = [
+const COMMAND_NAMES: [&str; 37] = [
     "list_projects",
     "open_project",
     "create_project",
@@ -23,6 +23,7 @@ const COMMAND_NAMES: [&str; 34] = [
     "create_renderer",
     "duplicate_renderer",
     "rename_renderer",
+    "rename_variable",
     "delete_renderer",
     "list_assets",
     "import_asset",
@@ -32,9 +33,11 @@ const COMMAND_NAMES: [&str; 34] = [
     "save_variables",
     "load_app_settings",
     "save_app_settings",
+    "build_web_game",
     "build_desktop_game",
     "cancel_desktop_game_build",
     "desktop_build_preflight",
+    "smoke_web_game",
     "smoke_desktop_game",
     "reveal_path",
     "run_desktop_game",
@@ -58,7 +61,7 @@ const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 34] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 37] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("create_project", &["parentDir", "name"]),
@@ -98,6 +101,7 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 34] = [
     ),
     ("duplicate_renderer", &["projectPath", "sourceId", "newId"]),
     ("rename_renderer", &["projectPath", "oldId", "newId"]),
+    ("rename_variable", &["projectPath", "from", "to"]),
     ("delete_renderer", &["projectPath", "rendererId"]),
     ("list_assets", &["projectPath"]),
     (
@@ -119,9 +123,11 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 34] = [
     ),
     ("load_app_settings", &[]),
     ("save_app_settings", &["settings"]),
+    ("build_web_game", &["request"]),
     ("build_desktop_game", &["request"]),
     ("cancel_desktop_game_build", &["buildId"]),
     ("desktop_build_preflight", &[]),
+    ("smoke_web_game", &["request"]),
     ("smoke_desktop_game", &["request"]),
     ("reveal_path", &["path"]),
     ("run_desktop_game", &["executable"]),

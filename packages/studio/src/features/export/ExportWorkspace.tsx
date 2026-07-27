@@ -18,11 +18,13 @@ import {
   type DesktopRuntime,
 } from "../../lib/tauri";
 import type { ProjectData, ProjectIssue } from "../../lib/types";
-import { loadExportPrefs, saveExportPrefs } from "../../lib/exportPrefs";
+import { loadExportPrefs, saveExportPrefs, type ExportPrefs, type ExportTarget } from "../../lib/exportPrefs";
 import {
   cancelDesktopBuild,
   startDesktopBuild,
   startDesktopSmoke,
+  startWebBuild,
+  startWebSmoke,
   useDesktopBuildState,
   type DesktopBuildState,
 } from "./buildStore";
@@ -31,7 +33,11 @@ import {
 // 纯逻辑（可单测）
 // ──────────────────────────────────────────────
 
-/** 默认输出目录：<项目>/dist/desktop-<runtime>。dist 首级目录已被 watcher 忽略 */
+export function defaultWebOutDir(projectPath: string): string {
+  return `${projectPath}/dist/web`;
+}
+
+/** 默认桌面输出目录：<项目>/dist/desktop-<runtime>。dist 首级目录已被 watcher 忽略 */
 export function defaultDesktopOutDir(projectPath: string, runtime: DesktopRuntime): string {
   return `${projectPath}/dist/desktop-${runtime}`;
 }
@@ -75,22 +81,27 @@ export function validateDesktopOutDir(projectPath: string, outDir: string): stri
 /** 预检报告里会真正阻止构建的硬性问题；Electron 未缓存只提示（会自动下载） */
 export function preflightBlockReason(
   report: DesktopBuildPreflight | null,
+  target: ExportTarget,
   runtime: DesktopRuntime,
 ): string | null {
   if (!report) return null; // 检查中不阻塞
   if (!report.cliAvailable) return "找不到随应用分发的 vibegal-cli，无法构建";
   if (report.error) return "环境检查失败，无法构建";
   if (report.node && !report.node.available) return "未找到 Node.js，无法构建";
-  if (report.exporter && (!report.exporter.webWorker || !report.exporter.desktopWorker)) {
+  if (report.exporter && !report.exporter.webWorker) {
+    return "Web 打包组件缺失，无法构建";
+  }
+  if (target === "desktop" && report.exporter && !report.exporter.desktopWorker) {
     return "桌面打包组件缺失，无法构建";
   }
-  if (runtime === "tauri" && report.tauriPlayer && !report.tauriPlayer.available) {
+  if (target === "desktop" && runtime === "tauri" && report.tauriPlayer && !report.tauriPlayer.available) {
     return "找不到 Tauri 轻量 Player，无法以轻量模式构建";
   }
   return null;
 }
 
 export const DESKTOP_BUILD_STEPS = ["validate", "web-build", "desktop-package"] as const;
+export const WEB_BUILD_STEPS = ["validate", "web-build"] as const;
 
 export function buildStepLabel(step: string): string {
   if (step === "validate") return "校验项目";
@@ -109,6 +120,13 @@ export function buildStepStatus(step: string, state: DesktopBuildState): BuildSt
 
 export function smokeCheckLabel(check: string): string {
   const labels: Record<string, string> = {
+    index: "入口页面",
+    gameManifest: "游戏清单",
+    runtime: "运行时",
+    content: "故事内容",
+    assets: "资产",
+    basePath: "部署路径",
+    browserBehavior: "浏览器行为",
     desktopManifest: "桌面清单",
     desktopExecutable: "可执行文件",
     webPayload: "Web 产物",
@@ -226,8 +244,10 @@ export function ExportWorkspace({
   loadPreflight?: () => Promise<DesktopBuildPreflight>;
 }) {
   const initialPrefs = useMemo(() => loadExportPrefs(project.path), [project.path]);
+  const [target, setTarget] = useState<ExportTarget>(initialPrefs.target);
   const [runtime, setRuntime] = useState<DesktopRuntime>(initialPrefs.runtime);
-  const [customOutDir, setCustomOutDir] = useState(initialPrefs.customOutDir);
+  const [webCustomOutDir, setWebCustomOutDir] = useState(initialPrefs.webCustomOutDir);
+  const [desktopCustomOutDir, setDesktopCustomOutDir] = useState(initialPrefs.desktopCustomOutDir);
   const [rendererId, setRendererId] = useState(initialPrefs.rendererId);
   const [strict, setStrict] = useState(initialPrefs.strict);
   const [allowWarnings, setAllowWarnings] = useState(initialPrefs.allowWarnings);
@@ -271,20 +291,29 @@ export function ExportWorkspace({
     return () => clearInterval(timer);
   }, [building]);
 
-  const persistPrefs = (patch: Partial<{ runtime: DesktopRuntime; customOutDir: string; rendererId: string; strict: boolean; allowWarnings: boolean }>) => {
-    const next = { runtime, customOutDir, rendererId, strict, allowWarnings, ...patch };
+  const persistPrefs = (patch: Partial<ExportPrefs>) => {
+    const next = { target, runtime, webCustomOutDir, desktopCustomOutDir, rendererId, strict, allowWarnings, ...patch };
     saveExportPrefs(project.path, next);
   };
 
-  const effectiveOutDir = customOutDir.trim() ? customOutDir : defaultDesktopOutDir(project.path, runtime);
+  const customOutDir = target === "web" ? webCustomOutDir : desktopCustomOutDir;
+  const effectiveOutDir = customOutDir.trim()
+    ? customOutDir
+    : target === "web"
+      ? defaultWebOutDir(project.path)
+      : defaultDesktopOutDir(project.path, runtime);
   const effectiveRendererId = rendererId || project.meta.activeRendererId || project.rendererIds[0] || "";
   const outDirError = validateDesktopOutDir(project.path, effectiveOutDir);
-  const blockReason = preflightBlockReason(preflight, runtime);
+  const blockReason = preflightBlockReason(preflight, target, runtime);
 
   const projectIssues = project.projectReport?.projectIssues ?? [];
   const errorCount = projectIssues.filter((issue) => issue.severity === "error").length;
   const warnCount = projectIssues.length - errorCount;
 
+  const handleTargetChange = (next: ExportTarget) => {
+    setTarget(next);
+    persistPrefs({ target: next });
+  };
   const handleRuntimeChange = (next: DesktopRuntime) => {
     setRuntime(next);
     persistPrefs({ runtime: next });
@@ -294,8 +323,13 @@ export function ExportWorkspace({
     persistPrefs({ rendererId: next });
   };
   const handleOutDirChange = (next: string) => {
-    setCustomOutDir(next);
-    persistPrefs({ customOutDir: next });
+    if (target === "web") {
+      setWebCustomOutDir(next);
+      persistPrefs({ webCustomOutDir: next });
+    } else {
+      setDesktopCustomOutDir(next);
+      persistPrefs({ desktopCustomOutDir: next });
+    }
   };
   const handleBrowse = async () => {
     const selected = await pickDirectory();
@@ -313,14 +347,18 @@ export function ExportWorkspace({
   const handleBuild = () => {
     if (building || outDirError || blockReason) return;
     setActionError(null);
-    void startDesktopBuild(project.path, {
+    const request = {
       projectPath: project.path,
       outDir: effectiveOutDir,
-      runtime,
       rendererId: effectiveRendererId || undefined,
       strict,
       allowWarnings,
-    });
+    };
+    if (target === "web") {
+      void startWebBuild(project.path, request);
+    } else {
+      void startDesktopBuild(project.path, { ...request, runtime });
+    }
   };
 
   const handleCancel = () => {
@@ -359,7 +397,11 @@ export function ExportWorkspace({
     const result = buildState.result;
     if (!result || buildState.smoke.phase === "running") return;
     setActionError(null);
-    void startDesktopSmoke(project.path, { distDir: result.outDir, runtime });
+    if (result.target === "web") {
+      void startWebSmoke(project.path, { distDir: result.outDir });
+    } else {
+      void startDesktopSmoke(project.path, { distDir: result.outDir, runtime: result.runtime });
+    }
   };
 
   const buildDisabled = building || Boolean(outDirError) || Boolean(blockReason);
@@ -377,41 +419,65 @@ export function ExportWorkspace({
     <div style={pageStyle}>
       <section style={sectionStyle}>
         <div style={headerRowStyle}>
-          <h2 style={sectionTitleStyle}>导出桌面游戏</h2>
+          <h2 style={sectionTitleStyle}>导出游戏</h2>
           {statusText && <span style={statusStyle}>{statusText}</span>}
         </div>
 
-        <PreflightPanel report={preflight} loading={preflightLoading} onRefresh={() => void refreshPreflight()} />
+        <PreflightPanel report={preflight} loading={preflightLoading} target={target} onRefresh={() => void refreshPreflight()} />
 
         <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>运行时</span>
+          <span style={fieldLabelStyle}>导出目标</span>
           <div style={runtimeRowStyle}>
-            {RUNTIME_OPTIONS.map((option) => {
-              const active = runtime === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={active}
-                  disabled={building}
-                  onClick={() => handleRuntimeChange(option.id)}
-                  style={{
-                    ...runtimeCardStyle,
-                    borderColor: active ? "var(--accent)" : "var(--border-strong)",
-                  }}
-                >
-                  <span style={runtimeCardHeaderStyle}>
-                    <span style={{ ...runtimeCardNameStyle, color: active ? "var(--text-bright)" : "var(--text-primary)" }}>
-                      {option.name}
-                    </span>
-                    <span style={runtimeBadgeStyle}>{option.badge}</span>
-                  </span>
-                  <span style={runtimeCardDescStyle}>{option.description}</span>
-                </button>
-              );
-            })}
+            <TargetCard
+              active={target === "web"}
+              disabled={building}
+              name="Web 网页版"
+              badge="可部署"
+              description="生成静态网站，可上传到任意静态托管服务或自己的服务器。"
+              onClick={() => handleTargetChange("web")}
+            />
+            <TargetCard
+              active={target === "desktop"}
+              disabled={building}
+              name="桌面版"
+              badge="可运行"
+              description="生成 Windows、macOS 或 Linux 可直接运行的桌面游戏目录。"
+              onClick={() => handleTargetChange("desktop")}
+            />
           </div>
         </div>
+
+        {target === "desktop" && (
+          <div style={fieldGroupStyle}>
+            <span style={fieldLabelStyle}>运行时</span>
+            <div style={runtimeRowStyle}>
+              {RUNTIME_OPTIONS.map((option) => {
+                const active = runtime === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={building}
+                    onClick={() => handleRuntimeChange(option.id)}
+                    style={{
+                      ...runtimeCardStyle,
+                      borderColor: active ? "var(--accent)" : "var(--border-strong)",
+                    }}
+                  >
+                    <span style={runtimeCardHeaderStyle}>
+                      <span style={{ ...runtimeCardNameStyle, color: active ? "var(--text-bright)" : "var(--text-primary)" }}>
+                        {option.name}
+                      </span>
+                      <span style={runtimeBadgeStyle}>{option.badge}</span>
+                    </span>
+                    <span style={runtimeCardDescStyle}>{option.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>渲染层</span>
@@ -496,7 +562,7 @@ export function ExportWorkspace({
               cursor: buildDisabled ? "default" : "pointer",
             }}
           >
-            {building ? "构建中…" : "构建桌面游戏"}
+            {building ? "构建中…" : target === "web" ? "构建 Web 游戏" : "构建桌面游戏"}
           </button>
           {building && (
             <button type="button" onClick={handleCancel} style={secondaryButtonStyle}>
@@ -504,12 +570,12 @@ export function ExportWorkspace({
             </button>
           )}
           {!building && blockReason && <span style={errorTextStyle}>{blockReason}</span>}
-          {building && runtime === "electron" && (
+          {building && buildState.target === "desktop" && runtime === "electron" && (
             <span style={hintTextStyle}>首次 Electron 构建需要下载运行时，可能较慢。</span>
           )}
         </div>
 
-        {building && <BuildProgressSteps state={buildState} />}
+        {building && <BuildProgressSteps state={buildState} target={buildState.target ?? target} />}
 
         {buildState.phase === "cancelled" && (
           <div style={infoBannerStyle} role="status" data-testid="build-cancelled-panel">
@@ -521,7 +587,9 @@ export function ExportWorkspace({
           <BuildSuccessPanel
             result={buildState.result}
             state={buildState}
-            runtimeName={RUNTIME_OPTIONS.find((o) => o.id === buildState.result?.runtime)?.name ?? buildState.result.runtime ?? "desktop"}
+            runtimeName={buildState.result.target === "web"
+              ? "Web 网页版"
+              : RUNTIME_OPTIONS.find((o) => o.id === buildState.result?.runtime)?.name ?? buildState.result.runtime ?? "桌面版"}
             copied={copied}
             actionError={actionError}
             onCopyPath={(text) => void handleCopyPath(text)}
@@ -545,10 +613,12 @@ export function ExportWorkspace({
 export function PreflightPanel({
   report,
   loading,
+  target,
   onRefresh,
 }: {
   report: DesktopBuildPreflight | null;
   loading: boolean;
+  target: ExportTarget;
   onRefresh: () => void;
 }) {
   return (
@@ -572,34 +642,42 @@ export function PreflightPanel({
             detail={
               report.node?.available
                 ? `${report.node.version ?? "已安装"}${report.node.source === "env" ? "（VIBEGAL_NODE）" : ""}`
-                : "未找到——桌面构建需要安装 Node.js 或配置 VIBEGAL_NODE"
+                : target === "web"
+                  ? "未找到——Web 构建需要安装 Node.js 或配置 VIBEGAL_NODE"
+                  : "未找到——桌面构建需要安装 Node.js 或配置 VIBEGAL_NODE"
             }
           />
+          {target === "desktop" && (
+            <PreflightRow
+              ok={report.electron?.cached ?? false}
+              okIsInfo
+              label="Electron 运行时"
+              detail={
+                report.electron?.overridePath
+                  ? `使用 VIBEGAL_ELECTRON_DIST 指定的运行时（${report.electron.version}）`
+                  : report.electron?.cached
+                    ? `已缓存（${report.electron.version}）`
+                    : "未缓存，首次 Electron 构建将自动下载（约 100MB）"
+              }
+            />
+          )}
+          {target === "desktop" && (
+            <PreflightRow
+              ok={report.tauriPlayer?.available ?? false}
+              label="Tauri 轻量 Player"
+              detail={report.tauriPlayer?.available ? "已随应用分发" : "未找到——轻量模式不可用"}
+            />
+          )}
           <PreflightRow
-            ok={report.electron?.cached ?? false}
-            okIsInfo
-            label="Electron 运行时"
-            detail={
-              report.electron?.overridePath
-                ? `使用 VIBEGAL_ELECTRON_DIST 指定的运行时（${report.electron.version}）`
-                : report.electron?.cached
-                  ? `已缓存（${report.electron.version}）`
-                  : "未缓存，首次 Electron 构建将自动下载（约 100MB）"
-            }
-          />
-          <PreflightRow
-            ok={report.tauriPlayer?.available ?? false}
-            label="Tauri 轻量 Player"
-            detail={report.tauriPlayer?.available ? "已随应用分发" : "未找到——轻量模式不可用"}
-          />
-          <PreflightRow
-            ok={(report.exporter?.webWorker && report.exporter?.desktopWorker) ?? false}
+            ok={target === "web"
+              ? report.exporter?.webWorker ?? false
+              : (report.exporter?.webWorker && report.exporter?.desktopWorker) ?? false}
             label="打包组件"
-            detail={
-              report.exporter?.webWorker && report.exporter?.desktopWorker
+            detail={target === "web"
+              ? report.exporter?.webWorker ? "Web 打包组件就绪" : "Web 打包组件缺失，请重新安装 VibeGal-Studio"
+              : report.exporter?.webWorker && report.exporter?.desktopWorker
                 ? "Web / 桌面打包组件就绪"
-                : "打包组件缺失，请重新安装 VibeGal-Studio"
-            }
+                : "打包组件缺失，请重新安装 VibeGal-Studio"}
           />
         </>
       )}
@@ -623,10 +701,11 @@ function PreflightRow({ ok, label, detail, okIsInfo }: { ok: boolean; label: str
 // 构建进度步骤
 // ──────────────────────────────────────────────
 
-export function BuildProgressSteps({ state }: { state: DesktopBuildState }) {
+export function BuildProgressSteps({ state, target = state.target ?? "desktop" }: { state: DesktopBuildState; target?: ExportTarget }) {
+  const steps = target === "web" ? WEB_BUILD_STEPS : DESKTOP_BUILD_STEPS;
   return (
     <div style={stepsPanelStyle} data-testid="build-progress-steps">
-      {DESKTOP_BUILD_STEPS.map((step) => {
+      {steps.map((step) => {
         const status = buildStepStatus(step, state);
         return (
           <div key={step} style={stepRowStyle}>
@@ -697,7 +776,7 @@ function BuildSuccessPanel({
           disabled={smoke.phase === "running"}
           style={secondaryButtonStyle}
         >
-          {smoke.phase === "running" ? "冒烟检查中…" : "冒烟检查"}
+          {smoke.phase === "running" ? "检查中…" : result.target === "web" ? "上线前检查" : "冒烟检查"}
         </button>
         <button type="button" onClick={() => onCopyPath(result.outDir)} style={secondaryButtonStyle}>
           {copied ? "已复制" : "复制路径"}
@@ -706,7 +785,11 @@ function BuildSuccessPanel({
       {actionError && <span style={errorTextStyle}>{actionError}</span>}
 
       {smoke.phase === "running" && (
-        <span style={hintTextStyle}>正在真实启动游戏窗口做行为检查，最长约 30 秒…</span>
+        <span style={hintTextStyle}>
+          {result.target === "web"
+            ? "正在启动无头浏览器检查加载、推进、存档与媒体资源，最长约 30 秒…"
+            : "正在真实启动游戏窗口做行为检查，最长约 30 秒…"}
+        </span>
       )}
       {smoke.phase === "passed" && (
         <div style={smokePassStyle} data-testid="smoke-passed">
@@ -737,7 +820,7 @@ function BuildSuccessPanel({
         )}
         {result.artifacts.length > 0 && (
           <>
-            <dt style={resultTermStyle}>产物清单</dt>
+            <dt style={resultTermStyle}>{result.target === "web" ? "部署清单" : "产物清单"}</dt>
             <dd style={resultDescStyle}>
               <ul style={artifactListStyle}>
                 {result.artifacts.map((artifact) => (
@@ -748,7 +831,11 @@ function BuildSuccessPanel({
           </>
         )}
       </dl>
-      <span style={hintTextStyle}>产物可直接运行；压缩该目录即可分发。签名、公证与安装器属于后续发布环节。</span>
+      <span style={hintTextStyle}>
+        {result.target === "web"
+          ? "产物可上传到静态托管服务；上线前建议完成冒烟检查。"
+          : "产物可直接运行；压缩该目录即可分发。签名、公证与安装器属于后续发布环节。"}
+      </span>
       {result.warnings.length > 0 && <IssueGroups issues={result.warnings} title={`警告（${result.warnings.length}）`} />}
     </div>
   );
@@ -837,6 +924,43 @@ function DiagnosticList({ diagnostics }: { diagnostics: DesktopBuildDiagnostic[]
         ))}
       </ul>
     </div>
+  );
+}
+
+function TargetCard({
+  active,
+  disabled,
+  name,
+  badge,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  disabled: boolean;
+  name: string;
+  badge: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        ...runtimeCardStyle,
+        borderColor: active ? "var(--accent)" : "var(--border-strong)",
+      }}
+    >
+      <span style={runtimeCardHeaderStyle}>
+        <span style={{ ...runtimeCardNameStyle, color: active ? "var(--text-bright)" : "var(--text-primary)" }}>
+          {name}
+        </span>
+        <span style={runtimeBadgeStyle}>{badge}</span>
+      </span>
+      <span style={runtimeCardDescStyle}>{description}</span>
+    </button>
   );
 }
 

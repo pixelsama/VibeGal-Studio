@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import {
   buildDesktopGame,
+  buildWebGame,
   cancelDesktopGameBuild,
   desktopBuildPreflight,
   isDesktopBuildResult,
@@ -12,7 +13,9 @@ import {
   runDesktopGame,
   saveNode,
   smokeDesktopGame,
+  smokeWebGame,
   type DesktopBuildResult,
+  type WebBuildResult,
 } from "./tauri";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -34,6 +37,15 @@ const successResult: DesktopBuildResult = {
   mode: "compatible",
   executable: "/project/dist/desktop-electron/My Game.exe",
   artifacts: ["My Game.exe", "desktop.manifest.json", "resources/app"],
+  warnings: [],
+};
+
+const webSuccessResult: WebBuildResult = {
+  ok: true,
+  target: "web",
+  outDir: "/project/dist/web",
+  rendererId: "default",
+  artifacts: [],
   warnings: [],
 };
 
@@ -63,6 +75,48 @@ describe("saveNode", () => {
       nodeFile: "nodes/start.json",
       instructions: [{ t: "narrate", text: "Saved" }],
       expectedRevision,
+    });
+  });
+});
+
+describe("buildWebGame", () => {
+  it("以 camelCase 参数调用 build_web_game 并透传 Web 结果", async () => {
+    invokeMock.mockResolvedValue(webSuccessResult);
+
+    const outcome = await buildWebGame({
+      projectPath: "/project",
+      outDir: "/project/dist/web",
+      buildId: "web-42",
+      rendererId: "default",
+      strict: true,
+      allowWarnings: false,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("build_web_game", {
+      request: {
+        projectPath: "/project",
+        outDir: "/project/dist/web",
+        buildId: "web-42",
+        rendererId: "default",
+        strict: true,
+        allowWarnings: false,
+      },
+    });
+    expect(outcome).toEqual(webSuccessResult);
+  });
+
+  it("Web 构建失败沿用结构化失败契约", async () => {
+    invokeMock.mockRejectedValue({
+      ok: false,
+      code: "desktop_build_failed",
+      message: "项目校验未通过",
+      cliError: { code: "validation_failed", step: "validate" },
+    });
+
+    await expect(buildWebGame({ projectPath: "/project", outDir: "/out" })).resolves.toMatchObject({
+      ok: false,
+      code: "desktop_build_failed",
+      cliError: { code: "validation_failed" },
     });
   });
 });
@@ -206,6 +260,27 @@ describe("desktopBuildPreflight", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe("启动 vibegal-cli 失败: boom");
+  });
+});
+
+describe("smokeWebGame", () => {
+  const webSmokeResult = {
+    ok: true,
+    target: "web",
+    distDir: "/project/dist/web",
+    basePath: "./",
+    checks: ["index", "gameManifest", "runtime", "content", "assets", "basePath"],
+  };
+
+  it("以 request 包裹参数调用 smoke_web_game", async () => {
+    invokeMock.mockResolvedValue(webSmokeResult);
+
+    const outcome = await smokeWebGame({ distDir: "/project/dist/web" });
+
+    expect(invokeMock).toHaveBeenCalledWith("smoke_web_game", {
+      request: { distDir: "/project/dist/web" },
+    });
+    expect(outcome).toEqual(webSmokeResult);
   });
 });
 

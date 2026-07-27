@@ -23,24 +23,50 @@ describe("loadExportPrefs", () => {
     expect(loadExportPrefs("/project", makeStorage())).toEqual(DEFAULT_EXPORT_PREFS);
   });
 
-  it("读取指定项目的偏好，其他项目不受影响", () => {
+  it("读取指定项目的目标与独立输出目录，其他项目不受影响", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
-          "/project": { runtime: "tauri", customOutDir: "D:/release", rendererId: "mobile", strict: true, allowWarnings: true },
-          "/other": { runtime: "electron", customOutDir: "", rendererId: "", strict: false, allowWarnings: false },
+          "/project": {
+            target: "web",
+            runtime: "tauri",
+            webCustomOutDir: "D:/web-release",
+            desktopCustomOutDir: "D:/desktop-release",
+            rendererId: "mobile",
+            strict: true,
+            allowWarnings: true,
+          },
+          "/other": DEFAULT_EXPORT_PREFS,
         },
       }),
     });
 
     expect(loadExportPrefs("/project", storage)).toEqual({
+      target: "web",
       runtime: "tauri",
-      customOutDir: "D:/release",
+      webCustomOutDir: "D:/web-release",
+      desktopCustomOutDir: "D:/desktop-release",
       rendererId: "mobile",
       strict: true,
       allowWarnings: true,
     });
     expect(loadExportPrefs("/missing", storage)).toEqual(DEFAULT_EXPORT_PREFS);
+  });
+
+  it("把旧版 customOutDir 迁移到桌面目录并保持桌面为默认目标", () => {
+    const storage = makeStorage({
+      [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
+        projects: {
+          "/project": { runtime: "tauri", customOutDir: "D:/legacy-release", rendererId: "", strict: false, allowWarnings: false },
+        },
+      }),
+    });
+
+    expect(loadExportPrefs("/project", storage)).toEqual({
+      ...DEFAULT_EXPORT_PREFS,
+      runtime: "tauri",
+      desktopCustomOutDir: "D:/legacy-release",
+    });
   });
 
   it("损坏的 JSON 回退到默认偏好", () => {
@@ -52,7 +78,7 @@ describe("loadExportPrefs", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
-          "/project": { runtime: "wine", customOutDir: 42, strict: "yes", allowWarnings: true },
+          "/project": { target: "mobile", runtime: "wine", webCustomOutDir: 42, desktopCustomOutDir: null, strict: "yes", allowWarnings: true },
         },
       }),
     });
@@ -65,19 +91,28 @@ describe("loadExportPrefs", () => {
 });
 
 describe("saveExportPrefs", () => {
-  it("写入指定项目的偏好并保留其他项目", () => {
+  it("写入指定项目的目标与独立目录并保留其他项目", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
-          "/other": { runtime: "tauri", customOutDir: "", rendererId: "", strict: false, allowWarnings: false },
+          "/other": { ...DEFAULT_EXPORT_PREFS, runtime: "tauri" },
         },
       }),
     });
 
-    saveExportPrefs("/project", { ...DEFAULT_EXPORT_PREFS, customOutDir: "D:/out" }, storage);
+    saveExportPrefs("/project", {
+      ...DEFAULT_EXPORT_PREFS,
+      target: "web",
+      webCustomOutDir: "D:/web-out",
+      desktopCustomOutDir: "D:/desktop-out",
+    }, storage);
 
     const saved = JSON.parse(storage.data[EXPORT_PREFS_STORAGE_KEY]);
-    expect(saved.projects["/project"].customOutDir).toBe("D:/out");
+    expect(saved.projects["/project"]).toMatchObject({
+      target: "web",
+      webCustomOutDir: "D:/web-out",
+      desktopCustomOutDir: "D:/desktop-out",
+    });
     expect(saved.projects["/other"].runtime).toBe("tauri");
   });
 
@@ -97,9 +132,9 @@ describe("saveExportPrefs", () => {
 
   it("保存时规范化非法字段", () => {
     const storage = makeStorage();
-    const dirty = { ...DEFAULT_EXPORT_PREFS, runtime: "plan9" } as unknown as Parameters<typeof saveExportPrefs>[1];
+    const dirty = { ...DEFAULT_EXPORT_PREFS, target: "console", runtime: "plan9" } as unknown as Parameters<typeof saveExportPrefs>[1];
     saveExportPrefs("/project", dirty, storage);
-    expect(loadExportPrefs("/project", storage).runtime).toBe("electron");
+    expect(loadExportPrefs("/project", storage)).toMatchObject({ target: "desktop", runtime: "electron" });
   });
 });
 

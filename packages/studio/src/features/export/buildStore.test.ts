@@ -6,6 +6,9 @@ import type {
   DesktopBuildRequest,
   DesktopBuildResult,
   DesktopSmokeResult,
+  WebBuildRequest,
+  WebBuildResult,
+  WebSmokeResult,
 } from "../../lib/tauri";
 import {
   cancelDesktopBuild,
@@ -15,6 +18,8 @@ import {
   reduceDesktopBuildProgress,
   startDesktopBuild,
   startDesktopSmoke,
+  startWebBuild,
+  startWebSmoke,
   subscribeDesktopBuild,
 } from "./buildStore";
 
@@ -52,6 +57,28 @@ const smokeResult: DesktopSmokeResult = {
   checks: ["desktopManifest", "desktopBehavior", "advance"],
 };
 
+const webRequest: WebBuildRequest = {
+  projectPath: "/project-web",
+  outDir: "/project-web/dist/web",
+};
+
+const webSuccessResult: WebBuildResult = {
+  ok: true,
+  target: "web",
+  outDir: "/project-web/dist/web",
+  rendererId: "default",
+  artifacts: [],
+  warnings: [],
+};
+
+const webSmokeResult: WebSmokeResult = {
+  ok: true,
+  target: "web",
+  distDir: "/project-web/dist/web",
+  basePath: "./",
+  checks: ["index", "gameManifest", "runtime", "content", "assets", "basePath"],
+};
+
 const cliFailure: DesktopBuildFailure = {
   ok: false,
   code: "desktop_build_failed",
@@ -66,6 +93,45 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe("target-aware build store", () => {
+  it("Web 构建复用同一项目状态并保存 target", async () => {
+    const outcome = await startWebBuild("/project-web", webRequest, async () => webSuccessResult);
+
+    expect(outcome).toEqual(webSuccessResult);
+    expect(getDesktopBuildState("/project-web")).toMatchObject({
+      phase: "success",
+      target: "web",
+      result: webSuccessResult,
+    });
+  });
+
+  it("桌面构建进行时拒绝同项目 Web 构建", async () => {
+    const gate = deferred<DesktopBuildResult>();
+    const pending = startDesktopBuild("/project-cross-target", request, () => gate.promise);
+    const webRunner = vi.fn(async () => webSuccessResult);
+
+    const rejected = await startWebBuild("/project-cross-target", webRequest, webRunner);
+
+    expect(rejected).toMatchObject({ ok: false, code: "desktop_build_in_progress" });
+    expect(webRunner).not.toHaveBeenCalled();
+    gate.resolve(successResult);
+    await pending;
+  });
+
+  it("Web smoke 使用 Web runner 并保留构建结果", async () => {
+    await startWebBuild("/project-web-smoke", webRequest, async () => webSuccessResult);
+    await startWebSmoke("/project-web-smoke", { distDir: webSuccessResult.outDir }, async () => webSmokeResult);
+
+    const state = getDesktopBuildState("/project-web-smoke");
+    expect(state.result).toEqual(webSuccessResult);
+    expect(state.smoke).toEqual({
+      phase: "passed",
+      checks: webSmokeResult.checks,
+      message: null,
+    });
+  });
+});
 
 describe("startDesktopBuild", () => {
   it("初始状态为 idle", () => {

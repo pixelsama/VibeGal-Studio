@@ -1,14 +1,17 @@
 import type { DesktopRuntime } from "./tauri";
 
+export type ExportTarget = "web" | "desktop";
+
 /**
  * 导出工作台的每项目偏好（localStorage 持久化）。
- * 只记用户显式改过的选项；空串字段表示「跟随默认」：
- * - customOutDir 为空：输出目录跟随 runtime 的默认推导（<项目>/dist/desktop-<runtime>）
- * - rendererId 为空：跟随项目的 activeRendererId
+ * 空串目录表示跟随目标默认值：Web 为 dist/web，桌面为 dist/desktop-<runtime>。
+ * 两种目标各记一份目录，切换目标不会覆盖另一种目标的发布位置。
  */
 export interface ExportPrefs {
+  target: ExportTarget;
   runtime: DesktopRuntime;
-  customOutDir: string;
+  webCustomOutDir: string;
+  desktopCustomOutDir: string;
   rendererId: string;
   strict: boolean;
   allowWarnings: boolean;
@@ -22,8 +25,10 @@ export interface ExportPrefsStorage {
 export const EXPORT_PREFS_STORAGE_KEY = "vibegal.exportPrefs.v1";
 
 export const DEFAULT_EXPORT_PREFS: ExportPrefs = {
+  target: "desktop",
   runtime: "electron",
-  customOutDir: "",
+  webCustomOutDir: "",
+  desktopCustomOutDir: "",
   rendererId: "",
   strict: false,
   allowWarnings: false,
@@ -89,10 +94,17 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
     return { ...DEFAULT_EXPORT_PREFS };
   }
 
-  const maybe = value as Partial<Record<keyof ExportPrefs, unknown>>;
+  const maybe = value as Record<string, unknown>;
   return {
+    // v1 的桌面专用偏好没有 target，迁移时保持原有桌面行为。
+    target: maybe.target === "web" ? "web" : "desktop",
     runtime: maybe.runtime === "tauri" ? "tauri" : "electron",
-    customOutDir: typeof maybe.customOutDir === "string" ? maybe.customOutDir : "",
+    webCustomOutDir: typeof maybe.webCustomOutDir === "string" ? maybe.webCustomOutDir : "",
+    desktopCustomOutDir: typeof maybe.desktopCustomOutDir === "string"
+      ? maybe.desktopCustomOutDir
+      : typeof maybe.customOutDir === "string"
+        ? maybe.customOutDir
+        : "",
     rendererId: typeof maybe.rendererId === "string" ? maybe.rendererId : "",
     strict: typeof maybe.strict === "boolean" ? maybe.strict : false,
     allowWarnings: typeof maybe.allowWarnings === "boolean" ? maybe.allowWarnings : false,

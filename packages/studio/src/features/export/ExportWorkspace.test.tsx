@@ -4,13 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DesktopBuildFailure, DesktopBuildPreflight, DesktopBuildResult } from "../../lib/tauri";
 import type { ProjectData, ProjectIssue } from "../../lib/types";
 import { EXPORT_PREFS_STORAGE_KEY } from "../../lib/exportPrefs";
-import { startDesktopBuild, startDesktopSmoke, type DesktopBuildState } from "./buildStore";
+import { startDesktopBuild, startDesktopSmoke, startWebBuild, type DesktopBuildState } from "./buildStore";
 import {
   buildFailurePresentation,
   buildStepLabel,
   buildStepStatus,
   BuildProgressSteps,
   defaultDesktopOutDir,
+  defaultWebOutDir,
   ExportWorkspace,
   formatElapsedSeconds,
   groupIssuesBySource,
@@ -67,8 +68,9 @@ const successResult: DesktopBuildResult = {
   ],
 };
 
-describe("defaultDesktopOutDir", () => {
-  it("按 runtime 推导项目 dist 下的默认目录", () => {
+describe("默认输出目录", () => {
+  it("Web 固定使用 dist/web，桌面按 runtime 推导", () => {
+    expect(defaultWebOutDir("/project")).toBe("/project/dist/web");
     expect(defaultDesktopOutDir("/project", "electron")).toBe("/project/dist/desktop-electron");
     expect(defaultDesktopOutDir("/project", "tauri")).toBe("/project/dist/desktop-tauri");
   });
@@ -166,7 +168,9 @@ describe("ExportWorkspace 渲染", () => {
       createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
     );
 
-    expect(html).toContain("导出桌面游戏");
+    expect(html).toContain("导出游戏");
+    expect(html).toContain("Web 网页版");
+    expect(html).toContain("桌面版");
     expect(html).toContain("Electron 兼容模式");
     expect(html).toContain("Tauri 轻量模式");
     expect(html).toContain("/project/dist/desktop-electron");
@@ -176,8 +180,38 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).not.toContain("data-testid=\"build-failure-panel\"");
   });
 
-  it("记住的 tauri 偏好让默认输出目录跟随 runtime", () => {
-    stubExportPrefs({ "/project": { runtime: "tauri", customOutDir: "", rendererId: "", strict: false, allowWarnings: false } });
+  it("可渲染 Web 目标并使用独立的默认输出目录", () => {
+    stubExportPrefs({ "/project": {
+      target: "web",
+      runtime: "tauri",
+      webCustomOutDir: "",
+      desktopCustomOutDir: "/desktop-release",
+      rendererId: "",
+      strict: false,
+      allowWarnings: false,
+    } });
+
+    const html = renderToStaticMarkup(
+      createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
+    );
+
+    expect(html).toContain("Web 网页版");
+    expect(html).toContain("桌面版");
+    expect(html).toContain("/project/dist/web");
+    expect(html).not.toContain("运行时</span>");
+    expect(html).toContain("构建 Web 游戏");
+  });
+
+  it("记住的 tauri 偏好让桌面默认输出目录跟随 runtime", () => {
+    stubExportPrefs({ "/project": {
+      target: "desktop",
+      runtime: "tauri",
+      webCustomOutDir: "",
+      desktopCustomOutDir: "",
+      rendererId: "",
+      strict: false,
+      allowWarnings: false,
+    } });
 
     const html = renderToStaticMarkup(
       createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
@@ -187,7 +221,15 @@ describe("ExportWorkspace 渲染", () => {
   });
 
   it("自定义输出目录不合法时显示错误并禁用构建按钮", () => {
-    stubExportPrefs({ "/project": { runtime: "electron", customOutDir: "/project/content/out", rendererId: "", strict: false, allowWarnings: false } });
+    stubExportPrefs({ "/project": {
+      target: "desktop",
+      runtime: "electron",
+      webCustomOutDir: "",
+      desktopCustomOutDir: "/project/content/out",
+      rendererId: "",
+      strict: false,
+      allowWarnings: false,
+    } });
 
     const html = renderToStaticMarkup(
       createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
@@ -264,6 +306,31 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).toContain("警告（1）");
     expect(html).toContain("资产未被引用");
     expect(html).toContain("签名、公证与安装器属于后续发布环节");
+  });
+
+  it("Web 构建成功后展示部署说明且不提供运行游戏", async () => {
+    const project = makeProject({ path: "/project-export-web-success" });
+    const webResult: DesktopBuildResult = {
+      ok: true,
+      target: "web",
+      outDir: "/project-export-web-success/dist/web",
+      rendererId: "default",
+      artifacts: [],
+      warnings: [],
+    };
+    await startWebBuild(project.path, {
+      projectPath: project.path,
+      outDir: webResult.outDir,
+    }, async () => webResult);
+
+    const html = renderToStaticMarkup(
+      createElement(ExportWorkspace, { project, hasUnsavedChanges: false }),
+    );
+
+    expect(html).toContain("构建成功（Web 网页版）");
+    expect(html).toContain("上线前检查");
+    expect(html).toContain("静态托管服务");
+    expect(html).not.toContain("运行游戏");
   });
 
   it("构建失败时展示标题、阶段、问题列表与诊断", async () => {
@@ -401,25 +468,36 @@ describe("preflightBlockReason", () => {
   };
 
   it("检查中与就绪时不阻塞", () => {
-    expect(preflightBlockReason(null, "electron")).toBeNull();
-    expect(preflightBlockReason(readyReport, "electron")).toBeNull();
-    expect(preflightBlockReason(readyReport, "tauri")).toBeNull();
+    expect(preflightBlockReason(null, "desktop", "electron")).toBeNull();
+    expect(preflightBlockReason(readyReport, "desktop", "electron")).toBeNull();
+    expect(preflightBlockReason(readyReport, "desktop", "tauri")).toBeNull();
   });
 
   it("CLI 缺失、检查失败、Node 缺失、打包组件缺失都阻塞", () => {
-    expect(preflightBlockReason({ ok: false, cliAvailable: false }, "electron")).toContain("vibegal-cli");
-    expect(preflightBlockReason({ ok: false, cliAvailable: true, error: "boom" }, "electron")).toContain("环境检查失败");
-    expect(preflightBlockReason({ ...readyReport, node: { available: false, version: null, source: null, path: null } }, "electron")).toContain("Node.js");
-    expect(preflightBlockReason({ ...readyReport, exporter: { webWorker: true, desktopWorker: false } }, "electron")).toContain("打包组件");
+    expect(preflightBlockReason({ ok: false, cliAvailable: false }, "desktop", "electron")).toContain("vibegal-cli");
+    expect(preflightBlockReason({ ok: false, cliAvailable: true, error: "boom" }, "desktop", "electron")).toContain("环境检查失败");
+    expect(preflightBlockReason({ ...readyReport, node: { available: false, version: null, source: null, path: null } }, "desktop", "electron")).toContain("Node.js");
+    expect(preflightBlockReason({ ...readyReport, exporter: { webWorker: true, desktopWorker: false } }, "desktop", "electron")).toContain("打包组件");
   });
 
   it("Electron 未缓存不阻塞；Tauri Player 缺失只阻塞轻量模式", () => {
     const uncached = { ...readyReport, electron: { cached: false, version: "43.1.1", overridePath: null } };
-    expect(preflightBlockReason(uncached, "electron")).toBeNull();
+    expect(preflightBlockReason(uncached, "desktop", "electron")).toBeNull();
 
     const noPlayer = { ...readyReport, tauriPlayer: { available: false, path: null } };
-    expect(preflightBlockReason(noPlayer, "electron")).toBeNull();
-    expect(preflightBlockReason(noPlayer, "tauri")).toContain("轻量模式");
+    expect(preflightBlockReason(noPlayer, "desktop", "electron")).toBeNull();
+    expect(preflightBlockReason(noPlayer, "desktop", "tauri")).toContain("轻量模式");
+  });
+
+  it("Web 只依赖 Web worker，不被桌面 worker、Electron 缓存或 Tauri Player 阻塞", () => {
+    const webOnly = {
+      ...readyReport,
+      electron: { cached: false, version: "43.1.1", overridePath: null },
+      tauriPlayer: { available: false, path: null },
+      exporter: { webWorker: true, desktopWorker: false },
+    };
+    expect(preflightBlockReason(webOnly, "web", "electron")).toBeNull();
+    expect(preflightBlockReason({ ...webOnly, exporter: { ...webOnly.exporter, webWorker: false } }, "web", "electron")).toContain("Web 打包组件");
   });
 });
 
@@ -490,7 +568,7 @@ describe("PreflightPanel 渲染", () => {
 
   it("环境就绪时展示各项状态", () => {
     const html = renderToStaticMarkup(
-      createElement(PreflightPanel, { report: readyReport, loading: false, onRefresh: () => {} }),
+      createElement(PreflightPanel, { report: readyReport, loading: false, target: "desktop", onRefresh: () => {} }),
     );
 
     expect(html).toContain("构建环境");
@@ -500,9 +578,19 @@ describe("PreflightPanel 渲染", () => {
     expect(html).toContain("Web / 桌面打包组件就绪");
   });
 
+  it("Web 目标只展示 Web 相关环境项", () => {
+    const html = renderToStaticMarkup(
+      createElement(PreflightPanel, { report: readyReport, loading: false, target: "web", onRefresh: () => {} }),
+    );
+
+    expect(html).toContain("Web 打包组件就绪");
+    expect(html).not.toContain("Electron 运行时");
+    expect(html).not.toContain("Tauri 轻量 Player");
+  });
+
   it("CLI 缺失时展示明确错误", () => {
     const html = renderToStaticMarkup(
-      createElement(PreflightPanel, { report: { ok: false, cliAvailable: false }, loading: false, onRefresh: () => {} }),
+      createElement(PreflightPanel, { report: { ok: false, cliAvailable: false }, loading: false, target: "desktop", onRefresh: () => {} }),
     );
 
     expect(html).toContain("找不到随应用分发的 vibegal-cli");
@@ -515,7 +603,7 @@ describe("PreflightPanel 渲染", () => {
       electron: { cached: false, version: "43.1.1", overridePath: null },
     };
     const html = renderToStaticMarkup(
-      createElement(PreflightPanel, { report, loading: false, onRefresh: () => {} }),
+      createElement(PreflightPanel, { report, loading: false, target: "desktop", onRefresh: () => {} }),
     );
 
     expect(html).toContain("桌面构建需要安装 Node.js 或配置 VIBEGAL_NODE");
@@ -524,7 +612,7 @@ describe("PreflightPanel 渲染", () => {
 
   it("加载中展示检查中文案", () => {
     const html = renderToStaticMarkup(
-      createElement(PreflightPanel, { report: null, loading: true, onRefresh: () => {} }),
+      createElement(PreflightPanel, { report: null, loading: true, target: "desktop", onRefresh: () => {} }),
     );
 
     expect(html).toContain("正在检查构建环境");
