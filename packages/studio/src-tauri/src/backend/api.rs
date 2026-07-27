@@ -4,12 +4,12 @@ use super::model::ProjectData;
 pub use super::mutation::SaveNodeResult;
 
 pub use super::identity::{
-    assign_missing_persistent_effect_ids, assign_missing_story_point_ids, generate_story_point_id, is_story_point_instruction,
-    AssignedInstructionId, InstructionIdentityAssignment, InstructionIdentityContext,
-    InstructionIdentityError,
+    assign_missing_persistent_effect_ids, assign_missing_story_point_ids, generate_story_point_id,
+    is_story_point_instruction, AssignedInstructionId, InstructionIdentityAssignment,
+    InstructionIdentityContext, InstructionIdentityError,
 };
 
-pub use super::model::ProjectTemplate;
+pub use super::model::{ProjectTemplate, RendererTemplate};
 
 pub fn create_project_from_template(
     parent_dir: &str,
@@ -18,11 +18,30 @@ pub fn create_project_from_template(
     default_renderer_dir: &std::path::Path,
     example_content_dir: &std::path::Path,
 ) -> Result<std::path::PathBuf, String> {
+    create_project_with_renderer_template(
+        parent_dir,
+        name,
+        template,
+        RendererTemplate::Default,
+        default_renderer_dir,
+        example_content_dir,
+    )
+}
+
+pub fn create_project_with_renderer_template(
+    parent_dir: &str,
+    name: &str,
+    template: ProjectTemplate,
+    renderer_template: RendererTemplate,
+    renderer_template_dir: &std::path::Path,
+    example_content_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
     super::mutation::create_project(
         parent_dir,
         name,
         template,
-        default_renderer_dir,
+        renderer_template,
+        renderer_template_dir,
         example_content_dir,
     )
 }

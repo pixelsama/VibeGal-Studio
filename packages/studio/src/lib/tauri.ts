@@ -88,17 +88,20 @@ export async function openProject(path: string): Promise<ProjectData> {
 }
 
 export type ProjectTemplate = "blank" | "example";
+export type RendererTemplate = "default" | "classic";
 
-/** 在指定目录初始化一个新项目（复制默认模板，写 gal.project.json） */
+/** 在指定目录初始化一个新项目（复制所选渲染层模板，写 gal.project.json） */
 export async function createProject(
   parentDir: string,
   name: string,
   template: ProjectTemplate,
+  rendererTemplate: RendererTemplate = "default",
 ): Promise<ProjectData> {
   return withNormalizedManifest(await invoke<ProjectData>("create_project", {
     parentDir,
     name,
     template,
+    rendererTemplate,
   }));
 }
 

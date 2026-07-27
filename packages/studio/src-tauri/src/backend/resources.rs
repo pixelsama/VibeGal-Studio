@@ -28,8 +28,20 @@ fn cli_sidecar_target_triple() -> Option<&'static str> {
     }
 }
 
+pub(crate) fn renderer_template_dir(
+    app_handle: &tauri::AppHandle,
+    renderer_id: &str,
+) -> Result<PathBuf, String> {
+    match renderer_id {
+        "default" | "classic" => {
+            Ok(resource_dir(app_handle)?.join(format!("resources/{renderer_id}-renderer")))
+        }
+        _ => Err(format!("未知渲染层模板: {renderer_id}")),
+    }
+}
+
 pub(crate) fn default_renderer_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(resource_dir(app_handle)?.join("resources/default-renderer"))
+    renderer_template_dir(app_handle, "default")
 }
 
 pub(crate) fn example_content_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {

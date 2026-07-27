@@ -50,6 +50,7 @@
     ],
     "resources": {
       "resources/default-renderer/*": "resources/default-renderer/",
+      "resources/classic-renderer/*": "resources/classic-renderer/",
       "resources/example-content/": "resources/example-content/",
       "resources/exporter/": "exporter/",
       "resources/player/": "player/",

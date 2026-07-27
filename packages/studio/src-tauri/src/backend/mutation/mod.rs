@@ -1,11 +1,12 @@
 //! Project initialization and content mutation services.
 
-/// 在 parent_dir 下创建新项目：建目录结构 + 复制默认渲染层模板 + 写 gal.project.json
+/// 在 parent_dir 下创建新项目：建目录结构 + 复制所选渲染层模板 + 写 gal.project.json
 pub(crate) fn create_project(
     parent_dir: &str,
     name: &str,
     template: ProjectTemplate,
-    default_renderer_dir: &Path,
+    renderer_template: RendererTemplate,
+    renderer_template_dir: &Path,
     example_content_dir: &Path,
 ) -> Result<PathBuf, String> {
     // 校验项目名：只允许文件名片段，禁止路径分隔符与 ..
@@ -18,14 +19,16 @@ pub(crate) fn create_project(
         return Err(format!("目录已存在: {}", project_path.display()));
     }
 
+    let renderer_id = renderer_template.id();
     match template {
         ProjectTemplate::Blank => {
-            initialize_project_root(&project_path, name, default_renderer_dir)?;
+            initialize_project_root(&project_path, name, renderer_id, renderer_template_dir)?;
         }
         ProjectTemplate::Example => initialize_project_root_from_example(
             &project_path,
             name,
-            default_renderer_dir,
+            renderer_id,
+            renderer_template_dir,
             example_content_dir,
         )?,
     }
@@ -53,7 +56,7 @@ pub(crate) fn initialize_project(
         .filter(|n| !n.is_empty())
         .unwrap_or("VibeGal-Studio Project")
         .to_string();
-    initialize_project_root(&project_path, &name, &default_renderer_dir)?;
+    initialize_project_root(&project_path, &name, "default", default_renderer_dir)?;
     Ok(project_path)
 }
 
@@ -672,6 +675,7 @@ use super::identity::{
 };
 use super::model::{
     AssetEntry, FileRevision, GraphPositionPatchInput, ProjectMeta, ProjectTemplate,
+    RendererTemplate,
 };
 use super::project::{
     initialize_project_root, initialize_project_root_from_example, list_asset_entries,

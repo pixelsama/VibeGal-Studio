@@ -172,15 +172,17 @@ test("写错契约的渲染层报出类型错误", (t) => {
   );
 });
 
-test("随产品分发的默认渲染层在类型产物下零诊断", (t) => {
-  const defaultRendererDir = path.join(studioRoot, "src-tauri/resources/default-renderer");
-  const root = mkdtempSync(path.join(tmpdir(), "vibegal-engine-types-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  mkdirSync(path.join(root, ".galstudio/types"), { recursive: true });
-  writeFileSync(path.join(root, ".galstudio/types/engine.d.ts"), readFileSync(engineDtsPath, "utf8"));
-  writeFileSync(path.join(root, ".galstudio/types/react.d.ts"), readFileSync(reactShimPath, "utf8"));
-  writeFileSync(path.join(root, "tsconfig.json"), readFileSync(tsconfigTemplatePath, "utf8"));
-  cpSync(defaultRendererDir, path.join(root, "renderers/default"), { recursive: true });
-  const diagnostics = typecheckFixture(root);
-  assert.deepEqual(diagnostics, []);
+test("随产品分发的内置渲染层在类型产物下零诊断", (t) => {
+  for (const rendererId of ["default", "classic"]) {
+    const rendererDir = path.join(studioRoot, `src-tauri/resources/${rendererId}-renderer`);
+    const root = mkdtempSync(path.join(tmpdir(), `vibegal-engine-types-${rendererId}-`));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    mkdirSync(path.join(root, ".galstudio/types"), { recursive: true });
+    writeFileSync(path.join(root, ".galstudio/types/engine.d.ts"), readFileSync(engineDtsPath, "utf8"));
+    writeFileSync(path.join(root, ".galstudio/types/react.d.ts"), readFileSync(reactShimPath, "utf8"));
+    writeFileSync(path.join(root, "tsconfig.json"), readFileSync(tsconfigTemplatePath, "utf8"));
+    cpSync(rendererDir, path.join(root, `renderers/${rendererId}`), { recursive: true });
+    const diagnostics = typecheckFixture(root);
+    assert.deepEqual(diagnostics, [], `${rendererId} renderer must typecheck`);
+  }
 });

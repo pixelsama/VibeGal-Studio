@@ -381,14 +381,9 @@ pub(crate) fn delete_renderer_inner(project_root: &Path, renderer_id: &str) -> R
 pub(crate) fn create_renderer(
     project_path: &str,
     renderer_id: &str,
-    template_id: &str,
     template_dir: &Path,
 ) -> Result<(), String> {
     let project_root = ProjectRoot::open(Path::new(project_path))?;
-    validate_plain_name(&template_id, "渲染层模板 id")?;
-    if template_id != "default" {
-        return Err(format!("未知渲染层模板: {template_id}"));
-    }
     create_renderer_from_template(project_root.path(), renderer_id, template_dir)
 }
 

@@ -8,7 +8,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     write_text(&renderer_template.join("index.tsx"), "export default {};");
     fs::create_dir_all(&project).unwrap();
 
-    initialize_project_root(&project, "Existing Story", &renderer_template).unwrap();
+    initialize_project_root(&project, "Existing Story", "default", &renderer_template).unwrap();
 
     assert!(project.join("gal.project.json").is_file());
     assert!(project.join("content/manifest.json").is_file());
@@ -158,7 +158,7 @@ fn project_self_description_reports_missing_files_and_repairs_only_on_request() 
     let renderer_template = root.join("template");
     let project = root.join("story");
     write_text(&renderer_template.join("index.tsx"), "export default {};");
-    initialize_project_root(&project, "story", &renderer_template).unwrap();
+    initialize_project_root(&project, "story", "default", &renderer_template).unwrap();
 
     // 删除部分自描述文件 + 篡改一个既有文件。
     fs::remove_file(project.join("tsconfig.json")).unwrap();
@@ -213,7 +213,7 @@ fn project_self_description_repair_rejects_symlinked_parent_directory() {
     let project = root.join("story");
     let outside = root.join("outside");
     write_text(&renderer_template.join("index.tsx"), "export default {};");
-    initialize_project_root(&project, "story", &renderer_template).unwrap();
+    initialize_project_root(&project, "story", "default", &renderer_template).unwrap();
     fs::remove_dir_all(project.join(".galstudio/schemas")).unwrap();
     fs::create_dir_all(&outside).unwrap();
     symlink(&outside, project.join(".galstudio/schemas")).unwrap();
@@ -239,6 +239,7 @@ fn example_project_preflight_checks_every_content_target_before_writing() {
     let error = initialize_project_root_from_example(
         &project,
         "Story",
+        "default",
         &renderer_template,
         &example_content,
     )
@@ -260,7 +261,7 @@ fn initialize_project_root_does_not_overwrite_existing_files() {
     write_text(&renderer_template.join("index.tsx"), "export default {};");
     write_text(&project.join("content/meta.json"), "keep me");
 
-    let result = initialize_project_root(&project, "story", &renderer_template);
+    let result = initialize_project_root(&project, "story", "default", &renderer_template);
 
     assert!(result.is_err());
     assert_eq!(
@@ -279,7 +280,7 @@ fn initialize_project_root_does_not_overwrite_self_description_files() {
     write_text(&renderer_template.join("index.tsx"), "export default {};");
     write_text(&project.join("AGENTS.md"), "keep me");
 
-    let result = initialize_project_root(&project, "story", &renderer_template);
+    let result = initialize_project_root(&project, "story", "default", &renderer_template);
 
     assert!(result.is_err());
     assert_eq!(
@@ -297,6 +298,7 @@ fn initialize_project_root_does_not_overwrite_self_description_files() {
     let result = initialize_project_root(
         &project_with_schema,
         "story-with-schema",
+        "default",
         &renderer_template,
     );
 

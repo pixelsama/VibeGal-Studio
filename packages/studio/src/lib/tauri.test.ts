@@ -63,16 +63,27 @@ beforeEach(() => {
 });
 
 describe("createProject", () => {
-  it("passes the required blank/example template value to Rust", async () => {
+  it("passes content and renderer template choices to Rust", async () => {
     invokeMock.mockResolvedValue({ path: "/projects/Story" });
 
-    await createProject("/projects", "Story", "example");
+    await createProject("/projects", "Story", "example", "classic");
 
     expect(invokeMock).toHaveBeenCalledWith("create_project", {
       parentDir: "/projects",
       name: "Story",
       template: "example",
+      rendererTemplate: "classic",
     });
+  });
+
+  it("defaults new projects to the default renderer template", async () => {
+    invokeMock.mockResolvedValue({ path: "/projects/Story" });
+
+    await createProject("/projects", "Story", "blank");
+
+    expect(invokeMock).toHaveBeenCalledWith("create_project", expect.objectContaining({
+      rendererTemplate: "default",
+    }));
   });
 });
 

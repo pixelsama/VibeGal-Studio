@@ -1,4 +1,7 @@
-use app_lib::{create_project_from_template, open_project_for_cli, ProjectTemplate};
+use app_lib::{
+    create_project_from_template, create_project_with_renderer_template, open_project_for_cli,
+    ProjectTemplate, RendererTemplate,
+};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -80,6 +83,35 @@ fn blank_and_example_templates_create_valid_projects() {
     );
     let value: Value = serde_json::from_slice(&validation.stdout).unwrap();
     assert_eq!(value["ok"], true);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn classic_renderer_template_is_copied_and_activated() {
+    let root = unique_temp_dir("classic-renderer");
+    fs::create_dir_all(&root).unwrap();
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let renderer = manifest_dir.join("resources/classic-renderer");
+    let example = manifest_dir.join("resources/example-content");
+
+    let project = create_project_with_renderer_template(
+        root.to_string_lossy().as_ref(),
+        "Classic Story",
+        ProjectTemplate::Blank,
+        RendererTemplate::Classic,
+        &renderer,
+        &example,
+    )
+    .unwrap();
+    let data = open_project_for_cli(project.to_string_lossy().as_ref()).unwrap();
+
+    assert_eq!(data.meta.active_renderer_id, "classic");
+    assert_eq!(data.renderer_ids, vec!["classic".to_string()]);
+    assert!(project.join("renderers/classic/index.tsx").is_file());
+    assert!(!project.join("renderers/default").exists());
+    let source = fs::read_to_string(project.join("renderers/classic/index.tsx")).unwrap();
+    assert!(source.contains("id: \"classic\""));
 
     let _ = fs::remove_dir_all(root);
 }

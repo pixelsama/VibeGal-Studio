@@ -4,6 +4,7 @@ import {
   ContainedProjectsDialog,
   formatRecentProjectOpenedAt,
   ProjectList,
+  RendererTemplatePicker,
   ProjectTemplatePicker,
   projectOpenOptionsForCreatedTemplate,
   RecentProjectList,
@@ -85,6 +86,21 @@ describe("ProjectTemplatePicker", () => {
     expect(html).toContain("可运行的分流、故事状态、结局与资源");
     expect(html).toMatch(/<input[^>]*checked=""[^>]*value="blank"/);
     expect(html).not.toMatch(/<input[^>]*checked=""[^>]*value="example"/);
+  });
+});
+
+describe("RendererTemplatePicker", () => {
+  it("defaults to the modern facade and offers the classic ADV style", () => {
+    const html = renderToStaticMarkup(
+      <RendererTemplatePicker value="default" onChange={() => {}} />,
+    );
+
+    expect(html).toContain("界面风格");
+    expect(html).toContain("柔光现代");
+    expect(html).toContain("经典深色 ADV");
+    expect(html).toContain("底部横向对话框、紧凑 HUD、侧边菜单与暖金强调");
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*value="default"/);
+    expect(html).not.toMatch(/<input[^>]*checked=""[^>]*value="classic"/);
   });
 });
 

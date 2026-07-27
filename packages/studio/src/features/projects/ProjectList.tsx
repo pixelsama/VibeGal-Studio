@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, FolderOpen, Plus, Settings as SettingsIcon, X } from "lucide-react";
-import { createProject, initializeProject, listProjects, openProject, pickDirectory, type ProjectTemplate } from "../../lib/tauri";
+import { createProject, initializeProject, listProjects, openProject, pickDirectory, type ProjectTemplate, type RendererTemplate } from "../../lib/tauri";
 import type { ProjectData, ProjectListItem } from "../../lib/types";
 import {
   loadRecentProjects,
@@ -72,6 +72,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectTemplate, setNewProjectTemplate] = useState<ProjectTemplate>("blank");
+  const [newProjectRenderer, setNewProjectRenderer] = useState<RendererTemplate>("default");
   const [initTarget, setInitTarget] = useState<string | null>(null);
   const [containedTarget, setContainedTarget] = useState<{
     path: string;
@@ -175,6 +176,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setNewProjectParent(parentDir);
     setNewProjectName("");
     setNewProjectTemplate("blank");
+    setNewProjectRenderer("default");
   }, []);
 
   const handleNew = async () => {
@@ -191,7 +193,12 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setLoading(true);
     setError(null);
     try {
-      const created = await createProject(newProjectParent, projectName, newProjectTemplate);
+      const created = await createProject(
+        newProjectParent,
+        projectName,
+        newProjectTemplate,
+        newProjectRenderer,
+      );
       completeOpen(created, projectOpenOptionsForCreatedTemplate(newProjectTemplate));
     } catch (e) {
       setError(String(e));
@@ -296,6 +303,11 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
               disabled={loading}
               onChange={setNewProjectTemplate}
             />
+            <RendererTemplatePicker
+              value={newProjectRenderer}
+              disabled={loading}
+              onChange={setNewProjectRenderer}
+            />
             {error && <div style={modalErrorStyle}>{error}</div>}
             <div style={modalActionsStyle}>
               <Button
@@ -306,6 +318,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
                   setNewProjectParent(null);
                   setNewProjectName("");
                   setNewProjectTemplate("blank");
+                  setNewProjectRenderer("default");
                   setError(null);
                 }}
               >
@@ -411,6 +424,48 @@ export function ProjectTemplatePicker({
         <span>
           <strong style={templateTitleStyle}>带示例</strong>
           <span style={templateDescriptionStyle}>包含可运行的分流、故事状态、结局与资源。</span>
+        </span>
+      </label>
+    </fieldset>
+  );
+}
+
+export function RendererTemplatePicker({
+  value,
+  disabled = false,
+  onChange,
+}: {
+  value: RendererTemplate;
+  disabled?: boolean;
+  onChange: (template: RendererTemplate) => void;
+}) {
+  return (
+    <fieldset style={templateFieldsetStyle} disabled={disabled}>
+      <legend style={templateLegendStyle}>界面风格</legend>
+      <label style={templateOptionStyle}>
+        <input
+          type="radio"
+          name="renderer-template"
+          value="default"
+          checked={value === "default"}
+          onChange={() => onChange("default")}
+        />
+        <span>
+          <strong style={templateTitleStyle}>柔光现代</strong>
+          <span style={templateDescriptionStyle}>明亮磨砂面板、圆润控件与轻盈的樱粉强调。</span>
+        </span>
+      </label>
+      <label style={templateOptionStyle}>
+        <input
+          type="radio"
+          name="renderer-template"
+          value="classic"
+          checked={value === "classic"}
+          onChange={() => onChange("classic")}
+        />
+        <span>
+          <strong style={templateTitleStyle}>经典深色 ADV</strong>
+          <span style={templateDescriptionStyle}>底部横向对话框、紧凑 HUD、侧边菜单与暖金强调。</span>
         </span>
       </label>
     </fieldset>

@@ -7,6 +7,22 @@ pub enum ProjectTemplate {
     Example,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RendererTemplate {
+    Default,
+    Classic,
+}
+
+impl RendererTemplate {
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Classic => "classic",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProjectMeta {
     pub name: String,

@@ -6,9 +6,10 @@ use std::path::Path;
 
 pub(crate) fn ensure_initialization_targets_available(
     project_path: &Path,
-    default_renderer_dir: &Path,
+    renderer_id: &str,
+    renderer_template_dir: &Path,
 ) -> Result<(), String> {
-    ensure_project_shell_targets_available(project_path, default_renderer_dir)?;
+    ensure_project_shell_targets_available(project_path, renderer_id, renderer_template_dir)?;
     for path in [
         project_path.join("content/manifest.json"),
         project_path.join("content/meta.json"),
@@ -23,7 +24,8 @@ pub(crate) fn ensure_initialization_targets_available(
 
 fn ensure_project_shell_targets_available(
     project_path: &Path,
-    default_renderer_dir: &Path,
+    renderer_id: &str,
+    renderer_template_dir: &Path,
 ) -> Result<(), String> {
     for path in [
         project_path.join("gal.project.json"),
@@ -43,8 +45,8 @@ fn ensure_project_shell_targets_available(
         ensure_can_create_file(&path)?;
     }
     ensure_copy_targets_available(
-        default_renderer_dir,
-        &project_path.join("renderers/default"),
+        renderer_template_dir,
+        &project_path.join("renderers").join(renderer_id),
     )
 }
 
@@ -104,15 +106,16 @@ pub(crate) fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
 pub(crate) fn initialize_project_root(
     project_path: &Path,
     name: &str,
-    default_renderer_dir: &Path,
+    renderer_id: &str,
+    renderer_template_dir: &Path,
 ) -> Result<(), String> {
-    ensure_initialization_targets_available(project_path, default_renderer_dir)?;
+    ensure_initialization_targets_available(project_path, renderer_id, renderer_template_dir)?;
     fs::create_dir_all(project_path.join("content/nodes"))
         .map_err(|e| format!("创建 content/nodes 失败: {}", e))?;
     fs::create_dir_all(project_path.join("content/assets"))
         .map_err(|e| format!("创建 content/assets 失败: {}", e))?;
-    fs::create_dir_all(project_path.join("renderers/default"))
-        .map_err(|e| format!("创建 renderers/default 失败: {}", e))?;
+    fs::create_dir_all(project_path.join("renderers").join(renderer_id))
+        .map_err(|e| format!("创建 renderers/{renderer_id} 失败: {e}"))?;
 
     write_json(
         &project_path.join("content/manifest.json"),
@@ -161,16 +164,17 @@ pub(crate) fn initialize_project_root(
         &project_path.join("content/nodes/start.json"),
         &initial_node.node,
     )?;
-    write_project_shell(project_path, name, default_renderer_dir)
+    write_project_shell(project_path, name, renderer_id, renderer_template_dir)
 }
 
 pub(crate) fn initialize_project_root_from_example(
     project_path: &Path,
     name: &str,
-    default_renderer_dir: &Path,
+    renderer_id: &str,
+    renderer_template_dir: &Path,
     example_content_dir: &Path,
 ) -> Result<(), String> {
-    ensure_project_shell_targets_available(project_path, default_renderer_dir)?;
+    ensure_project_shell_targets_available(project_path, renderer_id, renderer_template_dir)?;
     ensure_copy_targets_available(example_content_dir, &project_path.join("content"))?;
 
     let meta_path = example_content_dir.join("meta.json");
@@ -187,26 +191,27 @@ pub(crate) fn initialize_project_root_from_example(
         .map_err(|e| format!("复制示例内容失败: {}", e))?;
     write_json(&project_path.join("content/meta.json"), &meta)?;
 
-    write_project_shell(project_path, name, default_renderer_dir)
+    write_project_shell(project_path, name, renderer_id, renderer_template_dir)
 }
 
 fn write_project_shell(
     project_path: &Path,
     name: &str,
-    default_renderer_dir: &Path,
+    renderer_id: &str,
+    renderer_template_dir: &Path,
 ) -> Result<(), String> {
-    fs::create_dir_all(project_path.join("renderers/default"))
-        .map_err(|e| format!("创建 renderers/default 失败: {}", e))?;
+    fs::create_dir_all(project_path.join("renderers").join(renderer_id))
+        .map_err(|e| format!("创建 renderers/{renderer_id} 失败: {e}"))?;
     super::write_project_self_description(project_path)?;
     copy_dir_all(
-        default_renderer_dir,
-        &project_path.join("renderers/default"),
+        renderer_template_dir,
+        &project_path.join("renderers").join(renderer_id),
     )
     .map_err(|e| format!("复制渲染层模板失败: {}", e))?;
 
     let project_meta = ProjectMeta {
         name: name.to_string(),
-        active_renderer_id: "default".to_string(),
+        active_renderer_id: renderer_id.to_string(),
         created_at: chrono_now(),
     };
     write_json(

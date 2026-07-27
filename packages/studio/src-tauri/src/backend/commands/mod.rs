@@ -9,7 +9,7 @@ use super::game_build::{
 };
 use super::model::{
     AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, ProjectData,
-    ProjectListItem, ProjectMeta, ProjectTemplate,
+    ProjectListItem, ProjectMeta, ProjectTemplate, RendererTemplate,
 };
 use super::mutation;
 use super::project;
@@ -114,16 +114,19 @@ pub(crate) fn create_project(
     parent_dir: String,
     name: String,
     template: ProjectTemplate,
+    renderer_template: RendererTemplate,
     app_handle: tauri::AppHandle,
     scope_state: tauri::State<'_, AssetScopeState>,
 ) -> Result<ProjectData, String> {
-    let renderer_template = resources::default_renderer_dir(&app_handle)?;
+    let renderer_template_dir =
+        resources::renderer_template_dir(&app_handle, renderer_template.id())?;
     let example_content = resources::example_content_dir(&app_handle)?;
     let project_path = mutation::create_project(
         &parent_dir,
         &name,
         template,
-        &renderer_template,
+        renderer_template,
+        &renderer_template_dir,
         &example_content,
     )?;
     open_project_with_scope(
@@ -260,8 +263,8 @@ pub(crate) fn create_renderer(
     template_id: String,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let template = resources::default_renderer_dir(&app_handle)?;
-    renderer::create_renderer(&project_path, &renderer_id, &template_id, &template)
+    let template = resources::renderer_template_dir(&app_handle, &template_id)?;
+    renderer::create_renderer(&project_path, &renderer_id, &template)
 }
 
 #[tauri::command]
