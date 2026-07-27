@@ -383,7 +383,10 @@ const SELF_DESCRIPTION_FILES: [(&str, &str); 13] = [
     ),
     (".galstudio/schemas/meta.json", PROJECT_SCHEMA_FILES[3].1),
     (".galstudio/schemas/fixture.json", PROJECT_SCHEMA_FILES[4].1),
-    (".galstudio/schemas/variables.json", PROJECT_SCHEMA_FILES[5].1),
+    (
+        ".galstudio/schemas/variables.json",
+        PROJECT_SCHEMA_FILES[5].1,
+    ),
     (".galstudio/schemas/locale.json", PROJECT_SCHEMA_FILES[6].1),
 ];
 
@@ -411,7 +414,11 @@ pub(crate) fn missing_project_self_description_files(
                 missing.push(relative.to_string());
             }
             Err(error) => {
-                return Err(format!("检查项目辅助文件失败 {}: {}", path.display(), error));
+                return Err(format!(
+                    "检查项目辅助文件失败 {}: {}",
+                    path.display(),
+                    error
+                ));
             }
         }
     }

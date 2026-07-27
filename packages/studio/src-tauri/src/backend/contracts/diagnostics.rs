@@ -31,12 +31,7 @@ pub(crate) fn validate_schema(kind: ContractSchemaKind, value: &Value) -> Vec<Co
     if kind == ContractSchemaKind::NodeFile {
         return validate_node_file(value);
     }
-    let mut violations = normalize_errors(
-        kind,
-        value,
-        validator(kind).iter_errors(value),
-        None,
-    );
+    let mut violations = normalize_errors(kind, value, validator(kind).iter_errors(value), None);
     if kind == ContractSchemaKind::Meta {
         validate_meta_locale_membership(value, &mut violations);
     }

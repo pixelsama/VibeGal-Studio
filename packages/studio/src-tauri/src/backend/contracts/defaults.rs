@@ -74,10 +74,7 @@ fn normalize_locale_tags(value: &mut Value) {
     };
     if let Some(default) = locale.get("default").and_then(Value::as_str) {
         let normalized = canonicalize_locale_tag(default);
-        locale.insert(
-            "default".to_string(),
-            Value::String(normalized),
-        );
+        locale.insert("default".to_string(), Value::String(normalized));
     }
     if let Some(available) = locale.get_mut("available").and_then(Value::as_array_mut) {
         for tag in available {
