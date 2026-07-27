@@ -143,6 +143,69 @@ fn fixture_invalid_issue(file: &str, message: &str) -> ProjectIssue {
     }
 }
 
+fn load_project_locales(
+    project_root: &ProjectRoot,
+    content_root: &ContentRoot,
+) -> Result<(Vec<LocaleEntry>, Vec<ProjectIssue>), String> {
+    let locales_dir = content_root.resolve("locales")?;
+    let metadata = match fs::symlink_metadata(&locales_dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((vec![], vec![])),
+        Err(error) => return Err(format!("读取语言目录信息失败 {}: {}", locales_dir.display(), error)),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!("语言目录不能是符号链接: {}", locales_dir.display()));
+    }
+    if !metadata.is_dir() {
+        return Err(format!("语言目录不是文件夹: {}", locales_dir.display()));
+    }
+
+    let mut paths = vec![];
+    for entry in fs::read_dir(&locales_dir)
+        .map_err(|error| format!("读取语言目录失败 {}: {}", locales_dir.display(), error))?
+    {
+        let entry = entry.map_err(|error| format!("读取语言目录项失败 {}: {}", locales_dir.display(), error))?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("读取语言文件信息失败 {}: {}", path.display(), error))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!("语言目录不能包含符号链接: {}", path.display()));
+        }
+        if metadata.is_file() && path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+
+    let mut locales = vec![];
+    let mut issues = vec![];
+    for path in paths {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else { continue };
+        let Some(locale_tag) = path.file_stem().and_then(|stem| stem.to_str()) else { continue };
+        let Some(locale) = contracts::canonicalize_locale_tag(locale_tag) else {
+            return Err(format!("语言文件名不是有效的 BCP 47 标签: {}", path.display()));
+        };
+        let rel_path = format!("content/locales/{file_name}");
+        let value = match read_json(&path) {
+            Ok(value) => value,
+            Err(message) => {
+                issues.push(ProjectIssue {
+                    severity: GraphIssueSeverity::Error, source: "locale".to_string(),
+                    code: "locale_invalid_structure".to_string(), message,
+                    file: Some(rel_path), json_path: Some("$".to_string()), node_id: None, edge_id: None,
+                });
+                continue;
+            }
+        };
+        issues.extend(validate_locale_structure(&value, &rel_path));
+        locales.push(LocaleEntry {
+            locale, rel_path: rel_path.clone(), value,
+            revision: project_root.revision(&rel_path)?,
+        });
+    }
+    Ok((locales, issues))
+}
+
 pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let project_root = ProjectRoot::open(Path::new(path))?;
     let project_path = project_root.path();
@@ -191,6 +254,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     };
     let asset_report = AssetReport { asset_issues };
     let (fixtures, fixture_issues) = load_project_fixtures(&content_root);
+    let (locales, locale_issues) = load_project_locales(&project_root, &content_root)?;
 
     // 全局聚合：图结构 + 节点内容 + 资产 + manifest 结构问题汇总成一个报告
     let node_issues = validate_node_contents_with_variables(&graph, &nodes, &manifest, &variables);
@@ -229,6 +293,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     project_issues.extend(condition_variable_issues);
     project_issues.extend(ui_skin_issues);
     project_issues.extend(fixture_issues);
+    project_issues.extend(locale_issues);
     project_issues.sort_by(|a, b| {
         (
             project_issue_source_order(&a.source),
@@ -263,6 +328,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         variables_revision,
         meta_revision,
         node_revisions: Some(node_revisions),
+        locales: Some(locales),
         fixtures: Some(fixtures),
         graph_report: Some(graph_report),
         asset_report: Some(asset_report),
@@ -344,20 +410,21 @@ fn project_issue_source_order(source: &str) -> u8 {
         "asset" => 2,
         "meta" => 3,
         "manifest" => 4,
-        "fixture" => 5,
-        _ => 6,
+        "locale" => 5,
+        "fixture" => 6,
+        _ => 7,
     }
 }
 use super::super::contracts;
 use super::super::fs::{read_json, ContentRoot, ProjectRoot};
 use super::super::model::{
-    AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, ProjectContent, ProjectData,
-    ProjectIssue, ProjectListItem, ProjectMeta, ProjectReport,
+    AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, LocaleEntry, ProjectContent,
+    ProjectData, ProjectIssue, ProjectListItem, ProjectMeta, ProjectReport,
 };
 use super::super::validation::{
-    graph_issue_to_project, validate_assets, validate_graph, validate_manifest_structure,
-    parse_expression, validate_meta_structure, validate_node_contents_with_variables,
-    validate_ui_skin_convergence,
+    graph_issue_to_project, validate_assets, validate_graph, validate_locale_structure,
+    validate_manifest_structure, parse_expression, validate_meta_structure,
+    validate_node_contents_with_variables, validate_ui_skin_convergence,
 };
 use super::{legacy_chapter_layout_issues, load_project_graph_data};
 use std::collections::HashMap;

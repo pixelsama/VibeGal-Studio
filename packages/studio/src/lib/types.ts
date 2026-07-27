@@ -2,7 +2,7 @@
  * 项目相关类型 —— studio 与 Rust 后端之间的数据契约。
  */
 import type { Manifest as EngineManifest, VariableRegistry } from "@vibegal/engine";
-import type { ChapterCheckpoint, CharacterSpriteRef } from "@vibegal/engine";
+import type { ChapterCheckpoint, CharacterSpriteRef, LocaleTable } from "@vibegal/engine";
 import type { Instruction, SetInstr } from "@vibegal/engine";
 
 /** gal.project.json 的结构 */
@@ -151,6 +151,13 @@ export interface FixtureEntry {
   value: unknown;
 }
 
+export interface LocaleEntry {
+  locale: string;
+  relPath: string;
+  value: LocaleTable;
+  revision?: FileRevision;
+}
+
 export interface GraphIssueFocusRequest {
   requestId: number;
   nodeId?: string;
@@ -240,6 +247,8 @@ export interface ProjectData {
   /** content/meta.json 的 revision，用于项目全局设置写入冲突检测 */
   metaRevision?: FileRevision;
   nodeRevisions?: Record<string, FileRevision | null>;
+  /** content/locales/*.json 的作品翻译表（按文件名排序） */
+  locales?: LocaleEntry[];
   /** content/fixtures/*.json 的自定义场景（按文件名排序）；无该目录时为空数组 */
   fixtures?: FixtureEntry[];
   /** 图结构一致性报告；问题不阻断项目加载 */

@@ -340,6 +340,16 @@ pub(crate) fn save_variables(
 }
 
 #[tauri::command]
+pub(crate) fn save_locale(
+    project_path: String,
+    locale: String,
+    value: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<Option<FileRevision>, String> {
+    mutation::save_locale(project_path, locale, value, expected_revision)
+}
+
+#[tauri::command]
 pub(crate) fn rename_variable(
     project_path: String,
     from: String,

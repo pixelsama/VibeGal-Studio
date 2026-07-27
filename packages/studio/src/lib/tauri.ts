@@ -19,7 +19,7 @@ import type {
   SaveNodeResult,
   ProjectMeta,
 } from "./types";
-import type { VariableRegistry } from "@vibegal/engine";
+import type { VariableRegistry, LocaleTable } from "@vibegal/engine";
 import { normalizeManifest } from "./normalizeManifest";
 
 /** 后端原样返回 manifest.json 原文（不套用 schema 默认值），统一补齐缺省注册表后再交给 UI */
@@ -285,6 +285,20 @@ export async function saveVariables(
   expectedRevision?: FileRevision | null,
 ): Promise<FileRevision | null> {
   return invoke<FileRevision | null>("save_variables", withExpectedRevision({ projectPath, variables }, expectedRevision));
+}
+
+/** 保存 content/locales/<locale>.json，使用独立 revision 防止覆盖外部修改。 */
+export async function saveLocale(
+  projectPath: string,
+  locale: string,
+  value: LocaleTable,
+  expectedRevision?: FileRevision | null,
+): Promise<FileRevision | null> {
+  return invoke<FileRevision | null>("save_locale", withExpectedRevision({
+    projectPath,
+    locale,
+    value,
+  }, expectedRevision));
 }
 
 export interface RenameVariableResult {

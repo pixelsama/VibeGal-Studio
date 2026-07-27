@@ -639,6 +639,105 @@ fn open_project_reports_legacy_chapter_paths_without_resolving_them() {
 }
 
 #[test]
+fn open_project_loads_locales_with_revisions_and_reports_invalid_tables() {
+    let root = unique_temp_dir("locales-load");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    write_text(
+        &project.join("content/locales/en.json"),
+        r#"{"opening.hello":"Hello"}"#,
+    );
+    write_text(
+        &project.join("content/locales/zh-CN.json"),
+        r#"{"opening.hello":42}"#,
+    );
+    write_text(&project.join("content/locales/notes.txt"), "ignored");
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let locales = opened.locales.expect("open_project 应返回 locales");
+    assert_eq!(locales.len(), 2);
+    assert_eq!(locales[0].locale, "en");
+    assert_eq!(locales[0].value["opening.hello"], "Hello");
+    assert_eq!(
+        locales[0]
+            .revision
+            .as_ref()
+            .map(|revision| revision.rel_path.as_str()),
+        Some("content/locales/en.json")
+    );
+    assert_eq!(locales[1].locale, "zh-CN");
+
+    let issue = opened
+        .project_report
+        .unwrap()
+        .project_issues
+        .into_iter()
+        .find(|issue| issue.source == "locale")
+        .expect("无效语言表应生成项目问题");
+    assert_eq!(issue.code, "locale_invalid_structure");
+    assert_eq!(issue.file.as_deref(), Some("content/locales/zh-CN.json"));
+    assert_eq!(issue.json_path.as_deref(), Some("$[\"opening.hello\"]"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn open_project_returns_empty_locales_when_directory_is_absent() {
+    let root = unique_temp_dir("locales-absent");
+    let project = root.join("project");
+    write_minimal_project(&project);
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    assert!(opened.locales.expect("locales 字段应存在").is_empty());
+    assert!(!opened
+        .project_report
+        .unwrap()
+        .project_issues
+        .iter()
+        .any(|issue| issue.source == "locale"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn save_locale_validates_contract_and_guards_creation() {
+    let root = unique_temp_dir("save-locale");
+    let project = root.join("project");
+    write_minimal_project(&project);
+
+    let invalid = save_locale(
+        project.to_string_lossy().into_owned(),
+        "en".to_string(),
+        serde_json::json!({ "opening.hello": 42 }),
+        Some(serde_json::Value::Null),
+    );
+    assert!(invalid.is_err());
+    assert!(!project.join("content/locales/en.json").exists());
+
+    let revision = save_locale(
+        project.to_string_lossy().into_owned(),
+        "en".to_string(),
+        serde_json::json!({ "opening.hello": "Hello" }),
+        Some(serde_json::Value::Null),
+    )
+    .unwrap()
+    .expect("保存后应返回 revision");
+    assert_eq!(revision.rel_path, "content/locales/en.json");
+
+    let collision = save_locale(
+        project.to_string_lossy().into_owned(),
+        "en".to_string(),
+        serde_json::json!({ "opening.hello": "Changed" }),
+        Some(serde_json::Value::Null),
+    );
+    assert!(collision.is_err());
+    assert!(collision.err().unwrap().contains("write_conflict"));
+    assert_eq!(
+        read_json(&project.join("content/locales/en.json")).unwrap()["opening.hello"],
+        "Hello"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn open_project_loads_fixtures_sorted_by_file_name() {
     let root = unique_temp_dir("fixtures-load");
     let project = root.join("project");

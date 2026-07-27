@@ -146,6 +146,7 @@ fn public_project_and_issue_json_field_names_remain_stable() {
                 "manifestRevision",
                 "metaRevision",
                 "nodeRevisions",
+                "locales",
                 "fixtures",
                 "graphReport",
                 "assetReport",

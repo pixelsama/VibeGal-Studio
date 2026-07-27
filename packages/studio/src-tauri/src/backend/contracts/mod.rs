@@ -7,7 +7,7 @@ mod diagnostics;
 mod embedded;
 mod policy;
 
-pub(crate) use defaults::apply_schema_defaults;
+pub(crate) use defaults::{apply_schema_defaults, canonicalize_locale_tag};
 pub(crate) use diagnostics::{validate_schema, ContractSchemaKind};
 pub(crate) use embedded::{diagnostic, instruction_policies, instruction_types, schema};
 pub(crate) use policy::validate_node_semantics;

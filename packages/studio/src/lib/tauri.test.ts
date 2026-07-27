@@ -17,6 +17,7 @@ import {
   renameVariable,
   revealPath,
   runDesktopGame,
+  saveLocale,
   saveNode,
   saveThemeSetting,
   smokeDesktopGame,
@@ -487,6 +488,27 @@ describe("renderer trust and project support commands", () => {
     ]);
     expect(invokeMock).toHaveBeenCalledWith("repair_project_support_files", {
       projectPath: "/project",
+    });
+  });
+});
+
+describe("locale mutations", () => {
+  it("sends locale tables through the typed revision-guarded command", async () => {
+    const revision = {
+      relPath: "content/locales/en.json",
+      mtimeMs: 12,
+      size: 24,
+      sha256: "abc",
+    };
+    invokeMock.mockResolvedValue(revision);
+
+    await expect(saveLocale("/project", "en", { "opening.hello": "Hello" }, null))
+      .resolves.toEqual(revision);
+    expect(invokeMock).toHaveBeenCalledWith("save_locale", {
+      projectPath: "/project",
+      locale: "en",
+      value: { "opening.hello": "Hello" },
+      expectedRevision: null,
     });
   });
 });

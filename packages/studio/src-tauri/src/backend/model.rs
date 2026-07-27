@@ -45,6 +45,16 @@ pub struct ProjectContent {
     pub variables: serde_json::Value,
 }
 
+#[derive(Serialize, Clone)]
+pub struct LocaleEntry {
+    pub locale: String,
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    pub value: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<FileRevision>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FileRevision {
     #[serde(rename = "relPath")]
@@ -290,6 +300,8 @@ pub struct ProjectData {
     pub meta_revision: Option<FileRevision>,
     #[serde(rename = "nodeRevisions", skip_serializing_if = "Option::is_none")]
     pub node_revisions: Option<HashMap<String, Option<FileRevision>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locales: Option<Vec<LocaleEntry>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fixtures: Option<Vec<FixtureEntry>>,
     #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]

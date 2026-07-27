@@ -6611,6 +6611,10 @@ mod tests {
                 "graph" => "content/graph.json",
                 "manifest" => "content/manifest.json",
                 "meta" => "content/meta.json",
+                "locale" => {
+                    std::fs::create_dir_all(dir.join("content/locales")).unwrap();
+                    "content/locales/zh-CN.json"
+                }
                 schema => panic!("unsupported CLI corpus schema: {schema}"),
             };
             write_text(

@@ -73,20 +73,33 @@ fn normalize_locale_tags(value: &mut Value) {
         return;
     };
     if let Some(default) = locale.get("default").and_then(Value::as_str) {
-        let normalized = canonicalize_locale_tag(default);
-        locale.insert("default".to_string(), Value::String(normalized));
+        if let Some(normalized) = canonicalize_locale_tag(default) {
+            locale.insert("default".to_string(), Value::String(normalized));
+        }
     }
     if let Some(available) = locale.get_mut("available").and_then(Value::as_array_mut) {
         for tag in available {
-            if let Some(raw) = tag.as_str() {
-                *tag = Value::String(canonicalize_locale_tag(raw));
+            if let Some(normalized) = tag.as_str().and_then(canonicalize_locale_tag) {
+                *tag = Value::String(normalized);
             }
         }
     }
 }
 
-fn canonicalize_locale_tag(tag: &str) -> String {
-    tag.split('-')
+pub(crate) fn canonicalize_locale_tag(tag: &str) -> Option<String> {
+    let parts = tag.split('-').collect::<Vec<_>>();
+    if parts.is_empty()
+        || !(2..=8).contains(&parts[0].len())
+        || !parts[0].bytes().all(|byte| byte.is_ascii_alphabetic())
+        || parts.iter().skip(1).any(|part| {
+            part.is_empty()
+                || part.len() > 8
+                || !part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+    {
+        return None;
+    }
+    Some(parts.into_iter()
         .enumerate()
         .map(|(index, part)| {
             if index == 0 {
@@ -113,7 +126,7 @@ fn canonicalize_locale_tag(tag: &str) -> String {
             part.to_ascii_lowercase()
         })
         .collect::<Vec<_>>()
-        .join("-")
+        .join("-"))
 }
 
 fn schema_accepts(schema: &Value, value: &Value) -> bool {

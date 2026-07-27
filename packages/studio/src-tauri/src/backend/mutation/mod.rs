@@ -82,6 +82,11 @@ pub(crate) fn save_file(
             contracts::ContractSchemaKind::Variables => {
                 return save_variables(project_path, value, expected_revision);
             }
+            contracts::ContractSchemaKind::Locale => {
+                let locale = Path::new(&rel_path).file_stem().and_then(|stem| stem.to_str())
+                    .ok_or_else(|| format!("非法语言文件路径: {rel_path}"))?.to_string();
+                return save_locale(project_path, locale, value, expected_revision);
+            }
             _ => validate_write_contract(schema, &value, label)?,
         }
     }
@@ -260,6 +265,16 @@ fn is_node_file_path(rel_path: &str) -> bool {
         && path.extension().and_then(|extension| extension.to_str()) == Some("json")
 }
 
+fn is_locale_file_path(rel_path: &str) -> bool {
+    let Ok(path) = safe_relative_path(rel_path) else { return false };
+    let mut components = path.components();
+    matches!(components.next(), Some(Component::Normal(part)) if part == "content")
+        && matches!(components.next(), Some(Component::Normal(part)) if part == "locales")
+        && matches!(components.next(), Some(Component::Normal(_)))
+        && components.next().is_none()
+        && path.extension().and_then(|extension| extension.to_str()) == Some("json")
+}
+
 fn write_contract_for_path(
     rel_path: &str,
 ) -> Option<(contracts::ContractSchemaKind, &'static str)> {
@@ -272,6 +287,8 @@ fn write_contract_for_path(
         Some((contracts::ContractSchemaKind::Meta, "meta"))
     } else if path == Path::new("content/variables.json") {
         Some((contracts::ContractSchemaKind::Variables, "variables"))
+    } else if is_locale_file_path(rel_path) {
+        Some((contracts::ContractSchemaKind::Locale, "语言表"))
     } else if is_node_file_path(rel_path) {
         Some((contracts::ContractSchemaKind::NodeFile, "节点内容"))
     } else {
@@ -511,6 +528,33 @@ pub(crate) fn save_variables(
     ensure_expected_revision(project_root.path(), "content/variables.json", expected_revision)?;
     write_json(&content_root.resolve_write_target("variables.json")?, &variables)?;
     project_root.revision("content/variables.json")
+}
+
+pub(crate) fn save_locale(
+    project_path: String,
+    locale: String,
+    value: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<Option<FileRevision>, String> {
+    validate_plain_name(&locale, "语言标签")?;
+    let canonical_locale = contracts::canonicalize_locale_tag(&locale)
+        .ok_or_else(|| format!("语言标签不是有效的 BCP 47 标签: {locale}"))?;
+    if canonical_locale != locale {
+        return Err(format!("语言标签必须使用规范大小写: {canonical_locale}"));
+    }
+    validate_write_contract(contracts::ContractSchemaKind::Locale, &value, "语言表")?;
+    let project_root = ProjectRoot::open(Path::new(&project_path))?;
+    let content_root = project_root.content_root()?;
+    let content_rel_path = format!("locales/{locale}.json");
+    let project_rel_path = format!("content/{content_rel_path}");
+    ensure_expected_revision(project_root.path(), &project_rel_path, expected_revision)?;
+    let target = content_root.resolve_write_target(&content_rel_path)?;
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("创建语言目录失败: {error}"))?;
+        ensure_existing_path_within(content_root.path(), parent)?;
+    }
+    write_json(&target, &value)?;
+    project_root.revision(&project_rel_path)
 }
 
 /// Rename a declared variable and rewrite every reference to it, atomically.

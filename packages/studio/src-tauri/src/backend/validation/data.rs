@@ -18,6 +18,13 @@ pub(crate) fn validate_meta_structure(meta: &serde_json::Value) -> Vec<ProjectIs
     )
 }
 
+pub(crate) fn validate_locale_structure(
+    locale: &serde_json::Value,
+    file: &str,
+) -> Vec<ProjectIssue> {
+    contract_project_issues(contracts::ContractSchemaKind::Locale, locale, file)
+}
+
 /// 单 skin 收敛（Spec 19 §4.4）：uiSkins 保持 record 结构，不强制迁移、
 /// 不静默忽略；条目 > 1 时出 Warn 级 project issue 引导用户自行清理。
 /// 引擎只消费 `default`（缺省时回退第一个条目），多余条目不会被消费。

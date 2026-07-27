@@ -183,6 +183,26 @@ fn project_loader_rejects_symlinked_node_file() {
 
 #[cfg(unix)]
 #[test]
+fn project_loader_rejects_symlinked_locale_file() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("locale-file-symlink");
+    let project = root.join("project");
+    let external = root.join("external-locale.json");
+    write_minimal_project(&project);
+    write_text(&external, r#"{"opening.hello":"Outside"}"#);
+    fs::create_dir_all(project.join("content/locales")).unwrap();
+    symlink(&external, project.join("content/locales/en.json")).unwrap();
+
+    let error = open_project_inner(project.to_string_lossy().as_ref())
+        .err()
+        .expect("locale symlinks must be rejected");
+    assert!(error.contains("符号链接"), "unexpected error: {error}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
 fn asset_reader_rejects_symlink_escape() {
     use std::os::unix::fs::symlink;
 
