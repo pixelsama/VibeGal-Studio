@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_STAGE_RESOLUTION,
+  readProjectMeta,
   readStageResolution,
   withStageResolution,
 } from "./projectMeta";
@@ -14,6 +15,13 @@ describe("project meta helpers", () => {
     expect(readStageResolution({ stage: { width: 1920, height: 1080 } })).toEqual({
       width: 1920,
       height: 1080,
+    });
+  });
+
+  it("preserves canonical locale configuration for runtime preview", () => {
+    expect(readProjectMeta({ locale: { default: "zh-cn", available: ["zh-cn", "EN"] } }).locale).toEqual({
+      default: "zh-CN",
+      available: ["zh-CN", "en"],
     });
   });
 

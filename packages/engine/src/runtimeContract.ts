@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { VariableValueSchema } from "./schema";
+import { LocaleTagSchema, VariableValueSchema } from "./schema";
 import type { ProjectGraphData } from "./types";
 import type { NovelState } from "./state";
 
@@ -127,6 +127,7 @@ export const RuntimeSettingsRecordSchema = z.strictObject({
   schemaVersion: z.literal(RUNTIME_RECORD_SCHEMA_VERSION),
   textSpeedCps: z.number().positive().optional(),
   autoAdvanceMs: z.number().int().nonnegative().optional(),
+  currentLocale: LocaleTagSchema.optional(),
   volumes: z.strictObject({
     master: z.number().min(0).max(1),
     bgm: z.number().min(0).max(1),

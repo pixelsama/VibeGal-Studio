@@ -6,6 +6,8 @@ import {
   ProjectGraphSchema,
   RENDERER_CONTRACT_VERSION,
   RuntimeSettingsRecordSchema,
+  LocaleTableSchema,
+  MetaSchema,
   createDefaultRuntimeSettingsRecord,
   createInMemoryRuntimeServices,
   createRuntimeStorageLikePersistenceAdapter,
@@ -18,6 +20,7 @@ import {
   type GraphPlayerNode,
   type GlobalPersistentRecord,
   type Instruction,
+  type LocaleTable,
   type Manifest,
   type Meta,
   type NovelState,
@@ -78,6 +81,7 @@ export interface WebRuntimePlayerOptions {
   projectId?: string;
   storage?: RuntimeStorageAdapter;
   initialSettings?: RuntimeSettingsRecord;
+  locales?: Record<string, LocaleTable>;
   variables?: VariableRegistry;
 }
 
@@ -276,6 +280,8 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
   const player = new GraphNovelPlayer({
     meta: content.meta as Meta,
     manifest: content.manifest as Manifest,
+    locales: options.locales,
+    currentLocale: settings.currentLocale ?? content.meta.locale?.default,
     variables: options.variables,
     globalState: () => {
       const record = storage.readGlobalSync?.(projectId);
@@ -383,6 +389,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
         textSpeedCps: nextSettings.textSpeedCps ?? content.meta.typingSpeedCps,
         autoAdvanceMs: nextSettings.autoAdvanceMs ?? content.meta.autoAdvanceMs,
       });
+      player.setCurrentLocale(nextSettings.currentLocale ?? content.meta.locale?.default);
       listeners.forEach((listener) => listener(state));
     },
     media: { closeCg: closeMedia, skipVideo },
@@ -910,13 +917,22 @@ async function loadExportedContent(basePath: string) {
     fetchJson<unknown>(joinBasePath(basePath, "content/meta.json")),
     fetchJson<unknown>(joinBasePath(basePath, "content/manifest.json")),
   ]);
+  const parsedMeta = MetaSchema.parse(meta);
   const nodes = await Promise.all(graph.nodes.map(async (node) => ({
     id: node.id,
     instructions: await fetchJson<Instruction[]>(joinBasePath(basePath, `content/${node.file}`)),
   })));
   let variables: VariableRegistry = { version: 1, variables: {} };
   try { variables = VariableRegistrySchema.parse(await fetchJson<unknown>(joinBasePath(basePath, "content/variables.json"))); } catch { /* Old exports have no registry. */ }
-  return { graph, meta, manifest, nodes, variables };
+  const locales: Record<string, LocaleTable> = {};
+  await Promise.all((parsedMeta.locale?.available ?? []).map(async (locale) => {
+    try {
+      locales[locale] = LocaleTableSchema.parse(
+        await fetchJson<unknown>(joinBasePath(basePath, `content/locales/${locale}.json`)),
+      );
+    } catch { /* Locale files are optional; runtime falls back to source text. */ }
+  }));
+  return { graph, meta, manifest, nodes, variables, locales };
 }
 
 function mountRuntime(root: Root, runtime: WebRuntimePlayer, rendererManifest: RendererManifest) {

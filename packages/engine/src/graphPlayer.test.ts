@@ -254,6 +254,45 @@ describe("GraphNovelPlayer playback history and skip", () => {
     player.dispose();
   });
 
+  it("localizesDisplayAndBacklogWithoutChangingReadIdentity", () => {
+    const player = new GraphNovelPlayer({
+      manifest,
+      meta: { ...meta, locale: { default: "zh-CN", available: ["zh-CN", "en"] } },
+      locales: {
+        "zh-CN": { "opening.hello": "早上好。" },
+        en: { "opening.hello": "Good morning." },
+      },
+      currentLocale: "en",
+    });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [{
+        t: "say",
+        id: "line_01",
+        who: "hero",
+        expr: "default",
+        text: "原始台词。",
+        textKey: "opening.hello",
+      }],
+    }]);
+
+    player.advance();
+
+    expect(player.getState().dialogue?.text).toBe("Good morning.");
+    expect(player.getBacklog()[0]).toEqual(expect.objectContaining({
+      text: "Good morning.",
+      readKey: readKey("line_01", "原始台词。"),
+    }));
+    expect(player.getCurrentReadKey()).toEqual(readKey("line_01", "原始台词。"));
+
+    player.setCurrentLocale("ja");
+
+    expect(player.getState().dialogue?.text).toBe("早上好。");
+    expect(player.getCurrentReadKey()).toEqual(readKey("line_01", "原始台词。"));
+    expect(player.createSnapshot()).not.toHaveProperty("currentLocale");
+    player.dispose();
+  });
+
   it("historyDoesNotAddPauseOnlyEntry", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(baseGraph, [

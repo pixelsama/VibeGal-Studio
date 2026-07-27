@@ -35,6 +35,7 @@ describe("useProjectPlayer helpers", () => {
     expect(buildProjectPreviewContent(project)).toEqual({
       meta: project.content.meta,
       manifest: project.content.manifest,
+      locales: {},
       chapters: [
         { file: "nodes/later.json", data: [{ t: "narrate", text: "later" }] },
         { file: "nodes/start.json", data: [{ t: "narrate", text: "start" }] },

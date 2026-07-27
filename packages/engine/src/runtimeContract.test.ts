@@ -6,7 +6,9 @@ import {
   createRuntimeSnapshot,
   createSaveSlotRecord,
   createInMemoryRuntimePersistenceAdapter,
+  createDefaultRuntimeSettingsRecord,
   migrateGlobalPersistentRecord,
+  migrateRuntimeSettingsRecord,
   migrateSaveSlotRecord,
   replayDecisionLogToNodeId,
 } from "./runtimeContract";
@@ -22,6 +24,19 @@ describe("runtime contract", () => {
     expect(base).toEqual(normalizedEquivalent);
     expect(changed).not.toEqual(base);
     expect(changed.textHash).not.toBe(base.textHash);
+  });
+
+  it("stores canonical player locale only in runtime settings", () => {
+    expect(migrateRuntimeSettingsRecord({
+      ...createDefaultRuntimeSettingsRecord(),
+      currentLocale: "zh-cn",
+    }).currentLocale).toBe("zh-CN");
+
+    const snapshot = createRuntimeSnapshot(createInitialState(), {
+      currentNodeId: "start",
+      currentStoryPoint: null,
+    });
+    expect(snapshot).not.toHaveProperty("currentLocale");
   });
 
   it("saveSlotDoesNotSerializeTransientEffects", () => {

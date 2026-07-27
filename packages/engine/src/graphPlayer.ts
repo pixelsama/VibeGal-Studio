@@ -1,4 +1,5 @@
-import type { Meta, Manifest, Instruction, ProjectGraphData, GraphEdgeData, SetInstr, VariableRegistry } from "./types";
+import type { Meta, Manifest, Instruction, LocaleTable, ProjectGraphData, GraphEdgeData, SetInstr, VariableRegistry } from "./types";
+import { localizeInstruction } from "./localization";
 import type { GraphRouteValue } from "./graphRouting";
 import type { NovelState } from "./state";
 import { createInitialState } from "./state";
@@ -31,6 +32,8 @@ export interface GraphPlayerPersistentBridge {
 
 export interface GraphPlayerDeps extends InterpreterDeps {
   meta: Meta;
+  locales?: Readonly<Record<string, LocaleTable>>;
+  currentLocale?: string;
   persistent?: GraphPlayerPersistentBridge;
   replayVoice?: (voiceId: string) => void;
   onRuntimeEffect?: RuntimeEffectHandler;
@@ -94,6 +97,7 @@ export class GraphNovelPlayer {
   private skipTimer: ReturnType<typeof setTimeout> | null = null;
   private skipBudget = 0;
   private routeError: string | null = null;
+  private currentLocale: string | undefined;
   private playthroughId = createPlaythroughId();
 
   getRouteError(): string | null {
@@ -111,6 +115,7 @@ export class GraphNovelPlayer {
 
   constructor(deps: GraphPlayerDeps) {
     this.deps = deps;
+    this.currentLocale = deps.currentLocale ?? deps.meta.locale?.default;
     this.state = createInitialState();
     this.playbackTiming = {
       textSpeedCps: deps.meta.typingSpeedCps,
@@ -187,6 +192,25 @@ export class GraphNovelPlayer {
 
   getPlaybackTiming(): PlaybackTiming {
     return { ...this.playbackTiming };
+  }
+
+  getCurrentLocale(): string | undefined {
+    return this.currentLocale;
+  }
+
+  setCurrentLocale(locale: string | undefined) {
+    this.currentLocale = locale ?? this.deps.meta.locale?.default;
+    if (!this.currentStoryPoint || !this.currentNodeId) return;
+    const instructions = this.currentInstructions();
+    const index = instructions.findIndex(
+      (instruction, instructionIndex) => getInstructionStoryPointId(instruction, instructionIndex) === this.currentStoryPoint?.instructionId,
+    );
+    const instruction = instructions[index];
+    if (!instruction || (instruction.t !== "say" && instruction.t !== "narrate")) return;
+    const localized = this.localizedInstruction(instruction);
+    this.state = applyInstruction(this.state, localized, this.deps);
+    this.state = revealFully(this.state);
+    this.emit();
   }
 
   setPlaybackTiming(timing: PlaybackTiming) {
@@ -858,6 +882,9 @@ export class GraphNovelPlayer {
     instructionIndex?: number,
     origin?: { nodeId: string; edgeId: string },
   ): NovelState {
+    if (instr.t === "say" || instr.t === "narrate") {
+      return applyInstruction(state, this.localizedInstruction(instr), this.deps);
+    }
     if (instr.t !== "set") return applyInstruction(state, instr, this.deps);
     const declaration = this.deps.variables?.variables[instr.key];
     const value = this.resolveSetValue(instr, state.vars);
@@ -1159,18 +1186,29 @@ export class GraphNovelPlayer {
   private addBacklogEntry(instr: Extract<Instruction, { t: "say" | "narrate" }>, index: number) {
     if (!this.currentStoryPoint) this.updateCurrentStoryPoint(instr, index);
     if (!this.currentStoryPoint || !this.currentReadKey) return;
+    const localized = this.localizedInstruction(instr);
     const createdOrder = ++this.backlogOrder;
     const entry: BacklogEntry = {
       id: `history:${createdOrder}`,
       storyPoint: { ...this.currentStoryPoint },
       speakerName: instr.t === "say" ? this.state.speaker?.name ?? instr.who : undefined,
-      text: instr.text,
+      text: localized.text,
       voiceId: this.pendingVoiceId,
       readKey: { ...this.currentReadKey },
       createdOrder,
     };
     this.pendingVoiceId = undefined;
     this.backlog.push(entry);
+  }
+
+  private localizedInstruction(
+    instruction: Extract<Instruction, { t: "say" | "narrate" }>,
+  ): Extract<Instruction, { t: "say" | "narrate" }> {
+    return localizeInstruction(instruction, {
+      currentLocale: this.currentLocale,
+      defaultLocale: this.deps.meta.locale?.default,
+      tables: this.deps.locales,
+    });
   }
 
   private markCurrentReadIfRevealed() {

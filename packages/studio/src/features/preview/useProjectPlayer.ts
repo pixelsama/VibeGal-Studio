@@ -95,6 +95,7 @@ export function buildProjectPreviewContent(project: ProjectData, options: Projec
   return {
     meta: project.content.meta,
     manifest: project.content.manifest,
+    locales: Object.fromEntries((project.locales ?? []).map((entry) => [entry.locale, entry.value])),
     chapters: chapters.map((chapter) => ({ file: chapter.file, data: chapter.data })),
     nodeIds: chapters.map((chapter) => chapter.nodeId),
     entryNodeId: options.start?.nodeId ?? project.graph?.entryNodeId ?? "",
@@ -222,6 +223,8 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       player = new GraphNovelPlayer({
         meta: validated.meta as Meta,
         manifest: validated.manifest as Manifest,
+        locales: content.locales,
+        currentLocale: runtimeRef.current?.settings.getSettings().currentLocale ?? validated.meta.locale?.default,
         variables: project.content.variables,
         onRuntimeEffect: (effect) => {
           if (effect.type === "unlock") {
@@ -341,6 +344,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
       playerRef.current?.setPlaybackTiming(timing);
       setState({ ...stateRef.current });
     },
+    onSettingsChanged: (settings) => playerRef.current?.setCurrentLocale(settings.currentLocale ?? meta.locale?.default),
     getState: () => playerRef.current?.getState() ?? stateRef.current,
     manifest: project.content.manifest ?? EMPTY_MANIFEST,
     variables: project.content.variables,
