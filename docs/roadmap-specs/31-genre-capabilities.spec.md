@@ -1,6 +1,6 @@
 # Spec 31 — Genre Capabilities（品类能力）
 
-> 状态：待实施（2026-07-27 定稿）。
+> 状态：实施中（2026-07-27）。
 > 目标版本：`0.4.0`。
 > 基线：P2 `0.3.0` 收口提交。
 > 来源：[Review 28 §4 P3](./28-product-review-and-roadmap.md)。
@@ -24,6 +24,8 @@ P3 补齐常见 Galgame 的表达和回看能力，同时保持旧项目零迁�
 - 不把本地化 key、资源文件名或数组序号当作 story-point 身份；
 - 不执行项目文本中的 HTML、JavaScript、CSS 或模板表达式；
 - Runtime/renderer 不直接读项目文件系统，所有 locale 和资产经已校验数据进入。
+- `characters.<id>.sprites.<expr>` 继续接受旧字符串路径；需要 atlas clip 时使用 `{ "atlas": "atlasId", "clip": "clipId", "fallback": "assets/hero.png" }`，不把 `atlas#clip` 之类私有字符串塞进路径字段。
+- 章节安全跳读检查点使用 `graph.chapters[].checkpoint`，其形状与 runtime snapshot 的稳定终态字段一致；缺省时该章节只作为编辑分组，不自动获得跳读能力。
 
 ## 2. 本地化契约
 
@@ -188,6 +190,7 @@ Live2D/Spine、任意脚本动画和物理系统不属于 P3。
 ### 6.1 缩略图与槽位
 
 - `SavePreview` 增加可选 `thumbnail`，值是 runtime adapter 管理的 opaque asset key，不把 base64/blob 写进存档 JSON；
+- runtime persistence adapter 增加可选 `writeThumbnail` / `readThumbnail` / `deleteThumbnail`，并通过可选 `captureThumbnail` service 获取图像；不支持这些能力的既有 adapter 保持可用；
 - renderer 提供可选 capture service；不可用或失败时保存仍成功，只显示背景/文本 fallback；
 - Web adapter 使用受配额管理的 IndexedDB/blob；桌面 adapter 使用应用数据目录，不写项目目录；
 - 删除存档同时清理缩略图；孤立缩略图可安全回收；
