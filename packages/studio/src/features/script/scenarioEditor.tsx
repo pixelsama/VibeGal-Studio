@@ -187,6 +187,7 @@ function inlineInstructionFields(
       return <>
         <CompactResourcePicker label="角色" manifest={manifest} kind="character" value={instruction.who} onChange={(who) => onChange({ ...instruction, who })} />
         <CompactResourcePicker label="表情" manifest={manifest} kind="expression" characterId={instruction.who} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
+        <CompactResourcePicker label="本句语音" manifest={manifest} kind="voice" value={instruction.voice ?? ""} onChange={(voice) => onChange(withOptionalVoice(instruction, voice))} />
         <CompactNumber label="停顿" value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />
       </>;
     case "narrate":
@@ -244,6 +245,15 @@ function inlineInstructionFields(
 
 function CompactResourcePicker(props: ComponentProps<typeof ResourcePicker>) {
   return <div style={inlineFieldStyle}><ResourcePicker {...props} /></div>;
+}
+
+function withOptionalVoice(
+  instruction: Extract<Instruction, { t: "say" }>,
+  voice: string,
+): Extract<Instruction, { t: "say" }> {
+  const next = { ...instruction, voice: voice || undefined };
+  if (next.voice == null) delete next.voice;
+  return next;
 }
 
 function CompactNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
@@ -320,6 +330,13 @@ export function ScenarioInspector({
             characterId={instruction.who}
             value={instruction.expr ?? INSTRUCTION_DEFAULTS.say.expr}
             onChange={(expr) => onReplaceInstruction({ ...instruction, expr })}
+          />
+          <ResourcePicker
+            label="本句语音"
+            manifest={manifest}
+            kind="voice"
+            value={instruction.voice ?? ""}
+            onChange={(voice) => onReplaceInstruction(withOptionalVoice(instruction, voice))}
           />
           <OptionalMillisecondsField
             label="自动播放停顿"

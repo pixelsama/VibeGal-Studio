@@ -200,6 +200,22 @@ hero(hurt, 0ms): 别把 : 和 @ 当成语法。
     expect(result.instructions).toEqual(instructions.map(withoutStoryPointId));
   });
 
+  it("round-trips line voice in readable dialogue syntax", () => {
+    const instruction = {
+      t: "say",
+      who: "hero",
+      expr: "smile",
+      text: "这一句有语音。",
+      voice: "hero_001",
+      ms: 800,
+    } as Instruction;
+
+    const formatted = formatScenarioInstruction(instruction);
+
+    expect(formatted).toBe("hero(smile, voice=hero_001, 800ms): 这一句有语音。");
+    expect(parseScenarioLine(formatted)).toEqual({ ok: true, instruction });
+  });
+
   it("does not confuse resource ids with story-point identity", () => {
     const background = { t: "bg", id: "classroom", ms: 125 } as Instruction;
 

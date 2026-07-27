@@ -76,13 +76,14 @@ function pruneUndefined<T extends Record<string, unknown>>(value: T): T {
  * 表情与停顿写在冒号左边，右边永远是纯台词文本。
  */
 function parseSpeakerHead(head: string):
-  | { ok: true; who: string; expr?: string; ms?: number }
+  | { ok: true; who: string; expr?: string; voice?: string; ms?: number }
   | { ok: false; message: string } {
   const match = head.match(/^(.*?)\s*[(（]\s*([^)）]*)\s*[)）]$/);
   if (!match) return { ok: true, who: head };
   const who = match[1].trim();
   if (!who) return { ok: false, message: "台词需要说话人。" };
   let expr: string | undefined;
+  let voice: string | undefined;
   let ms: number | undefined;
   for (const raw of match[2].split(/[,，]/)) {
     const token = raw.trim();
@@ -94,10 +95,17 @@ function parseSpeakerHead(head: string):
       ms = parsed;
       continue;
     }
+    if (token.startsWith("voice=")) {
+      const id = token.slice("voice=".length);
+      if (!id) return { ok: false, message: "本句语音需要资源 ID，如 voice=akari_001。" };
+      if (voice != null) return { ok: false, message: "台词只能绑定一条本句语音。" };
+      voice = id;
+      continue;
+    }
     if (expr != null) return { ok: false, message: `台词只能写一个表情（收到「${token}」）。` };
     expr = token;
   }
-  return { ok: true, who, expr, ms };
+  return { ok: true, who, expr, voice, ms };
 }
 
 const BG_TRANSITIONS = new Set(["fade", "cut", "dissolve"]);
@@ -368,6 +376,7 @@ export function parseScenarioLine(line: string): ParsedLine {
         who: speaker.who,
         expr: speaker.expr,
         text: sayText,
+        voice: speaker.voice,
         ms: speaker.ms,
       }) as Instruction,
     };
@@ -424,9 +433,13 @@ function msToken(ms: number | undefined): string | undefined {
   return ms === undefined ? undefined : `${ms}ms`;
 }
 
-/** 台词的表情/停顿写在冒号左边：`雪(hurt, 1800ms): 台词`。两者都缺省时不加括号。 */
-function joinSpeakerOptions(expr: string | undefined, ms: number | undefined): string {
-  const options = [expr, msToken(ms)].filter((token): token is string => token != null && token !== "");
+/** 台词的表情/语音/停顿写在冒号左边：`雪(hurt, voice=yuki_001, 1800ms): 台词`。 */
+function joinSpeakerOptions(expr: string | undefined, voice: string | undefined, ms: number | undefined): string {
+  const options = [
+    expr,
+    voice ? `voice=${voice}` : undefined,
+    msToken(ms),
+  ].filter((token): token is string => token != null && token !== "");
   return options.length === 0 ? "" : `(${options.join(", ")})`;
 }
 
@@ -470,7 +483,7 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
     }
     case "say": {
       const expr = instruction.expr === defaults?.expr ? undefined : instruction.expr;
-      const head = joinSpeakerOptions(expr, instruction.ms);
+      const head = joinSpeakerOptions(expr, instruction.voice, instruction.ms);
       return `${instruction.who}${head}: ${instruction.text}`;
     }
     case "narrate":

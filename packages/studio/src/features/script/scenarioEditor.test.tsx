@@ -25,7 +25,7 @@ const manifest: Manifest = {
   backgrounds: {
     classroom: "assets/backgrounds/classroom.png",
   },
-  audio: { bgm: { daily: "assets/audio/daily.mp3" }, sfx: {}, voice: {} },
+  audio: { bgm: { daily: "assets/audio/daily.mp3" }, sfx: {}, voice: { akari_001: "assets/audio/akari_001.ogg" } },
   cg: { cg_001: { path: "assets/cg/cg_001.png" } },
   videos: { op: { path: "assets/videos/op.mp4" } },
 };
@@ -57,7 +57,7 @@ describe("scenario editor helpers", () => {
 describe("ScenarioInlineControls", () => {
   it("renders compact high-frequency controls beside the active line", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInlineControls, {
-      instruction: { t: "say", who: "akari", expr: "smile", text: "你好", ms: 900 } as Instruction,
+      instruction: { t: "say", who: "akari", expr: "smile", text: "你好", voice: "akari_001", ms: 900 } as Instruction,
       manifest,
       onChange: () => {},
     }));
@@ -75,6 +75,8 @@ describe("ScenarioInlineControls", () => {
 
     expect(say).toContain('aria-label="当前行可视化控件"');
     expect(say).toContain("表情");
+    expect(say).toContain("本句语音");
+    expect(say).toContain("akari_001");
     expect(say).toContain("停顿");
     expect(character).toContain("位置");
     expect(character).toContain("清场");
@@ -124,7 +126,7 @@ describe("ScenarioInspector", () => {
 
   it("renders compact current-line text fields for prose", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInspector, {
-      selection: getScenarioSelection("akari: 早上好。", 0),
+      selection: getScenarioSelection("akari(voice=akari_001): 早上好。", 0),
       manifest,
       diagnostics: [],
       onReplaceInstruction: () => {},
@@ -138,6 +140,8 @@ describe("ScenarioInspector", () => {
 
     expect(say).toContain("当前行文本");
     expect(say).toContain("早上好。");
+    expect(say).toContain("本句语音");
+    expect(say).toContain("akari_001");
     expect(say).not.toContain("textarea");
     expect(narrate).toContain("当前行文本");
     expect(narrate).toContain("新的故事从这里开始。");

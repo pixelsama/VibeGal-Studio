@@ -1193,7 +1193,7 @@ export class GraphNovelPlayer {
       storyPoint: { ...this.currentStoryPoint },
       speakerName: instr.t === "say" ? this.state.speaker?.name ?? instr.who : undefined,
       text: localized.text,
-      voiceId: this.pendingVoiceId,
+      voiceId: instr.t === "say" ? instr.voice ?? this.pendingVoiceId : this.pendingVoiceId,
       readKey: { ...this.currentReadKey },
       createdOrder,
     };

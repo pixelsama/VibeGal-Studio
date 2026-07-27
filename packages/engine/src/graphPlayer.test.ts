@@ -293,6 +293,27 @@ describe("GraphNovelPlayer playback history and skip", () => {
     player.dispose();
   });
 
+  it("lineVoicePlaysWithDialogueAndBindsToHistory", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [{
+        t: "say",
+        id: "line_01",
+        who: "hero",
+        expr: "default",
+        text: "逐行语音。",
+        voice: "lineVoice",
+      }],
+    }]);
+
+    player.advance();
+
+    expect(player.getState().audio.voice).toEqual(expect.objectContaining({ id: "lineVoice" }));
+    expect(player.getBacklog()[0]).toEqual(expect.objectContaining({ voiceId: "lineVoice" }));
+    player.dispose();
+  });
+
   it("historyDoesNotAddPauseOnlyEntry", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(baseGraph, [

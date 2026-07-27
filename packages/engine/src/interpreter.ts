@@ -135,6 +135,9 @@ export function applyInstruction(
         choice: null,
         dialogue: { text: instr.text, typedLen: 0, fullyRevealed: false },
         currentCueMs: instr.ms ?? null, // null = 跟随全局 autoAdvanceMs
+        audio: instr.voice
+          ? { ...state.audio, voice: { id: instr.voice, seq: nextSeq() } }
+          : state.audio,
       };
     }
 
