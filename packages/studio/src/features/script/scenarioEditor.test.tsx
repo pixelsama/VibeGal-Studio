@@ -196,7 +196,8 @@ describe("ScenarioInspector", () => {
     expect(effect).toContain("画面效果");
     expect(effect).toContain("shake");
     expect(transition).toContain("转场");
-    expect(transition).toContain("fade_in");
+    expect(transition).toContain("淡入");
+    expect(transition).toContain('value="fade_in"');
     expect(unlock).toContain("解锁");
     expect(unlock).toContain("true_end");
     expect(pause).toContain("停顿");
@@ -370,8 +371,8 @@ describe("ScenarioNodeLayout", () => {
     // 节点摘要沉底面板默认展开
     expect(html).toContain("data-sheet-state=\"expanded\"");
     expect(html).toContain("节点摘要");
-    // 常驻竖轨承载 Inspector 开关，展开态 aria-expanded=true
-    expect(html).toContain("aria-label=\"切换 Inspector 面板\"");
+    // 常驻竖轨承载属性面板开关，展开态 aria-expanded=true
+    expect(html).toContain("aria-label=\"切换属性面板\"");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("minmax(0, 1fr) minmax(360px, 42%) 30px");
   });

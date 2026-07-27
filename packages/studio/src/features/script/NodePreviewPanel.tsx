@@ -35,14 +35,14 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData, previewS
   if (trustRequired) return <RendererTrustPrompt projectPath={project.path} onTrust={trustRenderer} />;
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
-    return <PreviewMessage mono>{`渲染层加载失败（${rendererId}）：\n\n${detail}`}</PreviewMessage>;
+    return <PreviewMessage mono>{`界面风格加载失败（${rendererId}）：\n\n${detail}`}</PreviewMessage>;
   }
   if (!renderer) {
     // 与 Preview 一致的加载骨架：16:9 舞台占位 + 说明文字
     return (
       <div style={loadingShellStyle}>
         <div className="gs-skeleton" style={loadingStageStyle} />
-        <div style={loadingHintStyle}>加载渲染层中…</div>
+        <div style={loadingHintStyle}>加载界面风格中…</div>
       </div>
     );
   }

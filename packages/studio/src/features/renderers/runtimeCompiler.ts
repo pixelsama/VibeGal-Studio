@@ -177,9 +177,11 @@ export function __vendorShimForTest(key: string): string | null {
   return vendorShimSource(key);
 }
 
+const RENDERER_PLUGIN_NAME = "vibegal-renderer";
+
 function rendererPlugin(files: Map<string, string>): Plugin {
   return {
-    name: "vibegal-renderer",
+    name: RENDERER_PLUGIN_NAME,
     setup(build) {
       // 入口解析：entryPoints 形如 memory://index.tsx，在默认 namespace 先剥掉前缀
       build.onResolve({ filter: /^memory:\/\// }, (args) => ({
@@ -226,7 +228,7 @@ function esbuildErrorToDiagnostic(rendererId: string, error: Message): RendererD
     rendererId,
     step: "compile",
     message: unsupported
-      ? `渲染层使用了未支持的 bare import：${spec}。仅支持 react、react/jsx-runtime、react-dom、@vibegal/engine 与相对路径 import。`
+      ? `界面风格使用了未支持的 bare import：${spec}。仅支持 react、react/jsx-runtime、react-dom、@vibegal/engine 与相对路径 import。`
       : error.text,
     file: location?.file ? rendererFilePath(rendererId, normKey(location.file)) : undefined,
     line: location?.line ?? undefined,
@@ -249,7 +251,7 @@ export async function compileRenderer(
   const entry = files.some((f) => f.path === "index.tsx") ? "index.tsx"
     : files.some((f) => f.path === "index.ts") ? "index.ts"
     : null;
-  if (!entry) throw new Error("渲染层缺少 index.tsx 入口");
+  if (!entry) throw new Error("界面风格缺少 index.tsx 入口");
 
   const fileMap = new Map(files.map((f) => [normKey(f.path), f.content]));
   let result: esbuild.BuildResult & { outputFiles: esbuild.OutputFile[] };
@@ -321,16 +323,16 @@ export async function selfCheckFull(projectPath: string, rendererId: string): Pr
   const steps: string[] = [];
   try {
     const { readRendererFiles } = await import("../../lib/tauri");
-    steps.push(`1. 读取渲染层 ${rendererId} 源码`);
+    steps.push(`1. 读取界面风格 ${rendererId} 源码`);
     const files = await readRendererFiles(projectPath, rendererId);
     steps.push(`2. 读到 ${files.length} 个文件: ${files.map((f) => f.path).join(", ")}`);
 
-    steps.push("3. 编译渲染层（esbuild build + vendor shim）");
+    steps.push("3. 编译界面风格（esbuild build + vendor shim）");
     const defaultExport = await compileRenderer(files);
     steps.push(`4. 编译成功，default 导出类型: ${typeof defaultExport}`);
     if (defaultExport && typeof defaultExport === "object") {
       const m = defaultExport as { id?: string; name?: string; Component?: unknown };
-      steps.push(`5. RendererManifest: id=${m.id}, name=${m.name}, Component=${typeof m.Component}`);
+      steps.push(`5. 界面风格导出: id=${m.id}, name=${m.name}, Component=${typeof m.Component}`);
     }
     return "SELFCHECK_FULL_PASS\n" + steps.join("\n");
   } catch (e) {

@@ -183,7 +183,7 @@ function cliFailurePresentation(failure: DesktopBuildFailure): BuildFailurePrese
     case "desktop_base_path_unsupported":
       return { title: "桌面构建不支持自定义 base path", hint: null };
     case "renderer_compile_failed":
-      return { title: "渲染层编译失败", hint: "请根据下方诊断修复渲染层代码后重试。" };
+      return { title: "界面风格编译失败", hint: "请根据下方诊断修复界面风格代码后重试。" };
     default:
       return { title: "构建失败", hint: null };
   }
@@ -195,7 +195,7 @@ export function exportIssueSourceLabel(source: string): string {
   if (source === "node") return "节点内容";
   if (source === "asset") return "资产";
   if (source === "meta") return "项目设置";
-  if (source === "manifest") return "manifest";
+  if (source === "manifest") return "资源登记表";
   return source;
 }
 
@@ -225,7 +225,7 @@ const RUNTIME_OPTIONS: { id: DesktopRuntime; name: string; badge: string; descri
     id: "tauri",
     name: "Tauri 轻量模式",
     badge: "轻量",
-    description: "使用系统 WebView，产物体积更小；WebView 版本随操作系统更新，不同机器表现可能有差异。",
+    description: "使用系统网页引擎，产物体积更小；引擎版本随操作系统更新，不同机器表现可能有差异。",
   },
 ];
 
@@ -480,13 +480,13 @@ export function ExportWorkspace({
         )}
 
         <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>渲染层</span>
+          <span style={fieldLabelStyle}>界面风格</span>
           <select
             value={effectiveRendererId}
             disabled={building || project.rendererIds.length === 0}
             onChange={(event) => handleRendererChange(event.target.value)}
             style={selectStyle}
-            aria-label="渲染层"
+            aria-label="界面风格"
           >
             {project.rendererIds.map((id) => (
               <option key={id} value={id}>{id}</option>
@@ -524,15 +524,15 @@ export function ExportWorkspace({
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>高级选项</span>
           <CheckboxField
-            label="严格模式（--strict）"
-            description="任何校验问题（含警告）都会让构建失败。"
+            label="将警告视为错误"
+            description="存在警告级问题时阻止构建；项目错误始终会阻止构建。"
             checked={strict}
             disabled={building}
             onChange={handleStrictChange}
           />
           <CheckboxField
-            label="允许警告（--allow-warnings）"
-            description="存在警告级问题时仍然产出构建结果。"
+            label="仍然允许警告"
+            description="即使启用了上一项，存在警告时也继续产出构建结果。"
             checked={allowWarnings}
             disabled={building}
             onChange={handleAllowWarningsChange}
@@ -542,7 +542,7 @@ export function ExportWorkspace({
         {errorCount > 0 && (
           <div style={warnBannerStyle} role="status">
             当前项目有 {errorCount} 个错误{warnCount > 0 ? `、${warnCount} 个警告` : ""}。
-            默认仍会尝试构建；开启严格模式后校验错误将阻止构建。
+            项目错误会阻止构建；警告是否阻止构建由上方选项决定。
           </div>
         )}
         {hasUnsavedChanges && (

@@ -174,7 +174,7 @@ describe("default renderer player UI", () => {
 
     expect(html).toContain("存档 / 读档");
     expect(html).toContain("历史");
-    expect(html).toContain("CG Gallery");
+    expect(html).toContain("CG 鉴赏");
     expect(html).toContain("回想");
     expect(html).toContain("音乐鉴赏");
     expect(html).toContain("结局列表");

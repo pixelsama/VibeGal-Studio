@@ -84,14 +84,14 @@ export function Preview({ project, rendererId, initialPreviewMode = "story", onO
   }
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
-    return <Centered mono>{`渲染层加载失败（${rendererId}）：\n\n${detail}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且渲染层源码没有未支持的 import。`}</Centered>;
+    return <Centered mono>{`界面风格加载失败（${rendererId}）：\n\n${detail}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且界面风格源码没有未支持的 import。`}</Centered>;
   }
   if (!renderer) {
     // 渲染层加载期间用 16:9 骨架舞台占位，比一行字更接近真实布局
     return (
       <div style={loadingShellStyle}>
         <div className="gs-skeleton" style={loadingStageStyle} />
-        <div style={loadingHintStyle}>加载渲染层中…</div>
+        <div style={loadingHintStyle}>加载界面风格中…</div>
       </div>
     );
   }

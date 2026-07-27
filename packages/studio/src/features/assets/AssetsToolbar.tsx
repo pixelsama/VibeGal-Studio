@@ -58,7 +58,7 @@ export function AssetsToolbar({
           style={actionButtonStyle}
           onClick={onImport}
           disabled={disabled}
-          title={disabled ? "manifest 结构异常，修复后才能导入资产" : undefined}
+          title={disabled ? "资源登记表结构异常，修复后才能导入资产" : undefined}
         >
           {importLabel}
         </Button>

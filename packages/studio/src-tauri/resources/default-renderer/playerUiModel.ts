@@ -15,7 +15,7 @@ export const MANUAL_SLOT_IDS = Array.from(
 export const PLAYER_MENU_PAGES = [
   { id: "save", label: "存档 / 读档" },
   { id: "history", label: "历史" },
-  { id: "gallery", label: "CG Gallery" },
+  { id: "gallery", label: "CG 鉴赏" },
   { id: "replay", label: "回想" },
   { id: "music", label: "音乐鉴赏" },
   { id: "endings", label: "结局列表" },

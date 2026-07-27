@@ -262,7 +262,7 @@ describe("AppearanceWorkspace", () => {
       <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} initialViewMode="single" />,
     );
 
-    expect(html).toContain("此渲染层未声明可拖拽部件");
+    expect(html).toContain("此界面风格未声明可拖拽部件");
     expect(html).not.toContain('aria-label="舞台布局编辑层"');
   });
 

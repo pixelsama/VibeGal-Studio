@@ -76,7 +76,7 @@ export function NodeInspector({
   if (!node) {
     return (
       <div style={panelStyle}>
-        <div style={panelTitleStyle}>Inspector</div>
+        <div style={panelTitleStyle}>属性面板</div>
         <div style={emptyStyle}>选择一个节点查看属性</div>
       </div>
     );
@@ -90,7 +90,7 @@ export function NodeInspector({
 
   return (
     <div style={panelStyle}>
-      <div style={panelTitleStyle}>Inspector</div>
+      <div style={panelTitleStyle}>属性面板</div>
       <div style={contentStyle}>
         <section style={sectionStyle}>
           <label style={titleFieldStyle}>

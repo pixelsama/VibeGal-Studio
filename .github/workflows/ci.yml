@@ -62,6 +62,9 @@ jobs:
       - name: Documentation contract check
         run: pnpm run check:doc-contract
 
+      - name: Creator vocabulary check
+        run: pnpm run check:vocabulary
+
       - name: Release smoke scripts
         run: pnpm smoke:release
 

@@ -8,16 +8,16 @@ describe("CollapsibleSidebar", () => {
     const html = renderToStaticMarkup(createElement(
       CollapsibleSidebar,
       {
-        title: "渲染层",
+        title: "界面风格",
         collapsed: false,
         onCollapsedChange: () => {},
         expandedWidth: 180,
-        collapsedLabel: "渲染层",
+        collapsedLabel: "界面风格",
       },
       createElement("button", { type: "button" }, "default"),
     ));
 
-    expect(html).toContain("渲染层");
+    expect(html).toContain("界面风格");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("width:180px");
     expect(html).toContain("lucide-chevron-left");

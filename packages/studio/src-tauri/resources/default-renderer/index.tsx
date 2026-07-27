@@ -130,7 +130,7 @@ const appearanceGroups = [
 
 const defaultRenderer: RendererManifest = {
   id: "default",
-  name: "默认渲染层",
+  name: "默认界面风格",
   contractVersion: 1,
   capabilities: ["player-ui-v1", "gallery-ui-v1", "layout-parts-v1"],
   appearance: { groups: appearanceGroups },

@@ -81,7 +81,7 @@ export function AssetCard({
             "剧本无法引用"
           ) : (
             <>
-              manifest {refCount} / 剧本 {usageCount}
+              登记 {refCount} / 剧本 {usageCount}
               {unusedInStory && " · 未使用"}
             </>
           )}

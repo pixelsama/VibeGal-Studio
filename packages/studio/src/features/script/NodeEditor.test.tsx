@@ -154,8 +154,8 @@ describe("NodeEditor scenario surface", () => {
     expect(html).not.toContain("+ 台词");
     expect(html).toContain("aria-label=\"插入当前行命令\"");
     expect(html).toContain("data-node-view-layout=\"editor-preview-inspector\"");
-    expect(html).toContain("aria-label=\"切换 Inspector 面板\"");
-    expect(html).toContain("aria-label=\"调整 Inspector 宽度\"");
+    expect(html).toContain("aria-label=\"切换属性面板\"");
+    expect(html).toContain("aria-label=\"调整属性面板宽度\"");
     expect(html).not.toContain("节点出口");
     expect(html).not.toContain("连接下一个节点");
     expect(html).not.toContain("添加玩家选择");

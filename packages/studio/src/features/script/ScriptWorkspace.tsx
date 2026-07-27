@@ -530,7 +530,7 @@ export function ScriptWorkspace({
         : `${nodes.length} 个节点`;
     const affected = referencesAffectedByNodeDeletion(project.content.manifest, uniqueIds);
     const referenceWarning = affected.length > 0
-      ? `\n受影响的登记引用：${affected.map((item) => `${item.registry}:${item.id}`).join("、")}。这些 manifest 条目不会自动删除，保存后校验会标出它们。`
+      ? `\n受影响的登记引用：${affected.map((item) => `${item.registry}:${item.id}`).join("、")}。这些资源登记条目不会自动删除，保存后校验会标出它们。`
       : "";
     setConfirm({
       message: `确定删除${label}？节点文件也会被删除。${referenceWarning}`,

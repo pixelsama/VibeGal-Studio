@@ -139,16 +139,16 @@ export function ScenarioNodeLayout({
         <button
           type="button"
           className="gs-inspector-rail"
-          aria-label="切换 Inspector 面板"
+          aria-label="切换属性面板"
           aria-controls={inspectorPaneId}
           aria-expanded={!inspectorCollapsed}
-          title={inspectorCollapsed ? "显示 Inspector" : "收起 Inspector"}
+          title={inspectorCollapsed ? "显示属性面板" : "收起属性面板"}
           onClick={onToggleInspectorPane}
           style={railButtonStyle}
         >
           {inspectorCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
         </button>
-        <span style={railLabelStyle}>Inspector</span>
+        <span style={railLabelStyle}>属性</span>
       </div>
       {resizeHandle}
     </div>
@@ -417,6 +417,13 @@ export function ScenarioInspector({
             label="类型"
             value={instruction.type}
             options={["fade_in", "fade_out", "white_in", "white_out", "black"]}
+            optionLabels={{
+              fade_in: "淡入",
+              fade_out: "淡出",
+              white_in: "白场淡入",
+              white_out: "白场淡出",
+              black: "黑场",
+            }}
             onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
           />
           <NumberField

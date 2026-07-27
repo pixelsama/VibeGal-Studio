@@ -498,7 +498,7 @@ export async function runWebRuntimeUiBehaviorSmoke(
 
   sessionStorage.removeItem(UI_SMOKE_PHASE_KEY);
   const services = runtime.rendererProps().runtime;
-  if (!services) throw new Error("Default renderer UI smoke requires runtime services.");
+  if (!services) throw new Error("默认界面风格 UI 冒烟测试需要运行时服务。");
   // 标题门（Spec 21）：重载后同样先落在标题画面，点「开始游戏」回剧情。
   await clickUiButton('[data-title-action="start"]');
   await waitForCondition(
@@ -553,7 +553,7 @@ export async function runWebRuntimeUiBehaviorSmoke(
 
 async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokePhase> {
   const services = runtime.rendererProps().runtime;
-  if (!services) throw new Error("Default renderer UI smoke requires runtime services.");
+  if (!services) throw new Error("默认界面风格 UI 冒烟测试需要运行时服务。");
   const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
   // 标题门（Spec 21 §7）：真实启动先呈现标题画面——先断言「开始游戏」出现并
   // 点击，再做 stage-click 推进断言，标题门从 smoke 的破坏者变成被测路径。
@@ -940,7 +940,7 @@ export async function startVibeGalWebRuntime(rendererManifest: RendererManifest)
 
   const gameManifest = await fetchJson<GameManifest>("./game.manifest.json");
   if (gameManifest.contractVersion !== RENDERER_CONTRACT_VERSION) {
-    throw new Error(`Renderer contract mismatch: ${gameManifest.contractVersion}`);
+    throw new Error(`界面风格契约版本不匹配：${gameManifest.contractVersion}`);
   }
   const content = await loadExportedContent(gameManifest.basePath || "./");
   const smokeRequested = new URLSearchParams(window.location.search).get("vibegalSmoke") === "1";

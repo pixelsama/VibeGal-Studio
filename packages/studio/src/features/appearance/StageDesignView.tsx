@@ -248,7 +248,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
       <SceneFixtureView project={previewProject} renderer={renderer} scene={scene} />
       {!layoutSupported && (
         <div style={hintBarStyle} role="status">
-          此渲染层未声明可拖拽部件（缺少 layout-parts-v1 capability）
+          此界面风格未声明可拖拽部件（缺少布局编辑能力）
         </div>
       )}
       {overlayActive && (

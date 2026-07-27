@@ -10,14 +10,14 @@ describe("Toast", () => {
       toast: {
         id: 1,
         kind: "error",
-        message: "保存 manifest 失败",
+        message: "保存资源登记表失败",
         detail: "磁盘文件已被外部修改，当前草稿已保留。",
       },
       onClose: () => {},
     }));
 
     expect(html).toContain("role=\"alert\"");
-    expect(html).toContain("保存 manifest 失败");
+    expect(html).toContain("保存资源登记表失败");
     expect(html).toContain("当前草稿已保留");
     expect(html).toContain("aria-label=\"关闭消息\"");
   });

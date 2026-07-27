@@ -140,7 +140,7 @@ export function AppearanceSection({
   return (
     <section style={sectionStyle}>
       <h2 style={sectionTitleStyle}>外观</h2>
-      <p style={sectionDescStyle}>选择编辑器界面的配色主题。预览区（游戏渲染层）不受影响。</p>
+      <p style={sectionDescStyle}>选择编辑器界面的配色主题。游戏的界面风格不受影响。</p>
       <div style={themeCardRowStyle}>
         <ThemeCard
           mode="system"

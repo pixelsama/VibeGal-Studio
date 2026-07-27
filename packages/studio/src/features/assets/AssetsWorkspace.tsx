@@ -349,7 +349,7 @@ export function AssetsWorkspace({
     if (readOnly || cleanupProposal.removeSources.length === 0) return;
     setConfirm({
       message: [
-        `将从 manifest 移除 ${cleanupProposal.removeSources.length} 个未使用或悬空条目。`,
+        `将从资源登记表移除 ${cleanupProposal.removeSources.length} 个未使用或悬空条目。`,
         "不会删除磁盘文件。",
         ...cleanupProposal.diffPreview.slice(0, 8),
       ].join("\n"),
@@ -402,7 +402,7 @@ export function AssetsWorkspace({
       <div style={mainStyle}>
         {manifestInvalid && (
           <div style={invalidBannerStyle}>
-            manifest 结构异常（可能是旧格式），资产操作已禁用。详见右下角问题面板。
+            资源登记表结构异常（可能是旧格式），资产操作已禁用。详见右下角问题面板。
           </div>
         )}
         {section === "character" ? (
@@ -438,9 +438,9 @@ export function AssetsWorkspace({
             )}
             {cleanupProposal.removeSources.length > 0 && (
               <div style={cleanupBarStyle}>
-                <span>{`Cleanup dry-run: ${cleanupProposal.removeSources.length} 个 manifest 条目可清理，${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未注册`}</span>
+                <span>{`清理预览：${cleanupProposal.removeSources.length} 个资源登记条目可清理，${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未登记`}</span>
                 <button type="button" style={cleanupButtonStyle} onClick={handleCleanupManifestEntries} disabled={readOnly}>
-                  确认清理 manifest
+                  确认清理登记条目
                 </button>
               </div>
             )}
@@ -611,7 +611,7 @@ export async function persistManifestWithFeedback({
 export function createManifestSaveFailureToast(error: unknown): ToastInput {
   return {
     kind: "error",
-    message: "保存 manifest 失败",
+    message: "保存资源登记表失败",
     detail: `${formatUnknownError(error)}。当前草稿已保留。`,
   };
 }
@@ -643,7 +643,7 @@ export function createAssetDeleteFailureToast(
   if (!result.deleted && result.manifestSaveFailed) {
     return {
       kind: "error",
-      message: "manifest 更新失败，未删除资产",
+      message: "资源登记表更新失败，未删除资产",
       detail: `${relPath}\n${formatUnknownError(result.error)}。资产及原引用均已保留。`,
     };
   }
@@ -659,7 +659,7 @@ export function createAssetDeleteFailureToast(
   if (result.manifestSaveFailed) {
     return {
       kind: "error",
-      message: "资产已删除，但 manifest 更新失败",
+      message: "资产已删除，但资源登记表更新失败",
       detail: `${relPath}\n${formatUnknownError(result.error)}。请刷新项目后检查悬空引用。`,
     };
   }
@@ -819,7 +819,7 @@ function ExtendedAssetRegistryEditor({
               }} />
             ))}
             {Object.keys(skin.assets ?? {}).length === 0 && (
-              <div style={registryEmptyTextStyle}>没有外观资源槽；导入或登记外观资源会创建 default 槽。</div>
+              <div style={registryEmptyTextStyle}>没有外观资源槽；导入或登记外观资源会创建默认槽。</div>
             )}
           </RegistryCard>
         ))}
@@ -855,7 +855,7 @@ function RegistryPanel({ title, empty, children }: { title: string; empty: boole
     <section style={registryPanelStyle} aria-label={title}>
       <div style={registryPanelHeaderStyle}>
         <span style={registryPanelTitleStyle}>{title}</span>
-        <span style={registryPanelHintStyle}>导入/登记后在这里编辑 manifest 字段，统一通过底部草稿条保存。</span>
+        <span style={registryPanelHintStyle}>导入或登记后可在这里编辑资源信息，并统一通过底部草稿条保存。</span>
       </div>
       {empty ? (
         <EmptyState icon={Inbox} title="暂无条目" description="可先导入该类型资产，或登记当前分类下的孤儿文件。" />

@@ -130,12 +130,12 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
             style={{ ...smallBtnStyle, opacity: disabled ? 0.48 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
             onClick={addCharacter}
             disabled={disabled}
-            title={disabled ? "manifest 结构异常，修复后才能编辑角色" : undefined}
+            title={disabled ? "资源登记表结构异常，修复后才能编辑角色" : undefined}
           >
             ＋ 新建
           </button>
         </div>
-        {disabled && <div style={readOnlyHintStyle}>manifest 结构异常，角色编辑已禁用。</div>}
+        {disabled && <div style={readOnlyHintStyle}>资源登记表结构异常，角色编辑已禁用。</div>}
         <div style={listStyle}>
           {characterIds.length === 0 && <div style={emptyRowStyle}>暂无角色</div>}
           {characterIds.map((id) => (
@@ -279,7 +279,7 @@ function CharacterStage({ char, projectPath }: { char: ManifestCharacter; projec
           placeholderStyle={stagePlaceholderStyle}
         />
       ) : (
-        <span style={stagePlaceholderStyle}>未设置 default 表情</span>
+        <span style={stagePlaceholderStyle}>未设置默认表情</span>
       )}
       <div style={{ ...stageNameStyle, color: char.color }}>
         {char.name}
@@ -415,7 +415,7 @@ function SpriteExprAddForm({
         style={{ ...smallBtnStyle, opacity: busy || disabled ? 0.5 : 1, cursor: busy || disabled ? "not-allowed" : "pointer" }}
         disabled={disabled || busy}
         onClick={() => onAdd(draft)}
-        title={disabled ? "manifest 结构异常，修复后才能导入角色图片" : "选择图片；表情名留空时会自动生成"}
+        title={disabled ? "资源登记表结构异常，修复后才能导入角色图片" : "选择图片；表情名留空时会自动生成"}
       >
         {busy ? "导入中…" : "选择图片"}
       </button>

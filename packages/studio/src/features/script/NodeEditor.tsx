@@ -885,7 +885,7 @@ export function NodeEditor({
   ) : (
     <div style={jsonInspectorStyle}>
       <div style={titleStyle}>JSON 高级模式</div>
-      <div style={helperTextStyle}>返回剧本模式后可使用 Inspector 编辑当前行。</div>
+      <div style={helperTextStyle}>返回剧本模式后可使用属性面板编辑当前行。</div>
       <div style={helperTextStyle}>
         {JSON_IDENTITY_GUIDANCE}
       </div>
@@ -914,7 +914,7 @@ export function NodeEditor({
       resizeHandle={!inspectorPaneLayout.collapsed && (
         <div
           role="separator"
-          aria-label="调整 Inspector 宽度"
+          aria-label="调整属性面板宽度"
           aria-orientation="vertical"
           className="gs-resize-handle"
           onPointerDown={handleInspectorResizeStart}

@@ -117,7 +117,7 @@ export function projectIssueSourceLabel(source: string): string {
   if (source === "asset") return "资产";
   if (source === "variables") return "故事状态";
   if (source === "meta") return "项目设置";
-  if (source === "manifest") return "manifest";
+  if (source === "manifest") return "资源登记表";
   return source;
 }
 
@@ -212,7 +212,7 @@ export function Workspace({
     try {
       await saveProjectMetaQueued({ ...project.meta, activeRendererId: id });
     } catch (e) {
-      console.warn("持久化渲染层失败:", e);
+      console.warn("持久化界面风格失败:", e);
     }
   }, [project.meta, rendererId, saveProjectMetaQueued]);
 

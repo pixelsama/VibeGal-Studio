@@ -138,6 +138,10 @@ describe("projectIssueSourceLabel", () => {
   it("labels meta issues as project settings", () => {
     expect(projectIssueSourceLabel("meta")).toBe("项目设置");
   });
+
+  it("labels manifest issues with creator vocabulary", () => {
+    expect(projectIssueSourceLabel("manifest")).toBe("资源登记表");
+  });
 });
 
 const project: ProjectData = {

@@ -163,7 +163,7 @@ describe("formatElapsedSeconds", () => {
 });
 
 describe("ExportWorkspace 渲染", () => {
-  it("默认渲染：运行时卡片、渲染层、默认输出目录与构建按钮", () => {
+  it("默认渲染：运行时卡片、界面风格、默认输出目录与构建按钮", () => {
     const html = renderToStaticMarkup(
       createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
     );
@@ -176,6 +176,11 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).toContain("/project/dist/desktop-electron");
     expect(html).toContain('value="default"');
     expect(html).toContain("构建桌面游戏");
+    expect(html).toContain("界面风格");
+    expect(html).toContain("将警告视为错误");
+    expect(html).toContain("仍然允许警告");
+    expect(html).not.toContain("--strict");
+    expect(html).not.toContain("--allow-warnings");
     expect(html).not.toContain("构建成功");
     expect(html).not.toContain("data-testid=\"build-failure-panel\"");
   });
@@ -253,6 +258,7 @@ describe("ExportWorkspace 渲染", () => {
     );
 
     expect(html).toContain("当前项目有 1 个错误");
+    expect(html).toContain("项目错误会阻止构建");
   });
 
   it("有未保存草稿时提示构建只读磁盘文件", () => {
@@ -350,7 +356,7 @@ describe("ExportWorkspace 渲染", () => {
           { severity: "error", source: "node", code: "missing_field", message: "节点缺少 title 字段" } as ProjectIssue,
         ],
         diagnostics: [
-          { severity: "error", message: "渲染层编译失败", file: "renderers/default/index.tsx", line: 10, column: 2 },
+          { severity: "error", message: "界面风格编译失败", file: "renderers/default/index.tsx", line: 10, column: 2 },
         ],
       },
     };
@@ -368,7 +374,7 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).toContain("阶段：validate");
     expect(html).toContain("content/nodes/intro.json:3:5");
     expect(html).toContain("节点缺少 title 字段");
-    expect(html).toContain("渲染层编译失败");
+    expect(html).toContain("界面风格编译失败");
     expect(html).toContain("renderers/default/index.tsx:10:2");
   });
 

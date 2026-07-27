@@ -144,7 +144,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
     } catch (error) {
       notify({
         kind: "error",
-        message: "保存 manifest 失败",
+        message: "保存资源登记表失败",
         detail: `${error instanceof Error ? error.message : String(error)}。改动仍保留在面板里。`,
       });
     }
@@ -257,14 +257,14 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
     return (
-      <CenteredMessage mono>{`渲染层加载失败（${rendererId}）：\n\n${detail}\n\n外观面板需要一个可加载的渲染层来预览 token 效果。`}</CenteredMessage>
+      <CenteredMessage mono>{`界面风格加载失败（${rendererId}）：\n\n${detail}\n\n外观面板需要一个可加载的界面风格来预览参数效果。`}</CenteredMessage>
     );
   }
   if (!renderer) {
     return (
       <div style={loadingShellStyle}>
         <div className="gs-skeleton" style={loadingStageStyle} />
-        <div style={loadingHintStyle}>加载渲染层中…</div>
+        <div style={loadingHintStyle}>加载界面风格中…</div>
       </div>
     );
   }
@@ -276,20 +276,20 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
         {conflict && (
           <div style={conflictBannerStyle} role="alert">
             <span style={conflictTextStyle}>
-              manifest 已在磁盘上被修改（revision 冲突），最近的外观改动未保存。重新加载后可继续编辑。
+              资源登记表已在磁盘上被修改（版本冲突），最近的外观改动未保存。重新加载后可继续编辑。
             </span>
             <Button variant="primary" onClick={handleReloadAfterConflict}>重新加载</Button>
           </div>
         )}
         {manifestInvalid ? (
           <div style={conflictBannerStyle} role="alert">
-            <span style={conflictTextStyle}>manifest 结构异常（可能是旧格式），外观编辑已禁用。详见右下角问题面板。</span>
+            <span style={conflictTextStyle}>资源登记表结构异常（可能是旧格式），外观编辑已禁用。详见右下角问题面板。</span>
           </div>
         ) : skinId === null ? (
           <EmptyState
             icon={Palette}
             title="尚未启用外观编辑"
-            description={"启用后会在 manifest 写入一个空的 uiSkins.default（name 为「默认外观」），\n之后即可用左侧属性与舞台拖拽调整外观；不改动任何其它文件。"}
+            description={"启用后会在资源登记表中创建「默认外观」，\n之后即可用左侧属性与舞台拖拽调整外观；不改动任何其他文件。"}
             action={<Button variant="primary" onClick={handleEnableAppearance}>启用外观编辑</Button>}
           />
         ) : (

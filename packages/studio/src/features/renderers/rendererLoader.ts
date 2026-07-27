@@ -22,7 +22,11 @@ let rendererCacheVersion = 0;
 export class RendererTrustRequiredError extends Error {
   readonly code = "renderer_trust_required";
 
-  constructor(readonly projectPath: string) {
+  constructor(
+    readonly projectPath: string,
+    readonly rendererId: string,
+    readonly fingerprint: string,
+  ) {
     super("项目界面风格包含会执行的代码。请仅在信任此项目来源时授权运行。");
     this.name = "RendererTrustRequiredError";
   }
@@ -56,7 +60,7 @@ function manifestDiagnostics(raw: unknown, rendererId: string, files: { path: st
       code: "renderer_missing_default_export",
       rendererId,
       step: "manifest",
-      message: `Renderer ${rendererId} must default-export a RendererManifest.`,
+      message: `界面风格「${rendererId}」必须通过 default export 导出 RendererManifest。`,
       file,
       ...sourceLocation(source, 0),
     }];
@@ -69,7 +73,7 @@ function manifestDiagnostics(raw: unknown, rendererId: string, files: { path: st
       code: "renderer_manifest_id_mismatch",
       rendererId,
       step: "manifest",
-      message: `Renderer manifest id must match directory id "${rendererId}".`,
+      message: `界面风格标识必须与目录名「${rendererId}」一致。`,
       file,
       ...findPropertyLocation(source, "id"),
     });
@@ -80,7 +84,7 @@ function manifestDiagnostics(raw: unknown, rendererId: string, files: { path: st
       code: "renderer_contract_missing",
       rendererId,
       step: "contract",
-      message: `Renderer ${rendererId} is missing contractVersion.`,
+      message: `界面风格「${rendererId}」缺少 contractVersion。`,
       file,
       ...sourceLocation(source, source.indexOf("export default") >= 0 ? source.indexOf("export default") : 0),
     });
@@ -90,7 +94,7 @@ function manifestDiagnostics(raw: unknown, rendererId: string, files: { path: st
       code: "renderer_contract_unsupported",
       rendererId,
       step: "contract",
-      message: `Unsupported renderer contract version ${String(manifest.contractVersion)}; expected ${RENDERER_CONTRACT_VERSION}.`,
+      message: `不支持界面风格契约版本 ${String(manifest.contractVersion)}；期望版本为 ${RENDERER_CONTRACT_VERSION}。`,
       file,
       ...findPropertyLocation(source, "contractVersion"),
     });
@@ -120,7 +124,7 @@ export async function loadRenderer(
   const { files, fingerprint } = source;
   const assertExecutionTrusted = () => {
     if (!isProjectRendererTrusted(projectPath, rendererId, fingerprint)) {
-      throw new RendererTrustRequiredError(projectPath);
+      throw new RendererTrustRequiredError(projectPath, rendererId, fingerprint);
     }
   };
   assertExecutionTrusted();
@@ -145,7 +149,7 @@ export async function loadAllRenderers(
 ): Promise<RendererManifest[]> {
   const results = await Promise.allSettled(rendererIds.map((id) => loadRenderer(projectPath, id)));
   return results
-    .map((r, i) => (r.status === "fulfilled" ? r.value : (console.warn(`渲染层 ${rendererIds[i]} 加载失败:`, r.reason), null)))
+    .map((r, i) => (r.status === "fulfilled" ? r.value : (console.warn(`界面风格 ${rendererIds[i]} 加载失败:`, r.reason), null)))
     .filter((m): m is RendererManifest => m !== null);
 }
 

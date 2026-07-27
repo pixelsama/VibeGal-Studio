@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RendererManifest } from "@vibegal/engine";
 import { rendererSourceFingerprint } from "../../lib/tauri";
-import { getRendererDiagnostics, loadRenderer, type RendererDiagnostic } from "../renderers/rendererLoader";
+import {
+  getRendererDiagnostics,
+  loadRenderer,
+  RendererTrustRequiredError,
+  type RendererDiagnostic,
+} from "../renderers/rendererLoader";
 import {
   initializeRendererTrust,
   isProjectRendererTrusted,
@@ -50,6 +55,15 @@ export function useRendererComponent(projectPath: string, rendererId: string) {
     };
   }, [projectPath, rendererId]);
 
+  const refreshTrustPrompt = useCallback((error: unknown): boolean => {
+    if (!(error instanceof RendererTrustRequiredError)) return false;
+    setRenderer(null);
+    setLoadError(null);
+    setLoadDiagnostics([]);
+    setFingerprint(error.fingerprint);
+    return true;
+  }, []);
+
   const trustRenderer = useCallback(async () => {
     if (!fingerprint) return;
     await trustProjectRenderer(projectPath, rendererId, fingerprint);
@@ -60,10 +74,11 @@ export function useRendererComponent(projectPath: string, rendererId: string) {
     try {
       setRenderer(await loadRenderer(projectPath, rendererId));
     } catch (error) {
+      if (refreshTrustPrompt(error)) return;
       setLoadDiagnostics(getRendererDiagnostics(error) ?? []);
       setLoadError(error instanceof Error ? error.message : String(error));
     }
-  }, [fingerprint, projectPath, rendererId]);
+  }, [fingerprint, projectPath, rendererId, refreshTrustPrompt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +90,7 @@ export function useRendererComponent(projectPath: string, rendererId: string) {
       })
       .catch((error) => {
         if (!cancelled) {
+          if (refreshTrustPrompt(error)) return;
           setLoadDiagnostics(getRendererDiagnostics(error) ?? []);
           setLoadError(error instanceof Error ? error.message : String(error));
         }
@@ -83,7 +99,7 @@ export function useRendererComponent(projectPath: string, rendererId: string) {
     return () => {
       cancelled = true;
     };
-  }, [projectPath, rendererId, fingerprint, trusted]);
+  }, [projectPath, rendererId, fingerprint, trusted, refreshTrustPrompt]);
 
   return {
     renderer,

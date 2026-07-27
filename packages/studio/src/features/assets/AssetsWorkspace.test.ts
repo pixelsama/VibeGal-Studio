@@ -400,7 +400,7 @@ describe("asset workspace feedback", () => {
     expect(draft?.characters.hero.name).toBe("新名字");
   });
 
-  it("保存 manifest 失败时保留草稿并显示可见错误反馈", async () => {
+  it("保存资源登记表失败时保留草稿并显示可见错误反馈", async () => {
     const next: Manifest = {
       ...base,
       backgrounds: { ...base.backgrounds, night: "assets/backgrounds/night.png" },
@@ -430,7 +430,7 @@ describe("asset workspace feedback", () => {
     expect(draft).toBe(next);
     expect(refreshed).toBe(false);
     expect(toast?.kind).toBe("error");
-    expect(toast?.message).toContain("保存 manifest 失败");
+    expect(toast?.message).toContain("保存资源登记表失败");
     expect(toast?.detail).toContain("revision conflict");
     expect(toast?.detail).toContain("当前草稿已保留");
   });
@@ -568,7 +568,7 @@ describe("asset workspace feedback", () => {
 
     expect(draft).toBe(next);
     expect(toast?.kind).toBe("error");
-    expect(toast?.message).toBe("保存 manifest 失败");
+    expect(toast?.message).toBe("保存资源登记表失败");
     expect(toast?.detail).toContain("revision conflict");
   });
 
@@ -613,7 +613,7 @@ describe("asset workspace feedback", () => {
     );
 
     expect(toast?.kind).toBe("error");
-    expect(toast?.message).toBe("资产已删除，但 manifest 更新失败");
+    expect(toast?.message).toBe("资产已删除，但资源登记表更新失败");
     expect(toast?.detail).toContain("assets/backgrounds/sky.png");
     expect(toast?.detail).toContain("revision conflict");
   });
@@ -692,7 +692,7 @@ describe("read-only asset UI", () => {
     }));
 
     expect(html).toContain("disabled");
-    expect(html).toContain("manifest 结构异常");
+    expect(html).toContain("资源登记表结构异常");
   });
 
   it("hides asset mutation buttons in read-only cards", () => {
@@ -727,7 +727,7 @@ describe("read-only asset UI", () => {
     }));
 
     expect(html).toContain("disabled");
-    expect(html).toContain("manifest 结构异常");
+    expect(html).toContain("资源登记表结构异常");
   });
 });
 

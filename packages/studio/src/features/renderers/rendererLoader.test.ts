@@ -62,9 +62,31 @@ describe("loadRenderer", () => {
 
     await expect(loadRenderer("/project", "default")).rejects.toMatchObject({
       code: "renderer_trust_required",
+      projectPath: "/project",
+      rendererId: "default",
+      fingerprint: SOURCE_FINGERPRINT,
     });
     expect(readRendererSource).toHaveBeenCalledWith("/project", "default");
     expect(compileRenderer).not.toHaveBeenCalled();
+  });
+
+  it("reports the current source fingerprint when trust is stale", async () => {
+    const { readRendererSource } = await import("../../lib/tauri");
+    const { loadRenderer } = await import("./rendererLoader");
+    const { trustProjectRenderer } = await import("./rendererTrust");
+
+    await trustProjectRenderer("/project", "default", "old-source-hash");
+    vi.mocked(readRendererSource).mockResolvedValueOnce({
+      files: [{ path: "index.tsx", content: "export default {};" }],
+      fingerprint: "new-source-hash",
+    });
+
+    await expect(loadRenderer("/project", "default")).rejects.toMatchObject({
+      code: "renderer_trust_required",
+      projectPath: "/project",
+      rendererId: "default",
+      fingerprint: "new-source-hash",
+    });
   });
 
   it("does not return a cached renderer after project trust is revoked", async () => {

@@ -264,53 +264,53 @@ export function validateRendererManifestContract(raw: unknown): RendererManifest
   const issues: RendererManifestIssue[] = [];
   const manifest = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
   if (!manifest) {
-    return [{ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest must be an object." }];
+    return [{ level: "error", code: "renderer_manifest_invalid", message: "界面风格导出必须是对象。" }];
   }
 
   if (typeof manifest.id !== "string" || manifest.id.trim() === "") {
-    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest id must be a non-empty string." });
+    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 id 必须是非空字符串。" });
   }
   if (typeof manifest.name !== "string" || manifest.name.trim() === "") {
-    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest name must be a non-empty string." });
+    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 name 必须是非空字符串。" });
   }
   if (manifest.contractVersion !== RENDERER_CONTRACT_VERSION) {
     issues.push({
       level: "error",
       code: "renderer_contract_unsupported",
-      message: `Unsupported renderer contract version ${String(manifest.contractVersion)}; expected ${RENDERER_CONTRACT_VERSION}.`,
+      message: `不支持界面风格契约版本 ${String(manifest.contractVersion)}；期望版本为 ${RENDERER_CONTRACT_VERSION}。`,
     });
   }
   if (typeof manifest.Component !== "function") {
-    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest Component must be a React component function." });
+    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 Component 必须是 React 组件函数。" });
   }
   if (manifest.capabilities != null && (!Array.isArray(manifest.capabilities) || !manifest.capabilities.every((item) => typeof item === "string"))) {
-    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest capabilities must be a string array when present." });
+    issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 capabilities 如有提供，必须是字符串数组。" });
   }
   if (manifest.appearance != null) {
     const appearance = manifest.appearance;
     if (!appearance || typeof appearance !== "object" || !Array.isArray((appearance as Record<string, unknown>).groups)) {
-      issues.push({ level: "error", code: "renderer_manifest_invalid", message: "Renderer manifest appearance.groups must be an array when appearance is present." });
+      issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 appearance.groups 必须是数组。" });
     } else {
       const groups = (appearance as { groups: unknown[] }).groups;
       groups.forEach((group, groupIndex) => {
         if (!group || typeof group !== "object") {
-          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex} must be an object.` });
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观分组 ${groupIndex} 必须是对象。` });
           return;
         }
         const record = group as Record<string, unknown>;
         if (typeof record.id !== "string" || record.id.trim() === "" || typeof record.label !== "string" || record.label.trim() === "") {
-          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex} requires non-empty id and label.` });
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观分组 ${groupIndex} 需要非空的 id 和 label。` });
         }
         if (record.parts != null && (!Array.isArray(record.parts) || !record.parts.every((part) => typeof part === "string" && part.trim() !== ""))) {
-          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex}.parts must be a string array when present.` });
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观分组 ${groupIndex}.parts 如有提供，必须是字符串数组。` });
         }
         if (!Array.isArray(record.controls)) {
-          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance group ${groupIndex}.controls must be an array.` });
+          issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观分组 ${groupIndex}.controls 必须是数组。` });
           return;
         }
         record.controls.forEach((control, controlIndex) => {
           if (!control || typeof control !== "object") {
-            issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance control ${groupIndex}.${controlIndex} must be an object.` });
+            issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观控件 ${groupIndex}.${controlIndex} 必须是对象。` });
             return;
           }
           const controlRecord = control as Record<string, unknown>;
@@ -322,11 +322,11 @@ export function validateRendererManifestContract(raw: unknown): RendererManifest
             || controlRecord.label.trim() === ""
             || !validKinds.includes(controlRecord.kind as string)
           ) {
-            issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance control ${groupIndex}.${controlIndex} requires key, label and kind number|color|checkbox|font|text.` });
+            issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观控件 ${groupIndex}.${controlIndex} 需要 key、label，以及 number|color|checkbox|font|text 之一的 kind。` });
           }
           for (const field of ["min", "max", "step"]) {
             if (controlRecord[field] != null && (typeof controlRecord[field] !== "number" || !Number.isFinite(controlRecord[field]))) {
-              issues.push({ level: "error", code: "renderer_manifest_invalid", message: `Renderer appearance control ${groupIndex}.${controlIndex}.${field} must be a finite number when present.` });
+              issues.push({ level: "error", code: "renderer_manifest_invalid", message: `界面风格的外观控件 ${groupIndex}.${controlIndex}.${field} 如有提供，必须是有限数值。` });
             }
           }
         });
