@@ -80,6 +80,19 @@ import type { ComponentType, ReactNode } from "react";
 
   export type ChapterCheckpoint = { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; };
 
+  export interface ChapterEntry {
+    id: string;
+    title: string;
+    isProjectEntry: boolean;
+    safe: boolean;
+    checkpoint?: ChapterCheckpoint;
+  }
+
+  export interface ChapterService {
+    list(): ChapterEntry[];
+    start(chapterId: string): RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
+  }
+
   export type CharInstr = { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; scale: number; flip: boolean; exprMs: number; moveFrom?: string | undefined; };
 
   export type CharacterSpriteRef = string | { atlas: string; clip: string; fallback: string; };
@@ -104,7 +117,7 @@ import type { ComponentType, ReactNode } from "react";
     listEndings(): Array<{ id: string; title: string; nodeId?: string }>;
   }
 
-  export type GlobalPersistentRecord = { schemaVersion: 2; projectId: string; readText: { nodeId: string; instructionId: string; textHash: string; }[]; unlockedCg: string[]; unlockedMusic: string[]; unlockedReplays: string[]; unlockedEndings: string[]; playthroughCount: number; globalVars: Record<string, string | number | boolean | null>; lastEndingId: string | null; settledEndings: Record<string, Record<string, { completedAt: string; }>>; appliedGlobalEffects: Record<string, string[]>; };
+  export type GlobalPersistentRecord = { schemaVersion: 2; projectId: string; readText: { nodeId: string; instructionId: string; textHash: string; }[]; unlockedCg: string[]; unlockedMusic: string[]; unlockedReplays: string[]; unlockedChapters: string[]; unlockedEndings: string[]; playthroughCount: number; globalVars: Record<string, string | number | boolean | null>; lastEndingId: string | null; settledEndings: Record<string, Record<string, { completedAt: string; }>>; appliedGlobalEffects: Record<string, string[]>; };
 
   export type GraphChapterData = { id: string; title: string; checkpoint?: { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; } | undefined; };
 
@@ -137,10 +150,16 @@ import type { ComponentType, ReactNode } from "react";
     settingsFallback?: Pick<RuntimeSettingsRecord, "textSpeedCps" | "autoAdvanceMs">;
     audio?: Partial<RuntimeAudioBridge>;
     manifest?: Manifest;
+    graph?: ProjectGraphData;
     variables?: VariableRegistry;
     media?: Partial<MediaService>;
     onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
+    startChapter?: (checkpoint: ChapterCheckpoint) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
     startReplay?: (nodeId: string) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
+    isReplayActive?: () => boolean;
+    exitReplay?: () => void;
+    subscribeReplay?: (listener: (active: boolean) => void) => () => void;
+    persistenceEnabled?: () => boolean;
     rollbackTo?: (point: StoryPointId) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
     rollbackHistoryEntry?: (entryId: string) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
     replayVoice?: (entryId: string) => void;
@@ -260,6 +279,7 @@ import type { ComponentType, ReactNode } from "react";
     markRead(key: ReadTextKey): Promise<void>;
     getUnlocks(): UnlockState;
     unlock(kind: UnlockKind, id: string): Promise<void>;
+    unlockChapter(chapterId: string): Promise<void>;
     resetGlobalProgress(): Promise<void>;
     getGlobalVars(): Record<string, string | number | boolean | null>;
     applyGlobalEffect(input: { playthroughId: string; effectKey: string; key: string; value: string | number | boolean | null }): Promise<{ applied: boolean }>;
@@ -354,6 +374,9 @@ import type { ComponentType, ReactNode } from "react";
 
   export interface ReplayService {
     start(replayId: string): RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
+    isActive(): boolean;
+    exit(): void;
+    subscribe(listener: (active: boolean) => void): () => void;
   }
 
   export interface RuntimeAudioBridge extends AudioService {
@@ -416,6 +439,7 @@ import type { ComponentType, ReactNode } from "react";
     settings: RuntimeSettingsService;
     audio: AudioService;
     gallery: GalleryService;
+    chapters: ChapterService;
     replay: ReplayService;
     media: MediaService;
     status?: RuntimeStatusService;

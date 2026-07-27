@@ -79,7 +79,7 @@ describe("default renderer player UI", () => {
       "manual-01", "manual-02", "manual-03",
     ]);
     expect(MANUAL_SLOT_IDS.at(-1)).toBe("manual-100");
-    expect(PLAYER_MENU_PAGES.map((page) => page.id)).toEqual(["save", "history", "gallery", "replay", "music", "endings", "settings", "system"]);
+    expect(PLAYER_MENU_PAGES.map((page) => page.id)).toEqual(["save", "chapters", "history", "gallery", "replay", "music", "endings", "settings", "system"]);
 
     const saved: SaveSlotSummary[] = [{
       slotId: "manual-02",

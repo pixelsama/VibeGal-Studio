@@ -253,6 +253,35 @@ describe("runtime contract", () => {
       schemaVersion: 1,
       projectId: "project-a",
       readText: [], unlockedCg: [], unlockedMusic: [], unlockedEndings: [], playthroughCount: 3,
-    })).toMatchObject({ schemaVersion: 2, playthroughCount: 3, globalVars: {}, lastEndingId: null });
+    })).toMatchObject({
+      schemaVersion: 2,
+      playthroughCount: 3,
+      unlockedReplays: [],
+      unlockedChapters: [],
+      globalVars: {},
+      lastEndingId: null,
+    });
+  });
+
+  it("adds chapter unlock defaults to existing v2 global records", () => {
+    const current = {
+      schemaVersion: 2,
+      projectId: "project-a",
+      readText: [],
+      unlockedCg: [],
+      unlockedMusic: [],
+      unlockedReplays: [],
+      unlockedEndings: [],
+      playthroughCount: 0,
+      globalVars: {},
+      lastEndingId: null,
+      settledEndings: {},
+      appliedGlobalEffects: {},
+    };
+
+    expect(migrateGlobalPersistentRecord(current)).toEqual({
+      ...current,
+      unlockedChapters: [],
+    });
   });
 });

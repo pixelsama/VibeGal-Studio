@@ -1,4 +1,4 @@
-import type { Meta, Manifest, Instruction, LocaleTable, ProjectGraphData, GraphEdgeData, SetInstr, VariableRegistry } from "./types";
+import type { ChapterCheckpoint, Meta, Manifest, Instruction, LocaleTable, ProjectGraphData, GraphEdgeData, SetInstr, VariableRegistry } from "./types";
 import { localizeInstruction } from "./localization";
 import { formatRuntimeText, runtimeTextPauseAt } from "./runtimeText";
 import type { GraphRouteValue } from "./graphRouting";
@@ -40,6 +40,8 @@ export interface GraphPlayerDeps extends InterpreterDeps {
   onRuntimeEffect?: RuntimeEffectHandler;
   onRuntimeTextDiagnostic?: (diagnostic: RuntimeTextDiagnosticEvent) => void;
   onStableCheckpoint?: (event: GraphPlayerStableCheckpointEvent) => void;
+  onChapterReached?: (chapterId: string) => void | Promise<void>;
+  onPlaybackEnded?: () => void;
   onEndingCommitted?: () => void | Promise<void>;
   variables?: VariableRegistry;
   globalState?: () => { vars: Record<string, string | number | boolean | null>; playthroughCount: number; lastEndingId: string | null };
@@ -106,6 +108,8 @@ export class GraphNovelPlayer {
   private nameInputOrigins = new Map<string, GraphRouteValue | undefined>();
   private reportedRuntimeTextDiagnostics = new Set<string>();
   private markedReadKeys = new Set<string>();
+  private reachedChapterIds = new Set<string>();
+  private playbackEnded = false;
   private skipMode: SkipMode = "off";
   private skipTimer: ReturnType<typeof setTimeout> | null = null;
   private skipBudget = 0;
@@ -153,6 +157,8 @@ export class GraphNovelPlayer {
     this.nameInputOrigins.clear();
     this.reportedRuntimeTextDiagnostics.clear();
     this.markedReadKeys.clear();
+    this.reachedChapterIds.clear();
+    this.playbackEnded = false;
     this.skipMode = "off";
     this.skipBudget = 0;
     this.routeError = null;
@@ -164,6 +170,7 @@ export class GraphNovelPlayer {
     this.state = buildInitialState(0, total);
     this.state.vars = this.initialEffectiveVariables();
     this.varsAtNodeEntry = { ...this.state.vars };
+    this.markCurrentChapterReached();
     this.emit();
   }
 
@@ -366,9 +373,53 @@ export class GraphNovelPlayer {
       };
     }
     this.suppressStableCheckpoints = true;
+    this.playthroughId = `replay:${createPlaythroughId()}`;
+    this.decisions = [{ type: "start", nodeId }];
+    this.playbackEnded = false;
     this.restoreToNodeStart(nodeId);
     this.stepNext(0);
     return { warnings: [] };
+  }
+
+  startChapter(checkpoint: ChapterCheckpoint): RuntimeRestoreResult {
+    this.clearTimers();
+    if (!this.instructionsByNodeId.has(checkpoint.nodeId)) {
+      return {
+        warnings: [{
+          code: "node_not_found",
+          message: `Chapter node "${checkpoint.nodeId}" no longer exists.`,
+          nodeId: checkpoint.nodeId,
+        }],
+      };
+    }
+    this.playthroughId = createPlaythroughId();
+    this.decisions = [{ type: "start", nodeId: checkpoint.nodeId }];
+    this.stateWrites = [];
+    this.backlog = [];
+    this.backlogOrder = 0;
+    this.markedReadKeys.clear();
+    this.reachedChapterIds.clear();
+    this.suppressStableCheckpoints = false;
+    this.playbackEnded = false;
+    const snapshot = RuntimeSnapshotSchema.parse({
+      playthroughId: this.playthroughId,
+      currentNodeId: checkpoint.nodeId,
+      currentStoryPoint: checkpoint.instructionId
+        ? { nodeId: checkpoint.nodeId, instructionId: checkpoint.instructionId }
+        : null,
+      vars: checkpoint.vars,
+      background: checkpoint.background,
+      sprites: checkpoint.sprites,
+      bgm: checkpoint.bgm,
+    });
+    const result = this.applySnapshot(snapshot);
+    if (result.warnings.length === 0 && snapshot.currentStoryPoint == null) {
+      this.stepNext(0);
+    } else {
+      this.markCurrentChapterReached();
+      this.emit();
+    }
+    return result;
   }
 
   startDebugSession(options: DebugSessionOptions): RuntimeRestoreResult {
@@ -675,6 +726,7 @@ export class GraphNovelPlayer {
 
   private jumpToNode(nodeId: string) {
     this.currentNodeId = nodeId;
+    this.playbackEnded = false;
     this.varsAtNodeEntry = { ...this.state.vars };
     this.currentStoryPoint = null;
     this.currentReadKey = null;
@@ -693,6 +745,7 @@ export class GraphNovelPlayer {
         progress: { current: 0, total: this.currentInstructions().length },
       },
     };
+    this.markCurrentChapterReached();
     this.emit();
   }
 
@@ -705,9 +758,12 @@ export class GraphNovelPlayer {
     this.currentStableKind = null;
     this.pendingVoiceId = undefined;
     this.routeError = null;
+    this.playbackEnded = false;
     this.ip = 0;
     this.state = buildInitialState(0, this.currentInstructions().length);
+    this.state.vars = this.initialEffectiveVariables();
     this.varsAtNodeEntry = { ...this.state.vars };
+    this.markCurrentChapterReached();
     this.emit();
   }
 
@@ -759,6 +815,10 @@ export class GraphNovelPlayer {
     switch (decision.kind) {
       case "end":
         this.clearAuto();
+        if (!this.playbackEnded) {
+          this.playbackEnded = true;
+          this.deps.onPlaybackEnded?.();
+        }
         return;
       case "error":
         console.warn(`[graph-player] ${decision.message}`);
@@ -1138,6 +1198,7 @@ export class GraphNovelPlayer {
       if (result.warnings.length === 0) return { warnings };
     } else {
       this.currentNodeId = snapshot.currentNodeId;
+      this.playbackEnded = false;
       this.currentStoryPoint = null;
       this.ip = 0;
       this.state = baseState;
@@ -1182,6 +1243,7 @@ export class GraphNovelPlayer {
 
     const instr = instructions[index];
     this.currentNodeId = point.nodeId;
+    this.playbackEnded = false;
     this.currentStoryPoint = { ...point };
     this.lastStableStoryPoint = { ...point };
     this.currentStableKind = isStableInstruction(instr) ? instr.t : null;
@@ -1441,8 +1503,16 @@ export class GraphNovelPlayer {
     return { ...state, vars };
   }
 
+  private markCurrentChapterReached() {
+    if (this.suppressStableCheckpoints || !this.graph || !this.currentNodeId) return;
+    const chapterId = this.graph.nodes.find((node) => node.id === this.currentNodeId)?.chapterId;
+    if (!chapterId || this.reachedChapterIds.has(chapterId)) return;
+    this.reachedChapterIds.add(chapterId);
+    void this.deps.onChapterReached?.(chapterId);
+  }
+
   private markCurrentReadIfRevealed() {
-    if (!this.currentReadKey || !this.isCurrentTextDone()) return;
+    if (this.suppressStableCheckpoints || !this.currentReadKey || !this.isCurrentTextDone()) return;
     const id = readKeyId(this.currentReadKey);
     if (this.markedReadKeys.has(id)) return;
     this.markedReadKeys.add(id);

@@ -35,6 +35,7 @@ export function playerSlotsForPage(
 
 export const PLAYER_MENU_PAGES = [
   { id: "save", label: "存档 / 读档" },
+  { id: "chapters", label: "章节跳读" },
   { id: "history", label: "历史" },
   { id: "gallery", label: "CG 鉴赏" },
   { id: "replay", label: "回想" },
@@ -271,6 +272,13 @@ export class PlayerUiController {
   rollback(entryId: string): Promise<RuntimeRestoreResult> {
     return this.run(async () => {
       const result = await this.runtime.history.rollbackTo(entryId);
+      return result ?? { warnings: [] };
+    });
+  }
+
+  startChapter(chapterId: string): Promise<RuntimeRestoreResult> {
+    return this.run(async () => {
+      const result = await this.runtime.chapters.start(chapterId);
       return result ?? { warnings: [] };
     });
   }

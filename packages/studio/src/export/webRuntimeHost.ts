@@ -369,6 +369,20 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
   );
   let runtimeServices!: RuntimeServices;
   let audio: AudioEngine | null = null;
+  let primaryPlayer!: GraphNovelPlayer;
+  let replayPlayer: GraphNovelPlayer | null = null;
+  let replayUnsubscribe: (() => void) | null = null;
+  let activePlayer!: GraphNovelPlayer;
+  let replayActive = false;
+  const replayListeners = new Set<(active: boolean) => void>();
+  const graphNodes = options.nodes.map((node, index) => ({
+    id: node.id,
+    instructions: (content.chapters[index] ?? []) as Instruction[],
+  }));
+  const publishReplayActive = (active: boolean) => {
+    replayActive = active;
+    replayListeners.forEach((listener) => listener(active));
+  };
   const player = new GraphNovelPlayer({
     meta: content.meta as Meta,
     manifest: content.manifest as Manifest,
@@ -417,10 +431,13 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
         });
       });
     },
+    onChapterReached: (chapterId) => runtimeServices?.persistent.unlockChapter(chapterId),
     onEndingCommitted: () => runtimeServices?.save.autoSave("ending").catch((autoSaveError) => {
       runtimeServices.status?.report({ level: "warning", code: "ending_auto_save_failed", message: autoSaveError instanceof Error ? autoSaveError.message : String(autoSaveError) });
     }),
   });
+  primaryPlayer = player;
+  activePlayer = player;
   player.setPlaybackTiming({
     textSpeedCps: settings.textSpeedCps,
     autoAdvanceMs: settings.autoAdvanceMs,
@@ -443,10 +460,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
 
   player.loadGraph(
     graph as ProjectGraphData,
-    options.nodes.map((node, index) => ({
-      id: node.id,
-      instructions: (content.chapters[index] ?? []) as Instruction[],
-    })),
+    graphNodes,
   );
 
   const unsubscribe = player.subscribe((nextState) => {
@@ -455,14 +469,86 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     listeners.forEach((listener) => listener(state));
   });
 
+  const replayPlayerDeps = () => ({
+    meta: content.meta as Meta,
+    manifest: content.manifest as Manifest,
+    locales: options.locales,
+    currentLocale: runtimeServices.settings.getSettings().currentLocale ?? content.meta.locale?.default,
+    variables: options.variables,
+    globalState: () => {
+      const record = storage.readGlobalSync?.(projectId);
+      return {
+        vars: record?.globalVars ?? {},
+        playthroughCount: record?.playthroughCount ?? 0,
+        lastEndingId: record?.lastEndingId ?? null,
+      };
+    },
+    replayVoice: (voiceId: string) => audio?.replayVoice(voiceId),
+    onRuntimeTextDiagnostic: ({ storyPoint, diagnostic }: Parameters<NonNullable<ConstructorParameters<typeof GraphNovelPlayer>[0]["onRuntimeTextDiagnostic"]>>[0]) => {
+      runtimeServices.status?.report({
+        level: "warning",
+        code: diagnostic.code,
+        message: `${storyPoint.nodeId} / ${storyPoint.instructionId}: ${diagnostic.message}`,
+      });
+    },
+    onRuntimeEffect: (effect: Parameters<NonNullable<ConstructorParameters<typeof GraphNovelPlayer>[0]["onRuntimeEffect"]>>[0]) => {
+      if (effect.type !== "unlock" && effect.type !== "completeEnding" && effect.type !== "globalSet") {
+        publishMedia(runtimeMediaFromEffect(effect, content.manifest as Manifest, options.contentBase));
+      }
+      return undefined;
+    },
+    onPlaybackEnded: () => exitReplay(),
+  });
+
+  function exitReplay() {
+    if (!replayPlayer && !replayActive) return;
+    replayUnsubscribe?.();
+    replayUnsubscribe = null;
+    replayPlayer?.dispose();
+    replayPlayer = null;
+    activePlayer = primaryPlayer;
+    state = { ...primaryPlayer.getState() };
+    audio?.sync(state);
+    publishReplayActive(false);
+    listeners.forEach((listener) => listener(state));
+  }
+
+  function startReplay(nodeId: string) {
+    exitReplay();
+    const next = new GraphNovelPlayer(replayPlayerDeps());
+    next.setPlaybackTiming({
+      textSpeedCps: runtimeServices.settings.getSettings().textSpeedCps ?? content.meta.typingSpeedCps,
+      autoAdvanceMs: runtimeServices.settings.getSettings().autoAdvanceMs ?? content.meta.autoAdvanceMs,
+    });
+    next.loadGraph(graph as ProjectGraphData, graphNodes);
+    replayPlayer = next;
+    activePlayer = next;
+    replayUnsubscribe = next.subscribe((nextState) => {
+      state = { ...nextState };
+      audio?.sync(nextState);
+      listeners.forEach((listener) => listener(state));
+    });
+    replayActive = true;
+    const result = next.startReplay(nodeId);
+    if (result.warnings.length > 0) {
+      exitReplay();
+      return result;
+    }
+    if (replayPlayer === next) publishReplayActive(true);
+    return result;
+  }
+
   const controls: RuntimeControls = {
-    advance: () => player.advance(),
-    submitName: (value) => player.submitName(value),
-    choose: (toNodeId) => player.choose(toNodeId),
-    setAutoPlay: (on) => player.setAutoPlay(on),
-    setSkipMode: (mode) => player.setSkipMode(mode),
-    rollbackTo: (point) => player.jumpToStoryPoint(point),
-    restart: () => player.restart(),
+    advance: () => activePlayer.advance(),
+    submitName: (value) => activePlayer.submitName(value),
+    choose: (toNodeId) => activePlayer.choose(toNodeId),
+    setAutoPlay: (on) => activePlayer.setAutoPlay(on),
+    setSkipMode: (mode) => activePlayer.setSkipMode(mode),
+    rollbackTo: (point) => activePlayer.jumpToStoryPoint(point),
+    restart: () => {
+      if (replayActive) exitReplay();
+      else primaryPlayer.restart();
+    },
   };
   runtimeServices = createWebRuntimeServices({
     projectId,
@@ -470,14 +556,30 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     storage,
     initialGlobal: storage.readGlobalSync?.(projectId),
     manifest: content.manifest as Manifest,
+    graph: graph as ProjectGraphData,
     variables: options.variables,
-    createSnapshot: () => player.createSnapshot(),
-    restoreFromSave: (record) => player.restoreFromSave(record),
-    decisionLog: () => player.getDecisionLog(),
-    getBacklog: () => player.getBacklog(),
-    rollbackHistoryEntry: (entryId) => player.rollbackToHistoryEntry(entryId),
-    replayVoice: (entryId) => player.replayVoice(entryId),
-    startReplay: (nodeId) => player.startReplay(nodeId),
+    createSnapshot: () => primaryPlayer.createSnapshot(),
+    restoreFromSave: (record) => {
+      if (replayActive) exitReplay();
+      return primaryPlayer.restoreFromSave(record);
+    },
+    decisionLog: () => primaryPlayer.getDecisionLog(),
+    getBacklog: () => activePlayer.getBacklog(),
+    rollbackHistoryEntry: (entryId) => activePlayer.rollbackToHistoryEntry(entryId),
+    replayVoice: (entryId) => activePlayer.replayVoice(entryId),
+    startChapter: (checkpoint) => {
+      if (replayActive) exitReplay();
+      return primaryPlayer.startChapter(checkpoint);
+    },
+    startReplay,
+    isReplayActive: () => replayActive,
+    exitReplay,
+    subscribeReplay: (listener) => {
+      replayListeners.add(listener);
+      listener(replayActive);
+      return () => replayListeners.delete(listener);
+    },
+    persistenceEnabled: () => !replayActive,
     audio,
     initialSettings: settings,
     settingsFallback: {
@@ -485,11 +587,15 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
       autoAdvanceMs: content.meta.autoAdvanceMs,
     },
     onSettingsChanged: (nextSettings) => {
-      player.setPlaybackTiming({
+      const timing = {
         textSpeedCps: nextSettings.textSpeedCps ?? content.meta.typingSpeedCps,
         autoAdvanceMs: nextSettings.autoAdvanceMs ?? content.meta.autoAdvanceMs,
-      });
-      player.setCurrentLocale(nextSettings.currentLocale ?? content.meta.locale?.default);
+      };
+      primaryPlayer.setPlaybackTiming(timing);
+      replayPlayer?.setPlaybackTiming(timing);
+      const locale = nextSettings.currentLocale ?? content.meta.locale?.default;
+      primaryPlayer.setCurrentLocale(locale);
+      replayPlayer?.setCurrentLocale(locale);
       listeners.forEach((listener) => listener(state));
     },
     media: { closeCg: closeMedia, skipVideo },
@@ -521,17 +627,19 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
       listener(state);
       return () => listeners.delete(listener);
     },
-    advance: () => player.advance(),
-    submitName: (value) => player.submitName(value),
-    choose: (toNodeId) => player.choose(toNodeId),
-    restart: () => player.restart(),
-    toggleAuto: () => player.setAutoPlay(!player.getState().flags.isAutoPlay),
-    toggleRecording: () => player.setRecording(!player.getState().flags.isRecording),
+    advance: () => activePlayer.advance(),
+    submitName: (value) => activePlayer.submitName(value),
+    choose: (toNodeId) => activePlayer.choose(toNodeId),
+    restart: () => controls.restart(),
+    toggleAuto: () => activePlayer.setAutoPlay(!activePlayer.getState().flags.isAutoPlay),
+    toggleRecording: () => activePlayer.setRecording(!activePlayer.getState().flags.isRecording),
     rendererProps: makeRendererProps,
     getMedia: () => media,
     closeMedia,
     skipVideo,
     dispose() {
+      replayUnsubscribe?.();
+      replayPlayer?.dispose();
       unsubscribe();
       player.dispose();
       audio?.dispose();
@@ -949,6 +1057,7 @@ function createWebRuntimeServices(options: {
   storage?: RuntimeStorageAdapter;
   initialGlobal?: GlobalPersistentRecord;
   manifest: Manifest;
+  graph: ProjectGraphData;
   variables?: VariableRegistry;
   createSnapshot: () => ReturnType<GraphNovelPlayer["createSnapshot"]>;
   restoreFromSave: GraphNovelPlayer["restoreFromSave"];
@@ -956,7 +1065,12 @@ function createWebRuntimeServices(options: {
   getBacklog: GraphNovelPlayer["getBacklog"];
   rollbackHistoryEntry: GraphNovelPlayer["rollbackToHistoryEntry"];
   replayVoice: GraphNovelPlayer["replayVoice"];
+  startChapter: GraphNovelPlayer["startChapter"];
   startReplay: GraphNovelPlayer["startReplay"];
+  isReplayActive: () => boolean;
+  exitReplay: () => void;
+  subscribeReplay: (listener: (active: boolean) => void) => () => void;
+  persistenceEnabled: () => boolean;
   audio: AudioEngine | null;
   initialSettings: RuntimeSettingsRecord;
   settingsFallback: { textSpeedCps: number; autoAdvanceMs: number };
@@ -969,6 +1083,7 @@ function createWebRuntimeServices(options: {
     persistenceAdapter: options.storage,
     initialGlobalPersistent: options.initialGlobal,
     manifest: options.manifest,
+    graph: options.graph,
     variables: options.variables,
     createSnapshot: options.createSnapshot,
     restoreFromSave: options.restoreFromSave,
@@ -976,7 +1091,12 @@ function createWebRuntimeServices(options: {
     getBacklog: options.getBacklog,
     rollbackHistoryEntry: options.rollbackHistoryEntry,
     replayVoice: options.replayVoice,
+    startChapter: options.startChapter,
     startReplay: options.startReplay,
+    isReplayActive: options.isReplayActive,
+    exitReplay: options.exitReplay,
+    subscribeReplay: options.subscribeReplay,
+    persistenceEnabled: options.persistenceEnabled,
     audio: options.audio
       ? {
           replayVoice: (voiceId) => options.audio?.replayVoice(voiceId),

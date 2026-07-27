@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { resolveAsset, type BacklogEntry, type RendererProps, type RuntimeSettingsRecord, type SaveSlotSummary } from "@vibegal/engine";
 import { BackgroundLayer } from "./BackgroundLayer";
+import { ChapterPanel } from "./ChapterPanel";
 import { SpriteLayer } from "./SpriteLayer";
 import { DialogueBox } from "./DialogueBox";
 import { Effects } from "./Effects";
@@ -57,6 +58,8 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
   const [slots, setSlots] = useState(() => buildPlayerSlots([]));
   const [settings, setSettings] = useState<RuntimeSettingsRecord>(() => runtime?.settings.getSettings() ?? fallbackSettings);
   const [choiceHint, setChoiceHint] = useState<string | null>(null);
+  const [replayActive, setReplayActive] = useState(() => runtime?.replay.isActive() ?? false);
+  const [replayOrigin, setReplayOrigin] = useState<{ screen: TitleGateScreen; menuPage: PlayerMenuPage | null } | null>(null);
   // 标题页「继续游戏」的槽位数据（进入标题屏时拉取一次）。
   const [titleSlots, setTitleSlots] = useState<SaveSlotSummary[]>([]);
   const stateRef = useRef(state);
@@ -85,6 +88,20 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
     () => runtime ? new PlayerUiController(runtime, () => stateRef.current, setBusy) : null,
     [runtime],
   );
+
+  useEffect(() => {
+    if (!runtime) return;
+    return runtime.replay.subscribe((active) => {
+      setReplayActive(active);
+      if (active) return;
+      setReplayOrigin((origin) => {
+        if (!origin) return null;
+        setScreen(origin.screen);
+        setMenuPage(origin.menuPage);
+        return null;
+      });
+    });
+  }, [runtime]);
 
   useEffect(() => {
     setChoiceHint(null);
@@ -249,7 +266,7 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
   };
 
   const performQuickSave = async () => {
-    if (!controller) return;
+    if (!controller || replayActive) return;
     try {
       await controller.quickSave(
         () => captureStageThumbnail(stageRef.current),
@@ -274,7 +291,7 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
   };
 
   const performQuickLoad = async () => {
-    if (!controller) return;
+    if (!controller || replayActive) return;
     stopAutomatedPlayback();
     try {
       const result = await controller.quickLoad();
@@ -392,17 +409,43 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
     }
   };
 
-  const performStartReplay = async (replayId: string) => {
+  const performStartChapter = async (chapterId: string) => {
     if (!controller) return;
     stopAutomatedPlayback();
     try {
-      const result = await controller.startReplay(replayId);
+      const result = await controller.startChapter(chapterId);
       if (showWarnings(result.warnings)) return;
+      hasEnteredStoryRef.current = true;
+      setScreen("story");
       setMenuPage(null);
-      showNotice({ tone: "success", message: "已启动回想。" }, true);
+      showNotice({ tone: "success", message: "已从所选章节开始新周目。" }, true);
     } catch (error) {
       showError(error);
     }
+  };
+
+  const performStartReplay = async (replayId: string) => {
+    if (!controller) return;
+    stopAutomatedPlayback();
+    const origin = { screen, menuPage: menuPage ?? "replay" as PlayerMenuPage };
+    try {
+      setReplayOrigin(origin);
+      const result = await controller.startReplay(replayId);
+      if (showWarnings(result.warnings)) {
+        setReplayOrigin(null);
+        return;
+      }
+      setScreen("story");
+      setMenuPage(null);
+      showNotice({ tone: "success", message: "已启动隔离回想。" }, true);
+    } catch (error) {
+      setReplayOrigin(null);
+      showError(error);
+    }
+  };
+
+  const exitReplay = () => {
+    runtime?.replay.exit();
   };
 
   const performPlayMusic = async (audioId: string) => {
@@ -455,6 +498,11 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
         event.stopImmediatePropagation();
       };
 
+      if (key === "escape" && replayActive) {
+        block();
+        if (!busy) exitReplay();
+        return;
+      }
       if (key === "escape") {
         if (!confirmAction && !menuPage) return;
         block();
@@ -494,6 +542,8 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
 
   const confirmCopy = confirmAction ? confirmationCopy(confirmAction) : null;
   const continueSlot = pickContinueSlot(titleSlots);
+  const chapters = runtime?.chapters.list() ?? [];
+  const hasReplays = runtime?.gallery.listReplays().length ? true : false;
 
   return (
     <div
@@ -534,6 +584,10 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
             onStart={handleTitleStart}
             onContinue={() => void performTitleContinue()}
             onLoad={() => openMenu("save")}
+            onChapters={() => openMenu("chapters")}
+            onReplay={() => openMenu("replay")}
+            hasChapters={chapters.length > 0}
+            hasReplays={hasReplays}
             onSettings={() => openMenu("settings")}
           />
         </>
@@ -617,6 +671,21 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
         </>
       )}
 
+      {!hideControls && replayActive && (
+        <button
+          type="button"
+          data-replay-action="exit"
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation();
+            exitReplay();
+          }}
+          style={replayExitStyle}
+        >
+          退出回想
+        </button>
+      )}
+
       {!hideControls && (notice || busy) && (
         <div
           data-player-status={notice?.tone ?? "busy"}
@@ -628,7 +697,7 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
         </div>
       )}
 
-      {!hideControls && menuPage && runtime && (
+      {!hideControls && !replayActive && menuPage && runtime && (
         <PlayerMenu
           page={menuPage}
           busy={busy}
@@ -649,6 +718,13 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
               onDelete={(slot) => setConfirmAction({ kind: "delete", slot })}
               onQuickSave={() => void performQuickSave()}
               onQuickLoad={() => void performQuickLoad()}
+            />
+          )}
+          {menuPage === "chapters" && (
+            <ChapterPanel
+              chapters={chapters}
+              busy={busy}
+              onStartChapter={(chapterId) => void performStartChapter(chapterId)}
             />
           )}
           {menuPage === "history" && (
@@ -712,6 +788,19 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
     </div>
   );
 }
+
+const replayExitStyle: CSSProperties = {
+  position: "absolute",
+  top: 18,
+  right: 18,
+  zIndex: 90,
+  padding: "10px 16px",
+  border: "1px solid rgba(255, 255, 255, 0.35)",
+  borderRadius: 999,
+  color: "#ffffff",
+  background: "rgba(12, 16, 28, 0.78)",
+  cursor: "pointer",
+};
 
 async function captureStageThumbnail(
   stage: HTMLDivElement | null,

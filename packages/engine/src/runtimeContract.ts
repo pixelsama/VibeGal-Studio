@@ -134,6 +134,7 @@ export const GlobalPersistentRecordSchema = z.strictObject({
   unlockedCg: z.array(z.string()),
   unlockedMusic: z.array(z.string()),
   unlockedReplays: z.array(z.string()).default([]),
+  unlockedChapters: z.array(z.string()).default([]),
   unlockedEndings: z.array(z.string()),
   playthroughCount: z.number().int().nonnegative(),
   globalVars: z.record(z.string(), VariableValueSchema).default({}),
@@ -192,6 +193,7 @@ export function createDefaultGlobalPersistentRecord(
     unlockedCg: [],
     unlockedMusic: [],
     unlockedReplays: [],
+    unlockedChapters: [],
     unlockedEndings: [],
     playthroughCount: 0,
     globalVars,
@@ -302,15 +304,19 @@ export function migrateGlobalPersistentRecord(raw: unknown, projectId?: string):
   if (raw == null) return createDefaultGlobalPersistentRecord(projectId ?? "project");
   assertSupportedRuntimeRecord(raw, "global persistent");
   const record = raw as Record<string, unknown>;
-  const migrated = record.schemaVersion === 1 ? {
+  const withAdditiveDefaults = {
     ...record,
-    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
     unlockedReplays: record.unlockedReplays ?? [],
+    unlockedChapters: record.unlockedChapters ?? [],
+  };
+  const migrated = record.schemaVersion === 1 ? {
+    ...withAdditiveDefaults,
+    schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
     globalVars: {},
     lastEndingId: null,
     settledEndings: {},
     appliedGlobalEffects: {},
-  } : raw;
+  } : withAdditiveDefaults;
   const parsed = GlobalPersistentRecordSchema.safeParse(migrated);
   if (!parsed.success) {
     throw new RuntimePersistenceError("runtime_record_invalid", "Invalid global persistent record.", parsed.error.issues);

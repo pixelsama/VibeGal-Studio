@@ -653,6 +653,106 @@ describe("web export runtime host", () => {
     runtime.dispose();
   });
 
+  it("webRuntimeKeepsReplayIsolatedAndRestoresThePrimaryPlaythrough", async () => {
+    const storage = new MemoryStorage();
+    const adapter = createWebStorageAdapter("project-a", storage);
+    const writeGlobal = vi.spyOn(adapter, "writeGlobal");
+    const writeSaveSlot = vi.spyOn(adapter, "writeSaveSlot");
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest: {
+        ...manifest,
+        unlocks: {
+          cg: { cg_rooftop: { assetId: "cg_001", title: "Rooftop" } },
+          music: {},
+          replay: { replay_opening: { nodeId: "replay_start", title: "Opening Replay" } },
+          endings: { ending_true: { title: "True End" } },
+        },
+      },
+      graph: runtimeGraph([]),
+      nodes: [
+        { id: "start", instructions: [
+          { t: "set", key: "route", value: "primary" },
+          { t: "narrate", id: "primary_01", text: "primary line" },
+        ] },
+        { id: "replay_start", instructions: [
+          { t: "set", key: "route", value: "replay" },
+          { t: "unlock", kind: "cg", id: "cg_rooftop" },
+          { t: "completeEnding", id: "replay_end", endingId: "ending_true" },
+          { t: "narrate", id: "replay_01", text: "replay line" },
+        ] },
+      ],
+      contentBase: "./content",
+      projectId: "project-a",
+      storage: adapter,
+    });
+    runtime.advance();
+    const services = runtime.rendererProps().runtime!;
+    await services.persistent.unlock("replay", "replay_opening");
+    writeGlobal.mockClear();
+    writeSaveSlot.mockClear();
+    await services.save.save("manual-01");
+    const primarySave = await adapter.getSaveSlot("manual-01");
+    writeSaveSlot.mockClear();
+
+    await expect(Promise.resolve(services.replay.start("replay_opening"))).resolves.toEqual({ warnings: [] });
+
+    expect(services.replay.isActive()).toBe(true);
+    expect(runtime.getState()).toEqual(expect.objectContaining({
+      vars: expect.objectContaining({ route: "replay" }),
+      narration: expect.objectContaining({ text: "replay line" }),
+    }));
+    await expect(services.save.save("manual-02")).rejects.toMatchObject({ code: "runtime_service_unavailable" });
+    await expect(services.persistent.unlock("cg", "cg_rooftop")).rejects.toMatchObject({ code: "runtime_service_unavailable" });
+    expect(writeGlobal).not.toHaveBeenCalled();
+    expect(writeSaveSlot).not.toHaveBeenCalled();
+
+    services.replay.exit();
+
+    expect(services.replay.isActive()).toBe(false);
+    expect(runtime.getState()).toEqual(expect.objectContaining({
+      vars: expect.objectContaining({ route: "primary" }),
+      narration: expect.objectContaining({ text: "primary line" }),
+    }));
+    expect(await adapter.getSaveSlot("manual-01")).toEqual(primarySave);
+    expect((await adapter.getGlobalPersistent()).unlockedCg).toEqual([]);
+    runtime.dispose();
+  });
+
+  it("terminalReplayExitsImmediatelyWithoutReplacingThePrimaryPlayer", async () => {
+    const runtime = createWebRuntimePlayer({
+      meta,
+      manifest: {
+        ...manifest,
+        unlocks: {
+          cg: {},
+          music: {},
+          replay: { replay_terminal: { nodeId: "replay_end", title: "Terminal Replay" } },
+          endings: {},
+        },
+      },
+      graph: runtimeGraph([]),
+      nodes: [
+        node("start", "primary line"),
+        { id: "replay_end", instructions: [] },
+      ],
+      contentBase: "./content",
+    });
+    runtime.advance();
+    const services = runtime.rendererProps().runtime!;
+    await services.persistent.unlock("replay", "replay_terminal");
+    const replayStates: boolean[] = [];
+    const unsubscribe = services.replay.subscribe((active) => replayStates.push(active));
+
+    await expect(Promise.resolve(services.replay.start("replay_terminal"))).resolves.toEqual({ warnings: [] });
+
+    expect(services.replay.isActive()).toBe(false);
+    expect(runtime.getState().narration?.text).toBe("primary line");
+    expect(replayStates).toEqual([false, false]);
+    unsubscribe();
+    runtime.dispose();
+  });
+
   it("webRuntimeMusicRoomServicePlaysTheRequestedBgmAsset", () => {
     class FakeAudio {
       static instances: FakeAudio[] = [];

@@ -30,6 +30,10 @@ export interface TitleScreenProps {
   onStart: () => void;
   onContinue: () => void;
   onLoad: () => void;
+  onChapters: () => void;
+  onReplay: () => void;
+  hasChapters: boolean;
+  hasReplays: boolean;
   onSettings: () => void;
 }
 
@@ -55,6 +59,10 @@ export function TitleScreen({
   onStart,
   onContinue,
   onLoad,
+  onChapters,
+  onReplay,
+  hasChapters,
+  hasReplays,
   onSettings,
 }: TitleScreenProps) {
   const continueSublabel = continueSlot
@@ -104,6 +112,24 @@ export function TitleScreen({
             style={buttonStyle(tokens)}
           >
             读取存档
+          </button>
+          <button
+            type="button"
+            data-title-action="chapters"
+            disabled={busy || !hasChapters}
+            onClick={onChapters}
+            style={buttonStyle(tokens)}
+          >
+            章节跳读
+          </button>
+          <button
+            type="button"
+            data-title-action="replay"
+            disabled={busy || !hasReplays}
+            onClick={onReplay}
+            style={buttonStyle(tokens)}
+          >
+            回想
           </button>
           <button
             type="button"

@@ -7,7 +7,7 @@
  */
 import type { ComponentType } from "react";
 import type { NovelState, RuntimeTextToken } from "./state";
-import type { Manifest, Meta, VariableRegistry } from "./types";
+import type { ChapterCheckpoint, Manifest, Meta, ProjectGraphData, VariableRegistry } from "./types";
 import { variableDefaults } from "./variables";
 import {
   RuntimePersistenceError,
@@ -109,6 +109,7 @@ export interface PersistentService {
   markRead(key: ReadTextKey): Promise<void>;
   getUnlocks(): UnlockState;
   unlock(kind: UnlockKind, id: string): Promise<void>;
+  unlockChapter(chapterId: string): Promise<void>;
   resetGlobalProgress(): Promise<void>;
   getGlobalVars(): Record<string, string | number | boolean | null>;
   applyGlobalEffect(input: { playthroughId: string; effectKey: string; key: string; value: string | number | boolean | null }): Promise<{ applied: boolean }>;
@@ -149,8 +150,24 @@ export interface GalleryService {
   listEndings(): Array<{ id: string; title: string; nodeId?: string }>;
 }
 
+export interface ChapterEntry {
+  id: string;
+  title: string;
+  isProjectEntry: boolean;
+  safe: boolean;
+  checkpoint?: ChapterCheckpoint;
+}
+
+export interface ChapterService {
+  list(): ChapterEntry[];
+  start(chapterId: string): RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
+}
+
 export interface ReplayService {
   start(replayId: string): RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
+  isActive(): boolean;
+  exit(): void;
+  subscribe(listener: (active: boolean) => void): () => void;
 }
 
 export interface MediaService {
@@ -185,6 +202,7 @@ export interface RuntimeServices {
   settings: RuntimeSettingsService;
   audio: AudioService;
   gallery: GalleryService;
+  chapters: ChapterService;
   replay: ReplayService;
   media: MediaService;
   status?: RuntimeStatusService;
@@ -381,10 +399,16 @@ export interface InMemoryRuntimeServicesOptions {
   settingsFallback?: Pick<RuntimeSettingsRecord, "textSpeedCps" | "autoAdvanceMs">;
   audio?: Partial<RuntimeAudioBridge>;
   manifest?: Manifest;
+  graph?: ProjectGraphData;
   variables?: VariableRegistry;
   media?: Partial<MediaService>;
   onSettingsChanged?: (settings: RuntimeSettingsRecord) => void;
+  startChapter?: (checkpoint: ChapterCheckpoint) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
   startReplay?: (nodeId: string) => void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
+  isReplayActive?: () => boolean;
+  exitReplay?: () => void;
+  subscribeReplay?: (listener: (active: boolean) => void) => () => void;
+  persistenceEnabled?: () => boolean;
   rollbackTo?: (point: StoryPointId) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
   rollbackHistoryEntry?: (entryId: string) => RuntimeRestoreResult | Promise<RuntimeRestoreResult>;
   replayVoice?: (entryId: string) => void;
@@ -440,6 +464,11 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
   let statusNoticeId = 0;
   const statusNotices: RuntimeStatusNotice[] = [];
   const statusListeners = new Set<() => void>();
+  const unlockedChapters = new Set(initialGlobal.unlockedChapters);
+  const entryChapterId = options.graph?.nodes.find(
+    (node) => node.id === options.graph?.entryNodeId,
+  )?.chapterId;
+  if (entryChapterId) unlockedChapters.add(entryChapterId);
   let mutationQueue = Promise.resolve();
   let globalRecord = {
     ...initialGlobal,
@@ -453,6 +482,9 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
   };
   const unavailable = (service: string, method: string): never => {
     throw new RuntimeServiceUnavailableError(service, method);
+  };
+  const ensurePersistenceEnabled = (service: string, method: string) => {
+    if (options.persistenceEnabled?.() === false) unavailable(service, method);
   };
 
   const snapshot = () => createRuntimeSnapshot(options.getState(), {
@@ -481,6 +513,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       },
       async save(slotId, saveOptions) {
+        ensurePersistenceEnabled("save", "save");
         const checkpoint = createSnapshot();
         const decisions = options.decisionLog?.();
         return mutate(async () => {
@@ -526,6 +559,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         });
       },
       async load(slotId) {
+        ensurePersistenceEnabled("save", "load");
         return mutate(async () => {
           const slot = await persistenceAdapter.readSaveSlot(projectId, slotId);
           if (!slot) {
@@ -536,6 +570,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         });
       },
       async delete(slotId) {
+        ensurePersistenceEnabled("save", "delete");
         await mutate(async () => {
           const existing = await persistenceAdapter.readSaveSlot(projectId, slotId);
           await persistenceAdapter.deleteSaveSlot(projectId, slotId);
@@ -595,8 +630,9 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         return { ...globalRecord.globalVars };
       },
       async markRead(key) {
+        ensurePersistenceEnabled("persistent", "markRead");
         readText.set(readKeyId(key), { ...key });
-        globalRecord = currentGlobalRecord(globalRecord, readText, unlocks);
+        globalRecord = currentGlobalRecord(globalRecord, readText, unlocks, unlockedChapters);
         await persistenceAdapter.writeGlobal(projectId, globalRecord);
       },
       getUnlocks() {
@@ -608,28 +644,45 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         };
       },
       async unlock(kind, id) {
+        ensurePersistenceEnabled("persistent", "unlock");
         unlocks[kind].add(id);
-        globalRecord = currentGlobalRecord(globalRecord, readText, unlocks);
+        globalRecord = currentGlobalRecord(globalRecord, readText, unlocks, unlockedChapters);
         await persistenceAdapter.writeGlobal(projectId, globalRecord);
       },
+      async unlockChapter(chapterId) {
+        ensurePersistenceEnabled("persistent", "unlockChapter");
+        if (unlockedChapters.has(chapterId)) return;
+        const nextChapters = new Set(unlockedChapters);
+        nextChapters.add(chapterId);
+        const nextRecord = currentGlobalRecord(globalRecord, readText, unlocks, nextChapters);
+        await persistenceAdapter.writeGlobal(projectId, nextRecord);
+        unlockedChapters.add(chapterId);
+        globalRecord = nextRecord;
+        progressListeners.forEach((listener) => listener());
+      },
       async resetGlobalProgress() {
+        ensurePersistenceEnabled("persistent", "resetGlobalProgress");
         readText.clear();
         unlocks.cg.clear();
         unlocks.music.clear();
         unlocks.replay.clear();
         unlocks.ending.clear();
         unlocks.endings.clear();
+        unlockedChapters.clear();
+        if (entryChapterId) unlockedChapters.add(entryChapterId);
         globalRecord = createDefaultGlobalPersistentRecord(projectId, globalDefaults);
+        globalRecord = { ...globalRecord, unlockedChapters: Array.from(unlockedChapters) };
         await persistenceAdapter.writeGlobal(projectId, globalRecord);
         progressListeners.forEach((listener) => listener());
       },
       async applyGlobalEffect(input) {
+        ensurePersistenceEnabled("persistent", "applyGlobalEffect");
         return mutate(async () => {
           const applied = new Set(globalRecord.appliedGlobalEffects[input.playthroughId] ?? []);
           if (applied.has(input.effectKey)) return { applied: false };
           applied.add(input.effectKey);
           const nextRecord = {
-            ...currentGlobalRecord(globalRecord, readText, unlocks),
+            ...currentGlobalRecord(globalRecord, readText, unlocks, unlockedChapters),
             globalVars: { ...globalRecord.globalVars, [input.key]: input.value },
             appliedGlobalEffects: { ...globalRecord.appliedGlobalEffects, [input.playthroughId]: [...applied] },
           };
@@ -639,6 +692,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         });
       },
       async completeEnding(input) {
+        ensurePersistenceEnabled("persistent", "completeEnding");
         return mutate(async () => {
           if (options.manifest && !options.manifest.unlocks?.endings?.[input.endingId]) {
             throw new RuntimePersistenceError(
@@ -652,7 +706,7 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
           const nextUnlocks = cloneUnlockSets(unlocks);
           nextUnlocks.endings.add(input.endingId);
           const nextRecord = {
-            ...currentGlobalRecord(globalRecord, readText, nextUnlocks),
+            ...currentGlobalRecord(globalRecord, readText, nextUnlocks, unlockedChapters),
             playthroughCount: globalRecord.playthroughCount + 1,
             lastEndingId: input.endingId,
             settledEndings: { ...globalRecord.settledEndings, [input.playthroughId]: endings },
@@ -761,6 +815,45 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
           .map(([id, entry]) => ({ id, title: entry.title, nodeId: entry.nodeId }));
       },
     },
+    chapters: {
+      list() {
+        const graph = options.graph;
+        if (!graph) return [];
+        return graph.chapters
+          .filter((chapter) => unlockedChapters.has(chapter.id))
+          .map((chapter) => ({
+            id: chapter.id,
+            title: chapter.title,
+            isProjectEntry: chapter.id === entryChapterId,
+            safe: chapter.id === entryChapterId || chapter.checkpoint != null,
+            checkpoint: chapter.checkpoint,
+          }));
+      },
+      start(chapterId) {
+        const graph = options.graph;
+        const chapter = graph?.chapters.find((candidate) => candidate.id === chapterId);
+        if (!graph || !chapter || !unlockedChapters.has(chapterId)) {
+          return unavailable("chapters", "start");
+        }
+        const checkpoint = chapter.checkpoint ?? (chapter.id === entryChapterId
+          ? {
+              nodeId: graph.entryNodeId,
+              instructionId: null,
+              vars: {},
+              background: null,
+              sprites: [],
+              bgm: null,
+            }
+          : null);
+        if (!checkpoint) return unavailable("chapters", "start");
+        const startChapter = options.startChapter ?? (() => unavailable("chapters", "start"));
+        const result = startChapter(checkpoint);
+        if (result && typeof (result as Promise<void | RuntimeRestoreResult>).then === "function") {
+          return (result as Promise<void | RuntimeRestoreResult>).then((value) => value ?? { warnings: [] });
+        }
+        return (result as RuntimeRestoreResult | undefined) ?? { warnings: [] };
+      },
+    },
     replay: {
       start(replayId) {
         const entry = options.manifest?.unlocks?.replay?.[replayId];
@@ -773,6 +866,15 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
           return (result as Promise<void | RuntimeRestoreResult>).then((value) => value ?? { warnings: [] });
         }
         return (result as RuntimeRestoreResult | undefined) ?? { warnings: [] };
+      },
+      isActive() {
+        return options.isReplayActive?.() ?? false;
+      },
+      exit() {
+        options.exitReplay?.();
+      },
+      subscribe(listener) {
+        return options.subscribeReplay?.(listener) ?? (() => undefined);
       },
     },
     media: {
@@ -876,6 +978,7 @@ function currentGlobalRecord(
   current: GlobalPersistentRecord,
   readText: Map<string, ReadTextKey>,
   unlocks: Record<UnlockKind, Set<string>>,
+  unlockedChapters: Set<string>,
 ) {
   return migrateGlobalPersistentRecord({
     schemaVersion: RUNTIME_RECORD_SCHEMA_VERSION,
@@ -884,6 +987,7 @@ function currentGlobalRecord(
     unlockedCg: Array.from(unlocks.cg),
     unlockedMusic: Array.from(unlocks.music),
     unlockedReplays: Array.from(unlocks.replay),
+    unlockedChapters: Array.from(unlockedChapters),
     unlockedEndings: Array.from(new Set([...unlocks.ending, ...unlocks.endings])),
     playthroughCount: current.playthroughCount,
     globalVars: current.globalVars,

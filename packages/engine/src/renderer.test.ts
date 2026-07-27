@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ProjectGraphData } from "./types";
 import { createInitialState } from "./state";
 import {
   RENDERER_CONTRACT_VERSION,
@@ -324,6 +325,118 @@ describe("renderer contract", () => {
 
     expect(runtime.gallery.listReplays()).toEqual([{ id: "replay_start", nodeId: "start", title: "Start" }]);
     expect(runtime.gallery.listEndings()).toEqual([{ id: "true_end", title: "True End", nodeId: "ending" }]);
+  });
+
+  it("chapterServicePersistsReachedChaptersAndStartsOnlySafeUnlockedEntries", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const startChapter = vi.fn(() => ({ warnings: [] }));
+    const graph: ProjectGraphData = {
+      version: 1,
+      entryNodeId: "start",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        {
+          id: "chapter_2",
+          title: "Chapter 2",
+          checkpoint: {
+            nodeId: "chapter_2_start",
+            instructionId: null,
+            vars: { route: "a" },
+            background: "school",
+            sprites: [],
+            bgm: null,
+          },
+        },
+        { id: "unsafe", title: "Unsafe" },
+      ],
+      nodes: [
+        { id: "start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
+        { id: "chapter_2_start", file: "nodes/chapter_2.json", position: { x: 100, y: 0 }, chapterId: "chapter_2" },
+        { id: "unsafe_start", file: "nodes/unsafe.json", position: { x: 200, y: 0 }, chapterId: "unsafe" },
+      ],
+      edges: [],
+    };
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "p",
+      getState: createInitialState,
+      persistenceAdapter: adapter,
+      graph,
+      startChapter,
+    });
+
+    expect(runtime.chapters.list()).toEqual([
+      expect.objectContaining({ id: "opening", isProjectEntry: true, safe: true }),
+    ]);
+    await expect(Promise.resolve(runtime.chapters.start("opening"))).resolves.toEqual({ warnings: [] });
+    expect(startChapter).toHaveBeenLastCalledWith(expect.objectContaining({
+      nodeId: "start",
+      instructionId: null,
+      vars: {},
+    }));
+
+    await runtime.persistent.unlockChapter("chapter_2");
+    await runtime.persistent.unlockChapter("unsafe");
+
+    expect((await adapter.readGlobal("p")).unlockedChapters).toEqual(["opening", "chapter_2", "unsafe"]);
+    expect(runtime.chapters.list()).toEqual([
+      expect.objectContaining({ id: "opening", safe: true }),
+      expect.objectContaining({ id: "chapter_2", safe: true }),
+      expect.objectContaining({ id: "unsafe", safe: false }),
+    ]);
+    await expect(Promise.resolve(runtime.chapters.start("chapter_2"))).resolves.toEqual({ warnings: [] });
+    expect(startChapter).toHaveBeenLastCalledWith(graph.chapters[1].checkpoint);
+    expect(() => runtime.chapters.start("unsafe")).toThrow(expect.objectContaining({
+      code: "runtime_service_unavailable",
+    }));
+
+    await runtime.persistent.resetGlobalProgress();
+
+    expect(runtime.chapters.list()).toEqual([
+      expect.objectContaining({ id: "opening", isProjectEntry: true, safe: true }),
+    ]);
+    expect((await adapter.readGlobal("p")).unlockedChapters).toEqual(["opening"]);
+  });
+
+  it("chapterUnlockPublishesOnlyAfterTheGlobalWriteSucceeds", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    vi.spyOn(adapter, "writeGlobal").mockRejectedValueOnce(new Error("disk full"));
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "p",
+      getState: createInitialState,
+      persistenceAdapter: adapter,
+      graph: {
+        version: 1,
+        entryNodeId: "start",
+        chapters: [{ id: "opening", title: "Opening" }, { id: "chapter_2", title: "Chapter 2" }],
+        nodes: [
+          { id: "start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
+          { id: "chapter_2_start", file: "nodes/chapter_2.json", position: { x: 100, y: 0 }, chapterId: "chapter_2" },
+        ],
+        edges: [],
+      },
+    });
+
+    await expect(runtime.persistent.unlockChapter("chapter_2")).rejects.toThrow("disk full");
+
+    expect(runtime.chapters.list().map((chapter) => chapter.id)).toEqual(["opening"]);
+  });
+
+  it("persistenceGuardRejectsPermanentMutationsDuringReplay", async () => {
+    const runtime = createInMemoryRuntimeServices({
+      getState: createInitialState,
+      persistenceEnabled: () => false,
+    });
+
+    await expect(runtime.save.save("manual-01")).rejects.toMatchObject({ code: "runtime_service_unavailable" });
+    await expect(runtime.persistent.markRead({ nodeId: "start", instructionId: "line", textHash: "hash" }))
+      .rejects.toMatchObject({ code: "runtime_service_unavailable" });
+    await expect(runtime.persistent.unlock("cg", "cg_01"))
+      .rejects.toMatchObject({ code: "runtime_service_unavailable" });
+    await expect(runtime.persistent.unlockChapter("chapter_2"))
+      .rejects.toMatchObject({ code: "runtime_service_unavailable" });
+    await expect(runtime.persistent.applyGlobalEffect({
+      playthroughId: "replay", effectKey: "start:set", key: "score", value: 1,
+    })).rejects.toMatchObject({ code: "runtime_service_unavailable" });
   });
 
   it("replayServiceStartsAnUnlockedReplayByRegistryId", async () => {

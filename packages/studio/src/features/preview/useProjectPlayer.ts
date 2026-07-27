@@ -189,6 +189,10 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const [error, setError] = useState<string | null>(null);
   const [media, setMedia] = useState<RuntimeMediaState>(null);
   const playerRef = useRef<GraphNovelPlayer | null>(null);
+  const primaryPlayerRef = useRef<GraphNovelPlayer | null>(null);
+  const replayPlayerRef = useRef<GraphNovelPlayer | null>(null);
+  const replayUnsubscribeRef = useRef<(() => void) | null>(null);
+  const replayListenersRef = useRef(new Set<(active: boolean) => void>());
   const audioRef = useRef<AudioEngine | null>(null);
   const stateRef = useRef(state);
   const runtimeRef = useRef<RuntimeServices | null>(null);
@@ -264,6 +268,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
             });
           });
         },
+        onChapterReached: (chapterId) => runtimeRef.current?.persistent.unlockChapter(chapterId),
         onEndingCommitted: () => runtimeRef.current?.save.autoSave("ending").catch((autoSaveError) => {
           runtimeRef.current?.status?.report({ level: "warning", code: "ending_auto_save_failed", message: autoSaveError instanceof Error ? autoSaveError.message : String(autoSaveError) });
         }),
@@ -284,6 +289,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
         content.nodeIds.map((id, index) => ({ id, instructions: chapters[index] ?? [] })),
       );
       playerRef.current = player;
+      primaryPlayerRef.current = player;
 
       // contentBase 传原始 content 目录。engine.resolveAsset 会在最终文件路径级别
       // 调用 Tauri convertFileSrc，避免把 asset 协议的目录 URL 当普通 URL 继续拼接。
@@ -303,16 +309,24 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
 
     return () => {
       setMedia(null);
+      replayUnsubscribeRef.current?.();
+      replayUnsubscribeRef.current = null;
+      replayPlayerRef.current?.dispose();
+      replayPlayerRef.current = null;
       player?.dispose();
       audio?.dispose();
       if (playerRef.current === player) playerRef.current = null;
+      if (primaryPlayerRef.current === player) primaryPlayerRef.current = null;
       if (audioRef.current === audio) audioRef.current = null;
     };
   }, [project]);
 
   const advance = useCallback(() => playerRef.current?.advance(), []);
   const choose = useCallback((toNodeId: string) => playerRef.current?.choose(toNodeId), []);
-  const restart = useCallback(() => playerRef.current?.restart(), []);
+  const restart = useCallback(() => {
+    if (replayPlayerRef.current) exitPreviewReplay();
+    else primaryPlayerRef.current?.restart();
+  }, []);
   const toggleAuto = useCallback(() => {
     const p = playerRef.current;
     if (p) p.setAutoPlay(!p.getState().flags.isAutoPlay);
@@ -337,6 +351,22 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   const contentBase = `${project.path}/content`;
   const meta = readProjectMeta(project.content.meta);
 
+  function exitPreviewReplay() {
+    if (!replayPlayerRef.current) return;
+    replayUnsubscribeRef.current?.();
+    replayUnsubscribeRef.current = null;
+    replayPlayerRef.current.dispose();
+    replayPlayerRef.current = null;
+    playerRef.current = primaryPlayerRef.current;
+    setMedia(null);
+    const next = primaryPlayerRef.current?.getState();
+    if (next) {
+      setState({ ...next });
+      setStateWrites(primaryPlayerRef.current?.getStateWrites() ?? []);
+      audioRef.current?.sync(next);
+    }
+    replayListenersRef.current.forEach((listener) => listener(false));
+  }
   const controls: RuntimeControls = {
     advance,
     choose,
@@ -344,28 +374,103 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     setAutoPlay: (on) => playerRef.current?.setAutoPlay(on),
     setSkipMode: (mode) => playerRef.current?.setSkipMode(mode),
     rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point) ?? { warnings: [] },
-    restart,
+    restart: () => {
+      if (replayPlayerRef.current) exitPreviewReplay();
+      else primaryPlayerRef.current?.restart();
+    },
   };
   runtimeRef.current ??= createProjectPreviewRuntimeServices({
     meta,
     applyPlaybackTiming: (timing) => {
-      playerRef.current?.setPlaybackTiming(timing);
+      primaryPlayerRef.current?.setPlaybackTiming(timing);
+      replayPlayerRef.current?.setPlaybackTiming(timing);
       setState({ ...stateRef.current });
     },
-    onSettingsChanged: (settings) => playerRef.current?.setCurrentLocale(settings.currentLocale ?? meta.locale?.default),
+    onSettingsChanged: (settings) => {
+      const locale = settings.currentLocale ?? meta.locale?.default;
+      primaryPlayerRef.current?.setCurrentLocale(locale);
+      replayPlayerRef.current?.setCurrentLocale(locale);
+    },
     getState: () => playerRef.current?.getState() ?? stateRef.current,
     manifest: project.content.manifest ?? EMPTY_MANIFEST,
+    graph: project.graph ? ProjectGraphSchema.parse(project.graph) : undefined,
     variables: project.content.variables,
-    createSnapshot: () => playerRef.current?.createSnapshot() ?? createInitialRuntimeSnapshot(stateRef.current),
-    restoreFromSave: (record) => playerRef.current?.restoreFromSave(record) ?? { warnings: [] },
-    decisionLog: () => playerRef.current?.getDecisionLog() ?? [],
+    createSnapshot: () => primaryPlayerRef.current?.createSnapshot() ?? createInitialRuntimeSnapshot(stateRef.current),
+    restoreFromSave: (record) => {
+      if (replayPlayerRef.current) exitPreviewReplay();
+      return primaryPlayerRef.current?.restoreFromSave(record) ?? { warnings: [] };
+    },
+    decisionLog: () => primaryPlayerRef.current?.getDecisionLog() ?? [],
     currentStoryPoint: () => playerRef.current?.getCurrentStoryPoint() ?? null,
     currentNodeId: () => playerRef.current?.getCurrentNodeId() ?? "preview",
     getBacklog: () => playerRef.current?.getBacklog() ?? [],
     rollbackTo: (point) => playerRef.current?.jumpToStoryPoint(point) ?? { warnings: [] },
     rollbackHistoryEntry: (entryId) => playerRef.current?.rollbackToHistoryEntry(entryId) ?? { warnings: [] },
     replayVoice: (entryId) => playerRef.current?.replayVoice(entryId),
-    startReplay: (nodeId) => playerRef.current?.startReplay(nodeId) ?? { warnings: [] },
+    startChapter: (checkpoint) => {
+      if (replayPlayerRef.current) exitPreviewReplay();
+      return primaryPlayerRef.current?.startChapter(checkpoint) ?? { warnings: [] };
+    },
+    startReplay: (nodeId) => {
+      exitPreviewReplay();
+      const primary = primaryPlayerRef.current;
+      if (!primary || !project.graph) return { warnings: [{ code: "node_not_found", message: `Replay node "${nodeId}" no longer exists.`, nodeId }] };
+      let replay: GraphNovelPlayer;
+      replay = new GraphNovelPlayer({
+        meta,
+        manifest: project.content.manifest ?? EMPTY_MANIFEST,
+        locales: Object.fromEntries((project.locales ?? []).map((entry) => [entry.locale, entry.value])),
+        currentLocale: runtimeRef.current?.settings.getSettings().currentLocale ?? meta.locale?.default,
+        variables: project.content.variables,
+        globalState: () => ({
+          vars: runtimeRef.current?.persistent.getGlobalVars() ?? {},
+          playthroughCount: runtimeRef.current?.progress.getSummary().playthroughCount ?? 0,
+          lastEndingId: runtimeRef.current?.progress.getSummary().lastEndingId ?? null,
+        }),
+        replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
+        onRuntimeEffect: (effect) => {
+          if (effect.type !== "unlock" && effect.type !== "completeEnding" && effect.type !== "globalSet") {
+            setMedia(runtimeMediaFromEffect(effect, project.content.manifest ?? EMPTY_MANIFEST, contentBase));
+          }
+          return undefined;
+        },
+        onPlaybackEnded: exitPreviewReplay,
+      });
+      const activeSettings = runtimeRef.current?.settings.getSettings();
+      replay.setPlaybackTiming({
+        textSpeedCps: activeSettings?.textSpeedCps ?? meta.typingSpeedCps,
+        autoAdvanceMs: activeSettings?.autoAdvanceMs ?? meta.autoAdvanceMs,
+      });
+      const content = buildProjectPreviewContent(project);
+      const validated = validateContent(content);
+      replay.loadGraph(
+        ProjectGraphSchema.parse(project.graph),
+        content.nodeIds.map((id, index) => ({ id, instructions: validated.chapters[index] as Instruction[] ?? [] })),
+      );
+      replayPlayerRef.current = replay;
+      playerRef.current = replay;
+      replayUnsubscribeRef.current = replay.subscribe((next) => {
+        setState({ ...next });
+        audioRef.current?.sync(next);
+      });
+      const result = replay.startReplay(nodeId);
+      if (result.warnings.length > 0) {
+        exitPreviewReplay();
+        return result;
+      }
+      if (replayPlayerRef.current === replay) {
+        replayListenersRef.current.forEach((listener) => listener(true));
+      }
+      return result;
+    },
+    isReplayActive: () => replayPlayerRef.current != null,
+    exitReplay: exitPreviewReplay,
+    subscribeReplay: (listener) => {
+      replayListenersRef.current.add(listener);
+      listener(replayPlayerRef.current != null);
+      return () => replayListenersRef.current.delete(listener);
+    },
+    persistenceEnabled: () => replayPlayerRef.current == null,
     audio: {
       replayVoice: (voiceId) => audioRef.current?.replayVoice(voiceId),
       playMusic: (audioId, options) => audioRef.current?.playMusic(audioId, options),

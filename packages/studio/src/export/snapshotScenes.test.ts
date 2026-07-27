@@ -281,6 +281,7 @@ describe("fixturePersistentToGlobal", () => {
       unlockedCg: ["a", "b"],
       unlockedMusic: ["m"],
       unlockedReplays: [],
+      unlockedChapters: [],
       unlockedEndings: ["e"],
       playthroughCount: 0,
       globalVars: {},

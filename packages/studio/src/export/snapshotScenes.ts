@@ -193,6 +193,7 @@ export function fixturePersistentToGlobal(
     unlockedCg: [...persistent.unlock.cg],
     unlockedMusic: [...persistent.unlock.music],
     unlockedReplays: [...persistent.unlock.replay],
+    unlockedChapters: [],
     unlockedEndings: [...persistent.unlock.endings],
     playthroughCount: 0,
     globalVars: {},

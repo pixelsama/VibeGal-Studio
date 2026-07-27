@@ -743,6 +743,142 @@ describe("GraphNovelPlayer playback history and skip", () => {
     player.dispose();
   });
 
+  it("startsANewPlaythroughFromTheCompleteChapterCheckpoint", () => {
+    const reached: string[] = [];
+    const graph: ProjectGraphData = {
+      version: 1,
+      entryNodeId: "start",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        { id: "chapter_2", title: "Chapter 2" },
+      ],
+      nodes: [
+        { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
+        { id: "chapter_2_start", title: "Chapter 2", file: "nodes/chapter_2.json", position: { x: 200, y: 0 }, chapterId: "chapter_2" },
+      ],
+      edges: [],
+    };
+    const player = new GraphNovelPlayer({
+      manifest: {
+        ...manifest,
+        backgrounds: { school: "school.png" },
+        audio: { ...manifest.audio, bgm: { theme: "theme.ogg" } },
+      },
+      meta,
+      onChapterReached: (chapterId) => reached.push(chapterId),
+    });
+    player.loadGraph(graph, [
+      { id: "start", instructions: [{ t: "narrate", id: "opening_01", text: "opening" }] },
+      {
+        id: "chapter_2_start",
+        instructions: [
+          { t: "say", id: "chapter_2_line", who: "hero", text: "checkpoint line" },
+          { t: "narrate", id: "chapter_2_next", text: "next line" },
+        ],
+      },
+    ]);
+    player.advance();
+    const previousPlaythrough = player.createSnapshot().playthroughId;
+
+    expect(player.startChapter({
+      nodeId: "chapter_2_start",
+      instructionId: "chapter_2_line",
+      vars: { route: "b" },
+      background: "school",
+      sprites: [{ id: "hero", pos: "right", expr: "default", scale: 1.25, flip: true }],
+      bgm: { id: "theme", loop: false },
+    })).toEqual({ warnings: [] });
+
+    const snapshot = player.createSnapshot();
+    expect(snapshot.playthroughId).not.toBe(previousPlaythrough);
+    expect(player.getDecisionLog()).toEqual([{ type: "start", nodeId: "chapter_2_start" }]);
+    expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "chapter_2_start", instructionId: "chapter_2_line" });
+    expect(player.getState()).toEqual(expect.objectContaining({
+      vars: expect.objectContaining({ route: "b" }),
+      background: "school",
+      sprites: [expect.objectContaining({
+        id: "hero", pos: "right", expr: "default", scale: 1.25, flip: true,
+        exprMs: 0, ms: 0, justEntered: false, trans: "cut",
+      })],
+      audio: expect.objectContaining({ bgm: { id: "theme", loop: false, fade: 0 } }),
+    }));
+    expect(player.getState().dialogue).toEqual(expect.objectContaining({ text: "checkpoint line", fullyRevealed: true }));
+    expect(reached).toEqual(["opening", "chapter_2"]);
+    player.dispose();
+  });
+
+  it("startsAChapterAtNodeEntryAndRejectsMissingCheckpointTargets", () => {
+    const player = new GraphNovelPlayer({ manifest, meta });
+    player.loadGraph(baseGraph, [
+      {
+        id: "start",
+        instructions: [
+          { t: "set", key: "affection", value: 5 },
+          { t: "narrate", id: "line_01", text: "started" },
+        ],
+      },
+    ]);
+
+    expect(player.startChapter({
+      nodeId: "start",
+      instructionId: null,
+      vars: { affection: 2 },
+      background: null,
+      sprites: [],
+      bgm: null,
+    })).toEqual({ warnings: [] });
+    expect(player.getState().vars.affection).toBe(5);
+    expect(player.getState().narration?.text).toBe("started");
+
+    expect(player.startChapter({
+      nodeId: "missing",
+      instructionId: null,
+      vars: {},
+      background: null,
+      sprites: [],
+      bgm: null,
+    })).toEqual({ warnings: [expect.objectContaining({ code: "node_not_found", nodeId: "missing" })] });
+    player.dispose();
+  });
+
+  it("replaySuppressesReadAndChapterPersistenceAndSignalsTerminalPlaybackOnce", () => {
+    const markRead = vi.fn();
+    const onChapterReached = vi.fn();
+    const onPlaybackEnded = vi.fn();
+    const player = new GraphNovelPlayer({
+      manifest,
+      meta,
+      persistent: { getReadStatus: () => false, markRead },
+      onChapterReached,
+      onPlaybackEnded,
+    });
+    const graph: ProjectGraphData = {
+      version: 1,
+      entryNodeId: "start",
+      chapters: [{ id: "opening", title: "Opening" }, { id: "replay", title: "Replay" }],
+      nodes: [
+        { id: "start", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "opening" },
+        { id: "replay_start", file: "nodes/replay.json", position: { x: 100, y: 0 }, chapterId: "replay" },
+      ],
+      edges: [],
+    };
+    player.loadGraph(graph, [
+      { id: "start", instructions: [{ t: "narrate", id: "opening_01", text: "opening" }] },
+      { id: "replay_start", instructions: [{ t: "narrate", id: "replay_01", text: "replay" }] },
+    ]);
+    onChapterReached.mockClear();
+
+    expect(player.startReplay("replay_start")).toEqual({ warnings: [] });
+    player.advance();
+    player.advance();
+    player.advance();
+
+    expect(markRead).not.toHaveBeenCalled();
+    expect(onChapterReached).not.toHaveBeenCalled();
+    expect(onPlaybackEnded).toHaveBeenCalledOnce();
+    player.dispose();
+  });
+
   it("voiceReplayDoesNotAdvanceStory", () => {
     const replayVoice = vi.fn();
     const player = new GraphNovelPlayer({ manifest, meta, replayVoice });
