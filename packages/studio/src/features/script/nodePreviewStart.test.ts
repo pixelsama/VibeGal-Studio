@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectNodeStoryPoints, sliceNodeDataFromIndex } from "./nodePreviewStart";
+import { collectNodeStoryPoints, followedPreviewStart, sliceNodeDataFromIndex } from "./nodePreviewStart";
 
 describe("node preview start helpers", () => {
   it("collects story points with their instruction index", () => {
@@ -26,5 +26,13 @@ describe("node preview start helpers", () => {
     expect(sliceNodeDataFromIndex(data, 99)).toEqual([]);
     expect(sliceNodeDataFromIndex(data, -3)).toEqual(data);
     expect(sliceNodeDataFromIndex(null, 1)).toBe(null);
+  });
+
+  it("keeps the last valid start while cursor following is unavailable", () => {
+    expect(followedPreviewStart(null, 2, true, true)).toBe(2);
+    expect(followedPreviewStart(2, 4, true, true)).toBe(4);
+    expect(followedPreviewStart(4, null, true, true)).toBe(4);
+    expect(followedPreviewStart(4, 1, true, false)).toBe(4);
+    expect(followedPreviewStart(4, 1, false, true)).toBe(4);
   });
 });

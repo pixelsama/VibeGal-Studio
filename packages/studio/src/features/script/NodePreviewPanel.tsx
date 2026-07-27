@@ -6,13 +6,25 @@ import { StageFrame } from "../preview/StageFrame";
 import { useRendererComponent } from "../preview/useRendererComponent";
 import { formatRendererDiagnostics } from "../renderers/diagnostics";
 import { CenteredMessage } from "../common/CenteredMessage";
+import { Switch } from "../common/Form";
 import { BottomSheet } from "../common/BottomSheet";
 import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
 import { RuntimeMediaOverlay } from "../preview/RuntimeMediaOverlay";
 import { collectNodeStoryPoints, sliceNodeDataFromIndex } from "./nodePreviewStart";
 import { useNodePreview } from "./useNodePreview";
 
-export function NodePreviewPanel({ project, rendererId, node, nodeData, previewStartIndex, currentLineStartIndex, onPreviewStartChange }: {
+export function NodePreviewPanel({
+  project,
+  rendererId,
+  node,
+  nodeData,
+  previewStartIndex,
+  currentLineStartIndex,
+  followCursor,
+  followCursorAvailable,
+  onFollowCursorChange,
+  onPreviewStartChange,
+}: {
   project: ProjectData;
   rendererId: string;
   node: GraphNode;
@@ -21,6 +33,10 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData, previewS
   previewStartIndex: number | null;
   /** 光标所在剧本行对应的起跑下标；null = 该行不可起跑（有诊断或越界）。 */
   currentLineStartIndex: number | null;
+  followCursor: boolean;
+  followCursorAvailable: boolean;
+  onFollowCursorChange: (follow: boolean) => void;
+  /** 手动选择起点；调用方同时关闭跟随光标。 */
   onPreviewStartChange: (index: number | null) => void;
 }) {
   const storyPoints = useMemo(() => collectNodeStoryPoints(nodeData), [nodeData]);
@@ -56,6 +72,13 @@ export function NodePreviewPanel({ project, rendererId, node, nodeData, previewS
     <div style={layoutStyle}>
       <div style={stagePaneStyle}>
         <div style={previewToolbarStyle}>
+          <Switch
+            checked={followCursor}
+            disabled={!followCursorAvailable}
+            label="跟随光标"
+            aria-label="跟随光标"
+            onChange={onFollowCursorChange}
+          />
           <button
             type="button"
             disabled={currentLineStartIndex == null}

@@ -47,6 +47,7 @@ import {
 } from "./scenarioEditor";
 import { ScenarioTextEditor, SCENARIO_LINE_HEIGHT, SCENARIO_TEXT_PADDING_TOP } from "./ScenarioTextEditor";
 import { mapScenarioFrames } from "./scenarioFrames";
+import { followedPreviewStart } from "./nodePreviewStart";
 import {
   createUndoHistory,
   recordUndoCheckpoint,
@@ -439,11 +440,26 @@ export function NodeEditor({
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
   const scenarioFrameMap = useMemo(() => mapScenarioFrames(text), [text]);
   const [previewStartIndex, setPreviewStartIndex] = useState<number | null>(null);
+  const [followPreviewCursor, setFollowPreviewCursor] = useState(false);
   const currentLineStartIndex = useMemo(() => {
     if (mode !== "scenario" || diagnostics.length > 0) return null;
     const index = scenarioFrameMap.startIndexByLine[scenarioSelection.line - 1];
     return index != null && index < instructions.length ? index : null;
   }, [diagnostics.length, instructions.length, mode, scenarioFrameMap, scenarioSelection.line]);
+
+  useEffect(() => {
+    setPreviewStartIndex((current) => followedPreviewStart(
+      current,
+      currentLineStartIndex,
+      followPreviewCursor,
+      mode === "scenario",
+    ));
+  }, [currentLineStartIndex, followPreviewCursor, mode]);
+
+  const handleManualPreviewStartChange = useCallback((index: number | null) => {
+    setFollowPreviewCursor(false);
+    setPreviewStartIndex(index);
+  }, []);
   const scenarioCommandTrigger = useMemo(
     () => (mode === "scenario" ? scenarioCommandTriggerAtCursor(text, cursorOffset) : null),
     [cursorOffset, mode, text],
@@ -751,6 +767,7 @@ export function NodeEditor({
       draftVersionRef.current += 1;
       undoHistoryRef.current = createUndoHistory();
       setMode("json");
+      setFollowPreviewCursor(false);
       replaceText(built.payload);
       replaceValidInstructions(built.nextInstructions);
       setDiagnostics([]);
@@ -867,7 +884,10 @@ export function NodeEditor({
       nodeData={lastValidInstructions}
       previewStartIndex={previewStartIndex}
       currentLineStartIndex={currentLineStartIndex}
-      onPreviewStartChange={setPreviewStartIndex}
+      followCursor={followPreviewCursor}
+      followCursorAvailable={mode === "scenario"}
+      onFollowCursorChange={setFollowPreviewCursor}
+      onPreviewStartChange={handleManualPreviewStartChange}
     />
   );
 

@@ -21,3 +21,19 @@ export function sliceNodeDataFromIndex(nodeData: unknown, index: number | null):
   const clamped = Math.max(0, Math.min(Math.floor(index), nodeData.length));
   return nodeData.slice(clamped);
 }
+
+/**
+ * 跟随光标只接收有效的 Scenario 行映射。语法暂时无效或切到 JSON 时，
+ * 保留作者最后一次看到的预览起点，避免预览突然跳回节点开头。
+ */
+export function followedPreviewStart(
+  currentStartIndex: number | null,
+  currentLineStartIndex: number | null,
+  followCursor: boolean,
+  scenarioAvailable: boolean,
+): number | null {
+  if (!followCursor || !scenarioAvailable || currentLineStartIndex == null) {
+    return currentStartIndex;
+  }
+  return currentLineStartIndex;
+}

@@ -72,11 +72,17 @@ describe("NodePreviewPanel", () => {
         nodeData={[]}
         previewStartIndex={null}
         currentLineStartIndex={null}
+        followCursor={false}
+        followCursorAvailable
+        onFollowCursorChange={() => {}}
         onPreviewStartChange={() => {}}
       />,
     );
 
     expect(html).toContain(">运行状态</span>");
+    expect(html).toContain('aria-label="跟随光标"');
+    expect(html).toContain('role="switch"');
+    expect(html).toContain("从节点开始");
     expect(html).not.toContain(">Runtime</span>");
   });
 });
