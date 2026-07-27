@@ -7,6 +7,7 @@
  *   只读巡检，与 CLI renderer-snapshot 看的是同一组场景。
  */
 import { useMemo, useState } from "react";
+import { FastForward, Play, RotateCcw, StepBack, StepForward } from "lucide-react";
 import type { ProjectData } from "../../lib/types";
 import { RuntimeStateInspector } from "./RuntimeStateInspector";
 import { useProjectPlayer } from "./useProjectPlayer";
@@ -23,6 +24,10 @@ import { Button } from "../common/Button";
 import { collectStateSources, stateSourceDefaults } from "../script/storyState";
 
 type PreviewMode = "story" | "fixtures";
+
+export function nextStudioFastForwardMode(skipMode: "off" | "read" | "all"): "off" | "all" {
+  return skipMode === "all" ? "off" : "all";
+}
 
 interface Props {
   project: ProjectData;
@@ -152,6 +157,38 @@ export function Preview({ project, rendererId, initialPreviewMode = "story", onO
             </>
           )}
           <div style={{ flex: 1 }} />
+          {!fixtureMode && (
+            <div style={playbackControlsStyle} role="group" aria-label="播放控制">
+              <Button onClick={player.restart} title="重新开始剧情">
+                <RotateCcw size={14} />
+                重新开始
+              </Button>
+              <Button onClick={() => player.seekBy(-1)} title="后退一个剧情指令">
+                <StepBack size={14} />
+                上一句
+              </Button>
+              <Button onClick={player.stepOnce} title="推进一个剧情指令">
+                <StepForward size={14} />
+                下一句
+              </Button>
+              <Button
+                aria-pressed={player.state.flags.isAutoPlay}
+                variant={player.state.flags.isAutoPlay ? "primary" : "secondary"}
+                onClick={player.toggleAuto}
+              >
+                <Play size={14} />
+                自动
+              </Button>
+              <Button
+                aria-pressed={player.state.flags.skipMode === "all"}
+                variant={player.state.flags.skipMode === "all" ? "primary" : "secondary"}
+                onClick={() => player.setSkipMode(nextStudioFastForwardMode(player.state.flags.skipMode))}
+              >
+                <FastForward size={14} />
+                快进
+              </Button>
+            </div>
+          )}
           <Button onClick={() => setInspecting((open) => !open)} aria-expanded={inspecting}>
             剧情检查
           </Button>
@@ -234,6 +271,14 @@ const toolbarStyle: React.CSSProperties = {
   flexShrink: 0,
   padding: "var(--space-1) var(--space-2)",
   borderBottom: "1px solid var(--border)",
+};
+
+const playbackControlsStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-1)",
+  paddingLeft: "var(--space-2)",
+  borderLeft: "1px solid var(--border)",
 };
 
 const sceneSelectStyle: React.CSSProperties = {

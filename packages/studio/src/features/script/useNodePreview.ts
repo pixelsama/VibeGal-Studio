@@ -10,6 +10,7 @@ import {
   type NovelState,
   type RuntimeControls,
   type RuntimeServices,
+  type SkipMode,
   RuntimeServiceUnavailableError,
   createInMemoryRuntimeServices,
 } from "@vibegal/engine";
@@ -98,6 +99,9 @@ export function useNodePreview(
     const player = playerRef.current;
     if (player) player.setAutoPlay(!player.getState().flags.isAutoPlay);
   }, []);
+  const setSkipMode = useCallback((mode: SkipMode) => {
+    if (mode !== "off") throw new RuntimeServiceUnavailableError("controls", "setSkipMode");
+  }, []);
   const toggleRecording = useCallback(() => {
     const player = playerRef.current;
     if (player) player.setRecording(!player.getState().flags.isRecording);
@@ -158,7 +162,7 @@ export function useNodePreview(
   });
 
   return {
-    state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter,
+    state, error, advance, restart, toggleAuto, setSkipMode, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter,
     rendererProps, media, closeMedia, skipVideo,
     startDebugSession: () => {},
     setDebugVariable: () => {},

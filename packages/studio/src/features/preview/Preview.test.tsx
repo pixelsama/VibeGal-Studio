@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RendererProps } from "@vibegal/engine";
 import type { ProjectData } from "../../lib/types";
-import { Preview } from "./Preview";
+import { Preview, nextStudioFastForwardMode } from "./Preview";
 
 /**
  * 预览的引擎 player 与渲染层加载都走 Tauri/fs，测试里换成探针：
@@ -47,6 +47,11 @@ vi.mock("./useProjectPlayer", () => ({
       media: null,
       closeMedia: () => {},
       skipVideo: () => {},
+      restart: () => {},
+      seekBy: () => {},
+      stepOnce: () => {},
+      toggleAuto: () => {},
+      setSkipMode: () => {},
       startDebugSession: () => {},
       setDebugVariable: () => {},
       resetDebugVariables: () => {},
@@ -103,6 +108,14 @@ const project: ProjectData = {
   ],
 };
 
+describe("Studio playback controls", () => {
+  it("toggles all-skip without introducing another playback mode", () => {
+    expect(nextStudioFastForwardMode("off")).toBe("all");
+    expect(nextStudioFastForwardMode("read")).toBe("all");
+    expect(nextStudioFastForwardMode("all")).toBe("off");
+  });
+});
+
 describe("Preview 场景快照", () => {
   beforeEach(() => {
     (globalThis as { window?: unknown }).window = {};
@@ -121,6 +134,11 @@ describe("Preview 场景快照", () => {
     expect(html).toContain('aria-label="调试起点"');
     expect(html).toContain('aria-label="调试指令"');
     expect(html).toContain("从这里试演");
+    expect(html).toContain('role="group" aria-label="播放控制"');
+    for (const label of ["重新开始", "上一句", "下一句", "自动", "快进"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('aria-pressed="false"');
     expect(html).not.toContain('aria-label="场景"');
     expect(html).not.toContain("海平线上的第一缕光");
   });
@@ -156,6 +174,8 @@ describe("Preview 场景快照", () => {
     // 场景快照的状态检视器同样按需打开，默认不挤压舞台。
     expect(html).not.toContain("sky");
     expect(html).toContain("剧情检查");
+    expect(html).not.toContain('aria-label="播放控制"');
+    expect(html).not.toContain("重新开始");
   });
 
   it("场景快照模式默认场景带 story 语义 uiHint（Spec 21：剧情 fixture 不卡标题门）", () => {

@@ -17,6 +17,7 @@ import {
   type NovelState,
   type RendererProps,
   type RuntimeControls,
+  type SkipMode,
   type RuntimeServices,
   type RuntimeSettingsRecord,
   type StateWriteEvent,
@@ -36,6 +37,7 @@ export interface ProjectPlayerResult {
   advance: () => void;
   restart: () => void;
   toggleAuto: () => void;
+  setSkipMode: (mode: SkipMode) => void;
   toggleRecording: () => void;
   seekBy: (delta: number) => void;
   stepOnce: () => void;
@@ -305,6 +307,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     const p = playerRef.current;
     if (p) p.setAutoPlay(!p.getState().flags.isAutoPlay);
   }, []);
+  const setSkipMode = useCallback((mode: SkipMode) => playerRef.current?.setSkipMode(mode), []);
   const toggleRecording = useCallback(() => {
     const p = playerRef.current;
     if (p) p.setRecording(!p.getState().flags.isRecording);
@@ -376,7 +379,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   });
 
   return {
-    state, error, advance, restart, toggleAuto, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter,
+    state, error, advance, restart, toggleAuto, setSkipMode, toggleRecording, seekBy, stepOnce, prevChapter, nextChapter,
     rendererProps, media, closeMedia, skipVideo, startDebugSession,
     setDebugVariable: (name, value) => playerRef.current?.setDebugVariable(name, value),
     resetDebugVariables: () => playerRef.current?.resetDebugVariables(),
