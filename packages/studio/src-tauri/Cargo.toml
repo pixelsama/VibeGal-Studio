@@ -1,6 +1,6 @@
 [package]
 name = "vibegal-studio"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 description = "Graph-first galgame studio and live preview editor"
 authors = ["pixelsama"]
 license = "AGPL-3.0-or-later"

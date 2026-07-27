@@ -16,6 +16,18 @@ function parseTomlVersion(path) {
   return match[1];
 }
 
+function parseCargoLockPackageVersion(path, packageName) {
+  const text = readFileSync(path, "utf8");
+  const packageBlocks = text.split(/\n(?=\[\[package\]\]\n)/);
+  for (const block of packageBlocks) {
+    const name = block.match(/^name\s*=\s*"([^"]+)"\s*$/m)?.[1];
+    if (name !== packageName) continue;
+    const version = block.match(/^version\s*=\s*"([^"]+)"\s*$/m)?.[1];
+    if (version) return version;
+  }
+  throw new Error(`无法从 ${path} 读取 ${packageName} version`);
+}
+
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const targets = [
   {
@@ -49,6 +61,13 @@ const targets = [
     version: loadJson(
       resolve(workspaceRoot, "packages/studio/src-tauri/player.tauri.conf.json"),
     ).version,
+  },
+  {
+    name: "src-tauri/Cargo.lock",
+    version: parseCargoLockPackageVersion(
+      resolve(workspaceRoot, "packages/studio/src-tauri/Cargo.lock"),
+      "vibegal-studio",
+    ),
   },
 ];
 

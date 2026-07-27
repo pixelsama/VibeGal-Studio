@@ -4,7 +4,7 @@
 
 VibeGal-Studio 是一个 graph-first 的 Galgame 项目编辑器和实时预览工具。剧情、资源与渲染层都保存在普通项目文件中，不锁进私有数据库；Studio 负责可视化编辑、校验、热重载、预览和导出。
 
-> 当前状态：`0.1.0-alpha.1`。核心创作链路已经可用，但安装包暂未签名，仍建议先备份重要项目并阅读[已知限制](#已知限制)。
+> 当前状态：`0.2.0`。核心创作链路已经可用，但安装包暂未签名，仍建议先备份重要项目并阅读[已知限制](#已知限制)。
 
 ## 下载
 
@@ -106,7 +106,10 @@ pnpm build
 pnpm check:schemas
 pnpm check:engine-types
 pnpm check:renderer-template
+pnpm check:example-template
 pnpm check:doc-contract
+pnpm check:vocabulary
+pnpm check:versions
 pnpm smoke:release
 ```
 

@@ -1,9 +1,10 @@
 # Spec 29 — Writing Loop（写作主循环）
 
-> 状态：实施中。
+> 状态：已完成（2026-07-27）。
 > 目标版本：`0.2.0`。
 > 基线：`6eb3ce0b5fbffcf8ef9ed33079aeb0ab9479dd74`。
-> 来源：[Review 28 §4 P1](./28-product-review-and-roadmap.md#p1--写作主循环目标-020约-34-周)。
+> 实施：P1 十一批全部落地；版本、模板漂移、文档、词汇与全量测试门禁均已纳入收口。
+> 来源：[Review 28 §4 P1](./28-product-review-and-roadmap.md)。
 
 ## 0. 目标
 

@@ -61,7 +61,9 @@ jobs:
           pnpm check:schemas
           pnpm check:engine-types
           pnpm check:renderer-template
+          pnpm check:example-template
           pnpm check:doc-contract
+          pnpm check:vocabulary
           pnpm smoke:release
           cargo test --locked --manifest-path packages/studio/src-tauri/Cargo.toml
 

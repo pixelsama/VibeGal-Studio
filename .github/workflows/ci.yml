@@ -56,6 +56,9 @@ jobs:
       - name: Default renderer drift check
         run: pnpm run check:renderer-template
 
+      - name: Example project template drift check
+        run: pnpm run check:example-template
+
       - name: Version consistency check
         run: pnpm run check:versions
 

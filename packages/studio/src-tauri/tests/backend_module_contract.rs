@@ -67,7 +67,7 @@ const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 const COMMAND_JSON_KEYS: [(&str, &[&str]); 40] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
-    ("create_project", &["parentDir", "name"]),
+    ("create_project", &["parentDir", "name", "template"]),
     ("initialize_project", &["path"]),
     ("repair_project_support_files", &["projectPath"]),
     ("watch_project", &["projectPath"]),

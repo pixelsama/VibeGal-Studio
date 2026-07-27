@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "VibeGal-Studio",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0",
   "identifier": "com.vibegal.studio",
   "build": {
     "frontendDist": "../dist",
