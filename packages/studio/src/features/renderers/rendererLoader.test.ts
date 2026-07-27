@@ -4,8 +4,18 @@ const rendererManifest = { id: "default", name: "Default", contractVersion: 1, C
 let compileResult: unknown = rendererManifest;
 let compileBeforeExecutionGate: Promise<void> | null = null;
 
+const SOURCE_FINGERPRINT = "source-hash";
+
 vi.mock("../../lib/tauri", () => ({
-  readRendererFiles: vi.fn(async () => [{ path: "index.tsx", content: "export default {};" }]),
+  loadAppSettings: vi.fn(async () => ({ theme: "system", rendererTrust: {} })),
+  updateAppSettings: vi.fn(async (update: (settings: { theme: "system"; rendererTrust: Record<string, string> }) => unknown) => (
+    update({ theme: "system", rendererTrust: {} })
+  )),
+  rendererSourceFingerprint: vi.fn(async () => SOURCE_FINGERPRINT),
+  readRendererSource: vi.fn(async () => ({
+    files: [{ path: "index.tsx", content: "export default {};" }],
+    fingerprint: SOURCE_FINGERPRINT,
+  })),
 }));
 
 vi.mock("./runtimeCompiler", () => ({
@@ -22,20 +32,23 @@ describe("loadRenderer", () => {
     compileResult = rendererManifest;
     compileBeforeExecutionGate = null;
     const { clearRendererCache } = await import("./rendererLoader");
-    const { clearRendererTrust } = await import("./rendererTrust");
+    const { configureRendererTrustPersistence } = await import("./rendererTrust");
     clearRendererCache();
-    clearRendererTrust();
+    configureRendererTrustPersistence({
+      load: async () => ({}),
+      save: async () => {},
+    });
   });
 
   it("loads project renderers through the Tauri file API in dev", async () => {
-    const { readRendererFiles } = await import("../../lib/tauri");
+    const { readRendererSource } = await import("../../lib/tauri");
     const { compileRenderer } = await import("./runtimeCompiler");
     const { loadRenderer } = await import("./rendererLoader");
     const { trustProjectRenderer } = await import("./rendererTrust");
 
-    trustProjectRenderer("/outside/vite-allow-list/project");
+    await trustProjectRenderer("/outside/vite-allow-list/project", "default", SOURCE_FINGERPRINT);
     await expect(loadRenderer("/outside/vite-allow-list/project", "default")).resolves.toBe(rendererManifest);
-    expect(readRendererFiles).toHaveBeenCalledWith("/outside/vite-allow-list/project", "default");
+    expect(readRendererSource).toHaveBeenCalledWith("/outside/vite-allow-list/project", "default");
     expect(compileRenderer).toHaveBeenCalledWith(
       [{ path: "index.tsx", content: "export default {};" }],
       expect.objectContaining({ rendererId: "default", beforeExecute: expect.any(Function) }),
@@ -43,31 +56,31 @@ describe("loadRenderer", () => {
   });
 
   it("does not compile project code before explicit trust", async () => {
-    const { readRendererFiles } = await import("../../lib/tauri");
+    const { readRendererSource } = await import("../../lib/tauri");
     const { compileRenderer } = await import("./runtimeCompiler");
     const { loadRenderer } = await import("./rendererLoader");
 
     await expect(loadRenderer("/project", "default")).rejects.toMatchObject({
       code: "renderer_trust_required",
     });
-    expect(readRendererFiles).not.toHaveBeenCalled();
+    expect(readRendererSource).toHaveBeenCalledWith("/project", "default");
     expect(compileRenderer).not.toHaveBeenCalled();
   });
 
   it("does not return a cached renderer after project trust is revoked", async () => {
-    const { readRendererFiles } = await import("../../lib/tauri");
+    const { readRendererSource } = await import("../../lib/tauri");
     const { compileRenderer } = await import("./runtimeCompiler");
     const { loadRenderer } = await import("./rendererLoader");
     const { clearRendererTrust, trustProjectRenderer } = await import("./rendererTrust");
 
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
     await expect(loadRenderer("/project", "default")).resolves.toBe(rendererManifest);
-    clearRendererTrust("/project");
+    await clearRendererTrust("/project");
 
     await expect(loadRenderer("/project", "default")).rejects.toMatchObject({
       code: "renderer_trust_required",
     });
-    expect(readRendererFiles).toHaveBeenCalledTimes(1);
+    expect(readRendererSource).toHaveBeenCalledTimes(2);
     expect(compileRenderer).toHaveBeenCalledTimes(1);
   });
 
@@ -80,14 +93,14 @@ describe("loadRenderer", () => {
       resumeExecution = resolve;
     });
 
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
     const outcome = loadRenderer("/project", "default").then(
       (value) => ({ value, error: null }),
       (error: unknown) => ({ value: null, error }),
     );
     await vi.waitFor(() => expect(compileRenderer).toHaveBeenCalledTimes(1));
 
-    clearRendererTrust("/project");
+    await clearRendererTrust("/project");
     resumeExecution();
 
     await expect(outcome).resolves.toMatchObject({
@@ -100,7 +113,7 @@ describe("loadRenderer", () => {
     compileResult = undefined;
     const { getRendererDiagnostics, loadRenderer } = await import("./rendererLoader");
     const { trustProjectRenderer } = await import("./rendererTrust");
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
 
     try {
       await loadRenderer("/project", "default");
@@ -122,7 +135,7 @@ describe("loadRenderer", () => {
     compileResult = { id: "other", name: "Other", contractVersion: 1, Component: () => null };
     const { getRendererDiagnostics, loadRenderer } = await import("./rendererLoader");
     const { trustProjectRenderer } = await import("./rendererTrust");
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
 
     try {
       await loadRenderer("/project", "default");
@@ -138,7 +151,7 @@ describe("loadRenderer", () => {
     compileResult = { id: "default", name: "Default", Component: () => null };
     const { getRendererDiagnostics, loadRenderer } = await import("./rendererLoader");
     const { trustProjectRenderer } = await import("./rendererTrust");
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
 
     try {
       await loadRenderer("/project", "default");
@@ -159,7 +172,7 @@ describe("loadRenderer", () => {
     compileResult = { id: "default", name: "Default", contractVersion: 2, Component: () => null };
     const { getRendererDiagnostics, loadRenderer } = await import("./rendererLoader");
     const { trustProjectRenderer } = await import("./rendererTrust");
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
 
     try {
       await loadRenderer("/project", "default");
@@ -192,7 +205,7 @@ describe("loadRenderer", () => {
     };
     const { getRendererDiagnostics, loadRenderer } = await import("./rendererLoader");
     const { trustProjectRenderer } = await import("./rendererTrust");
-    trustProjectRenderer("/project");
+    await trustProjectRenderer("/project", "default", SOURCE_FINGERPRINT);
 
     try {
       await loadRenderer("/project", "default");

@@ -25,15 +25,18 @@ describe("createLatestSettingsSaver", () => {
     });
     const saver = createLatestSettingsSaver(save, () => {});
 
-    const pending = saver.requestSave({ theme: "dark" });
-    saver.requestSave({ theme: "light" });
+    const pending = saver.requestSave({ theme: "dark", rendererTrust: { renderer: "hash" } });
+    saver.requestSave({ theme: "light", rendererTrust: { renderer: "hash" } });
 
     expect(save).toHaveBeenCalledTimes(1);
     firstSave.resolve();
     await Promise.resolve();
 
     expect(save).toHaveBeenCalledTimes(2);
-    expect(saved).toEqual([{ theme: "dark" }, { theme: "light" }]);
+    expect(saved).toEqual([
+      { theme: "dark", rendererTrust: { renderer: "hash" } },
+      { theme: "light", rendererTrust: { renderer: "hash" } },
+    ]);
 
     secondSave.resolve();
     await pending;

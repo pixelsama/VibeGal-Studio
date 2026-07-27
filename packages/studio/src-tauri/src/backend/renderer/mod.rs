@@ -1,5 +1,38 @@
 //! Renderer source catalog and renderer-layer mutations.
 
+use sha2::{Digest, Sha256};
+
+/// 读取一个渲染层目录下的所有源码文件，并返回与这批内容严格对应的指纹。
+pub(crate) fn read_renderer_source(
+    project_path: String,
+    renderer_id: String,
+) -> Result<RendererSource, String> {
+    let mut files = read_renderer_files(project_path, renderer_id)?;
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let fingerprint = source_fingerprint(&files);
+    Ok(RendererSource { files, fingerprint })
+}
+
+/// 对一个渲染层的全部 TypeScript 源码计算稳定指纹。
+/// 路径与内容都进入摘要，任意源码文件新增、删除、改名或改写都会让信任失效。
+pub(crate) fn renderer_source_fingerprint(
+    project_path: String,
+    renderer_id: String,
+) -> Result<String, String> {
+    Ok(read_renderer_source(project_path, renderer_id)?.fingerprint)
+}
+
+fn source_fingerprint(files: &[RendererFile]) -> String {
+    let mut hasher = Sha256::new();
+    for file in files {
+        hasher.update(file.path.as_bytes());
+        hasher.update([0]);
+        hasher.update(file.content.as_bytes());
+        hasher.update([0]);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
 /// 读取一个渲染层目录下的所有源码文件（.ts/.tsx），供前端运行时编译。
 /// 返回 { 相对路径: 源码 } 的列表。递归读取。
 pub(crate) fn read_renderer_files(
@@ -30,6 +63,13 @@ pub(crate) fn read_renderer_files(
     let mut files = vec![];
     collect_source_files(&renderer_root, &renderer_root, &mut files)?;
     Ok(files)
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RendererSource {
+    pub files: Vec<RendererFile>,
+    pub fingerprint: String,
 }
 
 #[derive(Serialize, Clone, Debug)]

@@ -5,7 +5,7 @@
  * 因此 dev/prod 都走 Tauri 文件读取 + esbuild-wasm 运行时编译。
  */
 import { RENDERER_CONTRACT_VERSION, validateRendererManifestContract, type RendererManifest } from "@vibegal/engine";
-import { readRendererFiles } from "../../lib/tauri";
+import { readRendererSource } from "../../lib/tauri";
 import { compileRenderer } from "./runtimeCompiler";
 import {
   RendererDiagnosticError,
@@ -14,7 +14,7 @@ import {
   sourceLocation,
   type RendererDiagnostic,
 } from "./diagnostics";
-import { isProjectRendererTrusted } from "./rendererTrust";
+import { initializeRendererTrust, isProjectRendererTrusted } from "./rendererTrust";
 
 const cache = new Map<string, RendererManifest>();
 let rendererCacheVersion = 0;
@@ -23,7 +23,7 @@ export class RendererTrustRequiredError extends Error {
   readonly code = "renderer_trust_required";
 
   constructor(readonly projectPath: string) {
-    super("项目渲染层包含会执行的代码。请仅在信任此项目来源时授权运行。");
+    super("项目界面风格包含会执行的代码。请仅在信任此项目来源时授权运行。");
     this.name = "RendererTrustRequiredError";
   }
 }
@@ -115,15 +115,19 @@ export async function loadRenderer(
   projectPath: string,
   rendererId: string,
 ): Promise<RendererManifest> {
+  await initializeRendererTrust();
+  const source = await readRendererSource(projectPath, rendererId);
+  const { files, fingerprint } = source;
   const assertExecutionTrusted = () => {
-    if (!isProjectRendererTrusted(projectPath)) throw new RendererTrustRequiredError(projectPath);
+    if (!isProjectRendererTrusted(projectPath, rendererId, fingerprint)) {
+      throw new RendererTrustRequiredError(projectPath);
+    }
   };
   assertExecutionTrusted();
-  const cacheKey = `${projectPath}::${rendererId}::${rendererCacheVersion}`;
+  const cacheKey = `${projectPath}::${rendererId}::${fingerprint}::${rendererCacheVersion}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  const files = await readRendererFiles(projectPath, rendererId);
   const defaultExport = await compileRenderer(files, { rendererId, beforeExecute: assertExecutionTrusted });
 
   const diagnostics = manifestDiagnostics(defaultExport, rendererId, files);

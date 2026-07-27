@@ -1,6 +1,39 @@
 use super::support::*;
 
 #[test]
+fn renderer_fingerprint_is_stable_and_changes_with_any_source_file() {
+    let root = unique_temp_dir("renderer-fingerprint");
+    let project = root.join("project");
+    write_renderer_project(&project);
+
+    let first = renderer_source_fingerprint(
+        project.to_string_lossy().into_owned(),
+        "default".to_string(),
+    )
+    .unwrap();
+    let second = renderer_source_fingerprint(
+        project.to_string_lossy().into_owned(),
+        "default".to_string(),
+    )
+    .unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.len(), 64);
+
+    write_text(
+        &project.join("renderers/default/Stage.tsx"),
+        "export const Stage = () => 'changed';",
+    );
+    let changed = renderer_source_fingerprint(
+        project.to_string_lossy().into_owned(),
+        "default".to_string(),
+    )
+    .unwrap();
+    assert_ne!(changed, first);
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn create_renderer_copies_template_without_overwrite() {
     let root = unique_temp_dir("create-renderer");
     let project = root.join("project");

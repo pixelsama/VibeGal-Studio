@@ -13,7 +13,7 @@ use super::model::{
 };
 use super::mutation;
 use super::project;
-use super::renderer::{self, RendererFile};
+use super::renderer::{self, RendererFile, RendererSource};
 use super::resources;
 use super::settings as settings_service;
 use super::watcher::{self, ProjectWatchers, PROJECT_CHANGED_EVENT};
@@ -72,11 +72,6 @@ fn open_project_with_scope(
     scope_state: &AssetScopeState,
 ) -> Result<ProjectData, String> {
     let data = project::open_project_inner(path)?;
-    // 老项目可能缺 .galstudio 自描述文件：只补缺失，不覆盖用户改动。
-    // 回填失败（如权限问题）不阻塞打开。
-    if let Err(error) = project::ensure_project_self_description(Path::new(&data.path)) {
-        eprintln!("[vibegal] 补齐项目自描述文件失败（已跳过）: {error}");
-    }
     let content_root = ProjectRoot::open(Path::new(&data.path))?.content_root()?;
     let scope = app_handle.asset_protocol_scope();
     let mut active = scope_state
@@ -143,6 +138,12 @@ pub(crate) fn initialize_project(
         &app_handle,
         &scope_state,
     )
+}
+
+#[tauri::command]
+pub(crate) fn repair_project_support_files(project_path: String) -> Result<Vec<String>, String> {
+    let project_root = ProjectRoot::open(Path::new(&project_path))?;
+    project::ensure_project_self_description(&project_root)
 }
 
 #[tauri::command]
@@ -218,6 +219,22 @@ pub(crate) fn save_project_meta(
     expected_revision: Option<serde_json::Value>,
 ) -> Result<Option<FileRevision>, String> {
     mutation::save_project_meta(project_path, meta, expected_revision)
+}
+
+#[tauri::command]
+pub(crate) fn read_renderer_source(
+    project_path: String,
+    renderer_id: String,
+) -> Result<RendererSource, String> {
+    renderer::read_renderer_source(project_path, renderer_id)
+}
+
+#[tauri::command]
+pub(crate) fn renderer_source_fingerprint(
+    project_path: String,
+    renderer_id: String,
+) -> Result<String, String> {
+    renderer::renderer_source_fingerprint(project_path, renderer_id)
 }
 
 #[tauri::command]

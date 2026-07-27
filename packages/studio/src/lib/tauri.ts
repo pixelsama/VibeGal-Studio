@@ -88,6 +88,11 @@ function withExpectedRevision<T extends Record<string, unknown>>(
   return expectedRevision === undefined ? args : { ...args, expectedRevision };
 }
 
+/** 把缺失的项目辅助文件补齐；只会由用户显式操作触发，不覆盖已有文件。 */
+export async function repairProjectSupportFiles(projectPath: string): Promise<string[]> {
+  return invoke<string[]>("repair_project_support_files", { projectPath });
+}
+
 /** 开始监听项目目录变化，后端会 debounce 后发 project_changed 事件 */
 export async function watchProject(projectPath: string): Promise<void> {
   await invoke("watch_project", { projectPath });
@@ -157,11 +162,27 @@ export async function saveProjectMeta(
   return invoke<FileRevision | null>("save_project_meta", withExpectedRevision({ projectPath, meta }, expectedRevision));
 }
 
-/** 读取一个渲染层目录的所有 .ts/.tsx 源码（供前端运行时编译） */
+/** 计算渲染层完整源码树指纹；用于按「项目路径 + 内容」持久化信任。 */
+export async function rendererSourceFingerprint(projectPath: string, rendererId: string): Promise<string> {
+  return invoke<string>("renderer_source_fingerprint", { projectPath, rendererId });
+}
+
+/** 读取一个界面风格的源码快照及其严格对应的内容指纹。 */
 export interface RendererFile {
   path: string;
   content: string;
 }
+
+export interface RendererSource {
+  files: RendererFile[];
+  fingerprint: string;
+}
+
+export async function readRendererSource(projectPath: string, rendererId: string): Promise<RendererSource> {
+  return invoke<RendererSource>("read_renderer_source", { projectPath, rendererId });
+}
+
+/** 读取一个渲染层目录的所有 .ts/.tsx 源码（供前端运行时编译） */
 export async function readRendererFiles(projectPath: string, rendererId: string): Promise<RendererFile[]> {
   return invoke<RendererFile[]>("read_renderer_files", { projectPath, rendererId });
 }
@@ -265,6 +286,7 @@ export async function renameVariable(
 
 export interface AppSettings {
   theme: "system" | "dark" | "light";
+  rendererTrust?: Record<string, string>;
 }
 
 export interface CliToolStatus {
@@ -286,6 +308,30 @@ export async function loadAppSettings(): Promise<AppSettings> {
 /** 保存应用设置。 */
 export async function saveAppSettings(settings: AppSettings): Promise<void> {
   await invoke("save_app_settings", { settings });
+}
+
+let appSettingsMutationQueue = Promise.resolve();
+
+/**
+ * 串行执行应用设置的 read-modify-write，避免主题与界面风格信任互相覆盖。
+ * 每次都从后端读取最新快照，失败不会阻断后续更新。
+ */
+export function updateAppSettings(
+  update: (current: AppSettings) => AppSettings,
+): Promise<AppSettings> {
+  const operation = appSettingsMutationQueue.then(async () => {
+    const current = await loadAppSettings();
+    const next = update(current);
+    await saveAppSettings(next);
+    return next;
+  });
+  appSettingsMutationQueue = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+/** 只更新主题，保留同期写入的界面风格信任。 */
+export async function saveThemeSetting(theme: AppSettings["theme"]): Promise<void> {
+  await updateAppSettings((current) => ({ ...current, theme }));
 }
 
 /** 检查 vibegal-cli 是否已通过 VibeGal-Studio 管理的 symlink 安装到 PATH。 */

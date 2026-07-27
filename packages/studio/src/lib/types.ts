@@ -223,6 +223,8 @@ export interface ProjectData {
   };
   /** 项目内可用的渲染层 id 列表（= renderers/ 子目录名） */
   rendererIds: string[];
+  /** 打开项目时只读检查出的缺失辅助文件；用户可在项目页显式补齐。 */
+  missingSupportFiles?: string[];
   /** gal.project.json 的 revision，用于渲染层切换等项目级写入冲突检测 */
   projectRevision?: FileRevision;
   /** 图结构；项目剧本入口来自 content/graph.json */

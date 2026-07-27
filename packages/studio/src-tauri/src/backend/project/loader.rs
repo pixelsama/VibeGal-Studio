@@ -160,6 +160,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     };
 
     let renderer_ids = list_renderer_ids(project_path);
+    let missing_support_files = super::missing_project_self_description_files(project_path)?;
     let project_revision = project_root.revision("gal.project.json")?;
     let (graph, nodes, mut graph_issues) = load_project_graph_data(&content_root)?;
     let graph_revision = project_root.revision("content/graph.json")?;
@@ -253,6 +254,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
             variables,
         },
         renderer_ids,
+        missing_support_files,
         project_revision,
         graph: Some(graph),
         nodes: Some(nodes),

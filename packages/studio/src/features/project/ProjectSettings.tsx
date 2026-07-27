@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { saveFile } from "../../lib/tauri";
+import {
+  repairProjectSupportFiles as repairProjectSupportFilesInBackend,
+  saveFile,
+} from "../../lib/tauri";
 import type { FileRevision, ProjectData } from "../../lib/types";
 import {
   clearProjectDraft,
@@ -26,6 +29,15 @@ type SaveFileFn = (
   content: string,
   expectedRevision?: FileRevision | null,
 ) => Promise<void | FileRevision | null>;
+
+type RepairProjectSupportFilesFn = (projectPath: string) => Promise<string[]>;
+
+export function repairProjectSupportFiles(
+  projectPath: string,
+  repair: RepairProjectSupportFilesFn = repairProjectSupportFilesInBackend,
+): Promise<string[]> {
+  return repair(projectPath);
+}
 
 const STAGE_PRESETS: StageResolution[] = [
   DEFAULT_STAGE_RESOLUTION,
@@ -225,6 +237,9 @@ export function ProjectSettings({
   const [heightText, setHeightText] = useState(restoredDraft?.heightText ?? String(initialSettings.stage.height));
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [missingSupportFiles, setMissingSupportFiles] = useState(project.missingSupportFiles ?? []);
+  const [repairingSupportFiles, setRepairingSupportFiles] = useState(false);
+  const [supportFileStatus, setSupportFileStatus] = useState<string | null>(null);
   const [draftBaseVersion, setDraftBaseVersion] = useState(0);
   const baseSettingsRef = useRef(restoredDraft?.baseSettings ?? initialSettings);
   const loadedRevisionRef = useRef<FileRevision | null | undefined>(
@@ -254,6 +269,11 @@ export function ProjectSettings({
     setHeightText(String(initialSettings.stage.height));
     setStatus(null);
   }, [dirty, initialSettings, project.metaRevision]);
+
+  useEffect(() => {
+    setMissingSupportFiles(project.missingSupportFiles ?? []);
+    setSupportFileStatus(null);
+  }, [project.missingSupportFiles]);
 
   useEffect(() => {
     if (dirty) {
@@ -344,6 +364,23 @@ export function ProjectSettings({
     setStatus(null);
   };
 
+  const handleRepairSupportFiles = async () => {
+    if (repairingSupportFiles || missingSupportFiles.length === 0) return;
+    setRepairingSupportFiles(true);
+    setSupportFileStatus(null);
+    try {
+      const repaired = await repairProjectSupportFiles(project.path);
+      const repairedSet = new Set(repaired);
+      setMissingSupportFiles((current) => current.filter((path) => !repairedSet.has(path)));
+      await onSaved();
+      setSupportFileStatus(repaired.length > 0 ? `已补齐 ${repaired.length} 个辅助文件` : "辅助文件已是完整状态");
+    } catch (error) {
+      setSupportFileStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRepairingSupportFiles(false);
+    }
+  };
+
   return (
     <div style={pageStyle}>
       <section style={sectionStyle}>
@@ -351,6 +388,35 @@ export function ProjectSettings({
           <h2 style={sectionTitleStyle}>项目</h2>
           {status && <span style={statusStyle}>{status}</span>}
         </div>
+
+        {missingSupportFiles.length > 0 && (
+          <div role="status" style={supportFilesNoticeStyle}>
+            <div style={supportFilesHeaderStyle}>
+              <div>
+                <strong style={supportFilesTitleStyle}>项目辅助文件不完整</strong>
+                <p style={supportFilesTextStyle}>
+                  打开项目时不会自动写入文件。补齐后可恢复类型提示和项目结构说明，已有文件不会被覆盖。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleRepairSupportFiles()}
+                disabled={repairingSupportFiles}
+                style={{
+                  ...repairButtonStyle,
+                  opacity: repairingSupportFiles ? 0.55 : 1,
+                  cursor: repairingSupportFiles ? "default" : "pointer",
+                }}
+              >
+                {repairingSupportFiles ? "补齐中" : "一键补齐"}
+              </button>
+            </div>
+            <ul style={supportFilesListStyle}>
+              {missingSupportFiles.map((path) => <li key={path}>{path}</li>)}
+            </ul>
+            {supportFileStatus && <span style={statusStyle}>{supportFileStatus}</span>}
+          </div>
+        )}
 
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>基础信息</span>
@@ -570,6 +636,55 @@ const sectionTitleStyle: CSSProperties = {
 const statusStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
+};
+
+const supportFilesNoticeStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+  padding: "var(--space-4)",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--bg-panel)",
+};
+
+const supportFilesHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "var(--space-4)",
+};
+
+const supportFilesTitleStyle: CSSProperties = {
+  color: "var(--text-bright)",
+  fontSize: "var(--text-sm)",
+};
+
+const supportFilesTextStyle: CSSProperties = {
+  margin: "var(--space-1) 0 0",
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-xs)",
+  lineHeight: 1.5,
+};
+
+const supportFilesListStyle: CSSProperties = {
+  margin: 0,
+  paddingLeft: "var(--space-5)",
+  color: "var(--text-muted)",
+  fontFamily: "var(--font-mono, monospace)",
+  fontSize: "var(--text-xs)",
+  overflowWrap: "anywhere",
+};
+
+const repairButtonStyle: CSSProperties = {
+  flexShrink: 0,
+  height: "var(--control-lg)",
+  padding: "0 var(--space-3)",
+  border: 0,
+  borderRadius: "var(--radius-sm)",
+  color: "white",
+  background: "var(--accent)",
+  fontWeight: 600,
 };
 
 const fieldGroupStyle: CSSProperties = {

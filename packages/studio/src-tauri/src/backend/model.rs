@@ -247,6 +247,8 @@ pub struct ProjectData {
     pub content: ProjectContent,
     #[serde(rename = "rendererIds")]
     pub renderer_ids: Vec<String>,
+    #[serde(rename = "missingSupportFiles")]
+    pub missing_support_files: Vec<String>,
     #[serde(rename = "projectRevision", skip_serializing_if = "Option::is_none")]
     pub project_revision: Option<FileRevision>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -308,12 +310,15 @@ impl<'de> Deserialize<'de> for ThemeMode {
 pub struct AppSettings {
     #[serde(default)]
     pub theme: ThemeMode,
+    #[serde(default, rename = "rendererTrust")]
+    pub renderer_trust: HashMap<String, String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         AppSettings {
             theme: ThemeMode::default(),
+            renderer_trust: HashMap::new(),
         }
     }
 }

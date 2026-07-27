@@ -8,10 +8,14 @@ import {
   isDesktopBuildResult,
   normalizeDesktopBuildFailure,
   openProject,
+  readRendererSource,
+  rendererSourceFingerprint,
+  repairProjectSupportFiles,
   renameVariable,
   revealPath,
   runDesktopGame,
   saveNode,
+  saveThemeSetting,
   smokeDesktopGame,
   smokeWebGame,
   type DesktopBuildResult,
@@ -389,6 +393,56 @@ describe("openProject", () => {
     expect(invokeMock).toHaveBeenCalledWith("open_project", { path: "/project" });
     expect(project.content.manifest.unlocks).toEqual({ cg: {}, music: {}, replay: {}, endings: {} });
     expect(project.content.manifest.audio).toEqual({ bgm: {}, sfx: {}, voice: {} });
+  });
+});
+
+describe("renderer trust and project support commands", () => {
+  it("reads renderer files and their fingerprint as one source snapshot", async () => {
+    const source = {
+      files: [{ path: "index.tsx", content: "export default {};" }],
+      fingerprint: "abc123",
+    };
+    invokeMock.mockResolvedValue(source);
+
+    await expect(readRendererSource("/project", "default")).resolves.toEqual(source);
+    expect(invokeMock).toHaveBeenCalledWith("read_renderer_source", {
+      projectPath: "/project",
+      rendererId: "default",
+    });
+  });
+
+  it("gets the renderer source fingerprint without reading files in React", async () => {
+    invokeMock.mockResolvedValue("abc123");
+
+    await expect(rendererSourceFingerprint("/project", "default")).resolves.toBe("abc123");
+    expect(invokeMock).toHaveBeenCalledWith("renderer_source_fingerprint", {
+      projectPath: "/project",
+      rendererId: "default",
+    });
+  });
+
+  it("updates the theme without dropping persisted renderer trust", async () => {
+    invokeMock
+      .mockResolvedValueOnce({ theme: "system", rendererTrust: { renderer: "hash" } })
+      .mockResolvedValueOnce(undefined);
+
+    await saveThemeSetting("dark");
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "load_app_settings");
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "save_app_settings", {
+      settings: { theme: "dark", rendererTrust: { renderer: "hash" } },
+    });
+  });
+
+  it("repairs missing project support files only through an explicit command", async () => {
+    invokeMock.mockResolvedValue([".galstudio/schemas/variables.json"]);
+
+    await expect(repairProjectSupportFiles("/project")).resolves.toEqual([
+      ".galstudio/schemas/variables.json",
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith("repair_project_support_files", {
+      projectPath: "/project",
+    });
   });
 });
 

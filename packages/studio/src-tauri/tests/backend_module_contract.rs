@@ -6,11 +6,12 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 37] = [
+const COMMAND_NAMES: [&str; 40] = [
     "list_projects",
     "open_project",
     "create_project",
     "initialize_project",
+    "repair_project_support_files",
     "watch_project",
     "unwatch_project",
     "save_file",
@@ -19,6 +20,8 @@ const COMMAND_NAMES: [&str; 37] = [
     "save_graph_positions",
     "delete_file",
     "save_project_meta",
+    "read_renderer_source",
+    "renderer_source_fingerprint",
     "read_renderer_files",
     "create_renderer",
     "duplicate_renderer",
@@ -61,11 +64,12 @@ const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 37] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 40] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("create_project", &["parentDir", "name"]),
     ("initialize_project", &["path"]),
+    ("repair_project_support_files", &["projectPath"]),
     ("watch_project", &["projectPath"]),
     ("unwatch_project", &["projectPath"]),
     (
@@ -93,6 +97,11 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 37] = [
     (
         "save_project_meta",
         &["projectPath", "meta", "expectedRevision"],
+    ),
+    ("read_renderer_source", &["projectPath", "rendererId"]),
+    (
+        "renderer_source_fingerprint",
+        &["projectPath", "rendererId"],
     ),
     ("read_renderer_files", &["projectPath", "rendererId"]),
     (

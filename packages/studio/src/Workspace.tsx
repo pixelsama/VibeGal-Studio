@@ -35,7 +35,6 @@ import {
   watchProject,
 } from "./lib/tauri";
 import { clearRendererCache } from "./features/renderers/rendererLoader";
-import { clearRendererTrust } from "./features/renderers/rendererTrust";
 import { sameLocation, workspaceFromLocation, type NavigationLocation } from "./lib/navigation";
 import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPrefs } from "./lib/sidebarPrefs";
 import { RevisionedProjectMutationQueue } from "./lib/projectMutation";
@@ -222,7 +221,6 @@ export function Workspace({
     try {
       if (rendererChanged) {
         clearRendererCache();
-        clearRendererTrust(project.path);
       }
       const fresh = await openProject(project.path);
       onProjectChanged(fresh);

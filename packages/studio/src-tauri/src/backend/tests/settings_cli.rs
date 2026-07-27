@@ -12,6 +12,7 @@ fn app_settings_defaults_to_system() {
 fn app_settings_serde_roundtrip_preserves_theme() {
     let s = AppSettings {
         theme: ThemeMode::Light,
+        renderer_trust: Default::default(),
     };
     let json = serde_json::to_string(&s).unwrap();
     assert!(json.contains(r#""theme":"light""#));
@@ -24,9 +25,25 @@ fn app_settings_serde_roundtrip_preserves_theme() {
 fn app_settings_serde_roundtrip_preserves_system_theme() {
     let s = AppSettings {
         theme: ThemeMode::System,
+        renderer_trust: Default::default(),
     };
     let json = serde_json::to_string(&s).unwrap();
     assert!(json.contains(r#""theme":"system""#));
+    let back: AppSettings = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, s);
+}
+
+#[test]
+fn app_settings_serde_roundtrip_preserves_renderer_trust() {
+    let s = AppSettings {
+        theme: ThemeMode::Dark,
+        renderer_trust: [("/project".to_string(), "abc123".to_string())]
+            .into_iter()
+            .collect(),
+    };
+
+    let json = serde_json::to_string(&s).unwrap();
+    assert!(json.contains(r#""rendererTrust":{"/project":"abc123"}"#));
     let back: AppSettings = serde_json::from_str(&json).unwrap();
     assert_eq!(back, s);
 }

@@ -7,6 +7,7 @@ import {
   loadProjectSettingsDraft,
   projectSettingsDraftStorageKey,
   readProjectMetaSettings,
+  repairProjectSupportFiles,
   saveProjectSettings,
   saveProjectStageResolution,
   withProjectMetaSettings,
@@ -38,6 +39,27 @@ describe("ProjectSettings", () => {
     expect(html).toContain("舞台分辨率");
     expect(html).toContain("1280 x 720");
     expect(html).toContain("1920 x 1080");
+  });
+
+  it("shows missing support files without writing until the creator repairs them", async () => {
+    const repair = vi.fn(async () => [".galstudio/schemas/variables.json"]);
+    const incompleteProject: ProjectData = {
+      ...project,
+      missingSupportFiles: [".galstudio/schemas/variables.json"],
+    };
+
+    const html = renderToStaticMarkup(
+      <ProjectSettings project={incompleteProject} onSaved={() => {}} />,
+    );
+    expect(html).toContain("项目辅助文件不完整");
+    expect(html).toContain(".galstudio/schemas/variables.json");
+    expect(html).toContain("一键补齐");
+    expect(repair).not.toHaveBeenCalled();
+
+    await expect(repairProjectSupportFiles("/project", repair)).resolves.toEqual([
+      ".galstudio/schemas/variables.json",
+    ]);
+    expect(repair).toHaveBeenCalledWith("/project");
   });
 
   it("reads project-level meta settings with defaults for missing fields", () => {

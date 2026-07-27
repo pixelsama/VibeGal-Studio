@@ -282,6 +282,6 @@ describe("AppearanceWorkspace", () => {
       <AppearanceWorkspace project={makeProject()} rendererId="default" onSaved={() => {}} />,
     );
 
-    expect(html).toContain("信任并运行项目 renderer");
+    expect(html).toContain("信任并运行项目界面风格");
   });
 });

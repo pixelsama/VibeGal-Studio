@@ -386,17 +386,42 @@ pub(crate) fn write_project_self_description(project_path: &std::path::Path) -> 
     Ok(())
 }
 
-/// 打开项目时补齐缺失的自描述文件；已存在的文件一律不动。
-pub(crate) fn ensure_project_self_description(
+/// 返回项目中缺失的自描述文件。只读，不创建目录或文件。
+pub(crate) fn missing_project_self_description_files(
     project_path: &std::path::Path,
-) -> Result<(), String> {
-    use super::super::fs::write_text_file;
-
-    for (relative, text) in SELF_DESCRIPTION_FILES {
+) -> Result<Vec<String>, String> {
+    let mut missing = Vec::new();
+    for (relative, _) in SELF_DESCRIPTION_FILES {
         let path = project_path.join(relative);
-        if !path.exists() {
-            write_text_file(&path, text)?;
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => missing.push(relative.to_string()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing.push(relative.to_string());
+            }
+            Err(error) => {
+                return Err(format!("检查项目辅助文件失败 {}: {}", path.display(), error));
+            }
         }
     }
-    Ok(())
+    missing.sort();
+    Ok(missing)
+}
+
+/// 用户明确请求时补齐缺失的自描述文件；已存在的文件一律不动。
+pub(crate) fn ensure_project_self_description(
+    project_root: &super::super::fs::ProjectRoot,
+) -> Result<Vec<String>, String> {
+    use super::super::fs::write_text_file;
+
+    let missing = missing_project_self_description_files(project_root.path())?;
+    for relative in &missing {
+        let text = SELF_DESCRIPTION_FILES
+            .iter()
+            .find_map(|(candidate, text)| (*candidate == relative).then_some(*text))
+            .ok_or_else(|| format!("未知项目辅助文件: {relative}"))?;
+        let target = project_root.resolve_write_target(relative)?;
+        write_text_file(&target, text)?;
+    }
+    Ok(missing)
 }

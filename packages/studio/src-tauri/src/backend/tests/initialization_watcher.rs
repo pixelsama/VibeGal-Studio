@@ -153,19 +153,35 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
 }
 
 #[test]
-fn ensure_project_self_description_backfills_missing_files_without_overwriting() {
+fn project_self_description_reports_missing_files_and_repairs_only_on_request() {
     let root = unique_temp_dir("ensure-self-description");
     let renderer_template = root.join("template");
     let project = root.join("story");
     write_text(&renderer_template.join("index.tsx"), "export default {};");
     initialize_project_root(&project, "story", &renderer_template).unwrap();
 
-    // 删除部分自描述文件 + 篡改一个既有文件
+    // 删除部分自描述文件 + 篡改一个既有文件。
     fs::remove_file(project.join("tsconfig.json")).unwrap();
     fs::remove_file(project.join(".galstudio/types/engine.d.ts")).unwrap();
+    fs::remove_file(project.join(".galstudio/schemas/variables.json")).unwrap();
     write_text(&project.join(".galstudio/README.md"), "user edited");
 
-    ensure_project_self_description(&project).unwrap();
+    let missing = missing_project_self_description_files(&project).unwrap();
+    assert_eq!(
+        missing,
+        vec![
+            ".galstudio/schemas/variables.json".to_string(),
+            ".galstudio/types/engine.d.ts".to_string(),
+            "tsconfig.json".to_string(),
+        ]
+    );
+    assert!(!project.join("tsconfig.json").exists());
+    assert!(!project.join(".galstudio/types/engine.d.ts").exists());
+    assert!(!project.join(".galstudio/schemas/variables.json").exists());
+
+    let project_root = ProjectRoot::open(&project).unwrap();
+    let repaired = ensure_project_self_description(&project_root).unwrap();
+    assert_eq!(repaired, missing);
 
     let studio_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     assert_eq!(
@@ -178,11 +194,35 @@ fn ensure_project_self_description_backfills_missing_files_without_overwriting()
         fs::read(studio_root.join("generated/engine-types/engine.d.ts")).unwrap(),
         "缺失的 engine.d.ts 应被回填"
     );
+    assert!(project.join(".galstudio/schemas/variables.json").is_file());
     assert_eq!(
         fs::read_to_string(project.join(".galstudio/README.md")).unwrap(),
         "user edited",
         "已存在的文件不能被覆盖"
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn project_self_description_repair_rejects_symlinked_parent_directory() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("repair-self-description-symlink");
+    let renderer_template = root.join("template");
+    let project = root.join("story");
+    let outside = root.join("outside");
+    write_text(&renderer_template.join("index.tsx"), "export default {};");
+    initialize_project_root(&project, "story", &renderer_template).unwrap();
+    fs::remove_dir_all(project.join(".galstudio/schemas")).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    symlink(&outside, project.join(".galstudio/schemas")).unwrap();
+
+    let project_root = ProjectRoot::open(&project).unwrap();
+    let error = ensure_project_self_description(&project_root).unwrap_err();
+
+    assert!(error.contains("符号链接"), "unexpected error: {error}");
+    assert!(fs::read_dir(&outside).unwrap().next().is_none());
     let _ = fs::remove_dir_all(&root);
 }
 

@@ -8,16 +8,16 @@
  * - useAppSettings() 在 App 顶层调用，加载后再渲染主界面，避免主题未就绪时先画出整套 chrome。
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { loadAppSettings, saveAppSettings } from "./tauri";
+import { loadAppSettings, saveThemeSetting } from "./tauri";
+import type { AppSettings } from "./tauri";
+import { initializeRendererTrust } from "../features/renderers/rendererTrust";
+
+export type { AppSettings } from "./tauri";
 
 export type ThemeMode = "system" | "dark" | "light";
 export type ResolvedTheme = "dark" | "light";
 
-export interface AppSettings {
-  theme: ThemeMode;
-}
-
-export const DEFAULT_SETTINGS: AppSettings = { theme: "system" };
+export const DEFAULT_SETTINGS: AppSettings = { theme: "system", rendererTrust: {} };
 
 export interface LatestSettingsSaver {
   requestSave: (settings: AppSettings) => Promise<void>;
@@ -156,9 +156,12 @@ export function useAppSettings(): UseAppSettingsResult {
   const resolvedTheme = resolveTheme(settings.theme, systemTheme);
 
   if (!saverRef.current) {
-    saverRef.current = createLatestSettingsSaver(saveAppSettings, (error) => {
-      console.warn("保存应用设置失败:", error);
-    });
+    saverRef.current = createLatestSettingsSaver(
+      (next) => saveThemeSetting(next.theme),
+      (error) => {
+        console.warn("保存应用设置失败:", error);
+      },
+    );
   }
 
   useEffect(() => {
@@ -166,6 +169,7 @@ export function useAppSettings(): UseAppSettingsResult {
     loadAppSettings()
       .then((loaded) => {
         if (!active || userUpdatedRef.current) return;
+        void initializeRendererTrust(loaded.rendererTrust ?? {});
         settingsRef.current = loaded;
         setSettings(loaded);
       })

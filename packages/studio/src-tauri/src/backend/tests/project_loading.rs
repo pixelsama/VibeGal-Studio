@@ -506,6 +506,51 @@ fn save_manifest_accepts_omitted_default_audio() {
 }
 
 #[test]
+fn open_project_is_read_only_and_reports_missing_support_files() {
+    let root = unique_temp_dir("open-read-only");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "nodes": [{
+                "id": "start",
+                "title": "Start",
+                "file": "nodes/start.json",
+                "position": { "x": 0, "y": 0 }
+            }],
+            "edges": []
+        }),
+        &[("nodes/start.json", serde_json::json!([]))],
+    );
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+
+    assert_eq!(
+        opened.missing_support_files,
+        vec![
+            ".galstudio/README.md".to_string(),
+            ".galstudio/renderer-contract.md".to_string(),
+            ".galstudio/schemas/fixture.json".to_string(),
+            ".galstudio/schemas/graph.json".to_string(),
+            ".galstudio/schemas/manifest.json".to_string(),
+            ".galstudio/schemas/meta.json".to_string(),
+            ".galstudio/schemas/nodeFile.json".to_string(),
+            ".galstudio/schemas/variables.json".to_string(),
+            ".galstudio/types/engine.d.ts".to_string(),
+            ".galstudio/types/react.d.ts".to_string(),
+            "AGENTS.md".to_string(),
+            "tsconfig.json".to_string(),
+        ]
+    );
+    assert!(!project.join(".galstudio").exists());
+    assert!(!project.join("AGENTS.md").exists());
+    assert!(!project.join("tsconfig.json").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn open_project_does_not_create_graph_json_when_reporting_missing_or_legacy_graph() {
     let root = unique_temp_dir("graph-no-mutate");
     let graph_project = root.join("graph-project");
