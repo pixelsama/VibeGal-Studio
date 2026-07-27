@@ -52,6 +52,7 @@ import {
 } from "./scenarioEditor";
 import { ScenarioTextEditor, SCENARIO_LINE_HEIGHT, SCENARIO_TEXT_PADDING_TOP } from "./ScenarioTextEditor";
 import { mapScenarioFrames } from "./scenarioFrames";
+import { planScenarioInstructionMove } from "./scenarioReordering";
 import { followedPreviewStart } from "./nodePreviewStart";
 import {
   createUndoHistory,
@@ -538,15 +539,23 @@ export function NodeEditor({
     }
   };
 
-  const applyStructuredInstructions = (nextInstructions: Instruction[]) => {
+  const applyStructuredInstructions = (
+    nextInstructions: Instruction[],
+    options: { nextCursorOffset?: number } = {},
+  ) => {
     if (nextInstructions === lastValidInstructionsRef.current) return;
     undoHistoryRef.current = recordUndoCheckpoint(undoHistoryRef.current, {
       text,
       instructions: lastValidInstructionsRef.current,
     }, { programmatic: true });
     draftVersionRef.current += 1;
+    const nextText = formatScenarioText(nextInstructions);
+    if (options.nextCursorOffset != null) {
+      pendingSelectionRef.current = options.nextCursorOffset;
+      setCursorOffset(options.nextCursorOffset);
+    }
     replaceValidInstructions(nextInstructions);
-    replaceText(formatScenarioText(nextInstructions));
+    replaceText(nextText);
     setDiagnostics([]);
     setDirty(true);
     setStatus("");
@@ -781,6 +790,15 @@ export function NodeEditor({
     applyScenarioText(inserted.text, { programmatic: true });
   };
 
+  const handleMoveInstruction = (from: number, to: number) => {
+    if (mode !== "scenario" || diagnostics.length > 0) return;
+    const move = planScenarioInstructionMove(lastValidInstructionsRef.current, from, to);
+    if (!move) return;
+    setCommandMenuSource(null);
+    setParameterTrigger(null);
+    applyStructuredInstructions(move.instructions, { nextCursorOffset: move.cursorOffset });
+  };
+
   const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mode === "scenario") {
       const shortcut = undoShortcutType(event);
@@ -949,6 +967,9 @@ export function NodeEditor({
         textareaRef={textareaRef}
         currentLine={scenarioSelection.line}
         implicitPauseLines={scenarioFrameMap.implicitPauseLines}
+        instructionIndexByLine={scenarioFrameMap.instructionIndexByLine}
+        instructionCount={lastValidInstructions.length}
+        reorderingEnabled={mode === "scenario" && diagnostics.length === 0}
         lineActionTop={lineActionTop}
         commandMenuVisible={commandMenuVisible}
         visibleCommands={visibleCommands}
@@ -964,6 +985,7 @@ export function NodeEditor({
         onInsertCommand={handleInsertCommand}
         onInsertParameter={handleInsertParameter}
         onInsertTemplate={handleInsertTemplate}
+        onMoveInstruction={handleMoveInstruction}
         onScenarioTextChange={handleScenarioTextChange}
         onJsonTextChange={handleJsonTextChange}
         onSyncCursor={syncCursorFromTextarea}

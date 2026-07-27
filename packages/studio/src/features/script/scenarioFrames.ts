@@ -14,12 +14,18 @@ export interface ScenarioFrameMap {
   implicitPauseLines: number[];
   /** 每行（0 起始下标）的起跑指令下标；等于指令总数表示节点末尾。 */
   startIndexByLine: number[];
+  /** 每行对应的真实/隐式指令下标；@continue 和无效行记为 null。 */
+  instructionIndexByLine: Array<number | null>;
+  /** 每条指令格式化后所在的行号（1 起始）。 */
+  lineByInstructionIndex: number[];
 }
 
 export function mapScenarioFrames(text: string): ScenarioFrameMap {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const implicitPauseLines: number[] = [];
   const startIndexByLine: number[] = [];
+  const instructionIndexByLine: Array<number | null> = [];
+  const lineByInstructionIndex: number[] = [];
   let instructionCount = 0;
   let frameHasBlocking = false;
   let frameHasAny = false;
@@ -32,10 +38,13 @@ export function mapScenarioFrames(text: string): ScenarioFrameMap {
         // 该空行触发隐式停顿：从这条 pause 起跑
         implicitPauseLines.push(index + 1);
         startIndexByLine.push(instructionCount);
+        instructionIndexByLine.push(instructionCount);
+        lineByInstructionIndex.push(index + 1);
         instructionCount += 1;
       } else {
         // 空帧或被抑制的帧：从后续指令起跑
         startIndexByLine.push(instructionCount);
+        instructionIndexByLine.push(null);
       }
       frameHasBlocking = false;
       frameHasAny = false;
@@ -48,6 +57,8 @@ export function mapScenarioFrames(text: string): ScenarioFrameMap {
       if (parsed.suppressesImplicitPause) frameSuppress = true;
       if (parsed.instruction) {
         startIndexByLine.push(instructionCount);
+        instructionIndexByLine.push(instructionCount);
+        lineByInstructionIndex.push(index + 1);
         instructionCount += 1;
         frameHasAny = true;
         if (isBlockingInstruction(parsed.instruction)) frameHasBlocking = true;
@@ -56,7 +67,8 @@ export function mapScenarioFrames(text: string): ScenarioFrameMap {
     }
     // @continue 或无法解析的行不产生指令：从后续指令起跑
     startIndexByLine.push(instructionCount);
+    instructionIndexByLine.push(null);
   });
 
-  return { implicitPauseLines, startIndexByLine };
+  return { implicitPauseLines, startIndexByLine, instructionIndexByLine, lineByInstructionIndex };
 }

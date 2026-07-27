@@ -3,14 +3,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { parseScenarioText } from "@vibegal/engine";
 import { SCENARIO_STARTER_TEMPLATES, ScenarioTextEditor } from "./ScenarioTextEditor";
+import { mapScenarioFrames } from "./scenarioFrames";
 
 function renderEditor(text: string, overrides: { currentLine?: number; implicitPauseLines?: number[] } = {}) {
+  const frameMap = mapScenarioFrames(text);
   return renderToStaticMarkup(createElement(ScenarioTextEditor, {
     mode: "scenario",
     text,
     textareaRef: { current: null },
     currentLine: overrides.currentLine ?? 1,
     implicitPauseLines: overrides.implicitPauseLines ?? [],
+    instructionIndexByLine: frameMap.instructionIndexByLine,
+    instructionCount: frameMap.lineByInstructionIndex.length,
+    reorderingEnabled: true,
     lineActionTop: 16,
     commandMenuVisible: false,
     visibleCommands: [],
@@ -22,6 +27,7 @@ function renderEditor(text: string, overrides: { currentLine?: number; implicitP
     onInsertCommand: () => {},
     onInsertParameter: () => {},
     onInsertTemplate: () => {},
+    onMoveInstruction: () => {},
     onScenarioTextChange: () => {},
     onJsonTextChange: () => {},
     onSyncCursor: () => {},
@@ -58,7 +64,7 @@ describe("ScenarioTextEditor empty guide", () => {
 
     expect(html).toContain("data-region=\"scenario-gutter\"");
     expect(html).toContain("aria-label=\"插入当前行命令\"");
-    expect(html).toContain(">1</div>");
+    expect(html).toContain(">1</span>");
   });
 
   it("marks implicit-pause blank lines in the gutter", () => {
@@ -68,6 +74,57 @@ describe("ScenarioTextEditor empty guide", () => {
     expect(html).toContain("空行 = 一次停顿");
   });
 
+  it("offers drag and keyboard movement only on parsed instruction lines", () => {
+    const html = renderEditor("@bg room fade\n@continue\n\nakari: 你好。", { currentLine: 4 });
+
+    expect(html).toContain('aria-label="拖动第 1 条指令"');
+    expect(html).toContain('aria-label="拖动第 2 条指令"');
+    expect(html).not.toContain('aria-label="拖动第 3 条指令"');
+    expect(html).toContain('aria-label="上移当前指令"');
+    expect(html).toContain('aria-label="下移当前指令"');
+  });
+
+  it("disables movement past the first and last instruction", () => {
+    const first = renderEditor("一\n\n二", { currentLine: 1 });
+    const last = renderEditor("一\n\n二", { currentLine: 3 });
+
+    expect(first).toMatch(/aria-label="上移当前指令"[^>]*disabled/);
+    expect(last).toMatch(/aria-label="下移当前指令"[^>]*disabled/);
+  });
+
+  it("hides reordering targets while Scenario text has diagnostics", () => {
+    const frameMap = mapScenarioFrames("@bg room\n@unknown x");
+    const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
+      mode: "scenario",
+      text: "@bg room\n@unknown x",
+      textareaRef: { current: null },
+      currentLine: 1,
+      implicitPauseLines: [],
+      instructionIndexByLine: frameMap.instructionIndexByLine,
+      instructionCount: 1,
+      reorderingEnabled: false,
+      lineActionTop: 16,
+      commandMenuVisible: false,
+      visibleCommands: [],
+      parameterMenuVisible: false,
+      visibleParameters: [],
+      selectedParameterIndex: 0,
+      onToggleLineCommandMenu: () => {},
+      onInsertCommand: () => {},
+      onInsertParameter: () => {},
+      onInsertTemplate: () => {},
+      onMoveInstruction: () => {},
+      onScenarioTextChange: () => {},
+      onJsonTextChange: () => {},
+      onSyncCursor: () => {},
+      onKeyDown: () => {},
+      onScroll: () => {},
+    }));
+
+    expect(html).not.toContain("拖动第 1 条指令");
+    expect(html).not.toContain("上移当前指令");
+  });
+
   it("renders controls beside the active line instead of in the textarea layer", () => {
     const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
       mode: "scenario",
@@ -75,6 +132,9 @@ describe("ScenarioTextEditor empty guide", () => {
       textareaRef: { current: null },
       currentLine: 1,
       implicitPauseLines: [],
+      instructionIndexByLine: [0],
+      instructionCount: 1,
+      reorderingEnabled: true,
       lineActionTop: 16,
       commandMenuVisible: false,
       visibleCommands: [],
@@ -104,6 +164,9 @@ describe("ScenarioTextEditor empty guide", () => {
       textareaRef: { current: null },
       currentLine: 1,
       implicitPauseLines: [],
+      instructionIndexByLine: [0],
+      instructionCount: 1,
+      reorderingEnabled: true,
       lineActionTop: 16,
       commandMenuVisible: false,
       visibleCommands: [],

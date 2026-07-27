@@ -39,6 +39,20 @@ describe("mapScenarioFrames", () => {
     expect(map.startIndexByLine).toEqual([0, 0, 0]);
   });
 
+  it("maps real and implicit instructions back to their exact lines", () => {
+    const text = "@bg classroom fade\n\n@continue\nakari: 早上好。";
+    const map = mapScenarioFrames(text);
+
+    expect(map.instructionIndexByLine).toEqual([0, 1, null, 2]);
+    expect(map.lineByInstructionIndex).toEqual([1, 2, 4]);
+  });
+
+  it("leaves invalid and suppressed lines out of reordering targets", () => {
+    const text = "@unknown x\n@continue\n\nakari: 早上好。";
+
+    expect(mapScenarioFrames(text).instructionIndexByLine).toEqual([null, null, null, 0]);
+  });
+
   it("keeps its instruction count in sync with the engine parser", () => {
     const text = "@bg classroom fade\n\n@bgm daily\n@wait 800\n\nakari: 早上好。";
     const map = mapScenarioFrames(text);

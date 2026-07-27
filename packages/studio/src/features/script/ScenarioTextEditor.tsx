@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useMemo, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption, ScenarioParameterOption } from "./scenarioCommands";
@@ -7,7 +7,7 @@ import { highlightScenarioLine, type ScenarioTokenKind } from "./scenarioHighlig
 /** 剧本编辑区的行高/内边距常量：gutter、高亮层、命令菜单定位共用同一份度量。 */
 export const SCENARIO_LINE_HEIGHT = 24;
 export const SCENARIO_TEXT_PADDING_TOP = 16;
-export const SCENARIO_GUTTER_WIDTH = 40;
+export const SCENARIO_GUTTER_WIDTH = 96;
 
 export interface ScenarioStarterTemplate {
   label: string;
@@ -28,6 +28,9 @@ export function ScenarioTextEditor({
   textareaRef,
   currentLine,
   implicitPauseLines,
+  instructionIndexByLine,
+  instructionCount,
+  reorderingEnabled,
   lineActionTop,
   commandMenuVisible,
   visibleCommands,
@@ -39,6 +42,7 @@ export function ScenarioTextEditor({
   onInsertCommand,
   onInsertParameter,
   onInsertTemplate,
+  onMoveInstruction,
   onScenarioTextChange,
   onJsonTextChange,
   onSyncCursor,
@@ -50,6 +54,9 @@ export function ScenarioTextEditor({
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   currentLine: number;
   implicitPauseLines: number[];
+  instructionIndexByLine: Array<number | null>;
+  instructionCount: number;
+  reorderingEnabled: boolean;
   lineActionTop: number;
   commandMenuVisible: boolean;
   visibleCommands: ScenarioCommandOption[];
@@ -61,6 +68,7 @@ export function ScenarioTextEditor({
   onInsertCommand: (kind: InsertableKind) => void;
   onInsertParameter: (id: string) => void;
   onInsertTemplate: (text: string) => void;
+  onMoveInstruction: (from: number, to: number) => void;
   onScenarioTextChange: (textarea: HTMLTextAreaElement) => void;
   onJsonTextChange: (textarea: HTMLTextAreaElement) => void;
   onSyncCursor: (textarea: HTMLTextAreaElement) => void;
@@ -100,8 +108,22 @@ export function ScenarioTextEditor({
           <div style={{ transform: `translateY(${-scroll.top}px)`, paddingTop: SCENARIO_TEXT_PADDING_TOP }}>
             {lines.map((_, index) => {
               const lineNumber = index + 1;
+              const instructionIndex = reorderingEnabled ? instructionIndexByLine[index] ?? null : null;
               const isCurrent = lineNumber === currentLine;
               const hasPause = pauseLineSet.has(lineNumber);
+              const canMoveUp = instructionIndex != null && instructionIndex > 0;
+              const canMoveDown = instructionIndex != null && instructionIndex < instructionCount - 1;
+              const handleDragStart = (event: DragEvent<HTMLButtonElement>) => {
+                if (instructionIndex == null) return;
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", String(instructionIndex));
+              };
+              const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
+                if (instructionIndex == null) return;
+                event.preventDefault();
+                const from = Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
+                if (Number.isInteger(from)) onMoveInstruction(from, instructionIndex);
+              };
               return (
                 <div
                   key={lineNumber}
@@ -117,18 +139,71 @@ export function ScenarioTextEditor({
                       title="空行 = 一次停顿"
                     />
                   )}
-                  {isCurrent ? (
+                  {instructionIndex != null && (
                     <button
                       type="button"
-                      aria-label="插入当前行命令"
-                      title="插入当前行命令"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={onToggleLineCommandMenu}
-                      style={gutterPlusStyle}
+                      draggable
+                      aria-label={`拖动第 ${instructionIndex + 1} 条指令`}
+                      title="拖动调整指令顺序；Alt+↑/↓ 也可移动"
+                      onDragStart={handleDragStart}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={handleDrop}
+                      onKeyDown={(event) => {
+                        if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                        event.preventDefault();
+                        const to = instructionIndex + (event.key === "ArrowUp" ? -1 : 1);
+                        onMoveInstruction(instructionIndex, to);
+                      }}
+                      style={dragHandleStyle}
                     >
-                      +
+                      ⠿
                     </button>
-                  ) : lineNumber}
+                  )}
+                  {isCurrent ? (
+                    <>
+                      {instructionIndex != null && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="上移当前指令"
+                            title="上移当前指令"
+                            disabled={!canMoveUp}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => onMoveInstruction(instructionIndex, instructionIndex - 1)}
+                            style={moveButtonStyle}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="下移当前指令"
+                            title="下移当前指令"
+                            disabled={!canMoveDown}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => onMoveInstruction(instructionIndex, instructionIndex + 1)}
+                            style={moveButtonStyle}
+                          >
+                            ↓
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        aria-label="插入当前行命令"
+                        title="插入当前行命令"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={onToggleLineCommandMenu}
+                        style={gutterPlusStyle}
+                      >
+                        +
+                      </button>
+                    </>
+                  ) : (
+                    <span style={lineNumberStyle}>{lineNumber}</span>
+                  )}
                 </div>
               );
             })}
@@ -316,10 +391,42 @@ const gutterRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "flex-end",
+  gap: 2,
   height: SCENARIO_LINE_HEIGHT,
   paddingRight: 6,
   lineHeight: `${SCENARIO_LINE_HEIGHT}px`,
   boxSizing: "border-box",
+};
+
+const lineNumberStyle: CSSProperties = {
+  minWidth: 18,
+  textAlign: "right",
+};
+
+const dragHandleStyle: CSSProperties = {
+  width: 16,
+  height: 18,
+  border: "none",
+  background: "transparent",
+  color: "var(--text-muted)",
+  cursor: "grab",
+  fontSize: "var(--text-sm)",
+  lineHeight: 1,
+  padding: 0,
+  pointerEvents: "auto",
+};
+
+const moveButtonStyle: CSSProperties = {
+  width: 16,
+  height: 18,
+  border: "none",
+  background: "transparent",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  fontSize: "var(--text-xs)",
+  lineHeight: 1,
+  padding: 0,
+  pointerEvents: "auto",
 };
 
 const pauseMarkerStyle: CSSProperties = {
