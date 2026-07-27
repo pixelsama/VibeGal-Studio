@@ -1,6 +1,6 @@
 # Spec 31 — Genre Capabilities（品类能力）
 
-> 状态：实施中（2026-07-27）。
+> 状态：已于 2026-07-27 完成。
 > 目标版本：`0.4.0`。
 > 基线：P2 `0.3.0` 收口提交。
 > 来源：[Review 28 §4 P3](./28-product-review-and-roadmap.md)。

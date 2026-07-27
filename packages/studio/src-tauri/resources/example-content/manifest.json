@@ -5,7 +5,12 @@
       "color": "#9fc8e3",
       "sprites": {
         "default": "assets/characters/protagonist_default.svg",
-        "hurt": "assets/characters/protagonist_hurt.svg"
+        "hurt": "assets/characters/protagonist_hurt.svg",
+        "signal": {
+          "atlas": "protagonist",
+          "clip": "signal",
+          "fallback": "assets/characters/protagonist_signal_fallback.svg"
+        }
       }
     }
   },
@@ -20,7 +25,18 @@
     "sfx": {
       "sfx_boom": "assets/audio/sfx/sfx_boom.mp3"
     },
-    "voice": {}
+    "voice": {
+      "prologue_007": "assets/audio/voice/prologue_007.mp3",
+      "prologue_009": "assets/audio/voice/prologue_009.mp3",
+      "prologue_010": "assets/audio/voice/prologue_010.mp3",
+      "prologue_012": "assets/audio/voice/prologue_012.mp3",
+      "prologue_013": "assets/audio/voice/prologue_013.mp3",
+      "awakening_002": "assets/audio/voice/awakening_002.mp3",
+      "approach_002": "assets/audio/voice/approach_002.mp3",
+      "shore_002": "assets/audio/voice/shore_002.mp3",
+      "protect_001": "assets/audio/voice/protect_001.mp3",
+      "adrift_002": "assets/audio/voice/adrift_002.mp3"
+    }
   },
   "cg": {
     "smoke_ocean": {
@@ -43,6 +59,16 @@
       }
     }
   },
+  "animationAtlases": {
+    "protagonist": {
+      "image": "assets/characters/protagonist_atlas.png",
+      "frameWidth": 240,
+      "frameHeight": 400,
+      "clips": {
+        "signal": { "frames": [0, 1], "fps": 2, "loop": true }
+      }
+    }
+  },
   "unlocks": {
     "cg": {
       "smoke_ocean": {
@@ -51,7 +77,12 @@
       }
     },
     "music": {},
-    "replay": {},
+    "replay": {
+      "guardian_memory": {
+        "nodeId": "protect",
+        "title": "海墙之前"
+      }
+    },
     "endings": {
       "guardian": {
         "title": "护卫",

@@ -1,6 +1,15 @@
 {
   "version": 1,
   "variables": {
+    "playerName": {
+      "kind": "text",
+      "label": "玩家名字",
+      "type": "string",
+      "default": "旅人",
+      "nullable": false,
+      "scope": "run",
+      "description": "由玩家在序章输入，并安全插值到后续文本。"
+    },
     "resolve": {
       "kind": "meter",
       "label": "决心",

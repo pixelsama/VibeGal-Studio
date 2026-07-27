@@ -187,23 +187,27 @@ Current instruction types:
 | `bg` | Set background id, transition, duration |
 | `bgm` | Set background music id, fade, loop |
 | `sfx` | Trigger sound effect |
-| `voice` | Trigger voice |
-| `char` | Add/update/remove character sprite |
-| `say` | Character dialogue |
-| `narrate` | Narration |
+| `voice` | Trigger voice independently |
+| `char` | Add/update/remove a static or atlas-backed character sprite, including semantic move/scale/flip/expression transitions |
+| `say` | Character dialogue with optional `textKey` and line-bound `voice` |
+| `narrate` | Narration with optional `textKey` |
 | `set` | Set runtime variable |
 | `wait` | Timed wait |
 | `effect` | Stage effect such as shake/flash/blur |
 | `transition` | Screen transition overlay |
 | `pause` | Player stop point without text |
+| `inputName` | Validate player text input into a declared text variable |
+| `unlock` | Unlock CG/music/replay/ending registry entries |
+| `showCg` | Show a registered CG |
+| `playVideo` | Play a registered video |
+| `completeEnding` | Complete a registered ending |
 
 Important current limitations:
 
-- No inline `choice` instruction.
-- No scripting language beyond `set`.
-- No arithmetic, functions, arrays, label/jump, call/return, or random.
-- No layout override instruction.
-- No timeline or advanced animation schema.
+- No inline `choice` instruction; graph edges own branching.
+- No arbitrary script execution, HTML, CSS, or expression calls from project text.
+- Runtime text supports scalar interpolation and bounded `[pause]`, `[color]`, `[ruby]`, and `[b]` markup only.
+- No Live2D/Spine, shader, particle, bone, physics, or arbitrary animation-script contract.
 
 ### 4.2 NovelState Contract
 
@@ -280,18 +284,16 @@ Values support strings, numbers, booleans, and `null`.
 
 Current audio support:
 
-- BGM switch with fade in/out.
-- BGM loop flag.
+- BGM switch with fade in/out and loop state.
 - SFX one-shot.
-- Voice one-shot.
-- Global mute flag.
+- Independent `voice` instructions and `say.voice` line binding.
+- Backlog voice replay without advancing the story.
+- Master/BGM/SFX/voice volume, mute, pause/resume/stop controls exposed through the runtime API.
 
 Current gaps:
 
-- No master/BGM/SFX/voice independent volume state.
-- No voice replay API.
-- No explicit pause/resume/stop instructions except implicit BGM replacement.
-- No ducking, preloading, or failure recovery contract.
+- No ducking or authored audio-preload contract.
+- Media decode/network failure handling remains renderer/host dependent.
 
 ## 5. Project Data Contracts
 
@@ -319,12 +321,15 @@ Global playback and stage settings:
   "typingSpeedCps": 30,
   "autoAdvanceMs": 1200,
   "chapterGapMs": 1500,
-  "stage": { "width": 1280, "height": 720 }
+  "stage": { "width": 1280, "height": 720 },
+  "locale": { "default": "zh-CN", "available": ["zh-CN", "en"] }
 }
 ```
 
 `stage` is the fixed internal resolution. Studio preview scales this stage into editor panels.
-Renderers should use `stage` as their coordinate system.
+Renderers should use `stage` as their coordinate system. `locale` is optional for old projects;
+when present, translated story rows live in `content/locales/<BCP47>.json` and resolve current →
+default → inline source text. Opening or validating locale files is read-only.
 
 ### 5.3 `content/manifest.json`
 
@@ -355,20 +360,22 @@ Current resource registry:
 Current supported registries include:
 
 - background,
-- character,
+- character expressions as static paths or `{ atlas, clip, fallback }` references,
 - audio (`bgm` / `sfx` / `voice`),
 - CG,
 - video,
 - UI skin,
 - font,
-- animation atlas,
+- animation atlases with row-major, zero-based clips,
 - unlock registries for CG/music/replay/endings.
+
+Atlas fallback files are real manifest assets. Known image dimensions are used for static frame-bound
+validation; unknown or damaged image formats do not produce guessed bounds.
 
 Current gaps:
 
 - No Live2D/Spine model registry.
 - No shader/particle registry.
-- No batch metadata editing, generated thumbnails, or asset-reference jump navigation.
 
 ### 5.4 `content/graph.json`
 
@@ -404,9 +411,13 @@ Graph rules:
 - `entryNodeId` should point to a node id.
 - Node ids should be stable and filesystem-friendly.
 - `node.file` is relative to `content/`.
+- `node.chapterId` assigns an editorial/runtime chapter.
+- The entry chapter may start with empty state; every other safely jumpable chapter needs an explicit `chapters[].checkpoint`.
+- A checkpoint node must exist in that chapter and may target a stable story-point id; checkpoint background/sprite/BGM references must exist in the manifest.
 - Outgoing edges from one node must use one mode only.
 - `choice` edges require labels.
 - `auto` edges evaluate in order; a null/empty condition is a default branch.
+- Replays come from `manifest.unlocks.replay` and run in an isolated player that does not mutate current playthrough state, save slots, unlocks, global variables, or endings.
 
 #### Exit Effects
 

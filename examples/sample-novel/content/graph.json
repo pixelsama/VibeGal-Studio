@@ -1,7 +1,28 @@
 {
   "version": 1,
   "entryNodeId": "prologue",
-  "chapters": [{ "id": "chapter_1", "title": "第一章" }],
+  "chapters": [
+    { "id": "chapter_1", "title": "序章" },
+    {
+      "id": "chapter_2",
+      "title": "火光",
+      "checkpoint": {
+        "nodeId": "awakening",
+        "instructionId": "awakening_001",
+        "vars": {
+          "playerName": "旅人",
+          "resolve": 0,
+          "knows_the_fire": false,
+          "route": "drifting"
+        },
+        "background": "ocean_dawn",
+        "sprites": [
+          { "id": "protagonist", "pos": "center", "expr": "default", "scale": 1, "flip": false }
+        ],
+        "bgm": { "id": "bgm_main", "loop": true }
+      }
+    }
+  ],
   "nodes": [
     {
       "id": "prologue",
@@ -14,35 +35,35 @@
       "id": "awakening",
       "title": "苏醒",
       "file": "nodes/awakening.json",
-      "chapterId": "chapter_1",
+      "chapterId": "chapter_2",
       "position": { "x": 440, "y": 200 }
     },
     {
       "id": "approach",
       "title": "靠近火光",
       "file": "nodes/approach.json",
-      "chapterId": "chapter_1",
+      "chapterId": "chapter_2",
       "position": { "x": 760, "y": 100 }
     },
     {
       "id": "shore",
       "title": "留在浅滩",
       "file": "nodes/shore.json",
-      "chapterId": "chapter_1",
+      "chapterId": "chapter_2",
       "position": { "x": 760, "y": 320 }
     },
     {
       "id": "protect",
       "title": "挡在船前",
       "file": "nodes/protect.json",
-      "chapterId": "chapter_1",
+      "chapterId": "chapter_2",
       "position": { "x": 1080, "y": 100 }
     },
     {
       "id": "adrift",
       "title": "随波而去",
       "file": "nodes/adrift.json",
-      "chapterId": "chapter_1",
+      "chapterId": "chapter_2",
       "position": { "x": 1080, "y": 320 }
     }
   ],

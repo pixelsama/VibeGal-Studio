@@ -6,5 +6,9 @@
   "stage": {
     "width": 1280,
     "height": 720
+  },
+  "locale": {
+    "default": "zh-CN",
+    "available": ["zh-CN", "en"]
   }
 }

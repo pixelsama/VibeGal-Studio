@@ -4,7 +4,7 @@
 
 VibeGal-Studio 是一个 graph-first 的 Galgame 项目编辑器和实时预览工具。剧情、资源与渲染层都保存在普通项目文件中，不锁进私有数据库；Studio 负责可视化编辑、校验、热重载、预览和导出。
 
-> 当前状态：`0.3.0`。默认与经典深色 ADV 界面风格、外观主题和完整创作链路已经可用；安装包暂未签名，仍建议先备份重要项目并阅读[已知限制](#已知限制)。
+> 当前状态：`0.4.0`。作品本地化与逐行语音、安全富文本和玩家命名、角色动画、缩略图存档，以及章节跳读/隔离回想已经可用；默认与经典深色 ADV 界面风格仍可直接导出。安装包暂未签名，仍建议先备份重要项目并阅读[已知限制](#已知限制)。
 
 ## 下载
 
@@ -39,6 +39,7 @@ my-game/
   content/
     graph.json
     nodes/
+    locales/
     assets/
     fixtures/
   renderers/
@@ -47,7 +48,10 @@ my-game/
 ```
 
 - `content/graph.json` 与 `content/nodes/*.json` 是剧情的唯一来源。
-- `content/variables.json` 声明 run/global 变量；正式结局由 manifest registry + `completeEnding` 结算，图终点不自动等于正式结局。
+- `content/variables.json` 声明 run/global 变量；`content/locales/*.json` 提供作品译文，原文继续保留在节点中作为确定 fallback；正式结局由 manifest registry + `completeEnding` 结算，图终点不自动等于正式结局。
+- `say.voice` 可逐行绑定 `manifest.audio.voice`；安全插值、行内停顿/颜色/ruby/粗体与 `inputName` 不执行项目 HTML 或脚本。
+- `graph.chapters[].checkpoint` 决定安全章节跳读状态，`manifest.unlocks.replay` 的回想使用隔离运行时，不改当前进度或存档。
+- 角色表达既可引用静态图片，也可引用带静态 fallback 的 `animationAtlases` clip；存读档保存表达引用和立绘终态，不保存动画当前帧。
 - `renderers/<id>/index.tsx` 定义玩家界面和呈现方式。
 - `.galstudio/` 为外部工具提供 schema 与项目契约说明。
 - 外部编辑器或 Agent 修改文件后，Studio 会通过原生文件监听自动刷新。

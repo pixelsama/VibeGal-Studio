@@ -1,6 +1,6 @@
 # Spec 32 — Scale & Distribution（规模与分发）
 
-> 状态：待实施（2026-07-27 定稿）。
+> 状态：实施中（2026-07-27 定稿）。
 > 目标版本：`1.0.0`。
 > 基线：P3 `0.4.0` 收口提交。
 > 来源：[Review 28 §4 P4](./28-product-review-and-roadmap.md)。

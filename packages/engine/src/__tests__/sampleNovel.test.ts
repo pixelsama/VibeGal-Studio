@@ -39,6 +39,10 @@ function play() {
 function advanceUntilChoiceOrEnd(player: GraphNovelPlayer, budget = 400) {
   for (let step = 0; step < budget; step += 1) {
     if (player.state.choice) return;
+    if (player.state.nameInput) {
+      player.submitName(player.state.nameInput.default ?? "旅人");
+      continue;
+    }
     const before = `${player.getCurrentNodeId()}:${player.getState().flags.progress.current}`;
     player.advance();
     if (player.state.flags.isWaiting) vi.advanceTimersByTime(5_000);
@@ -55,11 +59,29 @@ describe("sample novel", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("starts with the declared story state, not with nothing", () => {
+  it("starts with the declared P3 story state, not with nothing", () => {
     const player = play();
+    expect(player.state.vars.playerName).toBe("旅人");
     expect(player.state.vars.resolve).toBe(0);
     expect(player.state.vars.knows_the_fire).toBe(false);
     expect(player.state.vars.route).toBe("drifting");
+    expect(meta.locale).toEqual({ default: "zh-CN", available: ["zh-CN", "en"] });
+    expect(manifest.animationAtlases.protagonist.clips?.signal.frames).toEqual([0, 1]);
+    expect(manifest.unlocks.replay.guardian_memory.nodeId).toBe("protect");
+    player.dispose();
+  });
+
+  it("collects a player name before offering the first route choice", () => {
+    const player = play();
+    for (let step = 0; step < 100 && !player.state.nameInput; step += 1) {
+      player.advance();
+      if (player.state.flags.isWaiting) vi.advanceTimersByTime(5_000);
+    }
+    expect(player.state.nameInput).toMatchObject({ key: "playerName", default: "旅人", maxLength: 12 });
+    expect(player.submitName("灯塔守望者")).toBe(true);
+    expect(player.state.vars.playerName).toBe("灯塔守望者");
+    advanceUntilChoiceOrEnd(player);
+    expect(player.state.choice).not.toBeNull();
     player.dispose();
   });
 

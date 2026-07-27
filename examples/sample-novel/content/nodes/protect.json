@@ -1,10 +1,11 @@
 [
   { "t": "transition", "type": "white_in", "ms": 900 },
-  { "t": "char", "id": "protagonist", "pos": "center", "expr": "default", "trans": "fade", "ms": 500 },
-  { "t": "say", "id": "protect_001", "who": "protagonist", "expr": "default", "text": "让开。" },
+  { "t": "char", "id": "protagonist", "pos": "center", "expr": "signal", "trans": "fade", "ms": 500, "exprMs": 180 },
+  { "t": "say", "id": "protect_001", "who": "protagonist", "expr": "signal", "textKey": "protect.001", "text": "让开。", "voice": "protect_001" },
   { "t": "sfx", "id": "sfx_boom" },
-  { "t": "narrate", "id": "protect_002", "text": "她挡在了那条不肯走的船前面。海面为她立起一道墙。" },
+  { "t": "narrate", "id": "protect_002", "textKey": "protect.002", "text": "她挡在了那条不肯走的船前面。海面为她立起一道墙。" },
   { "t": "unlock", "kind": "cg", "id": "smoke_ocean" },
+  { "t": "unlock", "kind": "replay", "id": "guardian_memory" },
   { "t": "showCg", "id": "smoke_ocean" },
   { "t": "completeEnding", "id": "protect_ending", "endingId": "guardian" }
 ]

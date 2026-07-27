@@ -2,7 +2,10 @@
   "title": "黎明重逢",
   "state": {
     "vars": {
-      "affection": 3
+      "playerName": "旅人",
+      "resolve": 4,
+      "knows_the_fire": true,
+      "route": "protector"
     },
     "background": "ocean_dawn",
     "backgroundTrans": "fade",
@@ -11,20 +14,24 @@
       {
         "id": "protagonist",
         "pos": "center",
-        "expr": "default",
+        "expr": "signal",
         "changeId": 1,
         "justEntered": false,
-        "prevExpr": null,
-        "prevPos": null,
+        "prevExpr": "default",
+        "prevPos": "right",
         "trans": "fade",
-        "leaving": false
+        "leaving": false,
+        "scale": 1,
+        "flip": false,
+        "moveFrom": "right",
+        "exprMs": 240
       }
     ],
     "speaker": {
       "id": "protagonist",
       "name": "野生舰娘",
       "color": "#9fc8e3",
-      "expr": "default"
+      "expr": "signal"
     },
     "dialogue": {
       "text": "……你真的来了。黎明的海，比梦里还要安静。",
@@ -33,6 +40,7 @@
     },
     "narration": null,
     "choice": null,
+    "nameInput": null,
     "effects": [],
     "transitions": [],
     "audio": {
@@ -49,7 +57,7 @@
       "isAutoPlay": false,
       "skipMode": "off",
       "isRecording": false,
-      "chapterIndex": 0,
+      "chapterIndex": 1,
       "progress": {
         "current": 3,
         "total": 10
@@ -59,14 +67,10 @@
   },
   "persistent": {
     "unlock": {
-      "cg": [
-        "smoke_ocean"
-      ],
-      "music": [
-        "bgm_main"
-      ],
-      "replay": [],
-      "endings": []
+      "cg": ["smoke_ocean"],
+      "music": ["bgm_main"],
+      "replay": ["guardian_memory"],
+      "endings": ["guardian"]
     }
   },
   "uiHint": {

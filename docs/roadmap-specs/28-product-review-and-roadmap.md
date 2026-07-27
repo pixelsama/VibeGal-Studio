@@ -1,6 +1,6 @@
 # Review 28 — 产品现状评审与开发路线图
 
-> 状态：路线图已确认；P0 与 P1 已完成，P2–P4 已分别固化为 [Spec 30](./30-facade.spec.md)、[Spec 31](./31-genre-capabilities.spec.md) 与 [Spec 32](./32-scale-and-distribution.spec.md)，正在实施 P2。
+> 状态：路线图已确认；P0–P3 已完成，当前进入 [Spec 32](./32-scale-and-distribution.spec.md) 的 P4 实施。
 > 日期：2026-07-26。
 > 方法：通读仓库 + 实际运行 `pnpm tauri dev`（示例项目 `examples/sample-novel`）逐工作台截图，
 > 并对照 `title-preview/` 的默认渲染层快照。全量测试通过（vitest 852 + node:test 19）。
@@ -222,7 +222,7 @@ Spec 24 → 26 → 27 这条线（故事状态从"分析报告"变成"创作对�
    第二强调色区分"当前位置"与"主操作"。
 4. **多套渲染层模板**：至少再给一套风格（例如经典深色 ADV），证明 renderer 契约的价值。
 
-### P3 — 品类能力（目标 0.4.0，待 P2 收口）
+### P3 — 品类能力（0.4.0，已于 2026-07-27 完成）
 
 详细兼容契约、运行时语义、验收矩阵与提交顺序见 [Spec 31](./31-genre-capabilities.spec.md)。
 
