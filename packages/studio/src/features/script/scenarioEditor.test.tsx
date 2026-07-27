@@ -203,6 +203,121 @@ describe("ScenarioInspector", () => {
     expect(pause).not.toContain("该命令可直接在剧本文本中编辑");
   });
 
+  it("renders the complete common-parameter forms without sending authors to JSON", () => {
+    const say = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("akari(smile, 1200ms): 早上好。", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const narrate = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@narrate 900ms 天亮了。", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const bg = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@bg classroom dissolve 1250ms", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const bgm = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@bgm daily 750ms once", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const char = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@char akari smile left slide 650ms clear out", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const effect = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@effect shake 8.5 450ms", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+    const transition = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@transition fade_in 1300ms", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(say).toContain("表情");
+    expect(say).toContain("自动播放停顿");
+    expect(say).toContain('value="1200"');
+    expect(narrate).toContain("自动播放停顿");
+    expect(narrate).toContain('value="900"');
+    expect(bg).toContain("转场时长");
+    expect(bg).toContain('value="1250"');
+    expect(bgm).toContain("淡入时长");
+    expect(bgm).toContain('value="750"');
+    expect(bgm).toContain("循环播放");
+    expect(bgm).toContain('role="switch"');
+    expect(bgm).not.toContain('checked=""');
+    expect(char).toContain("登场前清空其他角色");
+    expect(char).toContain("让角色退场");
+    expect(char.match(/role="switch"/g)).toHaveLength(2);
+    expect(char.match(/checked=""/g)).toHaveLength(2);
+    expect(effect).toContain("效果强度");
+    expect(effect).toContain('max="20"');
+    expect(effect).toContain('value="8.5"');
+    expect(effect).toContain("持续时长");
+    expect(transition).toContain("转场时长");
+    expect(transition).toContain('value="1300"');
+    expect([say, narrate, bg, bgm, char, effect, transition].join("\n")).not.toContain("切到 JSON");
+  });
+
+  it("writes complete form parameters back as readable scenario syntax", () => {
+    const saySelection = getScenarioSelection("akari: 早上好。", 0);
+    const narrateSelection = getScenarioSelection("天亮了。", 0);
+    const bgSelection = getScenarioSelection("@bg classroom", 0);
+    const bgmSelection = getScenarioSelection("@bgm daily", 0);
+    const charSelection = getScenarioSelection("@char akari", 0);
+    const effectSelection = getScenarioSelection("@effect shake", 0);
+    const transitionSelection = getScenarioSelection("@transition fade_in", 0);
+
+    expect(replaceScenarioSelectionInstruction(
+      "akari: 早上好。",
+      saySelection,
+      { t: "say", who: "akari", expr: "smile", text: "早上好。", ms: 1200 } as Instruction,
+    )).toBe("akari(smile, 1200ms): 早上好。");
+    expect(replaceScenarioSelectionInstruction(
+      "天亮了。",
+      narrateSelection,
+      { t: "narrate", text: "天亮了。", ms: 900 } as Instruction,
+    )).toBe("@narrate 900ms 天亮了。");
+    expect(replaceScenarioSelectionInstruction(
+      "@bg classroom",
+      bgSelection,
+      { t: "bg", id: "classroom", trans: "dissolve", ms: 1250 } as Instruction,
+    )).toBe("@bg classroom dissolve 1250ms");
+    expect(replaceScenarioSelectionInstruction(
+      "@bgm daily",
+      bgmSelection,
+      { t: "bgm", id: "daily", fade: 750, loop: false } as Instruction,
+    )).toBe("@bgm daily 750ms once");
+    expect(replaceScenarioSelectionInstruction(
+      "@char akari",
+      charSelection,
+      { t: "char", id: "akari", expr: "smile", pos: "left", trans: "slide", ms: 650, clear: true, remove: true } as Instruction,
+    )).toBe("@char akari smile left slide 650ms clear out");
+    expect(replaceScenarioSelectionInstruction(
+      "@effect shake",
+      effectSelection,
+      { t: "effect", type: "shake", intensity: 8.5, ms: 450 } as Instruction,
+    )).toBe("@effect shake 8.5 450ms");
+    expect(replaceScenarioSelectionInstruction(
+      "@transition fade_in",
+      transitionSelection,
+      { t: "transition", type: "fade_in", ms: 1300 } as Instruction,
+    )).toBe("@transition fade_in 1300ms");
+  });
+
   it("renders media pickers for showCg and playVideo commands", () => {
     const showCg = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("@showCg cg_001", 0),

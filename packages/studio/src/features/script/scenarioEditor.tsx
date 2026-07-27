@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode, Ref } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   formatScenarioInstruction,
+  INSTRUCTION_DEFAULTS,
   parseScenarioLine,
   type ScenarioDiagnostic,
   type Instruction,
@@ -9,6 +10,7 @@ import {
 import { ResourcePicker } from "../assets/ResourcePicker";
 import { StateChangeEditor } from "./StateChangeEditor";
 import { BottomSheet } from "../common/BottomSheet";
+import { Field, NumberInput, Switch } from "../common/Form";
 import type { Manifest } from "../../lib/types";
 import type { VariableRegistry } from "@vibegal/engine";
 
@@ -204,7 +206,22 @@ export function ScenarioInspector({
             value={instruction.text}
             onChange={(text) => onReplaceInstruction({ ...instruction, text })}
           />
-          <div style={mutedTextStyle}>表情变化请使用 @char 行；这里编辑的内容会同步回左侧当前行。</div>
+          <ResourcePicker
+            label="表情"
+            manifest={manifest}
+            kind="expression"
+            characterId={instruction.who}
+            value={instruction.expr ?? INSTRUCTION_DEFAULTS.say.expr}
+            onChange={(expr) => onReplaceInstruction({ ...instruction, expr })}
+          />
+          <OptionalMillisecondsField
+            label="自动播放停顿"
+            value={instruction.ms}
+            fallback={0}
+            hint="0 表示跟随作品的全局自动播放停顿。"
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
+          />
+          <div style={mutedTextStyle}>这里编辑的内容会同步回左侧当前行；立绘登场与位置变化请使用角色命令。</div>
         </InspectorPanel>
       );
     case "narrate":
@@ -214,6 +231,13 @@ export function ScenarioInspector({
             label="当前行文本"
             value={instruction.text}
             onChange={(text) => onReplaceInstruction({ ...instruction, text })}
+          />
+          <OptionalMillisecondsField
+            label="自动播放停顿"
+            value={instruction.ms}
+            fallback={0}
+            hint="0 表示跟随作品的全局自动播放停顿。"
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
           />
           <div style={mutedTextStyle}>这里编辑的内容会同步回左侧当前行。</div>
         </InspectorPanel>
@@ -233,6 +257,13 @@ export function ScenarioInspector({
             value={instruction.trans ?? "fade"}
             options={["fade", "cut", "dissolve"]}
             onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "dissolve" })}
+          />
+          <NumberField
+            label="转场时长（毫秒）"
+            value={instruction.ms ?? INSTRUCTION_DEFAULTS.bg.ms}
+            min={0}
+            integer
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
           />
         </InspectorPanel>
       );
@@ -265,6 +296,23 @@ export function ScenarioInspector({
             options={["fade", "cut", "slide"]}
             onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
           />
+          <NumberField
+            label="转场时长（毫秒）"
+            value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms}
+            min={0}
+            integer
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
+          />
+          <BooleanField
+            label="登场前清空其他角色"
+            checked={instruction.clear ?? INSTRUCTION_DEFAULTS.char.clear}
+            onChange={(clear) => onReplaceInstruction({ ...instruction, clear })}
+          />
+          <BooleanField
+            label="让角色退场"
+            checked={instruction.remove ?? INSTRUCTION_DEFAULTS.char.remove}
+            onChange={(remove) => onReplaceInstruction({ ...instruction, remove })}
+          />
         </InspectorPanel>
       );
     case "set":
@@ -287,7 +335,18 @@ export function ScenarioInspector({
             value={instruction.id}
             onChange={(id) => onReplaceInstruction({ ...instruction, id })}
           />
-          <div style={mutedTextStyle}>淡入与循环参数请切到 JSON 模式编辑。</div>
+          <NumberField
+            label="淡入时长（毫秒）"
+            value={instruction.fade ?? INSTRUCTION_DEFAULTS.bgm.fade}
+            min={0}
+            integer
+            onChange={(fade) => onReplaceInstruction({ ...instruction, fade })}
+          />
+          <BooleanField
+            label="循环播放"
+            checked={instruction.loop ?? INSTRUCTION_DEFAULTS.bgm.loop}
+            onChange={(loop) => onReplaceInstruction({ ...instruction, loop })}
+          />
         </InspectorPanel>
       );
     case "sfx":
@@ -334,7 +393,21 @@ export function ScenarioInspector({
             options={["shake", "flash", "blur"]}
             onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
           />
-          <div style={mutedTextStyle}>强度与时长参数请切到 JSON 模式编辑。</div>
+          <NumberField
+            label="效果强度"
+            value={instruction.intensity ?? INSTRUCTION_DEFAULTS.effect.intensity}
+            min={0}
+            max={20}
+            step={0.5}
+            onChange={(intensity) => onReplaceInstruction({ ...instruction, intensity })}
+          />
+          <NumberField
+            label="持续时长（毫秒）"
+            value={instruction.ms ?? INSTRUCTION_DEFAULTS.effect.ms}
+            min={0}
+            integer
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
+          />
         </InspectorPanel>
       );
     case "transition":
@@ -346,7 +419,13 @@ export function ScenarioInspector({
             options={["fade_in", "fade_out", "white_in", "white_out", "black"]}
             onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
           />
-          <div style={mutedTextStyle}>时长参数请切到 JSON 模式编辑。</div>
+          <NumberField
+            label="转场时长（毫秒）"
+            value={instruction.ms ?? INSTRUCTION_DEFAULTS.transition.ms}
+            min={0}
+            integer
+            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
+          />
         </InspectorPanel>
       );
     case "pause":
@@ -444,21 +523,87 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function NumberField({ label, value, min = 0, onChange }: { label: string; value: number; min?: number; onChange: (value: number) => void }) {
+function NumberField({
+  label,
+  value,
+  min = 0,
+  max,
+  step,
+  integer = false,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  integer?: boolean;
+  onChange: (value: number) => void;
+}) {
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        onChange={(event) => {
-          const next = Number(event.target.value);
-          if (Number.isFinite(next) && next >= min) onChange(next);
-        }}
-        style={inputStyle}
-      />
-    </label>
+    <Field label={label}>
+      {({ id, describedBy, invalid }) => (
+        <NumberInput
+          id={id}
+          describedBy={describedBy}
+          invalid={invalid}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(next) => {
+            const normalized = integer ? Math.round(next) : next;
+            if (normalized >= min && (max == null || normalized <= max)) onChange(normalized);
+          }}
+        />
+      )}
+    </Field>
+  );
+}
+
+function OptionalMillisecondsField({
+  label,
+  value,
+  fallback,
+  hint,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  fallback: number;
+  hint: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <Field label={`${label}（毫秒）`} hint={hint}>
+      {({ id, describedBy, invalid }) => (
+        <NumberInput
+          id={id}
+          describedBy={describedBy}
+          invalid={invalid}
+          value={value ?? fallback}
+          min={0}
+          step={1}
+          onChange={(next) => onChange(Math.max(0, Math.round(next)))}
+        />
+      )}
+    </Field>
+  );
+}
+
+function BooleanField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <Field label={label}>
+      {({ id, describedBy }) => (
+        <Switch
+          id={id}
+          describedBy={describedBy}
+          checked={checked}
+          label={checked ? "是" : "否"}
+          onChange={onChange}
+        />
+      )}
+    </Field>
   );
 }
 
