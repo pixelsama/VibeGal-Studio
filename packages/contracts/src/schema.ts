@@ -314,6 +314,41 @@ export const StageConfigSchema = z.object({
   height: z.number().int().min(180).max(4320).default(720),
 }).default({ width: 1280, height: 720 });
 
+export const DistributionVersionSchema = z.string().regex(
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+  "作品版本必须使用 SemVer，例如 1.0.0 或 1.0.0-beta.1",
+);
+
+export const DistributionIconSchema = z.string().regex(
+  /^assets\/[A-Za-z0-9_@+-]+(?:\.[A-Za-z0-9_@+-]+)*(?:\/[A-Za-z0-9_@+-]+(?:\.[A-Za-z0-9_@+-]+)*)*$/,
+  "分发图标必须是 assets/ 下不含路径穿越的项目相对路径",
+);
+
+export const DistributionViewportSchema = z.strictObject({
+  mode: z.enum(["fit", "fill", "responsive"]),
+  width: z.number().int().min(320).max(7680),
+  height: z.number().int().min(180).max(4320),
+});
+
+export const DistributionUpdatesSchema = z.union([
+  z.strictObject({
+    channel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/).default("stable"),
+  }),
+  z.strictObject({
+    channel: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/).default("stable"),
+    endpoint: z.string().url().startsWith("https://"),
+    publicKey: z.string().min(1),
+  }),
+]);
+
+export const DistributionConfigSchema = z.strictObject({
+  version: DistributionVersionSchema.default("0.1.0"),
+  productName: z.string().trim().min(1).max(128).optional(),
+  icon: DistributionIconSchema.optional(),
+  viewport: DistributionViewportSchema.optional(),
+  updates: DistributionUpdatesSchema.optional(),
+});
+
 export const LocaleTagSchema = z.string().regex(
   /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/,
   "语言标签必须使用 BCP 47 风格，例如 zh-CN 或 en",
@@ -352,6 +387,7 @@ export const MetaSchema = z.object({
   chapterGapMs: z.number().int().nonnegative().default(1500),
   stage: StageConfigSchema,
   locale: LocaleConfigSchema.optional(),
+  distribution: DistributionConfigSchema.optional(),
 });
 
 function canonicalizeLocaleTag(tag: string): string {

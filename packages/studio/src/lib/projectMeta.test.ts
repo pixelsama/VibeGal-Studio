@@ -25,6 +25,24 @@ describe("project meta helpers", () => {
     });
   });
 
+  it("preserves canonical distribution configuration for preview and export consumers", () => {
+    expect(readProjectMeta({
+      title: "Work Title",
+      distribution: {
+        productName: "Package Name",
+        icon: "assets/icon.png",
+        viewport: { mode: "fill", width: 1920, height: 1080 },
+        updates: { channel: "preview" },
+      },
+    }).distribution).toEqual({
+      version: "0.1.0",
+      productName: "Package Name",
+      icon: "assets/icon.png",
+      viewport: { mode: "fill", width: 1920, height: 1080 },
+      updates: { channel: "preview" },
+    });
+  });
+
   it("preserves existing meta fields when writing stage resolution", () => {
     expect(withStageResolution({ title: "T", autoAdvanceMs: 1200 }, { width: 1280, height: 720 })).toEqual({
       title: "T",

@@ -38,6 +38,9 @@ import type {
   GraphPositionSchema,
   LocaleConfigSchema,
   LocaleTableSchema,
+  DistributionConfigSchema,
+  DistributionViewportSchema,
+  DistributionUpdatesSchema,
   ChapterCheckpointSchema,
   AnimationAtlasClipSchema,
   CharacterSpriteRefSchema,
@@ -61,6 +64,9 @@ export type VariableBand = z.infer<typeof VariableBandSchema>;
 export type VariableOption = z.infer<typeof VariableOptionSchema>;
 export type LocaleConfig = z.infer<typeof LocaleConfigSchema>;
 export type LocaleTable = z.infer<typeof LocaleTableSchema>;
+export type DistributionConfig = z.infer<typeof DistributionConfigSchema>;
+export type DistributionViewport = z.infer<typeof DistributionViewportSchema>;
+export type DistributionUpdates = z.infer<typeof DistributionUpdatesSchema>;
 export type ChapterCheckpoint = z.infer<typeof ChapterCheckpointSchema>;
 export type AnimationAtlasClip = z.infer<typeof AnimationAtlasClipSchema>;
 export type CharacterSpriteRef = z.infer<typeof CharacterSpriteRefSchema>;

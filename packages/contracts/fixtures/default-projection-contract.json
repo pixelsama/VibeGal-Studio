@@ -71,6 +71,33 @@
       }
     },
     {
+      "id": "meta.normalizes.distribution-defaults",
+      "schema": "meta",
+      "input": {
+        "title": "Work Title",
+        "distribution": {
+          "productName": "Package Name",
+          "icon": "assets/icon.png",
+          "viewport": { "mode": "fill", "width": 1920, "height": 1080 },
+          "updates": { "channel": "preview" }
+        }
+      },
+      "expected": {
+        "title": "Work Title",
+        "typingSpeedCps": 30,
+        "autoAdvanceMs": 1200,
+        "chapterGapMs": 1500,
+        "stage": { "width": 1280, "height": 720 },
+        "distribution": {
+          "version": "0.1.0",
+          "productName": "Package Name",
+          "icon": "assets/icon.png",
+          "viewport": { "mode": "fill", "width": 1920, "height": 1080 },
+          "updates": { "channel": "preview" }
+        }
+      }
+    },
+    {
       "id": "locale.preserves.flat-table",
       "schema": "locale",
       "input": { "opening.hello": "Hello" },

@@ -107,6 +107,12 @@ import type { ComponentType, ReactNode } from "react";
 
   export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; };
 
+  export type DistributionConfig = { version: string; productName?: string | undefined; icon?: string | undefined; viewport?: { mode: "fit" | "fill" | "responsive"; width: number; height: number; } | undefined; updates?: { channel: string; } | { channel: string; endpoint: string; publicKey: string; } | undefined; };
+
+  export type DistributionUpdates = { channel: string; } | { channel: string; endpoint: string; publicKey: string; };
+
+  export type DistributionViewport = { mode: "fit" | "fill" | "responsive"; width: number; height: number; };
+
   export type EffectInstr = { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; };
 
   export interface GalleryService {
@@ -189,7 +195,7 @@ import type { ComponentType, ReactNode } from "react";
     skipVideo(): void;
   }
 
-  export type Meta = { title: string; typingSpeedCps: number; autoAdvanceMs: number; chapterGapMs: number; stage: { width: number; height: number; }; locale?: { default: string; available: string[]; } | undefined; };
+  export type Meta = { title: string; typingSpeedCps: number; autoAdvanceMs: number; chapterGapMs: number; stage: { width: number; height: number; }; locale?: { default: string; available: string[]; } | undefined; distribution?: { version: string; productName?: string | undefined; icon?: string | undefined; viewport?: { mode: "fit" | "fill" | "responsive"; width: number; height: number; } | undefined; updates?: { channel: string; } | { channel: string; endpoint: string; publicKey: string; } | undefined; } | undefined; };
 
   export type NarrateInstr = { t: "narrate"; text: string; id?: string | undefined; textKey?: string | undefined; ms?: number | undefined; };
 

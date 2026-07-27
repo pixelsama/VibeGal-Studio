@@ -201,6 +201,10 @@
       "severity": "error",
       "source": "meta"
     },
+    "meta_invalid_distribution": {
+      "severity": "error",
+      "source": "meta"
+    },
     "meta_invalid_structure": {
       "severity": "error",
       "source": "meta"
@@ -267,6 +271,15 @@
           ],
           "prefixes": [
             "$.locale."
+          ]
+        },
+        {
+          "code": "meta_invalid_distribution",
+          "exact": [
+            "$.distribution"
+          ],
+          "prefixes": [
+            "$.distribution."
           ]
         },
         {

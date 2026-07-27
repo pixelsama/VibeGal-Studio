@@ -33,13 +33,18 @@ describe("ProjectSettings", () => {
 
     expect(html).toContain("项目设置");
     expect(html).toContain('class="gs-settings-grid"');
-    expect(html.match(/class="gs-settings-card"/g)).toHaveLength(2);
+    expect(html.match(/class="gs-settings-card"/g)).toHaveLength(3);
     expect(html).toContain('class="gs-selected-surface"');
     expect(html).toContain("作品标题");
     expect(html).toContain("默认打字速度");
     expect(html).toContain("默认自动播放间隔");
     expect(html).toContain("章节间隔");
     expect(html).toContain("舞台分辨率");
+    expect(html).toContain("导出信息");
+    expect(html).toContain("作品版本");
+    expect(html).toContain("安装包名称");
+    expect(html).toContain("图标路径");
+    expect(html).toContain("窗口适配");
     expect(html).toContain("1280 x 720");
     expect(html).toContain("1920 x 1080");
   });
@@ -73,6 +78,7 @@ describe("ProjectSettings", () => {
         autoAdvanceMs: 900,
         chapterGapMs: 600,
         stage: { width: 960, height: 540 },
+        distribution: { version: "0.1.0" },
       });
     expect(readProjectMetaSettings({})).toEqual({
       title: "",
@@ -80,6 +86,7 @@ describe("ProjectSettings", () => {
       autoAdvanceMs: 1200,
       chapterGapMs: 1500,
       stage: { width: 1280, height: 720 },
+      distribution: { version: "0.1.0" },
     });
   });
 
@@ -92,6 +99,12 @@ describe("ProjectSettings", () => {
         autoAdvanceMs: 800,
         chapterGapMs: 500,
         stage: { width: 1920, height: 1080 },
+        distribution: {
+          version: "1.2.3",
+          productName: "Export Name",
+          icon: "assets/icon.png",
+          viewport: { mode: "fill", width: 1920, height: 1080 },
+        },
       },
     )).toEqual({
       custom: true,
@@ -100,6 +113,12 @@ describe("ProjectSettings", () => {
       autoAdvanceMs: 800,
       chapterGapMs: 500,
       stage: { width: 1920, height: 1080 },
+      distribution: {
+        version: "1.2.3",
+        productName: "Export Name",
+        icon: "assets/icon.png",
+        viewport: { mode: "fill", width: 1920, height: 1080 },
+      },
     });
   });
 
@@ -114,6 +133,7 @@ describe("ProjectSettings", () => {
         autoAdvanceMs: 750,
         chapterGapMs: 300,
         stage: { width: 1920, height: 1080 },
+        distribution: { version: "0.1.0" },
       },
       saveFileFn,
     });
@@ -127,6 +147,7 @@ describe("ProjectSettings", () => {
         autoAdvanceMs: 750,
         chapterGapMs: 300,
         stage: { width: 1920, height: 1080 },
+        distribution: { version: "0.1.0" },
       }, null, 2),
       project.metaRevision,
     );
@@ -171,6 +192,12 @@ describe("ProjectSettings", () => {
       chapterGapText: "1500",
       widthText: "1280",
       heightText: "720",
+      distributionVersionText: "0.1.0",
+      distributionProductNameText: "",
+      distributionIconText: "",
+      distributionViewportMode: "fit",
+      distributionViewportWidthText: "1280",
+      distributionViewportHeightText: "720",
     })).toBe(false);
     expect(isProjectSettingsDraftDirty(base, {
       titleText: "New",
@@ -179,6 +206,12 @@ describe("ProjectSettings", () => {
       chapterGapText: "1500",
       widthText: "1280",
       heightText: "720",
+      distributionVersionText: "0.1.0",
+      distributionProductNameText: "",
+      distributionIconText: "",
+      distributionViewportMode: "fit",
+      distributionViewportWidthText: "1280",
+      distributionViewportHeightText: "720",
     })).toBe(true);
   });
 
@@ -199,26 +232,38 @@ describe("ProjectSettings", () => {
   it("restores a valid full project settings draft from session storage", () => {
     const storage: DraftStorage = {
       getItem: () => JSON.stringify({
-        version: 2,
+        version: 3,
         titleText: "Weapon Girl",
         typingSpeedText: "36",
         autoAdvanceText: "750",
         chapterGapText: "300",
         widthText: "1920",
         heightText: "1080",
+        distributionVersionText: "1.2.3",
+        distributionProductNameText: "Export Name",
+        distributionIconText: "assets/icon.png",
+        distributionViewportMode: "fill",
+        distributionViewportWidthText: "1920",
+        distributionViewportHeightText: "1080",
       }),
       setItem: vi.fn(),
       removeItem: vi.fn(),
     };
 
     expect(loadProjectSettingsDraft(storage, "draft-key")).toEqual({
-      version: 2,
+      version: 3,
       titleText: "Weapon Girl",
       typingSpeedText: "36",
       autoAdvanceText: "750",
       chapterGapText: "300",
       widthText: "1920",
       heightText: "1080",
+      distributionVersionText: "1.2.3",
+      distributionProductNameText: "Export Name",
+      distributionIconText: "assets/icon.png",
+      distributionViewportMode: "fill",
+      distributionViewportWidthText: "1920",
+      distributionViewportHeightText: "1080",
     });
   });
 

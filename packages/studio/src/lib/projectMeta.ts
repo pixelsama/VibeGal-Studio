@@ -1,4 +1,4 @@
-import { LocaleConfigSchema, type Meta } from "@vibegal/engine";
+import { DistributionConfigSchema, LocaleConfigSchema, type Meta } from "@vibegal/engine";
 
 export interface StageResolution {
   width: number;
@@ -44,6 +44,7 @@ export const DEFAULT_CHAPTER_GAP_MS = 1_500;
 export function readProjectMeta(meta: unknown): Meta {
   const record = isRecord(meta) ? meta : {};
   const locale = LocaleConfigSchema.safeParse(record.locale);
+  const distribution = DistributionConfigSchema.safeParse(record.distribution);
   return {
     title: typeof record.title === "string" ? record.title : "",
     typingSpeedCps: typeof record.typingSpeedCps === "number" && record.typingSpeedCps > 0
@@ -53,6 +54,7 @@ export function readProjectMeta(meta: unknown): Meta {
     chapterGapMs: nonNegativeInteger(record.chapterGapMs, DEFAULT_CHAPTER_GAP_MS),
     stage: readStageResolution(meta),
     ...(locale.success ? { locale: locale.data } : {}),
+    ...(distribution.success ? { distribution: distribution.data } : {}),
   };
 }
 

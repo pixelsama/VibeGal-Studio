@@ -168,6 +168,48 @@
       ]
     },
     {
+      "id": "meta.valid.distribution",
+      "schema": "meta",
+      "input": {
+        "distribution": {
+          "version": "1.2.3-beta.1+build.4",
+          "productName": "Package Name",
+          "icon": "assets/branding/icon.png",
+          "viewport": { "mode": "responsive", "width": 1280, "height": 720 },
+          "updates": {
+            "channel": "stable",
+            "endpoint": "https://updates.example.com/stable.json",
+            "publicKey": "test-public-key"
+          }
+        }
+      },
+      "issues": []
+    },
+    {
+      "id": "meta.invalid.distribution-version",
+      "schema": "meta",
+      "input": { "distribution": { "version": "v1" } },
+      "issues": [
+        { "code": "meta_invalid_distribution", "severity": "error", "source": "meta", "jsonPath": "$.distribution.version" }
+      ]
+    },
+    {
+      "id": "meta.invalid.distribution-icon-traversal",
+      "schema": "meta",
+      "input": { "distribution": { "icon": "assets/../secret.png" } },
+      "issues": [
+        { "code": "meta_invalid_distribution", "severity": "error", "source": "meta", "jsonPath": "$.distribution.icon" }
+      ]
+    },
+    {
+      "id": "meta.invalid.distribution-update-pair",
+      "schema": "meta",
+      "input": { "distribution": { "updates": { "channel": "stable", "endpoint": "https://updates.example.com/stable.json" } } },
+      "issues": [
+        { "code": "meta_invalid_distribution", "severity": "error", "source": "meta", "jsonPath": "$.distribution.updates.publicKey" }
+      ]
+    },
+    {
       "id": "locale.invalid.non-string-value",
       "schema": "locale",
       "input": { "opening.hello": 42 },

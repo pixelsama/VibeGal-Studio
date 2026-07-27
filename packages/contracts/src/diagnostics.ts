@@ -62,6 +62,7 @@ export const contractDiagnostics = {
   meta_invalid_timing: { severity: "error", source: "meta" },
   meta_invalid_stage: { severity: "error", source: "meta" },
   meta_invalid_locale: { severity: "error", source: "meta" },
+  meta_invalid_distribution: { severity: "error", source: "meta" },
   meta_invalid_structure: { severity: "error", source: "meta" },
   locale_invalid_structure: { severity: "error", source: "locale" },
   contract_invalid_value: { severity: "error", source: "contract" },
@@ -107,6 +108,7 @@ export const contractStructuralPolicies = {
       { code: "meta_invalid_title", exact: ["$.title"] },
       { code: "meta_invalid_stage", exact: ["$.stage"], prefixes: ["$.stage."] },
       { code: "meta_invalid_locale", exact: ["$.locale"], prefixes: ["$.locale."] },
+      { code: "meta_invalid_distribution", exact: ["$.distribution"], prefixes: ["$.distribution."] },
       {
         code: "meta_invalid_timing",
         exact: ["$.typingSpeedCps", "$.autoAdvanceMs", "$.chapterGapMs"],

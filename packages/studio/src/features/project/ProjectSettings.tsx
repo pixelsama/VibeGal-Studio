@@ -1,3 +1,4 @@
+import { DistributionConfigSchema, type DistributionConfig } from "@vibegal/engine";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   repairProjectSupportFiles as repairProjectSupportFilesInBackend,
@@ -60,6 +61,7 @@ const DEFAULT_PROJECT_META_SETTINGS: ProjectMetaSettings = {
   autoAdvanceMs: 1200,
   chapterGapMs: 1500,
   stage: DEFAULT_STAGE_RESOLUTION,
+  distribution: { version: "0.1.0" },
 };
 
 export interface ProjectMetaSettings {
@@ -68,6 +70,7 @@ export interface ProjectMetaSettings {
   autoAdvanceMs: number;
   chapterGapMs: number;
   stage: StageResolution;
+  distribution: DistributionConfig;
 }
 
 export interface ProjectSettingsFormDraft {
@@ -77,6 +80,13 @@ export interface ProjectSettingsFormDraft {
   chapterGapText: string;
   widthText: string;
   heightText: string;
+  distributionVersionText: string;
+  distributionProductNameText: string;
+  distributionIconText: string;
+  distributionViewportMode: "fit" | "fill" | "responsive";
+  distributionViewportWidthText: string;
+  distributionViewportHeightText: string;
+  distributionUpdates?: DistributionConfig["updates"];
 }
 
 export async function saveProjectStageResolution({
@@ -121,6 +131,7 @@ export async function saveProjectSettings({
 
 export function readProjectMetaSettings(meta: unknown): ProjectMetaSettings {
   const record = isRecord(meta) ? meta : {};
+  const distribution = DistributionConfigSchema.safeParse(record.distribution);
   return {
     title: typeof record.title === "string" ? record.title : DEFAULT_PROJECT_META_SETTINGS.title,
     typingSpeedCps: typeof record.typingSpeedCps === "number" && record.typingSpeedCps > 0
@@ -133,6 +144,9 @@ export function readProjectMetaSettings(meta: unknown): ProjectMetaSettings {
       ? record.chapterGapMs
       : DEFAULT_PROJECT_META_SETTINGS.chapterGapMs,
     stage: readStageResolution(meta),
+    distribution: distribution.success
+      ? distribution.data
+      : DEFAULT_PROJECT_META_SETTINGS.distribution,
   };
 }
 
@@ -148,6 +162,7 @@ export function withProjectMetaSettings(meta: unknown, settings: ProjectMetaSett
       width: settings.stage.width,
       height: settings.stage.height,
     },
+    distribution: settings.distribution,
   };
 }
 
@@ -172,7 +187,7 @@ export function isStageDraftDirty(base: StageResolution, widthText: string, heig
 }
 
 export interface StoredProjectSettingsDraft extends ProjectSettingsFormDraft {
-  version: 2;
+  version: 3;
   baseSettings?: ProjectMetaSettings;
   baseRevision?: FileRevision | null;
 }
@@ -182,13 +197,19 @@ export function loadProjectSettingsDraft(storage: DraftStorage | null, key: stri
   if (!value || typeof value !== "object") return null;
   const draft = value as Partial<StoredProjectSettingsDraft>;
   if (
-    draft.version !== 2 ||
+    draft.version !== 3 ||
     typeof draft.titleText !== "string" ||
     typeof draft.typingSpeedText !== "string" ||
     typeof draft.autoAdvanceText !== "string" ||
     typeof draft.chapterGapText !== "string" ||
     typeof draft.widthText !== "string" ||
-    typeof draft.heightText !== "string"
+    typeof draft.heightText !== "string" ||
+    typeof draft.distributionVersionText !== "string" ||
+    typeof draft.distributionProductNameText !== "string" ||
+    typeof draft.distributionIconText !== "string" ||
+    !["fit", "fill", "responsive"].includes(draft.distributionViewportMode ?? "") ||
+    typeof draft.distributionViewportWidthText !== "string" ||
+    typeof draft.distributionViewportHeightText !== "string"
   ) {
     return null;
   }
@@ -202,7 +223,13 @@ export function isProjectSettingsDraftDirty(base: ProjectMetaSettings, draft: Pr
     draft.autoAdvanceText !== String(base.autoAdvanceMs) ||
     draft.chapterGapText !== String(base.chapterGapMs) ||
     draft.widthText !== String(base.stage.width) ||
-    draft.heightText !== String(base.stage.height)
+    draft.heightText !== String(base.stage.height) ||
+    draft.distributionVersionText !== base.distribution.version ||
+    draft.distributionProductNameText !== (base.distribution.productName ?? "") ||
+    draft.distributionIconText !== (base.distribution.icon ?? "") ||
+    draft.distributionViewportMode !== (base.distribution.viewport?.mode ?? "fit") ||
+    draft.distributionViewportWidthText !== String(base.distribution.viewport?.width ?? base.stage.width) ||
+    draft.distributionViewportHeightText !== String(base.distribution.viewport?.height ?? base.stage.height)
   );
 }
 
@@ -235,6 +262,26 @@ export function ProjectSettings({
   const [chapterGapText, setChapterGapText] = useState(restoredDraft?.chapterGapText ?? String(initialSettings.chapterGapMs));
   const [widthText, setWidthText] = useState(restoredDraft?.widthText ?? String(initialSettings.stage.width));
   const [heightText, setHeightText] = useState(restoredDraft?.heightText ?? String(initialSettings.stage.height));
+  const [distributionVersionText, setDistributionVersionText] = useState(
+    restoredDraft?.distributionVersionText ?? initialSettings.distribution.version,
+  );
+  const [distributionProductNameText, setDistributionProductNameText] = useState(
+    restoredDraft?.distributionProductNameText ?? initialSettings.distribution.productName ?? "",
+  );
+  const [distributionIconText, setDistributionIconText] = useState(
+    restoredDraft?.distributionIconText ?? initialSettings.distribution.icon ?? "",
+  );
+  const [distributionViewportMode, setDistributionViewportMode] = useState<"fit" | "fill" | "responsive">(
+    restoredDraft?.distributionViewportMode ?? initialSettings.distribution.viewport?.mode ?? "fit",
+  );
+  const [distributionViewportWidthText, setDistributionViewportWidthText] = useState(
+    restoredDraft?.distributionViewportWidthText
+      ?? String(initialSettings.distribution.viewport?.width ?? initialSettings.stage.width),
+  );
+  const [distributionViewportHeightText, setDistributionViewportHeightText] = useState(
+    restoredDraft?.distributionViewportHeightText
+      ?? String(initialSettings.distribution.viewport?.height ?? initialSettings.stage.height),
+  );
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [missingSupportFiles, setMissingSupportFiles] = useState(project.missingSupportFiles ?? []);
@@ -253,6 +300,13 @@ export function ProjectSettings({
     chapterGapText,
     widthText,
     heightText,
+    distributionVersionText,
+    distributionProductNameText,
+    distributionIconText,
+    distributionViewportMode,
+    distributionViewportWidthText,
+    distributionViewportHeightText,
+    distributionUpdates: restoredDraft?.distributionUpdates ?? initialSettings.distribution.updates,
   };
   const dirty = isProjectSettingsDraftDirty(baseSettingsRef.current, formDraft);
 
@@ -267,6 +321,12 @@ export function ProjectSettings({
     setChapterGapText(String(initialSettings.chapterGapMs));
     setWidthText(String(initialSettings.stage.width));
     setHeightText(String(initialSettings.stage.height));
+    setDistributionVersionText(initialSettings.distribution.version);
+    setDistributionProductNameText(initialSettings.distribution.productName ?? "");
+    setDistributionIconText(initialSettings.distribution.icon ?? "");
+    setDistributionViewportMode(initialSettings.distribution.viewport?.mode ?? "fit");
+    setDistributionViewportWidthText(String(initialSettings.distribution.viewport?.width ?? initialSettings.stage.width));
+    setDistributionViewportHeightText(String(initialSettings.distribution.viewport?.height ?? initialSettings.stage.height));
     setStatus(null);
   }, [dirty, initialSettings, project.metaRevision]);
 
@@ -278,13 +338,20 @@ export function ProjectSettings({
   useEffect(() => {
     if (dirty) {
       saveProjectDraft(draftStorage, draftStorageKey, {
-        version: 2,
+        version: 3,
         titleText,
         typingSpeedText,
         autoAdvanceText,
         chapterGapText,
         widthText,
         heightText,
+        distributionVersionText,
+        distributionProductNameText,
+        distributionIconText,
+        distributionViewportMode,
+        distributionViewportWidthText,
+        distributionViewportHeightText,
+        distributionUpdates: formDraft.distributionUpdates,
         baseSettings: baseSettingsRef.current,
         baseRevision: loadedRevisionRef.current,
       } satisfies StoredProjectSettingsDraft);
@@ -292,7 +359,25 @@ export function ProjectSettings({
       clearProjectDraft(draftStorage, draftStorageKey);
     }
     onDirtyChange?.(dirty);
-  }, [autoAdvanceText, chapterGapText, dirty, draftBaseVersion, draftStorage, draftStorageKey, heightText, onDirtyChange, titleText, typingSpeedText, widthText]);
+  }, [
+    autoAdvanceText,
+    chapterGapText,
+    dirty,
+    distributionIconText,
+    distributionProductNameText,
+    distributionVersionText,
+    distributionViewportHeightText,
+    distributionViewportMode,
+    distributionViewportWidthText,
+    draftBaseVersion,
+    draftStorage,
+    draftStorageKey,
+    heightText,
+    onDirtyChange,
+    titleText,
+    typingSpeedText,
+    widthText,
+  ]);
 
   useEffect(() => () => {
     onDirtyChange?.(false);
@@ -509,6 +594,63 @@ export function ProjectSettings({
               </button>
             </div>
           </div>
+
+          <div className="gs-settings-card" style={fieldGroupStyle}>
+            <span style={fieldLabelStyle}>导出信息</span>
+            <div style={numberRowStyle}>
+              <TextField
+                label="作品版本"
+                hint="独立于 Studio 版本，使用 SemVer，例如 1.0.0。"
+                value={distributionVersionText}
+                onChange={(value) => setDraftText(setDistributionVersionText, value)}
+              />
+              <TextField
+                label="安装包名称"
+                hint="只控制包和窗口显示名；留空时沿用作品标题。"
+                value={distributionProductNameText}
+                onChange={(value) => setDraftText(setDistributionProductNameText, value)}
+              />
+              <TextField
+                label="图标路径"
+                hint="可选，只接受 assets/ 下的项目相对路径；构建不会改写源图。"
+                value={distributionIconText}
+                onChange={(value) => setDraftText(setDistributionIconText, value)}
+              />
+            </div>
+            <label style={numberFieldStyle}>
+              <span style={numberLabelStyle}>窗口适配</span>
+              <select
+                value={distributionViewportMode}
+                onChange={(event) => setDraftText(
+                  (value) => setDistributionViewportMode(value as "fit" | "fill" | "responsive"),
+                  event.target.value,
+                )}
+                style={textInputStyle}
+              >
+                <option value="fit">保持比例并留边</option>
+                <option value="fill">保持比例并裁切</option>
+                <option value="responsive">由界面风格自适应决定</option>
+              </select>
+            </label>
+            <div style={numberRowStyle}>
+              <NumberField
+                label="设计宽度"
+                value={distributionViewportWidthText}
+                min={STAGE_WIDTH_RANGE.min}
+                max={STAGE_WIDTH_RANGE.max}
+                step={1}
+                onChange={(value) => setDraftText(setDistributionViewportWidthText, value)}
+              />
+              <NumberField
+                label="设计高度"
+                value={distributionViewportHeightText}
+                min={STAGE_HEIGHT_RANGE.min}
+                max={STAGE_HEIGHT_RANGE.max}
+                step={1}
+                onChange={(value) => setDraftText(setDistributionViewportHeightText, value)}
+              />
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -540,12 +682,33 @@ function parseProjectSettingsDraft(draft: ProjectSettingsFormDraft): ProjectMeta
   if (!Number.isFinite(typingSpeedCps) || typingSpeedCps <= 0) return null;
   if (!Number.isInteger(autoAdvanceMs) || autoAdvanceMs < 0) return null;
   if (!Number.isInteger(chapterGapMs) || chapterGapMs < 0) return null;
+  const distributionViewport = parseStageDraft(
+    draft.distributionViewportWidthText,
+    draft.distributionViewportHeightText,
+  );
+  if (!distributionViewport) return null;
+  const distribution = DistributionConfigSchema.safeParse({
+    version: draft.distributionVersionText,
+    ...(draft.distributionProductNameText.trim()
+      ? { productName: draft.distributionProductNameText.trim() }
+      : {}),
+    ...(draft.distributionIconText.trim()
+      ? { icon: draft.distributionIconText.trim() }
+      : {}),
+    viewport: {
+      mode: draft.distributionViewportMode,
+      ...distributionViewport,
+    },
+    ...(draft.distributionUpdates ? { updates: draft.distributionUpdates } : {}),
+  });
+  if (!distribution.success) return null;
   return {
     title: draft.titleText,
     typingSpeedCps,
     autoAdvanceMs,
     chapterGapMs,
     stage,
+    distribution: distribution.data,
   };
 }
 
