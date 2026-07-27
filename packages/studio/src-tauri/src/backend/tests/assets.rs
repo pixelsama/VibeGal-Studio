@@ -53,6 +53,36 @@ fn list_assets_classifies_kind_by_path() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn list_assets_reports_known_image_dimensions_without_guessing_unknown_files() {
+    let dir = unique_temp_dir("list-assets-dimensions");
+    write_asset_project(
+        &dir,
+        r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+        &[],
+    );
+    write_png_header(&dir.join("content/assets/atlases/known.png"), 320, 180);
+    write_text(
+        &dir.join("content/assets/atlases/unknown.png"),
+        "not an image",
+    );
+
+    let entries = list_assets(dir.to_string_lossy().into_owned()).unwrap();
+    let known = entries
+        .iter()
+        .find(|entry| entry.rel_path == "assets/atlases/known.png")
+        .unwrap();
+    assert_eq!(known.image_width, Some(320));
+    assert_eq!(known.image_height, Some(180));
+    let unknown = entries
+        .iter()
+        .find(|entry| entry.rel_path == "assets/atlases/unknown.png")
+        .unwrap();
+    assert_eq!(unknown.image_width, None);
+    assert_eq!(unknown.image_height, None);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn list_assets_rejects_symlinked_asset_directory_even_when_empty() {
@@ -402,6 +432,160 @@ fn validate_assets_flags_orphan_and_dangling() {
     assert_eq!(missing.severity, GraphIssueSeverity::Error);
     let orphan = issues.iter().find(|i| i.code == "orphan_asset").unwrap();
     assert_eq!(orphan.severity, GraphIssueSeverity::Error);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn validate_assets_treats_animation_fallback_as_a_real_asset_reference() {
+    let dir = unique_temp_dir("validate-atlas-fallback");
+    let manifest = r#"{
+        "characters":{"hero":{"name":"Hero","sprites":{"animated":{"atlas":"hero","clip":"idle","fallback":"assets/characters/hero-fallback.png"}}}},
+        "backgrounds":{},
+        "audio":{"bgm":{},"sfx":{},"voice":{}},
+        "animationAtlases":{"hero":{"image":"assets/atlases/hero.png","frameWidth":32,"frameHeight":32,"clips":{"idle":{"frames":[0],"fps":8}}}}
+    }"#;
+    write_asset_project(
+        &dir,
+        manifest,
+        &[
+            "assets/characters/hero-fallback.png",
+            "assets/atlases/hero.png",
+        ],
+    );
+
+    let content_root = dir.join("content").canonicalize().unwrap();
+    let manifest = read_json(&dir.join("content/manifest.json")).unwrap();
+    let issues = validate_assets_for_project(&content_root, &manifest);
+    assert!(
+        !issues.iter().any(|issue| {
+            issue.code == "orphan_asset"
+                && issue.file.as_deref() == Some("content/assets/characters/hero-fallback.png")
+        }),
+        "fallback should consume the asset path: {issues:?}"
+    );
+
+    fs::remove_file(dir.join("content/assets/characters/hero-fallback.png")).unwrap();
+    let issues = validate_assets_for_project(&content_root, &manifest);
+    let missing = issues
+        .iter()
+        .find(|issue| {
+            issue.code == "missing_asset"
+                && issue.json_path.as_deref() == Some("$.characters.hero.sprites.animated.fallback")
+        })
+        .expect("missing fallback should be reported");
+    assert_eq!(missing.severity, GraphIssueSeverity::Error);
+    assert_eq!(
+        missing.file.as_deref(),
+        Some("content/assets/characters/hero-fallback.png")
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn open_project_reports_atlas_references_and_only_known_frame_bounds() {
+    let dir = unique_temp_dir("atlas-project-semantics");
+    write_graph_project(
+        &dir,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "nodes": [{ "id": "start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } }],
+            "edges": []
+        }),
+        &[("nodes/start.json", serde_json::json!([]))],
+    );
+    write_json(
+        &dir.join("content/manifest.json"),
+        &serde_json::json!({
+            "characters": {
+                "hero": {
+                    "name": "Hero",
+                    "sprites": {
+                        "missingAtlas": {
+                            "atlas": "missing",
+                            "clip": "idle",
+                            "fallback": "assets/characters/missing-atlas.png"
+                        },
+                        "missingClip": {
+                            "atlas": "known",
+                            "clip": "missing",
+                            "fallback": "assets/characters/missing-clip.png"
+                        },
+                        "unknownBounds": {
+                            "atlas": "unknown",
+                            "clip": "idle",
+                            "fallback": "assets/characters/unknown-bounds.png"
+                        }
+                    }
+                }
+            },
+            "backgrounds": {},
+            "audio": { "bgm": {}, "sfx": {}, "voice": {} },
+            "animationAtlases": {
+                "known": {
+                    "image": "assets/atlases/known.png",
+                    "frameWidth": 100,
+                    "frameHeight": 100,
+                    "clips": { "idle": { "frames": [0, 2], "fps": 8 } }
+                },
+                "unknown": {
+                    "image": "assets/atlases/unknown.png",
+                    "frameWidth": 100,
+                    "frameHeight": 100,
+                    "clips": { "idle": { "frames": [999], "fps": 8 } }
+                }
+            }
+        }),
+    )
+    .unwrap();
+    write_png_header(&dir.join("content/assets/atlases/known.png"), 200, 100);
+    write_text(
+        &dir.join("content/assets/atlases/unknown.png"),
+        "unknown image bytes",
+    );
+    for name in ["missing-atlas", "missing-clip", "unknown-bounds"] {
+        write_text(
+            &dir.join(format!("content/assets/characters/{name}.png")),
+            "fallback image bytes",
+        );
+    }
+
+    let issues = open_project_inner(dir.to_string_lossy().as_ref())
+        .unwrap()
+        .project_report
+        .unwrap()
+        .project_issues;
+    let atlas = issues
+        .iter()
+        .find(|issue| issue.code == "animation_atlas_missing")
+        .expect("missing atlas reference should be reported");
+    assert_eq!(atlas.source, "manifest");
+    assert_eq!(atlas.file.as_deref(), Some("content/manifest.json"));
+    assert_eq!(
+        atlas.json_path.as_deref(),
+        Some("$.characters[\"hero\"].sprites[\"missingAtlas\"].atlas")
+    );
+    let clip = issues
+        .iter()
+        .find(|issue| issue.code == "animation_clip_missing")
+        .expect("missing clip reference should be reported");
+    assert_eq!(
+        clip.json_path.as_deref(),
+        Some("$.characters[\"hero\"].sprites[\"missingClip\"].clip")
+    );
+    let bounds = issues
+        .iter()
+        .filter(|issue| issue.code == "animation_frame_out_of_bounds")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bounds.len(),
+        1,
+        "unknown image dimensions must not be guessed: {issues:?}"
+    );
+    assert_eq!(
+        bounds[0].json_path.as_deref(),
+        Some("$.animationAtlases[\"known\"].clips[\"idle\"].frames[1]")
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 

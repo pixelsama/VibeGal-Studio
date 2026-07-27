@@ -26,6 +26,19 @@ pub(crate) fn write_text(path: &Path, text: &str) {
     fs::write(path, text).unwrap();
 }
 
+pub(crate) fn write_png_header(path: &Path, width: u32, height: u32) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    let mut bytes = vec![
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R',
+    ];
+    bytes.extend_from_slice(&width.to_be_bytes());
+    bytes.extend_from_slice(&height.to_be_bytes());
+    bytes.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+    fs::write(path, bytes).unwrap();
+}
+
 pub(crate) fn write_minimal_project(project: &Path) {
     write_text(
         &project.join("gal.project.json"),

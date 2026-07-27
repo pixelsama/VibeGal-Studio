@@ -10,7 +10,7 @@ mod node;
 pub(crate) use asset::validate_assets;
 pub(crate) use data::{
     graph_issue_to_project, validate_locale_structure, validate_manifest_structure,
-    validate_meta_structure, validate_ui_skin_convergence,
+    validate_meta_structure, validate_project_semantics, validate_ui_skin_convergence,
 };
 pub(crate) use expression::parse_expression;
 pub(crate) use expression::rename_identifier;

@@ -218,6 +218,9 @@ export interface AssetEntry {
   /** 文件字节数 */
   size: number;
   kind: AssetKind;
+  /** 可可靠识别时返回图片像素尺寸；未知格式保持缺省。 */
+  imageWidth?: number;
+  imageHeight?: number;
   revision?: FileRevision;
 }
 

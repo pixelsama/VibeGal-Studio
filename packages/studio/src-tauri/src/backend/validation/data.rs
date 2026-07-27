@@ -70,6 +70,75 @@ fn contract_project_issues(
         .collect()
 }
 
+pub(crate) fn validate_project_semantics(
+    graph: &serde_json::Value,
+    nodes: &[super::super::model::NodeEntry],
+    manifest: &serde_json::Value,
+    image_dimensions: &std::collections::HashMap<String, (u32, u32)>,
+) -> Vec<ProjectIssue> {
+    if !contracts::validate_schema(contracts::ContractSchemaKind::Graph, graph).is_empty()
+        || !contracts::validate_schema(contracts::ContractSchemaKind::Manifest, manifest).is_empty()
+    {
+        return vec![];
+    }
+    let mut graph_projection = graph.clone();
+    contracts::apply_schema_defaults(
+        &mut graph_projection,
+        contracts::schema(contracts::ContractSchemaKind::Graph),
+    );
+    let mut manifest_projection = manifest.clone();
+    contracts::apply_schema_defaults(
+        &mut manifest_projection,
+        contracts::schema(contracts::ContractSchemaKind::Manifest),
+    );
+    let nodes_by_path = nodes
+        .iter()
+        .map(|entry| (entry.rel_path.as_str(), entry))
+        .collect::<std::collections::HashMap<_, _>>();
+    let nodes_by_id = graph_projection
+        .get("nodes")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|node| {
+            let node_id = node.get("id")?.as_str()?.to_string();
+            let node_file = node.get("file")?.as_str()?;
+            let data = nodes_by_path.get(node_file)?.data.as_ref()?;
+            if !contracts::validate_schema(contracts::ContractSchemaKind::NodeFile, data).is_empty()
+            {
+                return None;
+            }
+            Some((node_id, data))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+
+    contracts::validate_project_semantics(
+        &graph_projection,
+        &nodes_by_id,
+        &manifest_projection,
+        image_dimensions,
+    )
+    .into_iter()
+    .map(|issue| ProjectIssue {
+        severity: issue.severity,
+        source: issue.source.clone(),
+        code: issue.code,
+        message: issue.message,
+        file: Some(
+            if issue.source == "manifest" {
+                "content/manifest.json"
+            } else {
+                "content/graph.json"
+            }
+            .to_string(),
+        ),
+        json_path: Some(issue.json_path),
+        node_id: None,
+        edge_id: None,
+    })
+    .collect()
+}
+
 /// Map a graph issue into the stable ProjectIssue serialization shape.
 pub(crate) fn graph_issue_to_project(issue: &GraphIssue, source: &str) -> ProjectIssue {
     ProjectIssue {

@@ -12,6 +12,8 @@ import {
   contractDiagnostics,
   instructionPolicies,
   validateContractInput,
+  validateProjectSemantics,
+  type ContractProjectSemanticInput,
   type DiagnosticCode,
   type DiagnosticSource,
   type InstructionPolicy,
@@ -85,6 +87,21 @@ function validateInstructionIdentity(chapter: Chapter, file: string): Validation
   });
 
   return issues;
+}
+
+/** Validate cross-document chapter checkpoints and animation-atlas semantics. */
+export function validateProjectReferences(
+  input: ContractProjectSemanticInput,
+  file = "content/graph.json",
+): ValidationIssue[] {
+  return validateProjectSemantics(input).map((issue) => ({
+    level: issue.severity,
+    code: issue.code,
+    source: issue.source,
+    file: issue.source === "manifest" ? "content/manifest.json" : file,
+    jsonPath: issue.jsonPath,
+    message: issue.message,
+  }));
 }
 
 /** 校验 manifest 结构 */

@@ -34,9 +34,17 @@ fn collect_asset_files(
                 .path()
                 .parent()
                 .ok_or_else(|| format!("无法定位项目根目录: {}", content_root.path().display()))?;
+            let image_dimensions = imagesize::size(&path).ok().and_then(|dimensions| {
+                Some((
+                    u32::try_from(dimensions.width).ok()?,
+                    u32::try_from(dimensions.height).ok()?,
+                ))
+            });
             out.push(AssetEntry {
                 size: metadata.len(),
                 kind: AssetKind::from_rel_path(&rel),
+                image_width: image_dimensions.map(|(width, _)| width),
+                image_height: image_dimensions.map(|(_, height)| height),
                 revision: file_revision(project_root, &format!("content/{rel}"))?,
                 rel_path: rel,
             });

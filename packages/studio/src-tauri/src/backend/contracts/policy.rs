@@ -191,6 +191,265 @@ fn execute_discriminated_registry_rule(
     }
 }
 
+pub(crate) fn validate_project_semantics(
+    graph: &Value,
+    nodes: &std::collections::HashMap<String, &Value>,
+    manifest: &Value,
+    image_dimensions: &std::collections::HashMap<String, (u32, u32)>,
+) -> Vec<NodeSemanticIssue> {
+    let mut issues = validate_chapter_checkpoints(graph, nodes, manifest);
+    issues.extend(validate_animation_atlases(manifest, image_dimensions));
+    issues
+        .sort_by(|left, right| (&left.json_path, &left.code).cmp(&(&right.json_path, &right.code)));
+    issues.dedup_by(|left, right| left.json_path == right.json_path && left.code == right.code);
+    issues
+}
+
+fn validate_chapter_checkpoints(
+    graph: &Value,
+    nodes: &std::collections::HashMap<String, &Value>,
+    manifest: &Value,
+) -> Vec<NodeSemanticIssue> {
+    let Some(chapters) = graph.get("chapters").and_then(Value::as_array) else {
+        return vec![];
+    };
+    let graph_nodes = graph
+        .get("nodes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node.get("id").and_then(Value::as_str).map(|id| (id, node)))
+        .collect::<HashMap<_, _>>();
+    let entry_chapter_id = graph
+        .get("entryNodeId")
+        .and_then(Value::as_str)
+        .and_then(|entry| graph_nodes.get(entry))
+        .and_then(|node| node.get("chapterId"))
+        .and_then(Value::as_str);
+    let backgrounds = manifest.get("backgrounds").and_then(Value::as_object);
+    let characters = manifest.get("characters").and_then(Value::as_object);
+    let bgm = manifest.pointer("/audio/bgm").and_then(Value::as_object);
+    let mut issues = vec![];
+
+    for (chapter_index, chapter) in chapters.iter().enumerate() {
+        let Some(chapter_id) = chapter.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let path = format!("$.chapters[{chapter_index}]");
+        let Some(checkpoint) = chapter.get("checkpoint") else {
+            if entry_chapter_id.is_some() && Some(chapter_id) != entry_chapter_id {
+                issues.push(issue(
+                    "chapter_checkpoint_missing",
+                    &format!("章节 \"{chapter_id}\" 没有安全跳读 checkpoint；它只能作为编辑分组。"),
+                    format!("{path}.checkpoint"),
+                ));
+            }
+            continue;
+        };
+        let node_id = checkpoint
+            .get("nodeId")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        match graph_nodes.get(node_id) {
+            None => issues.push(issue(
+                "checkpoint_node_missing",
+                &format!("章节 checkpoint 引用了不存在的节点 \"{node_id}\"。"),
+                format!("{path}.checkpoint.nodeId"),
+            )),
+            Some(node) => {
+                let target_chapter = node.get("chapterId").and_then(Value::as_str).unwrap_or("");
+                if target_chapter != chapter_id {
+                    issues.push(issue(
+                        "checkpoint_node_wrong_chapter",
+                        &format!(
+                            "章节 \"{chapter_id}\" 的 checkpoint 节点属于章节 \"{target_chapter}\"。"
+                        ),
+                        format!("{path}.checkpoint.nodeId"),
+                    ));
+                }
+            }
+        }
+        if let Some(instruction_id) = checkpoint.get("instructionId").and_then(Value::as_str) {
+            let found = nodes
+                .get(node_id)
+                .and_then(|data| data.as_array())
+                .is_some_and(|instructions| {
+                    instructions.iter().enumerate().any(|(index, instruction)| {
+                        let Some(instruction_type) = instruction.get("t").and_then(Value::as_str)
+                        else {
+                            return false;
+                        };
+                        let story_point = matches!(
+                            instruction_type,
+                            "say" | "narrate" | "wait" | "pause" | "inputName" | "completeEnding"
+                        );
+                        story_point
+                            && instruction
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .map(|id| id == instruction_id)
+                                .unwrap_or_else(|| instruction_id == format!("index:{index}"))
+                    })
+                });
+            if !found {
+                issues.push(issue(
+                    "checkpoint_story_point_missing",
+                    &format!("checkpoint 停点 \"{instruction_id}\" 不存在于节点 \"{node_id}\"。"),
+                    format!("{path}.checkpoint.instructionId"),
+                ));
+            }
+        }
+        if let Some(background) = checkpoint.get("background").and_then(Value::as_str) {
+            if backgrounds.is_none_or(|registry| !registry.contains_key(background)) {
+                issues.push(issue(
+                    "checkpoint_background_missing",
+                    &format!("checkpoint 引用了不存在的背景 \"{background}\"。"),
+                    format!("{path}.checkpoint.background"),
+                ));
+            }
+        }
+        for (sprite_index, sprite) in checkpoint
+            .get("sprites")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            let character_id = sprite.get("id").and_then(Value::as_str).unwrap_or("");
+            let expression = sprite.get("expr").and_then(Value::as_str).unwrap_or("");
+            let character = characters.and_then(|registry| registry.get(character_id));
+            if character.is_none() {
+                issues.push(issue(
+                    "checkpoint_character_missing",
+                    &format!("checkpoint 引用了不存在的角色 \"{character_id}\"。"),
+                    format!("{path}.checkpoint.sprites[{sprite_index}].id"),
+                ));
+            } else if !character
+                .and_then(|value| value.get("sprites"))
+                .and_then(Value::as_object)
+                .is_some_and(|sprites| sprites.contains_key(expression))
+            {
+                issues.push(issue(
+                    "checkpoint_character_expr_missing",
+                    &format!("角色 \"{character_id}\" 没有 checkpoint 表情 \"{expression}\"。"),
+                    format!("{path}.checkpoint.sprites[{sprite_index}].expr"),
+                ));
+            }
+        }
+        if let Some(bgm_id) = checkpoint.pointer("/bgm/id").and_then(Value::as_str) {
+            if bgm.is_none_or(|registry| !registry.contains_key(bgm_id)) {
+                issues.push(issue(
+                    "checkpoint_bgm_missing",
+                    &format!("checkpoint 引用了不存在的 BGM \"{bgm_id}\"。"),
+                    format!("{path}.checkpoint.bgm.id"),
+                ));
+            }
+        }
+    }
+    issues
+}
+
+fn validate_animation_atlases(
+    manifest: &Value,
+    image_dimensions: &std::collections::HashMap<String, (u32, u32)>,
+) -> Vec<NodeSemanticIssue> {
+    let atlases = manifest.get("animationAtlases").and_then(Value::as_object);
+    let mut issues = vec![];
+    for (character_id, character) in manifest
+        .get("characters")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+    {
+        for (expression, reference) in character
+            .get("sprites")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            let Some(reference) = reference.as_object() else {
+                continue;
+            };
+            let atlas_id = reference.get("atlas").and_then(Value::as_str).unwrap_or("");
+            let clip_id = reference.get("clip").and_then(Value::as_str).unwrap_or("");
+            let path = format!(
+                "$.characters[{}].sprites[{}]",
+                serde_json::to_string(character_id).expect("json key"),
+                serde_json::to_string(expression).expect("json key")
+            );
+            let atlas = atlases.and_then(|registry| registry.get(atlas_id));
+            if atlas.is_none() {
+                issues.push(issue(
+                    "animation_atlas_missing",
+                    &format!("角色表情引用了不存在的 animation atlas \"{atlas_id}\"。"),
+                    format!("{path}.atlas"),
+                ));
+                continue;
+            }
+            if !atlas
+                .and_then(|value| value.get("clips"))
+                .and_then(Value::as_object)
+                .is_some_and(|clips| clips.contains_key(clip_id))
+            {
+                issues.push(issue(
+                    "animation_clip_missing",
+                    &format!("animation atlas \"{atlas_id}\" 没有 clip \"{clip_id}\"。"),
+                    format!("{path}.clip"),
+                ));
+            }
+        }
+    }
+
+    for (atlas_id, atlas) in atlases.into_iter().flatten() {
+        let Some(image) = atlas.get("image").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(&(image_width, image_height)) = image_dimensions.get(image) else {
+            continue;
+        };
+        let Some(frame_width) = atlas.get("frameWidth").and_then(Value::as_u64) else {
+            continue;
+        };
+        let Some(frame_height) = atlas.get("frameHeight").and_then(Value::as_u64) else {
+            continue;
+        };
+        let columns = u64::from(image_width) / frame_width;
+        let rows = u64::from(image_height) / frame_height;
+        let frame_count = columns * rows;
+        for (clip_id, clip) in atlas
+            .get("clips")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            for (frame_index, frame) in clip
+                .get("frames")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let Some(frame) = frame.as_u64() else {
+                    continue;
+                };
+                if columns > 0 && rows > 0 && frame < frame_count {
+                    continue;
+                }
+                issues.push(issue(
+                    "animation_frame_out_of_bounds",
+                    &format!("图集帧 {frame} 超过 {columns}×{rows} 网格范围。"),
+                    format!(
+                        "$.animationAtlases[{}].clips[{}].frames[{frame_index}]",
+                        serde_json::to_string(atlas_id).expect("json key"),
+                        serde_json::to_string(clip_id).expect("json key")
+                    ),
+                ));
+            }
+        }
+    }
+    issues
+}
+
 fn value_at<'a>(mut value: &'a Value, path: &[Value]) -> Option<&'a Value> {
     for part in path {
         value = value.get(part.as_str()?)?;

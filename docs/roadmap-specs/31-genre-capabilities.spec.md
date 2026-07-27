@@ -176,12 +176,13 @@ P3 不引入任意矩阵、骨骼脚本或 renderer 私有 transform 字符串�
 }
 ```
 
-- frame index 按行优先；
-- `frames` 非空且不越过可推导网格；无法获知图片尺寸时运行时只验证非负；
+- frame index 按零基、行优先解释；
+- `frames` 非空且不越过可推导网格；无法获知图片尺寸时 canonical validator 不猜测边界，只保留非负 schema 检查和运行时静态 fallback；
+- Studio/Rust 只在可可靠读取图片像素尺寸时报告 `animation_frame_out_of_bounds`；图片格式未知或损坏不产生推测式越界诊断；
 - fps 范围 1–60；loop 默认 true；
-- 角色 expression 可以通过统一资源引用选择 sprite 或 atlas clip；
-- atlas 是渐进增强，静态 fallback 必须可用；
-- save/load 记录 clip id，不记录当前帧。
+- 角色 expression 可以通过统一资源引用选择 sprite 或 atlas clip；atlas/clip 不存在分别报告 `animation_atlas_missing` / `animation_clip_missing`；
+- atlas 是渐进增强，`fallback` 是必须存在的真实静态资产，参与 `missing_asset` 和 `orphan_asset` 校验；
+- save/load 记录 expression/clip 引用，不记录当前帧。
 
 Live2D/Spine、任意脚本动画和物理系统不属于 P3。
 
@@ -202,7 +203,9 @@ Live2D/Spine、任意脚本动画和物理系统不属于 P3。
 - 可跳读入口来自 graph chapters 的明确 entry node；
 - 默认只允许已到达章节，解锁记录进入 global persistent record；
 - 新游戏可从已解锁章节开始一个新 playthrough，不覆写已有存档；
-- 章节入口初始状态使用作者明确登记的 checkpoint/snapshot；没有登记时只允许项目 entry，避免猜测分支变量；
+- 章节入口初始状态使用作者明确登记的 checkpoint/snapshot；项目 entry 章节可以缺省并从空状态开始，其他章节缺省时报告 `chapter_checkpoint_missing` warning，且只作为编辑分组；
+- checkpoint 的 node 必须存在并属于该章节；可选 `instructionId` 必须命中目标 node 的稳定 story point（显式 id 或旧项目 `index:<n>` fallback）；
+- checkpoint 中的 background、character/expression 与 BGM 都必须命中 manifest，失效引用以 canonical error 进入 Studio project report 和 CLI；
 - Studio/CLI 报告不可安全跳读的章节，并提供补登记入口。
 
 ### 6.3 回想

@@ -240,12 +240,13 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     graph_issues.extend(legacy_chapter_layout_issues(&content_root, &meta_json));
     graph_issues.extend(validate_graph(&graph, &nodes));
     let graph_report = GraphReport { graph_issues };
-    let asset_issues = match super::list_asset_entries(&content_root) {
-        Ok(entries) => validate_assets(&entries, &manifest),
+    let asset_entries = super::list_asset_entries(&content_root);
+    let asset_issues = match &asset_entries {
+        Ok(entries) => validate_assets(entries, &manifest),
         Err(message) => vec![super::super::model::GraphIssue {
             severity: GraphIssueSeverity::Error,
             code: "unsafe_asset_path".to_string(),
-            message,
+            message: message.clone(),
             file: Some("content/assets".to_string()),
             json_path: None,
             node_id: None,
@@ -260,16 +261,44 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let node_issues = validate_node_contents_with_variables(&graph, &nodes, &manifest, &variables);
     let manifest_issues = validate_manifest_structure(&manifest);
     let meta_issues = validate_meta_structure(&meta_json);
-    let variable_issues = contracts::validate_schema(contracts::ContractSchemaKind::Variables, &variables)
-        .into_iter().map(|issue| ProjectIssue {
-            severity: issue.severity, source: "variables".to_string(), code: issue.code,
-            message: issue.message, file: Some("content/variables.json".to_string()),
-            json_path: Some(issue.json_path), node_id: None, edge_id: None,
-        });
+    let variable_issues =
+        contracts::validate_schema(contracts::ContractSchemaKind::Variables, &variables)
+            .into_iter()
+            .map(|issue| ProjectIssue {
+                severity: issue.severity,
+                source: "variables".to_string(),
+                code: issue.code,
+                message: issue.message,
+                file: Some("content/variables.json".to_string()),
+                json_path: Some(issue.json_path),
+                node_id: None,
+                edge_id: None,
+            });
+    let graph_raw = content_root
+        .read_control_json("graph.json")
+        .unwrap_or_else(|_| serde_json::json!({}));
+    let image_dimensions = asset_entries
+        .as_ref()
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| {
+                    Some((
+                        entry.rel_path.clone(),
+                        (entry.image_width?, entry.image_height?),
+                    ))
+                })
+                .collect::<std::collections::HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let semantic_issues =
+        validate_project_semantics(&graph_raw, &nodes, &manifest, &image_dimensions);
     let manifest_node_issues = validate_manifest_node_references(&manifest, &graph);
     let completion_issues = validate_ending_completions(&manifest, &nodes);
     let condition_variable_issues = validate_condition_variables(&variables, &graph, &nodes);
-    let localization_issues = validate_localization_and_voice(&meta_json, &manifest, &variables, &graph, &nodes, &locales);
+    let localization_issues = validate_localization_and_voice(
+        &meta_json, &manifest, &variables, &graph, &nodes, &locales,
+    );
     // 单 skin 收敛（Spec 19 §4.4）：多套 uiSkins 只提示不迁移
     let ui_skin_issues = validate_ui_skin_convergence(&manifest);
     let mut project_issues: Vec<ProjectIssue> = vec![];
@@ -289,6 +318,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     project_issues.extend(manifest_issues);
     project_issues.extend(meta_issues);
     project_issues.extend(variable_issues);
+    project_issues.extend(semantic_issues);
     project_issues.extend(manifest_node_issues);
     project_issues.extend(completion_issues);
     project_issues.extend(condition_variable_issues);
@@ -426,7 +456,8 @@ use super::super::model::{
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_locale_structure,
     validate_localization_and_voice, validate_manifest_structure, parse_expression,
-    validate_meta_structure, validate_node_contents_with_variables, validate_ui_skin_convergence,
+    validate_meta_structure, validate_node_contents_with_variables, validate_project_semantics,
+    validate_ui_skin_convergence,
 };
 use super::{legacy_chapter_layout_issues, load_project_graph_data};
 use std::collections::HashMap;

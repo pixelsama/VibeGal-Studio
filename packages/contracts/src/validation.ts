@@ -9,7 +9,8 @@ import {
   type ContractDocumentName,
   type ContractStructuralPolicy,
 } from "./diagnostics";
-import { InstructionSchema } from "./schema";
+import { InstructionSchema, ManifestSchema, ProjectGraphSchema } from "./schema";
+import type { Chapter, Manifest, ProjectGraphData } from "./types";
 import { SCHEMAS } from "./schemaExport";
 
 export interface ContractInputIssue {
@@ -18,6 +19,186 @@ export interface ContractInputIssue {
   source: DiagnosticSource;
   jsonPath: string;
   message: string;
+}
+
+export interface ContractProjectSemanticInput {
+  graph: unknown;
+  manifest: unknown;
+  nodes: Array<{ nodeId: string; data: unknown }>;
+  /** Optional atlas image dimensions keyed by content-relative image path. */
+  imageDimensions?: Record<string, { width: number; height: number }>;
+}
+
+/**
+ * Cross-document semantics shared by engine tooling and the Rust project report.
+ * Structural validation remains in validateContractInput; invalid documents do
+ * not produce speculative reference diagnostics here.
+ */
+export function validateProjectSemantics(
+  input: ContractProjectSemanticInput,
+): ContractInputIssue[] {
+  const graphResult = ProjectGraphSchema.safeParse(input.graph);
+  const manifestResult = ManifestSchema.safeParse(input.manifest);
+  if (!graphResult.success || !manifestResult.success) return [];
+
+  const nodes = new Map<string, Chapter>();
+  for (const entry of input.nodes) {
+    const result = Array.isArray(entry.data)
+      ? SCHEMAS.nodeFile.safeParse(entry.data)
+      : null;
+    if (result?.success) nodes.set(entry.nodeId, result.data as Chapter);
+  }
+
+  return stableIssues([
+    ...validateChapterCheckpoints(graphResult.data, manifestResult.data, nodes),
+    ...validateAnimationAtlases(manifestResult.data, input.imageDimensions ?? {}),
+  ]);
+}
+
+function validateChapterCheckpoints(
+  graph: ProjectGraphData,
+  manifest: Manifest,
+  nodes: ReadonlyMap<string, Chapter>,
+): ContractInputIssue[] {
+  const issues: ContractInputIssue[] = [];
+  const graphNodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  const entryChapterId = graphNodes.get(graph.entryNodeId)?.chapterId;
+
+  graph.chapters.forEach((chapter, chapterIndex) => {
+    const chapterPath = `$.chapters[${chapterIndex}]`;
+    const checkpoint = chapter.checkpoint;
+    if (!checkpoint) {
+      if (entryChapterId && chapter.id !== entryChapterId) {
+        issues.push(issue(
+          "chapter_checkpoint_missing",
+          `${chapterPath}.checkpoint`,
+          `章节 "${chapter.id}" 没有安全跳读 checkpoint；它只能作为编辑分组。`,
+        ));
+      }
+      return;
+    }
+
+    const target = graphNodes.get(checkpoint.nodeId);
+    if (!target) {
+      issues.push(issue(
+        "checkpoint_node_missing",
+        `${chapterPath}.checkpoint.nodeId`,
+        `章节 checkpoint 引用了不存在的节点 "${checkpoint.nodeId}"。`,
+      ));
+    } else if (target.chapterId !== chapter.id) {
+      issues.push(issue(
+        "checkpoint_node_wrong_chapter",
+        `${chapterPath}.checkpoint.nodeId`,
+        `章节 "${chapter.id}" 的 checkpoint 节点属于章节 "${target.chapterId}"。`,
+      ));
+    }
+
+    if (checkpoint.instructionId) {
+      const instructions = nodes.get(checkpoint.nodeId);
+      const found = instructions?.some((instruction, instructionIndex) => (
+        isStoryPointInstruction(instruction)
+        && (instruction.id ?? `index:${instructionIndex}`) === checkpoint.instructionId
+      )) ?? false;
+      if (!found) {
+        issues.push(issue(
+          "checkpoint_story_point_missing",
+          `${chapterPath}.checkpoint.instructionId`,
+          `checkpoint 停点 "${checkpoint.instructionId}" 不存在于节点 "${checkpoint.nodeId}"。`,
+        ));
+      }
+    }
+
+    if (checkpoint.background && !(checkpoint.background in manifest.backgrounds)) {
+      issues.push(issue(
+        "checkpoint_background_missing",
+        `${chapterPath}.checkpoint.background`,
+        `checkpoint 引用了不存在的背景 "${checkpoint.background}"。`,
+      ));
+    }
+    checkpoint.sprites.forEach((sprite, spriteIndex) => {
+      const character = manifest.characters[sprite.id];
+      if (!character) {
+        issues.push(issue(
+          "checkpoint_character_missing",
+          `${chapterPath}.checkpoint.sprites[${spriteIndex}].id`,
+          `checkpoint 引用了不存在的角色 "${sprite.id}"。`,
+        ));
+      } else if (!(sprite.expr in character.sprites)) {
+        issues.push(issue(
+          "checkpoint_character_expr_missing",
+          `${chapterPath}.checkpoint.sprites[${spriteIndex}].expr`,
+          `角色 "${sprite.id}" 没有 checkpoint 表情 "${sprite.expr}"。`,
+        ));
+      }
+    });
+    if (checkpoint.bgm && !(checkpoint.bgm.id in manifest.audio.bgm)) {
+      issues.push(issue(
+        "checkpoint_bgm_missing",
+        `${chapterPath}.checkpoint.bgm.id`,
+        `checkpoint 引用了不存在的 BGM "${checkpoint.bgm.id}"。`,
+      ));
+    }
+  });
+  return issues;
+}
+
+function validateAnimationAtlases(
+  manifest: Manifest,
+  dimensions: Readonly<Record<string, { width: number; height: number }>>,
+): ContractInputIssue[] {
+  const issues: ContractInputIssue[] = [];
+  Object.entries(manifest.characters).forEach(([characterId, character]) => {
+    Object.entries(character.sprites).forEach(([expression, reference]) => {
+      if (typeof reference === "string") return;
+      const path = `$.characters[${JSON.stringify(characterId)}].sprites[${JSON.stringify(expression)}]`;
+      const atlas = manifest.animationAtlases[reference.atlas];
+      if (!atlas) {
+        issues.push(issue(
+          "animation_atlas_missing",
+          `${path}.atlas`,
+          `角色表情引用了不存在的 animation atlas "${reference.atlas}"。`,
+        ));
+        return;
+      }
+      if (!atlas.clips?.[reference.clip]) {
+        issues.push(issue(
+          "animation_clip_missing",
+          `${path}.clip`,
+          `animation atlas "${reference.atlas}" 没有 clip "${reference.clip}"。`,
+        ));
+      }
+    });
+  });
+
+  Object.entries(manifest.animationAtlases).forEach(([atlasId, atlas]) => {
+    const dimension = dimensions[atlas.image];
+    if (!dimension || !atlas.frameWidth || !atlas.frameHeight) return;
+    const columns = Math.floor(dimension.width / atlas.frameWidth);
+    const rows = Math.floor(dimension.height / atlas.frameHeight);
+    const frameCount = columns * rows;
+    Object.entries(atlas.clips ?? {}).forEach(([clipId, clip]) => {
+      clip.frames.forEach((frame, frameIndex) => {
+        if (columns > 0 && rows > 0 && frame < frameCount) return;
+        issues.push(issue(
+          "animation_frame_out_of_bounds",
+          `$.animationAtlases[${JSON.stringify(atlasId)}].clips[${JSON.stringify(clipId)}].frames[${frameIndex}]`,
+          `图集帧 ${frame} 超过 ${columns}×${rows} 网格范围。`,
+        ));
+      });
+    });
+  });
+  return issues;
+}
+
+function isStoryPointInstruction(
+  instruction: Chapter[number],
+): instruction is Chapter[number] & { id?: string } {
+  return instruction.t === "say"
+    || instruction.t === "narrate"
+    || instruction.t === "wait"
+    || instruction.t === "pause"
+    || instruction.t === "inputName"
+    || instruction.t === "completeEnding";
 }
 
 const MAX_CONTRACT_ISSUES = 64;

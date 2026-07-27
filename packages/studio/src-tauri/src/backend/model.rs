@@ -133,6 +133,10 @@ pub struct AssetEntry {
     pub rel_path: String,
     pub size: u64,
     pub kind: AssetKind,
+    #[serde(rename = "imageWidth", skip_serializing_if = "Option::is_none")]
+    pub image_width: Option<u32>,
+    #[serde(rename = "imageHeight", skip_serializing_if = "Option::is_none")]
+    pub image_height: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<FileRevision>,
 }

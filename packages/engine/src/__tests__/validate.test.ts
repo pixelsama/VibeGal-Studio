@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { ManifestSchema } from "../schema";
-import { validateChapter, validateContent, validateLocale, validateManifest, validateMeta, validateReferences } from "../validate";
+import { validateChapter, validateContent, validateLocale, validateManifest, validateMeta, validateProjectReferences, validateReferences } from "../validate";
 
 const manifest = {
   characters: {
@@ -210,6 +210,39 @@ describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => 
       { t: "showCg", id: "cg_001" },
       { t: "playVideo", id: "op" },
     ]);
+  });
+});
+
+describe("cross-document project semantics", () => {
+  it("exposes canonical checkpoint diagnostics through engine validation", () => {
+    const issues = validateProjectReferences({
+      graph: {
+        entryNodeId: "opening",
+        chapters: [
+          { id: "opening", title: "Opening" },
+          { id: "chapter_2", title: "Chapter 2", checkpoint: {
+            nodeId: "chapter_2",
+            instructionId: "missing-line",
+            vars: {},
+            background: "missing",
+            sprites: [],
+            bgm: null,
+          } },
+        ],
+        nodes: [
+          { id: "opening", file: "nodes/opening.json", chapterId: "opening" },
+          { id: "chapter_2", file: "nodes/chapter-2.json", chapterId: "chapter_2" },
+        ],
+        edges: [],
+      },
+      manifest,
+      nodes: [{ nodeId: "chapter_2", data: [{ t: "narrate", id: "line-1", text: "Hello" }] }],
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "checkpoint_story_point_missing", source: "graph", file: "content/graph.json" }),
+      expect.objectContaining({ code: "checkpoint_background_missing", source: "graph", file: "content/graph.json" }),
+    ]));
   });
 });
 

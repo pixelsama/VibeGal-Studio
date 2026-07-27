@@ -76,6 +76,13 @@ fn collect_manifest_asset_paths(manifest: &serde_json::Value) -> ManifestAssetRe
                             p.to_string(),
                             format!("characters.{char_id}.sprites.{expr}"),
                         ));
+                    } else if let Some(fallback) =
+                        path.get("fallback").and_then(|value| value.as_str())
+                    {
+                        out.push((
+                            fallback.to_string(),
+                            format!("characters.{char_id}.sprites.{expr}.fallback"),
+                        ));
                     }
                 }
             }

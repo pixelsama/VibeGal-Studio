@@ -89,6 +89,50 @@
       "severity": "error",
       "source": "graph"
     },
+    "checkpoint_node_missing": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "checkpoint_node_wrong_chapter": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "checkpoint_story_point_missing": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "checkpoint_background_missing": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "checkpoint_character_missing": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "checkpoint_character_expr_missing": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "checkpoint_bgm_missing": {
+      "severity": "error",
+      "source": "graph"
+    },
+    "chapter_checkpoint_missing": {
+      "severity": "warn",
+      "source": "graph"
+    },
+    "animation_atlas_missing": {
+      "severity": "error",
+      "source": "manifest"
+    },
+    "animation_clip_missing": {
+      "severity": "error",
+      "source": "manifest"
+    },
+    "animation_frame_out_of_bounds": {
+      "severity": "error",
+      "source": "manifest"
+    },
     "missing_replay_node_ref": {
       "severity": "error",
       "source": "manifest"

@@ -143,6 +143,223 @@ fn open_project_loads_graph_chapter_metadata_without_changing_flow() {
 }
 
 #[test]
+fn open_project_reports_canonical_checkpoint_semantics() {
+    let root = unique_temp_dir("checkpoint-semantics");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "opening",
+            "chapters": [
+                { "id": "opening", "title": "Opening" },
+                {
+                    "id": "chapter_2",
+                    "title": "Chapter 2",
+                    "checkpoint": {
+                        "nodeId": "opening",
+                        "instructionId": "missing-line",
+                        "vars": {},
+                        "background": "missing-background",
+                        "sprites": [
+                            { "id": "missing-character", "pos": "center", "expr": "idle" },
+                            { "id": "hero", "pos": "center", "expr": "missing-expression" }
+                        ],
+                        "bgm": { "id": "missing-bgm" }
+                    }
+                },
+                {
+                    "id": "chapter_3",
+                    "title": "Chapter 3",
+                    "checkpoint": {
+                        "nodeId": "missing-node",
+                        "vars": {},
+                        "background": null,
+                        "sprites": [],
+                        "bgm": null
+                    }
+                },
+                { "id": "chapter_4", "title": "Chapter 4" }
+            ],
+            "nodes": [
+                { "id": "opening", "file": "nodes/opening.json", "chapterId": "opening", "position": { "x": 0, "y": 0 } },
+                { "id": "chapter_2", "file": "nodes/chapter-2.json", "chapterId": "chapter_2", "position": { "x": 200, "y": 0 } }
+            ],
+            "edges": []
+        }),
+        &[
+            (
+                "nodes/opening.json",
+                serde_json::json!([{ "t": "narrate", "id": "opening-line", "text": "Opening" }]),
+            ),
+            (
+                "nodes/chapter-2.json",
+                serde_json::json!([{ "t": "narrate", "id": "chapter-2-line", "text": "Chapter 2" }]),
+            ),
+        ],
+    );
+    write_json(
+        &project.join("content/manifest.json"),
+        &serde_json::json!({
+            "characters": {
+                "hero": {
+                    "name": "Hero",
+                    "sprites": { "idle": "assets/characters/hero.png" }
+                }
+            },
+            "backgrounds": {},
+            "audio": { "bgm": {}, "sfx": {}, "voice": {} }
+        }),
+    )
+    .unwrap();
+    write_text(
+        &project.join("content/assets/characters/hero.png"),
+        "unknown image bytes",
+    );
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    let issues = opened.project_report.unwrap().project_issues;
+    for (code, path, severity) in [
+        (
+            "checkpoint_node_wrong_chapter",
+            "$.chapters[1].checkpoint.nodeId",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "checkpoint_story_point_missing",
+            "$.chapters[1].checkpoint.instructionId",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "checkpoint_background_missing",
+            "$.chapters[1].checkpoint.background",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "checkpoint_character_missing",
+            "$.chapters[1].checkpoint.sprites[0].id",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "checkpoint_character_expr_missing",
+            "$.chapters[1].checkpoint.sprites[1].expr",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "checkpoint_bgm_missing",
+            "$.chapters[1].checkpoint.bgm.id",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "checkpoint_node_missing",
+            "$.chapters[2].checkpoint.nodeId",
+            GraphIssueSeverity::Error,
+        ),
+        (
+            "chapter_checkpoint_missing",
+            "$.chapters[3].checkpoint",
+            GraphIssueSeverity::Warn,
+        ),
+    ] {
+        let issue = issues
+            .iter()
+            .find(|issue| issue.code == code)
+            .unwrap_or_else(|| panic!("missing {code}: {issues:?}"));
+        assert_eq!(issue.source, "graph");
+        assert_eq!(issue.severity, severity);
+        assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+        assert_eq!(issue.json_path.as_deref(), Some(path));
+    }
+    assert!(
+        !issues.iter().any(|issue| {
+            issue.code == "chapter_checkpoint_missing"
+                && issue.json_path.as_deref() == Some("$.chapters[0].checkpoint")
+        }),
+        "entry chapter may start from empty state"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn open_project_accepts_a_complete_non_entry_checkpoint() {
+    let root = unique_temp_dir("checkpoint-complete");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "opening",
+            "chapters": [
+                { "id": "opening", "title": "Opening" },
+                {
+                    "id": "chapter_2",
+                    "title": "Chapter 2",
+                    "checkpoint": {
+                        "nodeId": "chapter_2",
+                        "instructionId": "index:0",
+                        "vars": {},
+                        "background": "room",
+                        "sprites": [{ "id": "hero", "pos": "center", "expr": "idle" }],
+                        "bgm": { "id": "theme" }
+                    }
+                }
+            ],
+            "nodes": [
+                { "id": "opening", "file": "nodes/opening.json", "chapterId": "opening", "position": { "x": 0, "y": 0 } },
+                { "id": "chapter_2", "file": "nodes/chapter-2.json", "chapterId": "chapter_2", "position": { "x": 200, "y": 0 } }
+            ],
+            "edges": []
+        }),
+        &[
+            ("nodes/opening.json", serde_json::json!([])),
+            (
+                "nodes/chapter-2.json",
+                serde_json::json!([{ "t": "narrate", "text": "Chapter 2" }]),
+            ),
+        ],
+    );
+    write_json(
+        &project.join("content/manifest.json"),
+        &serde_json::json!({
+            "characters": {
+                "hero": {
+                    "name": "Hero",
+                    "sprites": { "idle": "assets/characters/hero.png" }
+                }
+            },
+            "backgrounds": { "room": "assets/backgrounds/room.png" },
+            "audio": {
+                "bgm": { "theme": "assets/audio/bgm/theme.ogg" },
+                "sfx": {},
+                "voice": {}
+            }
+        }),
+    )
+    .unwrap();
+    for path in [
+        "content/assets/characters/hero.png",
+        "content/assets/backgrounds/room.png",
+        "content/assets/audio/bgm/theme.ogg",
+    ] {
+        write_text(&project.join(path), "asset");
+    }
+
+    let issues = open_project_inner(project.to_string_lossy().as_ref())
+        .unwrap()
+        .project_report
+        .unwrap()
+        .project_issues;
+    assert!(
+        !issues
+            .iter()
+            .any(|issue| issue.code.starts_with("checkpoint_")
+                || issue.code == "chapter_checkpoint_missing"),
+        "complete checkpoint should pass canonical semantics: {issues:?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn graph_projection_uses_contract_defaults_without_rewriting_raw_json() {
     let root = unique_temp_dir("graph-contract-defaults");
     let project = root.join("project");

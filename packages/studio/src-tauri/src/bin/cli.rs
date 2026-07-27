@@ -6600,6 +6600,47 @@ mod tests {
     }
 
     #[test]
+    fn validate_cli_reports_canonical_project_semantics_in_text_and_json_models() {
+        let dir = unique_temp_dir("cli-project-semantics");
+        make_project(
+            &dir,
+            Some(
+                r#"{"version":1,"entryNodeId":"opening","chapters":[{"id":"opening","title":"Opening"},{"id":"chapter_2","title":"Chapter 2","checkpoint":{"nodeId":"chapter_2","instructionId":"missing-line","vars":{},"background":null,"sprites":[],"bgm":null}},{"id":"chapter_3","title":"Chapter 3"}],"nodes":[{"id":"opening","file":"nodes/opening.json","chapterId":"opening"},{"id":"chapter_2","file":"nodes/chapter-2.json","chapterId":"chapter_2"}],"edges":[]}"#,
+            ),
+        );
+        write_text(&dir.join("content/nodes/opening.json"), "[]");
+        write_text(
+            &dir.join("content/nodes/chapter-2.json"),
+            r#"[{"t":"narrate","id":"line-1","text":"Chapter 2"}]"#,
+        );
+
+        let project = app_lib::open_project_for_cli(dir.to_string_lossy().as_ref()).unwrap();
+        let project_issues = project.project_report.unwrap().project_issues;
+        let checkpoint = project_issues
+            .iter()
+            .find(|issue| issue.code == "checkpoint_story_point_missing")
+            .expect("CLI JSON model should include canonical checkpoint errors");
+        assert_eq!(checkpoint.source, "graph");
+        assert_eq!(checkpoint.file.as_deref(), Some("content/graph.json"));
+        assert_eq!(
+            checkpoint.json_path.as_deref(),
+            Some("$.chapters[1].checkpoint.instructionId")
+        );
+        let warning = project_issues
+            .iter()
+            .find(|issue| issue.code == "chapter_checkpoint_missing")
+            .expect("CLI JSON model should include unsafe chapter warnings");
+        assert_eq!(warning.severity, app_lib::GraphIssueSeverity::Warn);
+        assert_eq!(
+            warning.json_path.as_deref(),
+            Some("$.chapters[2].checkpoint")
+        );
+        assert_eq!(run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Text), 1);
+        assert_eq!(run_validate(dir.to_string_lossy().as_ref(), OutputFormat::Json), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn validate_cli_matches_shared_node_contract_fixture() {
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../contracts/fixtures/node-semantic-contract.json");

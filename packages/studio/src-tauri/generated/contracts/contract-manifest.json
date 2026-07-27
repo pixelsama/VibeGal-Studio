@@ -4,7 +4,7 @@
   "zodVersion": "4.4.3",
   "sourceSha256": {
     "src/schema.ts": "ec76f8215ee019a671be3b421a3a2bb34efb5da31093347bc26f7ce5b3018597",
-    "src/diagnostics.ts": "716e426683789801caf218d6f8fb447310615aa352f43482ecbacb9ae0ed7fe6",
+    "src/diagnostics.ts": "b175f0098f01cbe2955b97e4a9f913eed90e0f16ed409501e2be576a48eb18fa",
     "src/fixtures.ts": "64251a42bb705172f28f4159b2916c2a1ae7836078606dadee0c00cec1958534",
     "src/schemaExport.ts": "06e22e363261778f06c8652c4071319c8b103a80c155d71570b23a702536836c",
     "scripts/generate-contracts.ts": "70950ba39d5cd15e9ba4b836a72d568fc5b98bc693340d62b561a5818fee79fc",
@@ -18,6 +18,6 @@
     "variables.schema.json": "cb74f2605f56034d52df9e569303d0d10e1972419f6b1628f848847575a54d1b",
     "locale.schema.json": "3eeda6013a2237c7696f2e13eb5112784569f245ccf0dd6776190de669164ce3",
     "fixture.schema.json": "196608696a1de3317d67893d986452d918c353af9eb41418b8d8f45350a1e952",
-    "diagnostics.json": "50e648c985807d6ead08fea9a547cc2e382db0f2f0072349e260fbf75c5a2f57"
+    "diagnostics.json": "ff7ea2856aebeb7af0233825756665d0e9acc7599f0175a8a941859b5a5648a2"
   }
 }

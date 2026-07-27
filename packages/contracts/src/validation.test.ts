@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { contractDiagnostics, instructionPolicies } from "./diagnostics";
 import { buildJsonSchema, SCHEMAS, type SchemaName } from "./schemaExport";
-import { validateContractInput } from "./validation";
+import { validateContractInput, validateProjectSemantics } from "./validation";
 
 type ExpectedIssue = {
   code: string;
@@ -103,6 +103,178 @@ describe("contract validation corpus", () => {
     for (const code of [...policyCodes, ...fixtureCodes]) {
       expect(contractDiagnostics).toHaveProperty(code);
     }
+  });
+});
+
+describe("project semantic validation", () => {
+  const manifest = {
+    characters: {
+      hero: {
+        name: "Hero",
+        color: "#fff",
+        sprites: {
+          idle: "assets/hero-idle.png",
+          animated: {
+            atlas: "hero",
+            clip: "idle",
+            fallback: "assets/hero-fallback.png",
+          },
+        },
+      },
+    },
+    backgrounds: { room: "assets/room.png" },
+    audio: { bgm: { theme: "assets/theme.ogg" }, sfx: {}, voice: {} },
+    animationAtlases: {
+      hero: {
+        image: "assets/hero-atlas.png",
+        frameWidth: 100,
+        frameHeight: 100,
+        clips: { idle: { frames: [0, 3], fps: 8, loop: true } },
+      },
+    },
+  };
+
+  it("validates safe chapter checkpoints across graph, nodes and manifest", () => {
+    const graph = {
+      entryNodeId: "opening",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        {
+          id: "chapter_2",
+          title: "Chapter 2",
+          checkpoint: {
+            nodeId: "opening",
+            instructionId: "missing-line",
+            vars: {},
+            background: "missing-background",
+            sprites: [
+              { id: "missing-character", pos: "center", expr: "idle" },
+              { id: "hero", pos: "center", expr: "missing-expression" },
+            ],
+            bgm: { id: "missing-bgm" },
+          },
+        },
+        {
+          id: "chapter_3",
+          title: "Chapter 3",
+          checkpoint: {
+            nodeId: "missing",
+            vars: {},
+            background: null,
+            sprites: [],
+            bgm: null,
+          },
+        },
+        { id: "chapter_4", title: "Chapter 4" },
+      ],
+      nodes: [
+        { id: "opening", file: "nodes/opening.json", chapterId: "opening" },
+        { id: "chapter_2", file: "nodes/chapter-2.json", chapterId: "chapter_2" },
+      ],
+      edges: [],
+    };
+
+    expect(stable(validateProjectSemantics({
+      graph,
+      manifest,
+      nodes: [{ nodeId: "chapter_2", data: [{ t: "narrate", id: "line-1", text: "Hello" }] }],
+    }))).toEqual(expect.arrayContaining([
+      { code: "checkpoint_node_wrong_chapter", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.nodeId" },
+      { code: "checkpoint_story_point_missing", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.instructionId" },
+      { code: "checkpoint_background_missing", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.background" },
+      { code: "checkpoint_character_missing", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.sprites[0].id" },
+      { code: "checkpoint_character_expr_missing", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.sprites[1].expr" },
+      { code: "checkpoint_bgm_missing", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.bgm.id" },
+      { code: "checkpoint_node_missing", severity: "error", source: "graph", jsonPath: "$.chapters[2].checkpoint.nodeId" },
+      { code: "chapter_checkpoint_missing", severity: "warn", source: "graph", jsonPath: "$.chapters[3].checkpoint" },
+    ]));
+  });
+
+  it("accepts an entry without checkpoint and validates a complete chapter checkpoint", () => {
+    const graph = {
+      entryNodeId: "opening",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        {
+          id: "chapter_2",
+          title: "Chapter 2",
+          checkpoint: {
+            nodeId: "chapter_2",
+            instructionId: "line-1",
+            vars: {},
+            background: "room",
+            sprites: [{ id: "hero", pos: "center", expr: "idle" }],
+            bgm: { id: "theme" },
+          },
+        },
+      ],
+      nodes: [
+        { id: "opening", file: "nodes/opening.json", chapterId: "opening" },
+        { id: "chapter_2", file: "nodes/chapter-2.json", chapterId: "chapter_2" },
+      ],
+      edges: [],
+    };
+
+    expect(validateProjectSemantics({
+      graph,
+      manifest,
+      nodes: [{ nodeId: "chapter_2", data: [{ t: "narrate", id: "line-1", text: "Hello" }] }],
+    })).toEqual([]);
+  });
+
+  it("does not speculate when graph or manifest structure is invalid", () => {
+    expect(validateProjectSemantics({
+      graph: { chapters: [] },
+      manifest,
+      nodes: [],
+    })).toEqual([]);
+    expect(validateProjectSemantics({
+      graph: {
+        entryNodeId: "opening",
+        chapters: [{ id: "opening", title: "Opening" }],
+        nodes: [{ id: "opening", file: "nodes/opening.json", chapterId: "opening" }],
+        edges: [],
+      },
+      manifest: [],
+      nodes: [],
+    })).toEqual([]);
+  });
+
+  it("validates atlas and clip references plus statically-known frame bounds", () => {
+    const brokenManifest = structuredClone(manifest);
+    brokenManifest.characters.hero.sprites = {
+      missingAtlas: { atlas: "missing", clip: "idle", fallback: "assets/missing-atlas.png" },
+      missingClip: { atlas: "hero", clip: "missing", fallback: "assets/missing-clip.png" },
+    };
+
+    expect(stable(validateProjectSemantics({
+      graph: {
+        entryNodeId: "opening",
+        chapters: [{ id: "opening", title: "Opening" }],
+        nodes: [{ id: "opening", file: "nodes/opening.json", chapterId: "opening" }],
+        edges: [],
+      },
+      manifest: brokenManifest,
+      nodes: [],
+      imageDimensions: { "assets/hero-atlas.png": { width: 200, height: 100 } },
+    }))).toEqual([
+      { code: "animation_frame_out_of_bounds", severity: "error", source: "manifest", jsonPath: "$.animationAtlases[\"hero\"].clips[\"idle\"].frames[1]" },
+      { code: "animation_atlas_missing", severity: "error", source: "manifest", jsonPath: "$.characters[\"hero\"].sprites[\"missingAtlas\"].atlas" },
+      { code: "animation_clip_missing", severity: "error", source: "manifest", jsonPath: "$.characters[\"hero\"].sprites[\"missingClip\"].clip" },
+    ]);
+  });
+
+  it("does not guess atlas bounds without known image dimensions", () => {
+    expect(validateProjectSemantics({
+      graph: {
+        entryNodeId: "opening",
+        chapters: [{ id: "opening", title: "Opening" }],
+        nodes: [{ id: "opening", file: "nodes/opening.json", chapterId: "opening" }],
+        edges: [],
+      },
+      manifest,
+      nodes: [],
+    })).toEqual([]);
   });
 });
 
