@@ -74,7 +74,7 @@ export interface HudTokens {
   /** null = 内置顶部 14px；拖拽后写回具体舞台 y */
   y: number | null;
   textColor: string;
-  /** 作用于整条胶囊底色；激活态（自动/跳过 ON）保留内置樱粉反馈 */
+  /** 作用于整条胶囊底色；激活态（自动/跳过）保留内置樱粉反馈 */
   bgColor: string;
   fontSize: number;
   visible: boolean;
@@ -92,7 +92,7 @@ export interface TitleScreenTokens {
   y: number;
   width: number;
   height: number;
-  /** null = 内置磨砂白面板底（含 backdrop 模糊）；设置后替换为纯色（或配合 bgOpacity） */
+  /** null = 内置暗色玻璃面板底（含 backdrop 模糊）；设置后替换为纯色（或配合 bgOpacity） */
   bgColor: string | null;
   /** 0..1，仅在与 bgColor 搭配时生效（color-mix） */
   bgOpacity: number | null;
@@ -126,8 +126,8 @@ export interface UiTokens {
  * - 选项区：舞台上中部 480px 宽竖列（y=170），按钮是磨砂白胶囊。
  * - HUD：右上角胶囊条（右缘 16 / 顶 14）；x/y token 缺省 = 锚定模式。
  * - 菜单窗口：1060×640，居中偏上（110, 40）。
- * - 标题画面（Spec 21）：400×420 居中面板（440, 150），磨砂白 + 大标题 +
- *   四个胶囊按钮；按钮悬停 = 樱粉底白字。
+ * - 标题画面（Spec 21）：430×548 左置面板（72, 86），暗色玻璃 + 左对齐大标题 +
+ *   有方向感的纵向菜单；按钮悬停 = 樱粉底白字。
  * - lineHeight：23px × 1.8 = 41.4px。
  */
 export const DEFAULT_UI_TOKENS: UiTokens = {
@@ -185,19 +185,19 @@ export const DEFAULT_UI_TOKENS: UiTokens = {
     height: 640,
   },
   titleScreen: {
-    x: 440,
-    y: 150,
-    width: 400,
-    height: 420,
+    x: 72,
+    y: 86,
+    width: 430,
+    height: 548,
     bgColor: null,
     bgOpacity: null,
-    titleColor: palette.ink,
+    titleColor: "#ffffff",
     titleFontSize: 40,
     titleFontFamily: SANS_FONT,
-    buttonBgColor: "rgba(255, 255, 255, 0.9)",
-    buttonTextColor: palette.ink,
-    buttonHoverColor: palette.accent,
-    buttonRadius: 14,
+    buttonBgColor: "rgba(13, 18, 32, 0.12)",
+    buttonTextColor: "rgba(255, 255, 255, 0.9)",
+    buttonHoverColor: "rgba(255, 111, 159, 0.92)",
+    buttonRadius: 8,
     buttonFontSize: 16,
   },
   stageFontFamily: SANS_FONT,

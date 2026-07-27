@@ -39,6 +39,22 @@ export const palette = {
   cardDeep: "#e9edf5",
   /** 对话框磨砂白 */
   frost: "rgba(255, 255, 255, 0.86)",
+  /** 玩家菜单：与舞台协调的深色表面 */
+  menuSurface: "rgba(13, 18, 32, 0.96)",
+  /** 玩家菜单中的抬升卡片 */
+  menuCard: "rgba(32, 40, 62, 0.88)",
+  /** 玩家菜单侧栏与缩略图底 */
+  menuDeep: "rgba(7, 11, 23, 0.76)",
+  /** 深色玩家菜单上的主文字 */
+  menuText: "#f7f8fc",
+  /** 深色玩家菜单上的次级文字 */
+  menuTextSoft: "rgba(247, 248, 252, 0.7)",
+  /** 深色玩家菜单上的弱化文字 */
+  menuTextFaint: "rgba(247, 248, 252, 0.46)",
+  /** 深色玩家菜单分隔 */
+  menuHairline: "rgba(255, 255, 255, 0.12)",
+  /** 标题菜单所在的暗色玻璃 */
+  titlePanel: "rgba(13, 18, 32, 0.72)",
 } as const;
 
 /** 全局无衬线字体栈（stage.fontFamily token 的默认值也用它）。 */
@@ -71,20 +87,20 @@ export const primaryPillButton: CSSProperties = {
   boxShadow: "0 4px 14px rgba(255, 111, 159, 0.35)",
 };
 
-/** 次按钮：白底发丝边 */
+/** 次按钮：深色面板上的轻量描边 */
 export const secondaryPillButton: CSSProperties = {
   ...basePillButton,
-  background: "#fff",
-  border: `1px solid ${palette.hairline}`,
-  color: palette.ink,
+  background: "rgba(255, 255, 255, 0.08)",
+  border: `1px solid ${palette.menuHairline}`,
+  color: palette.menuText,
 };
 
-/** 危险按钮：白底红描边 */
+/** 危险按钮：深色面板上的红色描边 */
 export const dangerPillButton: CSSProperties = {
   ...basePillButton,
-  background: "#fff",
-  border: "1px solid rgba(229, 83, 75, 0.45)",
-  color: palette.danger,
+  background: "rgba(255, 255, 255, 0.06)",
+  border: "1px solid rgba(229, 83, 75, 0.55)",
+  color: "#ff9c96",
 };
 
 /** 实心危险按钮（确认对话框的破坏性操作） */
@@ -111,25 +127,25 @@ export const smallPrimaryPillButton: CSSProperties = {
 };
 export const smallSecondaryPillButton: CSSProperties = {
   ...baseSmallPillButton,
-  background: "#fff",
-  border: `1px solid ${palette.hairline}`,
-  color: palette.ink,
+  background: "rgba(255, 255, 255, 0.08)",
+  border: `1px solid ${palette.menuHairline}`,
+  color: palette.menuText,
 };
 export const smallDangerPillButton: CSSProperties = {
   ...baseSmallPillButton,
-  background: "#fff",
-  border: "1px solid rgba(229, 83, 75, 0.4)",
-  color: palette.danger,
+  background: "rgba(255, 255, 255, 0.06)",
+  border: "1px solid rgba(229, 83, 75, 0.5)",
+  color: "#ff9c96",
 };
 
 // ──────────────────────────────────────────────
 // 卡片与文字（面板内容通用）
 // ──────────────────────────────────────────────
 
-/** 亮面板上的内容卡片 */
+/** 玩家菜单中的内容卡片 */
 export const cardStyle: CSSProperties = {
-  background: palette.card,
-  border: `1px solid ${palette.hairline}`,
+  background: palette.menuCard,
+  border: `1px solid ${palette.menuHairline}`,
   borderRadius: 14,
 };
 
@@ -138,7 +154,7 @@ export const itemTitleStyle: CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  color: palette.ink,
+  color: palette.menuText,
   fontSize: 13,
   fontWeight: 600,
 };
@@ -148,7 +164,7 @@ export const itemMetaStyle: CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  color: palette.inkFaint,
+  color: palette.menuTextFaint,
   font: "10px/1.3 monospace",
 };
 
@@ -157,6 +173,6 @@ export const emptyStateStyle: CSSProperties = {
   minHeight: 260,
   display: "grid",
   placeItems: "center",
-  color: palette.inkSoft,
+  color: palette.menuTextSoft,
 };
-export const emptyTitleStyle: CSSProperties = { color: palette.ink, fontSize: 17 };
+export const emptyTitleStyle: CSSProperties = { color: palette.menuText, fontSize: 17 };

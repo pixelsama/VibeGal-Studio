@@ -415,7 +415,7 @@ const NULL_DEFAULT_HINTS: Record<string, string> = {
   "choiceBox.height": "自动（约 42% 舞台高）",
   "hud.x": "右上锚定（右缘 16px）",
   "hud.y": "顶部 14px",
-  "titleScreen.bgColor": "内置磨砂白",
+  "titleScreen.bgColor": "内置暗色玻璃",
   "titleScreen.bgOpacity": "仅配背景色生效",
 };
 

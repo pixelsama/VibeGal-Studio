@@ -164,7 +164,7 @@ describe("tokenDefaultPlaceholder", () => {
     expect(tokenDefaultPlaceholder("dialogueBox.x")).toBe("默认：77.08");
     expect(tokenDefaultPlaceholder("choiceButton.bgColor")).toBe("默认：rgba(255, 255, 255, 0.9)");
     expect(tokenDefaultPlaceholder("menuWindow.width")).toBe("默认：1060");
-    expect(tokenDefaultPlaceholder("titleScreen.width")).toBe("默认：400");
+    expect(tokenDefaultPlaceholder("titleScreen.width")).toBe("默认：430");
     expect(tokenDefaultPlaceholder("titleScreen.titleFontSize")).toBe("默认：40");
   });
 
@@ -174,7 +174,7 @@ describe("tokenDefaultPlaceholder", () => {
     expect(tokenDefaultPlaceholder("nameBox.width")).toBe("默认：auto（随内容）");
     expect(tokenDefaultPlaceholder("nameBox.bgColor")).toBe("默认：跟随说话人颜色");
     expect(tokenDefaultPlaceholder("hud.x")).toBe("默认：右上锚定（右缘 16px）");
-    expect(tokenDefaultPlaceholder("titleScreen.bgColor")).toBe("默认：内置磨砂白");
+    expect(tokenDefaultPlaceholder("titleScreen.bgColor")).toBe("默认：内置暗色玻璃");
   });
 
   it("未知键退化为「默认」", () => {

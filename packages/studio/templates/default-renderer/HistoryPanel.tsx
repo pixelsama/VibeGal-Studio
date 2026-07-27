@@ -65,6 +65,6 @@ const entryStyle: CSSProperties = {
 };
 const copyStyle: CSSProperties = { minWidth: 0 };
 const speakerStyle: CSSProperties = { marginBottom: 5, color: palette.accent, fontSize: 12, fontWeight: 700, letterSpacing: "0.5px" };
-const textStyle: CSSProperties = { margin: 0, color: palette.ink, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" };
+const textStyle: CSSProperties = { margin: 0, color: palette.menuText, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" };
 const positionStyle: CSSProperties = { ...itemMetaStyle, display: "block", marginTop: 6 };
 const actionsStyle: CSSProperties = { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6 };

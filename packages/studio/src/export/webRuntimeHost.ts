@@ -576,8 +576,11 @@ async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokeP
   await waitForCondition(() => runtime.getState().flags.isAutoPlay, "auto HUD control did not enable auto playback");
   await clickUiButton('[data-player-action="quick-load"]');
   const missingQuickAlert = await waitForUiElement<HTMLElement>('[data-player-menu="save"] [role="alert"]');
-  if (!missingQuickAlert.textContent?.includes("runtime_save_slot_not_found")) {
+  if (!missingQuickAlert.textContent?.includes("还没有可读取的存档")) {
     throw new Error("missing quick-load error was not visible in the save menu");
+  }
+  if (missingQuickAlert.textContent.includes("runtime_save_slot_not_found")) {
+    throw new Error("missing quick-load exposed an internal error code");
   }
   if (JSON.stringify(runtime.getState()) !== initialState) {
     throw new Error("missing quick-load changed the story state");
@@ -662,7 +665,6 @@ async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokeP
 
   const master = await waitForUiElement<HTMLInputElement>("#setting-master");
   setRangeInputValue(master, "0.55");
-  await clickUiButton('[data-settings-action="save"]');
   await waitForCondition(
     () => Math.abs(services.settings.getSettings().volumes.master - 0.55) < 0.001,
     "settings UI did not persist the master volume",

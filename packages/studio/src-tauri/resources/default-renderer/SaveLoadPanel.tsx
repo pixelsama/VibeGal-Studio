@@ -160,18 +160,18 @@ const previewStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  backgroundColor: palette.cardDeep,
+  backgroundColor: palette.menuDeep,
   backgroundSize: "cover",
   backgroundPosition: "center",
 };
-const emptyPreviewStyle: CSSProperties = { color: palette.inkFaint, font: "600 11px/1 monospace" };
+const emptyPreviewStyle: CSSProperties = { color: palette.menuTextFaint, font: "600 11px/1 monospace" };
 const contentStyle: CSSProperties = { minWidth: 0, display: "flex", flexDirection: "column", padding: 12 };
 const titleRowStyle: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 };
-const slotTitleStyle: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: palette.ink, fontSize: 13 };
-const emptyTextStyle: CSSProperties = { margin: "15px 0 auto", color: palette.inkFaint, fontSize: 12 };
-const metaStyle: CSSProperties = { margin: "7px 0 0", color: palette.inkFaint, fontSize: 10 };
+const slotTitleStyle: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: palette.menuText, fontSize: 13 };
+const emptyTextStyle: CSSProperties = { margin: "15px 0 auto", color: palette.menuTextFaint, fontSize: 12 };
+const metaStyle: CSSProperties = { margin: "7px 0 0", color: palette.menuTextFaint, fontSize: 10 };
 const positionStyle: CSSProperties = { ...itemMetaStyle, margin: "5px 0 0", display: "block", color: "#c78f2b", font: "11px/1.3 monospace" };
-const previewTextStyle: CSSProperties = { margin: "6px 0 auto", display: "-webkit-box", overflow: "hidden", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", color: palette.inkSoft, fontSize: 12, lineHeight: 1.45 };
+const previewTextStyle: CSSProperties = { margin: "6px 0 auto", display: "-webkit-box", overflow: "hidden", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", color: palette.menuTextSoft, fontSize: 12, lineHeight: 1.45 };
 const actionsStyle: CSSProperties = { minHeight: 29, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 6, marginTop: 9 };
 
 function kindBadgeStyle(kind: PlayerSlotView["kind"]): CSSProperties {
@@ -180,7 +180,7 @@ function kindBadgeStyle(kind: PlayerSlotView["kind"]): CSSProperties {
       ? { background: "rgba(240, 179, 82, 0.16)", color: "#c78f2b" }
       : kind === "quick"
         ? { background: "rgba(92, 184, 230, 0.16)", color: "#3d9bc7" }
-        : { background: "rgba(58, 63, 85, 0.08)", color: palette.inkSoft };
+        : { background: "rgba(255, 255, 255, 0.08)", color: palette.menuTextSoft };
   return {
     flex: "0 0 auto",
     padding: "3px 7px",

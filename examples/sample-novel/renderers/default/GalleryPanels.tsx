@@ -207,7 +207,7 @@ const toolbarStyle: CSSProperties = { display: "flex", justifyContent: "flex-end
 const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 };
 const listStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 10 };
 const rowCopyStyle: CSSProperties = { minWidth: 0, display: "flex", flexDirection: "column", gap: 5 };
-const lockedStyle: CSSProperties = { color: palette.inkFaint, font: "700 12px/1 ui-monospace, monospace" };
+const lockedStyle: CSSProperties = { color: palette.menuTextFaint, font: "700 12px/1 ui-monospace, monospace" };
 const thumbImageStyle: CSSProperties = { width: "100%", height: "100%", objectFit: "cover" };
 
 function galleryCardStyle(unlocked: boolean): CSSProperties {
@@ -219,7 +219,7 @@ function galleryCardStyle(unlocked: boolean): CSSProperties {
     gridTemplateRows: "112px auto auto",
     gap: 7,
     padding: 10,
-    color: palette.ink,
+    color: palette.menuText,
     textAlign: "left",
     cursor: unlocked ? "pointer" : "default",
     opacity: unlocked ? 1 : 0.72,
@@ -234,7 +234,7 @@ function thumbStyle(src: string): CSSProperties {
     display: "grid",
     placeItems: "center",
     borderRadius: 10,
-    backgroundColor: palette.cardDeep,
+    backgroundColor: palette.menuDeep,
     backgroundImage: src ? `url(${JSON.stringify(src)})` : undefined,
     backgroundSize: "cover",
     backgroundPosition: "center",
@@ -258,8 +258,8 @@ function badgeStyle(unlocked: boolean): CSSProperties {
   return {
     padding: "5px 9px",
     borderRadius: 999,
-    color: unlocked ? palette.accent : palette.inkFaint,
-    background: unlocked ? palette.accentSoft : "rgba(58, 63, 85, 0.08)",
+    color: unlocked ? palette.accent : palette.menuTextFaint,
+    background: unlocked ? "rgba(255, 111, 159, 0.16)" : "rgba(255, 255, 255, 0.08)",
     font: "700 10px/1 ui-monospace, monospace",
     letterSpacing: "0.5px",
   };

@@ -316,6 +316,8 @@ describe("default renderer ui tokens rendering", () => {
     expect(legacy).toContain("top:40px");
     expect(legacy).toContain("width:1060px");
     expect(legacy).toContain("height:640px");
+    expect(legacy).toContain("background:rgba(13, 18, 32, 0.96)");
+    expect(legacy).not.toContain("rgba(255, 255, 255, 0.96)");
 
     const themed = renderStage(createInitialState(), manifestWithTokens({
       "menuWindow.x": 60,
@@ -458,13 +460,16 @@ describe("title gate（Spec 21 §4 uiHint 语义表）", () => {
   it("标题页几何与配色由 titleScreen.* token 驱动，缺失回退内置默认", () => {
     const legacy = renderStage(createInitialState(), baseManifest(), { screen: "title" });
     const container = legacy.match(/<div[^>]*data-ui-part="titleScreen"[^>]*>/)?.[0] ?? "";
-    expect(container).toContain("left:440px");
-    expect(container).toContain("top:150px");
-    expect(container).toContain("width:400px");
-    expect(container).toContain("height:420px");
-    // 内置磨砂白面板 + 墨色标题
-    expect(container).toContain("background:rgba(255, 255, 255, 0.86)");
-    expect(legacy).toContain("color:#3a3f55");
+    expect(container).toContain("left:72px");
+    expect(container).toContain("top:86px");
+    expect(container).toContain("width:430px");
+    expect(container).toContain("height:548px");
+    expect(container).toContain("max-width:calc(100% - 72px)");
+    expect(container).toContain("max-height:calc(100% - 86px)");
+    // 内置半透明暗面板 + 左侧排版重心 + 可读标题
+    expect(container).toContain("background:rgba(13, 18, 32, 0.72)");
+    expect(container).toContain("align-items:flex-start");
+    expect(legacy).toContain("color:#ffffff");
     expect(legacy).toContain("font-size:40px");
 
     const themed = renderStage(createInitialState(), manifestWithTokens({

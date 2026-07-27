@@ -59,10 +59,13 @@ describe("default renderer player UI", () => {
     expect(html).toContain("菜单");
     expect(html).toContain("快存");
     expect(html).toContain("快读");
-    expect(html).toContain("自动 ON");
-    expect(html).toContain("已读跳过 ON");
-    expect(html).toContain("全文跳过 OFF");
+    expect(html).toContain(">自动<");
+    expect(html).toContain(">已读跳过<");
+    expect(html).toContain(">全文跳过<");
     expect(html).toContain("历史");
+    expect(html).not.toMatch(/\b(?:ON|OFF)\b/);
+    expect(html.match(/<button[^>]*aria-pressed="true"/g)).toHaveLength(2);
+    expect(html.match(/<button[^>]*aria-pressed="false"/g)).toHaveLength(5);
   });
 
   it("definesTwelveManualSlotsAndTheThreeRuntimeSlots", () => {
@@ -181,6 +184,9 @@ describe("default renderer player UI", () => {
     expect(html).toContain("设置");
     expect(html).toContain("系统");
     expect(html).toContain("暂无历史记录");
+    expect(html).toContain("游戏菜单");
+    expect(html).not.toContain(">MENU<");
+    expect(html).not.toContain("runtime_save_slot_not_found");
     expect(html).toContain('aria-modal="true"');
   });
 
@@ -240,7 +246,12 @@ describe("default renderer player UI", () => {
     expect(settingsHtml).toContain("音效音量");
     expect(settingsHtml).toContain("语音音量");
     expect(settingsHtml).toContain("文字速度");
+    expect(settingsHtml).toContain("字/秒");
     expect(settingsHtml).toContain("自动播放间隔");
+    expect(settingsHtml).toContain("秒");
+    expect(settingsHtml).not.toContain("CPS");
+    expect(settingsHtml).not.toMatch(/\bms\b/);
+    expect(settingsHtml).not.toContain("应用设置");
   });
 
   it("rendersGalleryReplayMusicAndEndingPagesFromUnlockRegistries", async () => {
@@ -344,6 +355,8 @@ describe("default renderer player UI", () => {
 
       expect(html).toContain('data-player-stage="true"');
       expect(html).toContain('data-player-action="quick-save"');
+      expect(html).not.toContain('data-player-progress');
+      expect(html).not.toContain("0/0");
       expect(html).not.toContain("存档 / 读档");
     } finally {
       delete globalScope.window;

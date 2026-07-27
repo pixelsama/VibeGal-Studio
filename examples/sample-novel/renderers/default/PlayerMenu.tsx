@@ -40,9 +40,9 @@ export function PlayerMenu({ page, busy, notice, window, onPageChange, onClose, 
       style={overlayStyle}
     >
       <section data-ui-part="menuWindow" style={menuStyle(window)}>
-        {/* 左侧导航栏：纵向胶囊条目，激活 = 白底樱粉 */}
+        {/* 左侧导航栏：纵向条目，激活项使用樱粉强调 */}
         <aside style={sidebarStyle}>
-          <div style={sidebarBrandStyle}>MENU</div>
+          <div style={sidebarBrandStyle}>游戏菜单</div>
           <nav aria-label="玩家菜单页面" style={navStyle}>
             {PLAYER_MENU_PAGES.map((item) => (
               <button
@@ -78,7 +78,6 @@ export function PlayerMenu({ page, busy, notice, window, onPageChange, onClose, 
 
           {notice && (
             <div role={notice.tone === "error" ? "alert" : "status"} style={noticeStyle(notice.tone)}>
-              {notice.code && <code style={codeStyle}>{notice.code}</code>}
               <span>{notice.message}</span>
             </div>
           )}
@@ -187,12 +186,12 @@ export function menuStyle(window: MenuWindowTokens): CSSProperties {
     display: "grid",
     gridTemplateColumns: "184px minmax(0, 1fr)",
     overflow: "hidden",
-    border: "1px solid rgba(255, 255, 255, 0.6)",
+    border: `1px solid ${palette.menuHairline}`,
     borderRadius: 20,
-    background: palette.panelWhite,
+    background: palette.menuSurface,
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
-    color: palette.ink,
+    color: palette.menuText,
     boxShadow: "0 24px 80px rgba(12, 15, 28, 0.45)",
     fontFamily: "inherit",
   };
@@ -204,15 +203,16 @@ const sidebarStyle: CSSProperties = {
   flexDirection: "column",
   gap: 8,
   padding: "18px 12px",
-  background: palette.card,
-  borderRight: `1px solid ${palette.hairline}`,
+  background: palette.menuDeep,
+  borderRight: `1px solid ${palette.menuHairline}`,
 };
 
 const sidebarBrandStyle: CSSProperties = {
   padding: "0 10px 10px",
-  color: palette.inkFaint,
-  font: "700 11px/1 ui-monospace, monospace",
-  letterSpacing: "3px",
+  color: palette.menuTextFaint,
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: "1.5px",
 };
 
 const navStyle: CSSProperties = {
@@ -230,9 +230,9 @@ function navItemStyle(active: boolean): CSSProperties {
     padding: "10px 12px",
     border: 0,
     borderRadius: 12,
-    background: active ? "#fff" : "transparent",
-    boxShadow: active ? "0 2px 10px rgba(24, 28, 48, 0.08)" : "none",
-    color: active ? palette.accent : palette.inkSoft,
+    background: active ? "rgba(255, 111, 159, 0.18)" : "transparent",
+    boxShadow: active ? "inset 3px 0 0 #ff6f9f" : "none",
+    color: active ? "#ff9fbe" : palette.menuTextSoft,
     fontWeight: active ? 700 : 500,
     fontSize: 13,
     fontFamily: "inherit",
@@ -255,12 +255,12 @@ const headerStyle: CSSProperties = {
   justifyContent: "space-between",
   gap: 12,
   padding: "16px 22px 12px",
-  borderBottom: `1px solid ${palette.hairline}`,
+  borderBottom: `1px solid ${palette.menuHairline}`,
 };
 
 const pageTitleStyle: CSSProperties = {
   margin: 0,
-  color: palette.ink,
+  color: palette.menuText,
   fontSize: 18,
   fontWeight: 700,
   letterSpacing: "0.5px",
@@ -270,10 +270,10 @@ const closeButtonStyle: CSSProperties = {
   width: 34,
   height: 34,
   flex: "0 0 34px",
-  border: `1px solid ${palette.hairline}`,
+  border: `1px solid ${palette.menuHairline}`,
   borderRadius: 999,
-  background: palette.card,
-  color: palette.ink,
+  background: "rgba(255, 255, 255, 0.08)",
+  color: palette.menuText,
   font: "300 20px/1 system-ui, sans-serif",
   cursor: "pointer",
 };
@@ -303,14 +303,6 @@ function noticeStyle(tone: PlayerNotice["tone"]): CSSProperties {
   };
 }
 
-const codeStyle: CSSProperties = {
-  padding: "2px 5px",
-  borderRadius: 4,
-  background: "rgba(58, 63, 85, 0.08)",
-  fontSize: 11,
-  whiteSpace: "nowrap",
-};
-
 const confirmOverlayStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
@@ -326,16 +318,16 @@ const confirmOverlayStyle: CSSProperties = {
 
 const confirmStyle: CSSProperties = {
   width: "min(440px, 100%)",
-  border: "1px solid rgba(255, 255, 255, 0.6)",
+  border: `1px solid ${palette.menuHairline}`,
   borderRadius: 18,
   padding: 24,
-  background: palette.panelWhite,
-  color: palette.ink,
-  boxShadow: "0 18px 60px rgba(12, 15, 28, 0.4)",
+  background: palette.menuSurface,
+  color: palette.menuText,
+  boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)",
 };
 
-const confirmTitleStyle: CSSProperties = { margin: 0, fontSize: 19, lineHeight: 1.3 };
-const confirmMessageStyle: CSSProperties = { margin: "12px 0 20px", color: palette.inkSoft, fontSize: 14, lineHeight: 1.6 };
+const confirmTitleStyle: CSSProperties = { margin: 0, color: palette.menuText, fontSize: 19, lineHeight: 1.3 };
+const confirmMessageStyle: CSSProperties = { margin: "12px 0 20px", color: palette.menuTextSoft, fontSize: 14, lineHeight: 1.6 };
 const confirmActionsStyle: CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 10 };
 
 const systemStyle: CSSProperties = {
@@ -346,5 +338,5 @@ const systemStyle: CSSProperties = {
   gap: 32,
 };
 const systemActionsStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 10 };
-const sectionTitleStyle: CSSProperties = { margin: 0, color: palette.ink, fontSize: 20 };
-const systemHintStyle: CSSProperties = { margin: "10px 0 0", color: palette.inkSoft, fontSize: 13 };
+const sectionTitleStyle: CSSProperties = { margin: 0, color: palette.menuText, fontSize: 20 };
+const systemHintStyle: CSSProperties = { margin: "10px 0 0", color: palette.menuTextSoft, fontSize: 13 };

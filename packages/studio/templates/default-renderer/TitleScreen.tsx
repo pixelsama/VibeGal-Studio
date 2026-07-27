@@ -7,7 +7,7 @@
  *
  * 标题美术/BGM 走 uiSkin assets 槽位约定键（值 = manifest 注册表资产 id）：
  * titleBackground 由 Stage 解析成本组件的 titleBackgroundUrl（整舞台铺满，
- * 缺失时退回 token 底色/内置磨砂白面板）；titleBgm 的播放/停止由 Stage 负责。
+ * 缺失时退回 token 底色/内置暗色玻璃面板）；titleBgm 的播放/停止由 Stage 负责。
  */
 import type { CSSProperties } from "react";
 import type { Manifest, Meta, SaveSlotSummary } from "@vibegal/engine";
@@ -149,7 +149,7 @@ const titleArtStyle: CSSProperties = {
 function containerStyle(tokens: TitleScreenTokens): CSSProperties {
   // 几何 token 语义 = 部件边框盒（与 Studio 拖拽 overlay 的选框一致）
   const background = tokens.bgColor === null
-    ? palette.frost
+    ? palette.titlePanel
     : tokens.bgOpacity === null
       ? tokens.bgColor
       : `color-mix(in srgb, ${tokens.bgColor} ${Math.round(tokens.bgOpacity * 100)}%, transparent)`;
@@ -159,20 +159,23 @@ function containerStyle(tokens: TitleScreenTokens): CSSProperties {
     top: tokens.y,
     width: tokens.width,
     height: tokens.height,
+    maxWidth: `calc(100% - ${Math.max(0, tokens.x)}px)`,
+    maxHeight: `calc(100% - ${Math.max(0, tokens.y)}px)`,
+    overflowY: "auto",
     boxSizing: "border-box",
     zIndex: 60,
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 36,
-    padding: "36px 44px",
-    border: "1px solid rgba(255, 255, 255, 0.65)",
-    borderRadius: 20,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 40,
+    padding: "44px 42px 40px",
+    border: `1px solid ${palette.menuHairline}`,
+    borderRadius: 16,
     background,
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
-    boxShadow: "0 24px 80px rgba(12, 15, 28, 0.45)",
+    boxShadow: "0 28px 88px rgba(0, 0, 0, 0.48)",
     cursor: "default",
   };
 }
@@ -180,49 +183,54 @@ function containerStyle(tokens: TitleScreenTokens): CSSProperties {
 function titleStyle(tokens: TitleScreenTokens): CSSProperties {
   return {
     margin: 0,
+    maxWidth: "100%",
     color: tokens.titleColor,
     fontSize: tokens.titleFontSize,
     fontFamily: tokens.titleFontFamily,
-    fontWeight: 700,
-    letterSpacing: "2px",
-    textAlign: "center",
-    textShadow: "0 2px 12px rgba(255, 255, 255, 0.6)",
+    fontWeight: 750,
+    lineHeight: 1.15,
+    letterSpacing: "1.5px",
+    textAlign: "left",
+    textShadow: "0 3px 20px rgba(0, 0, 0, 0.6)",
+    overflowWrap: "anywhere",
   };
 }
 
 const menuStyle: CSSProperties = {
-  width: "100%",
+  width: "min(300px, 100%)",
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  alignItems: "stretch",
+  gap: 7,
 };
 
 function buttonStyle(tokens: TitleScreenTokens): CSSProperties {
   return {
-    minHeight: 48,
+    minHeight: 50,
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
     gap: 3,
     background: tokens.buttonBgColor,
     color: tokens.buttonTextColor,
-    border: "1px solid rgba(255, 255, 255, 0.55)",
+    border: `1px solid ${palette.menuHairline}`,
     borderRadius: tokens.buttonRadius,
     padding: "8px 18px",
+    textAlign: "left",
     fontSize: tokens.buttonFontSize,
     fontWeight: 600,
     cursor: "pointer",
     fontFamily: "inherit",
     letterSpacing: "0.5px",
-    boxShadow: "0 8px 24px rgba(24, 28, 48, 0.18)",
+    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.16)",
     transition: "transform 0.15s ease, box-shadow 0.15s ease",
   };
 }
 
 function sublabelStyle(tokens: TitleScreenTokens): CSSProperties {
   return {
-    color: palette.inkFaint,
+    color: palette.menuTextFaint,
     fontSize: Math.max(10, tokens.buttonFontSize - 5),
     fontWeight: 500,
     letterSpacing: 0,

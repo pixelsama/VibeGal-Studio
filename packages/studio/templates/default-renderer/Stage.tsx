@@ -157,7 +157,8 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
 
   const showError = (error: unknown) => {
     const details = runtimeErrorDetails(error);
-    showNotice({ tone: "error", code: details.code, message: details.message });
+    console.error(`[default-renderer] ${details.code}`, error);
+    showNotice({ tone: "error", message: playerErrorMessage(details.code) });
   };
 
   useEffect(() => {
@@ -168,7 +169,6 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
       if (!latest) return;
       showNotice({
         tone: latest.level,
-        code: latest.code,
         message: latest.message,
       });
     };
@@ -180,7 +180,6 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
     if (warnings.length === 0) return false;
     showNotice({
       tone: "warning",
-      code: warnings[0].code,
       message: warnings.map((warning) => warning.message).join(" "),
     });
     return true;
@@ -565,6 +564,14 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
           {/* 悬停与入场动画走 stylesheet（inline style 表达不了 :hover / keyframes） */}
           <style>{`
             @keyframes vnChoiceIn { from { opacity: 0; transform: translateY(14px) } }
+            [data-choice-to]:focus-visible {
+              outline: 3px solid #ffffff;
+              outline-offset: 3px;
+            }
+            [data-choice-to]:disabled {
+              opacity: 0.5;
+              cursor: default;
+            }
             [data-choice-to]:not(:disabled):hover {
               background: ${uiTokens.choiceButton.hoverColor} !important;
               color: ${uiTokens.choiceButton.hoverTextColor} !important;
@@ -590,12 +597,6 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
           onOpenHistory={() => openMenu("history")}
         />
       )}
-
-      {!hideControls && (
-        <div style={progressStyle}>
-          {state.flags.progress.current}/{state.flags.progress.total}
-        </div>
-      )}
         </>
       )}
 
@@ -606,7 +607,6 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
           onClick={(event) => event.stopPropagation()}
           style={stageStatusStyle(notice?.tone)}
         >
-          {notice?.code && <code style={stageCodeStyle}>{notice.code}</code>}
           <span>{busy ? "处理中…" : notice?.message}</span>
         </div>
       )}
@@ -693,6 +693,23 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
       )}
     </div>
   );
+}
+
+function playerErrorMessage(code: string): string {
+  switch (code) {
+    case "runtime_save_slot_not_found":
+      return "还没有可读取的存档。";
+    case "runtime_record_future_version":
+      return "这个存档由更新版本创建，当前版本无法读取。";
+    case "runtime_record_invalid":
+      return "存档数据损坏或格式不受支持。";
+    case "player_ui_busy":
+      return "上一项操作仍在处理中。";
+    case "runtime_service_unavailable":
+      return "当前环境不支持此操作。";
+    default:
+      return "操作失败，请重试。";
+  }
 }
 
 function confirmationCopy(action: ConfirmAction): {
@@ -790,6 +807,3 @@ function stageStatusStyle(tone: PlayerNotice["tone"] | undefined): CSSProperties
     cursor: "default",
   };
 }
-
-const stageCodeStyle: CSSProperties = { padding: "2px 5px", borderRadius: 4, background: "rgba(255, 255, 255, 0.14)", fontSize: 10 };
-const progressStyle: CSSProperties = { position: "absolute", left: 14, bottom: 10, zIndex: 65, color: "rgba(255, 255, 255, 0.5)", font: "11px/1 monospace", pointerEvents: "none" };

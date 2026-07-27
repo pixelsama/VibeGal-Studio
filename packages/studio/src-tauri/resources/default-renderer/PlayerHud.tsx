@@ -49,21 +49,25 @@ export function PlayerHud({
       onClick={stop}
       style={{ ...hudStyle, ...position, background: hud.bgColor }}
     >
-      <HudButton action="menu" label="菜单" disabled={busy} hud={hud} onClick={onOpenMenu} />
-      <HudButton action="quick-save" label="快存" disabled={busy} hud={hud} onClick={onQuickSave} />
-      <HudButton action="quick-load" label="快读" disabled={busy} hud={hud} onClick={onQuickLoad} />
-      <HudButton action="auto" label={`自动 ${autoOn ? "ON" : "OFF"}`} active={autoOn} disabled={busy} hud={hud} onClick={onToggleAuto} />
-      <HudButton action="skip-read" label={`已读跳过 ${readSkipOn ? "ON" : "OFF"}`} active={readSkipOn} disabled={busy} hud={hud} onClick={onToggleReadSkip} />
-      <HudButton action="skip-all" label={`全文跳过 ${allSkipOn ? "ON" : "OFF"}`} active={allSkipOn} disabled={busy} hud={hud} onClick={onToggleAllSkip} />
-      <HudButton action="history" label="历史" disabled={busy} hud={hud} onClick={onOpenHistory} />
-      {/* 悬停反馈走 stylesheet（inline style 表达不了 :hover）；激活态保持樱粉 */}
-      <style>{`[data-player-action]:not(:disabled):not([aria-pressed="true"]):hover { background: rgba(255, 255, 255, 0.16) !important; }`}</style>
+      <HudButton action="menu" icon="☰" label="菜单" disabled={busy} hud={hud} onClick={onOpenMenu} />
+      <HudButton action="quick-save" icon="▣" label="快存" disabled={busy} hud={hud} onClick={onQuickSave} />
+      <HudButton action="quick-load" icon="↥" label="快读" disabled={busy} hud={hud} onClick={onQuickLoad} />
+      <HudButton action="auto" icon="▶" label="自动" active={autoOn} disabled={busy} hud={hud} onClick={onToggleAuto} />
+      <HudButton action="skip-read" icon="≫" label="已读跳过" active={readSkipOn} disabled={busy} hud={hud} onClick={onToggleReadSkip} />
+      <HudButton action="skip-all" icon="»" label="全文跳过" active={allSkipOn} disabled={busy} hud={hud} onClick={onToggleAllSkip} />
+      <HudButton action="history" icon="↶" label="历史" disabled={busy} hud={hud} onClick={onOpenHistory} />
+      {/* 悬停和焦点反馈走 stylesheet（inline style 表达不了伪类）；激活态保持樱粉 */}
+      <style>{`
+        [data-player-action]:not(:disabled):not([aria-pressed="true"]):hover { background: rgba(255, 255, 255, 0.16) !important; }
+        [data-player-action]:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }
+      `}</style>
     </nav>
   );
 }
 
 function HudButton({
   action,
+  icon,
   label,
   active = false,
   disabled,
@@ -71,6 +75,7 @@ function HudButton({
   onClick,
 }: {
   action: string;
+  icon: string;
   label: string;
   active?: boolean;
   disabled: boolean;
@@ -86,7 +91,8 @@ function HudButton({
       onClick={onClick}
       style={buttonStyle(active, hud)}
     >
-      {label}
+      <span aria-hidden="true" style={iconStyle}>{icon}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -108,11 +114,23 @@ const hudStyle: CSSProperties = {
   boxShadow: "0 6px 20px rgba(0, 0, 0, 0.25)",
 };
 
+const iconStyle: CSSProperties = {
+  minWidth: "1em",
+  color: "currentColor",
+  fontSize: "1.05em",
+  lineHeight: 1,
+  textAlign: "center",
+};
+
 // bgColor token 作用于整条胶囊底色；激活态保留内置樱粉作为状态反馈。
 function buttonStyle(active: boolean, hud: HudTokens): CSSProperties {
   return {
     minHeight: 30,
-    padding: "6px 12px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    padding: "6px 10px",
     border: 0,
     borderRadius: 999,
     background: active ? palette.accent : "transparent",
