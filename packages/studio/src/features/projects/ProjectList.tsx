@@ -445,7 +445,7 @@ export function RendererTemplatePicker({
       <label style={templateOptionStyle}>
         <input
           type="radio"
-          name="renderer-template"
+          name="interface-style"
           value="default"
           checked={value === "default"}
           onChange={() => onChange("default")}
@@ -458,7 +458,7 @@ export function RendererTemplatePicker({
       <label style={templateOptionStyle}>
         <input
           type="radio"
-          name="renderer-template"
+          name="interface-style"
           value="classic"
           checked={value === "classic"}
           onChange={() => onChange("classic")}

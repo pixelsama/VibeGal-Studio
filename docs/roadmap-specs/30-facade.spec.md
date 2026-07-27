@@ -1,6 +1,6 @@
 # Spec 30 — Facade（产品门面）
 
-> 状态：实施中（2026-07-27）。
+> 状态：已完成（2026-07-27）。
 > 目标版本：`0.3.0`。
 > 基线：`e9f7dfe24c22eaa66dd01ec5c92386b4e2caa434`。
 > 来源：[Review 28 §4 P2](./28-product-review-and-roadmap.md)。

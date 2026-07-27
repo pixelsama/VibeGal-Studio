@@ -8,7 +8,7 @@
     "src/fixtures.ts": "0f13210537f7debc9940f8ef5423fdcdd318ca353bd00c3b9660dbc0ffb2e271",
     "src/schemaExport.ts": "4bb5581a542685fc4c52ec728418eb36c4af2d21fe931eeb532e36ddb811efab",
     "scripts/generate-contracts.ts": "70950ba39d5cd15e9ba4b836a72d568fc5b98bc693340d62b561a5818fee79fc",
-    "package.json": "cde3aa172552e416772a40a0b4c171a4a0b755d0cd41e489191240e5d0d6325a"
+    "package.json": "a0fe1e6cf4490a471dc8aacf431ad5a25b2a24946f60ec834524e4077730627c"
   },
   "artifactSha256": {
     "nodeFile.schema.json": "93b3e104ab6358055af73232194103e3a00e875a933bc673d723b54743568a67",

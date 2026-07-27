@@ -10,7 +10,7 @@
 - [ ] `pnpm run check:versions` 成功
 - [ ] `pnpm run check:schemas` 成功（schema 无漂移）
 - [ ] `pnpm run check:engine-types` 成功（engine 类型无漂移）
-- [ ] `pnpm run check:renderer-template` 成功（默认界面风格镜像无漂移）
+- [ ] `pnpm run check:renderer-template` 成功（default/classic 界面风格的 canonical 与镜像无漂移）
 - [ ] `pnpm run check:example-template` 成功（示例项目模板镜像无漂移）
 - [ ] `pnpm run check:doc-contract` 与 `pnpm run check:vocabulary` 成功
 - [ ] Rust `1.88.0` 下 `cargo check --locked --all-targets` 成功
