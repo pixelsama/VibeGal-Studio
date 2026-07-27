@@ -252,6 +252,8 @@ export interface RendererAppearanceGroup {
 
 export interface RendererAppearance {
   groups: readonly RendererAppearanceGroup[];
+  /** Renderer-owned public fallback values for creator-facing controls. */
+  defaults?: Readonly<Record<string, string | number>>;
 }
 
 export interface RendererManifestIssue {
@@ -291,6 +293,21 @@ export function validateRendererManifestContract(raw: unknown): RendererManifest
     if (!appearance || typeof appearance !== "object" || !Array.isArray((appearance as Record<string, unknown>).groups)) {
       issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 appearance.groups 必须是数组。" });
     } else {
+      const appearanceRecord = appearance as Record<string, unknown>;
+      const defaults = appearanceRecord.defaults;
+      if (
+        defaults != null
+        && (
+          !defaults
+          || typeof defaults !== "object"
+          || Array.isArray(defaults)
+          || Object.values(defaults as Record<string, unknown>).some(
+            (value) => typeof value !== "string" && (typeof value !== "number" || !Number.isFinite(value)),
+          )
+        )
+      ) {
+        issues.push({ level: "error", code: "renderer_manifest_invalid", message: "界面风格的 appearance.defaults 如有提供，必须是 string|number 的键值表。" });
+      }
       const groups = (appearance as { groups: unknown[] }).groups;
       groups.forEach((group, groupIndex) => {
         if (!group || typeof group !== "object") {

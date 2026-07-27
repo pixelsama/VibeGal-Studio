@@ -14,6 +14,7 @@ const rendererMock = vi.hoisted(() => ({
   trustRequired: false,
   capabilities: ["layout-parts-v1"] as string[] | undefined,
   appearance: undefined as {
+    defaults?: Record<string, string | number>;
     groups: Array<{
       id: string;
       label: string;
@@ -182,6 +183,111 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain('max="1"');
     expect(html).toContain('step="0.05"');
     expect(html).not.toContain('aria-label="对话框"');
+  });
+
+  it("renderer 公开默认值时把四套主题置于属性前，并显示真实 rgba 默认色", () => {
+    rendererMock.appearance = {
+      defaults: {
+        ...Object.fromEntries(
+          ["dialogueBox.bgColor", "dialogueBox.borderColor", "dialogueBox.textColor", "nameBox.bgColor", "nameBox.textColor", "choiceButton.bgColor", "choiceButton.textColor", "choiceButton.hoverColor", "choiceButton.hoverTextColor", "hud.bgColor", "hud.textColor", "titleScreen.bgColor", "titleScreen.titleColor", "titleScreen.buttonBgColor", "titleScreen.buttonTextColor", "titleScreen.buttonHoverColor"]
+            .map((key) => [key, "#ffffff"]),
+        ),
+        "dialogueBox.bgColor": "rgba(240, 245, 255, 0.82)",
+      },
+      groups: [{
+        id: "dialogueBox",
+        label: "对话框",
+        parts: ["dialogueBox"],
+        controls: [{ key: "dialogueBox.bgColor", label: "背景色", kind: "color" }],
+      }],
+    };
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace
+        project={makeProject({ default: { assets: {}, tokens: {} } })}
+        rendererId="default"
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(html).toContain('aria-label="主题预设"');
+    for (const id of ["soft-glow", "nightfall", "paper", "neon"]) {
+      expect(html).toContain(`data-appearance-preset="${id}"`);
+    }
+    expect(html.indexOf("主题预设")).toBeLessThan(html.indexOf('aria-label="对话框"'));
+    expect(html).toContain("默认：rgba(240, 245, 255, 0.82)");
+    expect(html).toContain("background:rgba(240, 245, 255, 0.82)");
+    expect(html).not.toContain('type="color"');
+    expect(html).not.toContain('value="#000000"');
+  });
+
+  it("第三方 renderer 没有完整公开默认值时不显示 Studio 专属主题，token 编辑安全降级", () => {
+    rendererMock.appearance = {
+      groups: [{
+        id: "caption",
+        label: "字幕框",
+        controls: [{ key: "caption.color", label: "字幕颜色", kind: "color" }],
+      }],
+    };
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace
+        project={makeProject({ default: { assets: {}, tokens: { "caption.color": "hsl(210 70% 45%)" } } })}
+        rendererId="custom"
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(html).not.toContain('aria-label="主题预设"');
+    expect(html).toContain('value="hsl(210 70% 45%)"');
+    expect(html).toContain("background:hsl(210 70% 45%)");
+    expect(html).not.toContain('value="#000000"');
+  });
+
+  it("字段恢复只在值确实偏离 renderer 默认时启用，几何参数收进高级调整", () => {
+    rendererMock.appearance = {
+      defaults: {
+        ...Object.fromEntries(
+          ["dialogueBox.bgColor", "dialogueBox.borderColor", "dialogueBox.textColor", "nameBox.bgColor", "nameBox.textColor", "choiceButton.bgColor", "choiceButton.textColor", "choiceButton.hoverColor", "choiceButton.hoverTextColor", "hud.bgColor", "hud.textColor", "titleScreen.bgColor", "titleScreen.titleColor", "titleScreen.buttonBgColor", "titleScreen.buttonTextColor", "titleScreen.buttonHoverColor"]
+            .map((key) => [key, "#ffffff"]),
+        ),
+        "dialogueBox.x": 77.08,
+      },
+      groups: [{
+        id: "dialogueBox",
+        label: "对话框",
+        controls: [
+          { key: "dialogueBox.x", label: "X", kind: "number" },
+          { key: "dialogueBox.bgColor", label: "背景色", kind: "color" },
+        ],
+      }],
+    };
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace
+        project={makeProject({ default: { assets: {}, tokens: { "dialogueBox.x": 120, "dialogueBox.bgColor": "#ffffff" } } })}
+        rendererId="default"
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(html).toContain("高级调整");
+    expect(html).toMatch(/data-reset-token="dialogueBox\.x"[^>]*>恢复默认/);
+    expect(html).toMatch(/data-reset-token="dialogueBox\.bgColor"[^>]*disabled=""[^>]*>恢复默认/);
+  });
+
+  it("单场景视图提供可发现的画布缩放与复位控件", () => {
+    const html = renderToStaticMarkup(
+      <AppearanceWorkspace
+        project={makeProject({ default: { assets: {}, tokens: {} } })}
+        rendererId="default"
+        onSaved={() => {}}
+        initialViewMode="single"
+      />,
+    );
+
+    expect(html).toContain('aria-label="画布缩放"');
+    expect(html).toContain('aria-label="缩小画布"');
+    expect(html).toContain('aria-label="复位画布缩放"');
+    expect(html).toContain('aria-label="放大画布"');
+    expect(html).toContain("100%");
   });
 
   it("顶部层级说明：点破外观依附于当前界面风格（Spec 19 §4.5）", () => {

@@ -1,16 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_MANIFEST, type FileRevision, type Manifest } from "../../lib/types";
 import {
+  APPEARANCE_PRESETS,
   APPEARANCE_TOKEN_GROUPS,
+  applyAppearancePreset,
+  effectiveTokenValue,
   hexColorOrNull,
   mergeTokenOverrides,
   readSkinTokens,
+  rendererSupportsAppearancePresets,
+  resetUiSkinTokens,
   saveAppearanceManifest,
   selectEditableSkinId,
   tokenDefaultPlaceholder,
+  tokenDefaultValue,
   tokenGroupsForPart,
   tokenGroupsForRendererPart,
   tokenGroupsFromRendererAppearance,
+  tokenHasOverride,
   tokenVisibleChecked,
   visibleTokenEditValue,
   withDefaultUiSkin,
@@ -128,6 +135,80 @@ describe("mergeTokenOverrides", () => {
     const manifest = manifestWithSkins({ default: { assets: {} } });
     expect(mergeTokenOverrides(manifest, "default", {})).toBe(manifest);
     expect(mergeTokenOverrides(manifest, "ghost", { "dialogueBox.x": 1 })).toBe(manifest);
+  });
+});
+
+describe("renderer appearance defaults and presets", () => {
+  const defaults = {
+    "dialogueBox.x": 77.08,
+    ...APPEARANCE_PRESETS[0].tokens,
+    "nameBox.bgColor": "currentColor",
+  } as const;
+
+  it("提供四套固定主题，并只向公开完整默认值的 renderer 开放", () => {
+    expect(APPEARANCE_PRESETS.map((preset) => [preset.id, preset.name])).toEqual([
+      ["soft-glow", "柔光"],
+      ["nightfall", "夜幕"],
+      ["paper", "纸页"],
+      ["neon", "霓虹"],
+    ]);
+    expect(rendererSupportsAppearancePresets(defaults)).toBe(true);
+    expect(rendererSupportsAppearancePresets({ "caption.color": "red" })).toBe(false);
+  });
+
+  it("应用预设写入 renderer 完整默认值后仍可单字段微调，并移除旧标准 token", () => {
+    const manifest = manifestWithSkins({
+      default: {
+        name: "默认外观",
+        assets: { frame: "frame.png" },
+        tokens: {
+          "dialogueBox.lineHeight": 99,
+          "thirdParty.keep": "yes",
+        },
+      },
+    });
+    const preset = APPEARANCE_PRESETS[1];
+    const applied = applyAppearancePreset(manifest, "default", preset, defaults);
+
+    expect(applied.uiSkins.default.assets).toEqual({ frame: "frame.png" });
+    expect(applied.uiSkins.default.tokens).toMatchObject({
+      "dialogueBox.x": 77.08,
+      "dialogueBox.bgColor": preset.tokens["dialogueBox.bgColor"],
+      "thirdParty.keep": "yes",
+    });
+    expect(applied.uiSkins.default.tokens).not.toHaveProperty("dialogueBox.lineHeight");
+    expect(withUiSkinToken(applied, "default", "dialogueBox.x", 120).uiSkins.default.tokens?.["dialogueBox.x"]).toBe(120);
+  });
+
+  it("第三方 renderer 缺少预设需要的公开默认值时不写项目", () => {
+    const manifest = manifestWithSkins({ default: { assets: {}, tokens: { "caption.color": "red" } } });
+    expect(applyAppearancePreset(manifest, "default", APPEARANCE_PRESETS[0], { "caption.color": "black" })).toBe(manifest);
+  });
+
+  it("恢复全部只清空 tokens，保留 skin 名称、贴图和其它 skin", () => {
+    const dark = { assets: {}, tokens: { "hud.visible": 0 } };
+    const manifest = manifestWithSkins({
+      default: { name: "自定义", assets: { frame: "frame.png" }, tokens: { "dialogueBox.x": 120 } },
+      dark,
+    });
+    const reset = resetUiSkinTokens(manifest, "default");
+    expect(reset.uiSkins.default).toEqual({ name: "自定义", assets: { frame: "frame.png" }, tokens: {} });
+    expect(reset.uiSkins.dark).toBe(dark);
+  });
+
+  it("公开默认值驱动有效值、placeholder 和单字段恢复状态", () => {
+    expect(tokenDefaultValue("dialogueBox.x", defaults)).toBe(77.08);
+    expect(effectiveTokenValue({}, "dialogueBox.bgColor", defaults)).toBe("rgba(255, 255, 255, 0.88)");
+    expect(tokenDefaultPlaceholder("dialogueBox.bgColor", defaults)).toBe("默认：rgba(255, 255, 255, 0.88)");
+    expect(tokenHasOverride({ "dialogueBox.x": 77.08 }, "dialogueBox.x", defaults)).toBe(false);
+    expect(tokenHasOverride({ "dialogueBox.x": 120 }, "dialogueBox.x", defaults)).toBe(true);
+    expect(tokenHasOverride({}, "dialogueBox.x", defaults)).toBe(false);
+  });
+
+  it("第三方 renderer 传入 defaults 后不会假借 default renderer 的值", () => {
+    expect(tokenDefaultValue("dialogueBox.x", {})).toBeUndefined();
+    expect(tokenDefaultPlaceholder("dialogueBox.x", {})).toBe("默认");
+    expect(tokenDefaultValue("dialogueBox.x")).toBe(77.08);
   });
 });
 

@@ -36,6 +36,9 @@ export interface SceneFixtureViewProps {
   project: ProjectData;
   renderer: RendererManifest;
   scene: FixtureScene;
+  /** 外观设计画布相对适合窗口的查看倍率。 */
+  zoom?: number;
+  onScaleChange?: (scale: number) => void;
 }
 
 /** 设置/清除 uiHint 全局：渲染层把它当作初始 UI 状态读一次（无 uiHint 时删除）。 */
@@ -115,7 +118,7 @@ const FIXTURE_CONTROLS: RuntimeControls = {
   restart: () => {},
 };
 
-export function SceneFixtureView({ project, renderer, scene }: SceneFixtureViewProps) {
+export function SceneFixtureView({ project, renderer, scene, zoom, onScaleChange }: SceneFixtureViewProps) {
   const manifest = project.content.manifest ?? EMPTY_MANIFEST;
   // 每个场景一份独立的内存 runtime：unlock/backlog 来自 fixture 瘦身快照。
   const runtime = useMemo(
@@ -166,7 +169,7 @@ export function SceneFixtureView({ project, renderer, scene }: SceneFixtureViewP
   const Renderer = renderer.Component;
 
   return (
-    <StageFrame stage={stage}>
+    <StageFrame stage={stage} zoom={zoom} onScaleChange={onScaleChange}>
       {/* key 强制渲染层随场景切换重挂载（uiHint 只在挂载初始化期读取） */}
       <Renderer key={scene.id} {...props} />
     </StageFrame>

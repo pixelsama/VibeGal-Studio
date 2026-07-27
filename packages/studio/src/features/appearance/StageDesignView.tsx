@@ -19,6 +19,7 @@ import type { ProjectData } from "../../lib/types";
 import type { StageResolution } from "../../lib/projectMeta";
 import type { FixtureScene } from "../../export/snapshotScenes";
 import { SceneFixtureView } from "../preview/SceneFixtureView";
+import { clampStageFrameZoom } from "../preview/StageFrame";
 import { mergeTokenOverrides } from "./appearanceTokens";
 import {
   clientPointToStage,
@@ -84,6 +85,8 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
   // 拖拽中的几何 token 覆盖：只活一次拖拽 + 保存往返，revision 变化（= 落盘
   // 后刷新到达）即清空，之后由真实 manifest 驱动。
   const [overrides, setOverrides] = useState<Record<string, number>>({});
+  const [zoom, setZoom] = useState(1);
+  const [renderedScale, setRenderedScale] = useState(1);
   const [surfaceInfo, setSurfaceInfo] = useState<SurfaceInfo | null>(null);
   const [parts, setParts] = useState<PartInfo[]>([]);
   const [selected, setSelectedState] = useState<string | null>(null);
@@ -132,7 +135,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
     containerRectRef.current = toClientRect(container.getBoundingClientRect());
     setSurfaceInfo({ rect: surfaceRect, scale });
     setParts(nextParts);
-  }, [stage.width]);
+  }, [stage.width, zoom]);
 
   useEffect(() => {
     if (!overlayActive) return;
@@ -245,7 +248,46 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
 
   return (
     <div ref={containerRef} style={rootStyle}>
-      <SceneFixtureView project={previewProject} renderer={renderer} scene={scene} />
+      <SceneFixtureView
+        project={previewProject}
+        renderer={renderer}
+        scene={scene}
+        zoom={zoom}
+        onScaleChange={setRenderedScale}
+      />
+      <div
+        style={zoomControlsStyle}
+        aria-label="画布缩放"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          aria-label="缩小画布"
+          style={zoomButtonStyle}
+          disabled={zoom <= 0.5}
+          onClick={() => setZoom((current) => clampStageFrameZoom(current - 0.25))}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          aria-label="复位画布缩放"
+          style={zoomValueStyle}
+          disabled={zoom === 1}
+          onClick={() => setZoom(1)}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          type="button"
+          aria-label="放大画布"
+          style={zoomButtonStyle}
+          disabled={zoom >= 2}
+          onClick={() => setZoom((current) => clampStageFrameZoom(current + 0.25))}
+        >
+          +
+        </button>
+      </div>
       {!layoutSupported && (
         <div style={hintBarStyle} role="status">
           此界面风格未声明可拖拽部件（缺少布局编辑能力）
@@ -255,7 +297,15 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
         <div
           ref={overlayRef}
           // 选框本身就是焦点可见性，overlay 的默认焦点环反而是干扰
-          style={{ ...overlayStyle, outline: "none" }}
+          style={{
+            ...overlayStyle,
+            inset: zoom > 1 ? undefined : 0,
+            left: 0,
+            top: 0,
+            width: zoom > 1 ? stage.width * renderedScale : "100%",
+            height: zoom > 1 ? stage.height * renderedScale : "100%",
+            outline: "none",
+          }}
           tabIndex={0}
           aria-label="舞台布局编辑层"
           onPointerDown={handleOverlayPointerDown}
@@ -315,6 +365,46 @@ const rootStyle: React.CSSProperties = {
   minHeight: 0,
 };
 
+const zoomControlsStyle: React.CSSProperties = {
+  position: "absolute",
+  right: "var(--space-2)",
+  bottom: "var(--space-2)",
+  zIndex: 4,
+  display: "flex",
+  alignItems: "center",
+  gap: 2,
+  padding: 3,
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-pill)",
+  background: "color-mix(in srgb, var(--bg-panel) 92%, transparent)",
+  boxShadow: "var(--shadow-md)",
+};
+
+const zoomButtonStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  padding: 0,
+  border: 0,
+  borderRadius: "50%",
+  background: "transparent",
+  color: "var(--text-primary)",
+  fontSize: 18,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const zoomValueStyle: React.CSSProperties = {
+  minWidth: 52,
+  height: 28,
+  padding: "0 6px",
+  border: 0,
+  borderRadius: "var(--radius-pill)",
+  background: "var(--bg-inset)",
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-xs)",
+  cursor: "pointer",
+};
+
 const hintBarStyle: React.CSSProperties = {
   position: "absolute",
   top: "var(--space-2)",
@@ -332,7 +422,6 @@ const hintBarStyle: React.CSSProperties = {
 
 const overlayStyle: React.CSSProperties = {
   position: "absolute",
-  inset: 0,
   cursor: "default",
   // 透明但可命中：点击 = 选部件/开始拖拽；场景刷是静态场景，挡住渲染层交互是预期
   background: "transparent",

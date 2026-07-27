@@ -68,6 +68,7 @@ describe("renderer contract", () => {
       name: "Custom",
       contractVersion: RENDERER_CONTRACT_VERSION,
       appearance: {
+        defaults: { "caption.opacity": 0.8, "caption.color": "rgba(0, 0, 0, 0.8)" },
         groups: [{
           id: "caption",
           label: "字幕框",
@@ -86,11 +87,27 @@ describe("renderer contract", () => {
     };
 
     expect(validateRendererManifestContract(manifest)).toEqual([]);
+    expect(manifest.appearance?.defaults?.["caption.opacity"]).toBe(0.8);
     expect(manifest.appearance?.groups[0]).toEqual(expect.objectContaining({
       id: "caption",
       label: "字幕框",
       parts: ["caption"],
     }));
+  });
+
+  it("rendererManifestRejectsMalformedAppearanceDefaults", () => {
+    expect(validateRendererManifestContract({
+      id: "custom",
+      name: "Custom",
+      contractVersion: RENDERER_CONTRACT_VERSION,
+      appearance: { defaults: { "caption.color": true }, groups: [] },
+      Component,
+    })).toEqual([
+      expect.objectContaining({
+        level: "error",
+        code: "renderer_manifest_invalid",
+      }),
+    ]);
   });
 
   it("rendererManifestRejectsMalformedAppearanceControlDescriptions", () => {

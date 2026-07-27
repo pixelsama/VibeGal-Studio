@@ -1,36 +1,42 @@
 /**
- * TokenEditorPanel —— 外观工作台左侧的 token 属性编辑器（Spec 17 §6）。
+ * TokenEditorPanel —— 当前部件的高频外观属性与折叠高级参数。
  *
- * 受控原则：输入框显示目标 skin 的 raw token 值，placeholder 显示
- * DEFAULT_UI_TOKENS 的默认值；空输入 = 清除该 token（回退渲染器默认）。
- * 所有编辑经 onEdit 冒泡给 AppearanceWorkspace 走 save_manifest 持久化，
- * 本组件不碰任何异步。
+ * raw token 留在项目里；未覆盖字段显示 renderer 公开默认值。每个已偏离默认的
+ * 字段都可以独立恢复，不触碰同 skin 的其它值。
  */
 import {
   APPEARANCE_TOKEN_GROUPS,
+  effectiveTokenValue,
   hexColorOrNull,
   tokenDefaultPlaceholder,
+  tokenHasOverride,
   tokenVisibleChecked,
   visibleTokenEditValue,
+  type RendererAppearanceDefaults,
   type TokenFieldDef,
   type TokenGroupDef,
 } from "./appearanceTokens";
 
 interface TokenEditorPanelProps {
-  /** 编辑目标 skin 的 raw token 表 */
   tokens: Record<string, string | number>;
-  /** 字体候选（来自 manifest.fonts 的 family，datalist 用） */
+  defaults?: RendererAppearanceDefaults;
   fontFamilies: string[];
-  /** 冲突等状态下锁死编辑 */
   disabled?: boolean;
-  /** 展示的分组（缺省 = 全部；选中部件时由父组件过滤后传入） */
   groups?: TokenGroupDef[];
   onEdit: (key: string, value: string | number | undefined) => void;
 }
 
 const FONT_DATALIST_ID = "appearance-font-family-options";
+const GEOMETRY_FIELDS = new Set(["x", "y", "width", "height"]);
 
-export function TokenEditorPanel({ tokens, fontFamilies, disabled = false, groups = APPEARANCE_TOKEN_GROUPS, onEdit }: TokenEditorPanelProps) {
+export function TokenEditorPanel({
+  tokens,
+  defaults,
+  fontFamilies,
+  disabled = false,
+  groups = APPEARANCE_TOKEN_GROUPS,
+  onEdit,
+}: TokenEditorPanelProps) {
   return (
     <div style={panelStyle}>
       <datalist id={FONT_DATALIST_ID}>
@@ -38,21 +44,48 @@ export function TokenEditorPanel({ tokens, fontFamilies, disabled = false, group
           <option key={family} value={family} />
         ))}
       </datalist>
-      {groups.map((group) => (
-        <section key={group.id} style={groupStyle} aria-label={group.title}>
-          <div style={groupTitleStyle}>{group.title}</div>
-          {group.fields.map((field) => (
-            <TokenField
-              key={field.key}
-              field={field}
-              rawValue={tokens[field.key]}
-              checked={field.kind === "checkbox" ? tokenVisibleChecked(tokens, field.key) : undefined}
-              disabled={disabled}
-              onEdit={onEdit}
-            />
-          ))}
-        </section>
-      ))}
+      {groups.map((group) => {
+        const primary = group.fields.filter((field) => !isAdvancedField(field));
+        const advanced = group.fields.filter(isAdvancedField);
+        return (
+          <section key={group.id} style={groupStyle} aria-label={group.title}>
+            <div style={groupTitleStyle}>{group.title}</div>
+            {primary.map((field) => (
+              <TokenField
+                key={field.key}
+                field={field}
+                rawValue={tokens[field.key]}
+                effectiveValue={effectiveTokenValue(tokens, field.key, defaults)}
+                checked={field.kind === "checkbox" ? tokenVisibleChecked(tokens, field.key) : undefined}
+                canReset={tokenHasOverride(tokens, field.key, defaults)}
+                disabled={disabled}
+                defaults={defaults}
+                onEdit={onEdit}
+              />
+            ))}
+            {advanced.length > 0 && (
+              <details style={advancedStyle}>
+                <summary style={advancedSummaryStyle}>高级调整</summary>
+                <div style={advancedFieldsStyle}>
+                  {advanced.map((field) => (
+                    <TokenField
+                      key={field.key}
+                      field={field}
+                      rawValue={tokens[field.key]}
+                      effectiveValue={effectiveTokenValue(tokens, field.key, defaults)}
+                      checked={field.kind === "checkbox" ? tokenVisibleChecked(tokens, field.key) : undefined}
+                      canReset={tokenHasOverride(tokens, field.key, defaults)}
+                      disabled={disabled}
+                      defaults={defaults}
+                      onEdit={onEdit}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -60,106 +93,140 @@ export function TokenEditorPanel({ tokens, fontFamilies, disabled = false, group
 function TokenField({
   field,
   rawValue,
+  effectiveValue,
   checked,
+  canReset,
   disabled,
+  defaults,
   onEdit,
 }: {
   field: TokenFieldDef;
   rawValue: string | number | undefined;
+  effectiveValue: string | number | undefined;
   checked?: boolean;
+  canReset: boolean;
   disabled: boolean;
+  defaults: RendererAppearanceDefaults | undefined;
   onEdit: (key: string, value: string | number | undefined) => void;
 }) {
   return (
-    <label style={fieldRowStyle}>
+    <div style={fieldRowStyle}>
       <span style={fieldLabelStyle} title={field.key}>{field.label}</span>
-      {field.kind === "color" && (
-        <ColorField field={field} rawValue={rawValue} disabled={disabled} onEdit={onEdit} />
-      )}
-      {field.kind === "number" && (
-        <input
-          type="number"
-          style={inputStyle}
-          value={rawValue === undefined ? "" : String(rawValue)}
-          placeholder={tokenDefaultPlaceholder(field.key)}
-          step={field.step}
-          min={field.min}
-          max={field.max}
-          disabled={disabled}
-          onChange={(event) => {
-            const text = event.target.value;
-            if (text === "") {
-              onEdit(field.key, undefined);
-              return;
-            }
-            const parsed = Number.parseFloat(text);
-            // 中间态（如 "-"、"1."）不落盘，等用户输完
-            if (Number.isFinite(parsed)) onEdit(field.key, parsed);
-          }}
-        />
-      )}
-      {field.kind === "checkbox" && (
-        <input
-          type="checkbox"
-          checked={checked ?? true}
-          disabled={disabled}
-          onChange={(event) => onEdit(field.key, visibleTokenEditValue(event.target.checked))}
-        />
-      )}
-      {field.kind === "font" && (
-        <input
-          type="text"
-          style={inputStyle}
-          value={rawValue === undefined ? "" : String(rawValue)}
-          placeholder={tokenDefaultPlaceholder(field.key)}
-          list={FONT_DATALIST_ID}
-          disabled={disabled}
-          onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
-        />
-      )}
-      {field.kind === "text" && (
-        <input
-          type="text"
-          style={inputStyle}
-          value={rawValue === undefined ? "" : String(rawValue)}
-          placeholder={tokenDefaultPlaceholder(field.key)}
-          disabled={disabled}
-          onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
-        />
-      )}
-    </label>
+      <div style={fieldControlStyle}>
+        {field.kind === "color" && (
+          <ColorField field={field} rawValue={rawValue} effectiveValue={effectiveValue} disabled={disabled} defaults={defaults} onEdit={onEdit} />
+        )}
+        {field.kind === "number" && (
+          <input
+            aria-label={field.label}
+            type="number"
+            style={inputStyle}
+            value={rawValue === undefined ? "" : String(rawValue)}
+            placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+            step={field.step}
+            min={field.min}
+            max={field.max}
+            disabled={disabled}
+            onChange={(event) => {
+              const text = event.target.value;
+              if (text === "") {
+                onEdit(field.key, undefined);
+                return;
+              }
+              const parsed = Number.parseFloat(text);
+              if (Number.isFinite(parsed)) onEdit(field.key, parsed);
+            }}
+          />
+        )}
+        {field.kind === "checkbox" && (
+          <input
+            aria-label={field.label}
+            type="checkbox"
+            checked={checked ?? true}
+            disabled={disabled}
+            onChange={(event) => onEdit(field.key, visibleTokenEditValue(event.target.checked))}
+          />
+        )}
+        {field.kind === "font" && (
+          <input
+            aria-label={field.label}
+            type="text"
+            style={inputStyle}
+            value={rawValue === undefined ? "" : String(rawValue)}
+            placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+            list={FONT_DATALIST_ID}
+            disabled={disabled}
+            onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
+          />
+        )}
+        {field.kind === "text" && (
+          <input
+            aria-label={field.label}
+            type="text"
+            style={inputStyle}
+            value={rawValue === undefined ? "" : String(rawValue)}
+            placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+            disabled={disabled}
+            onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
+          />
+        )}
+        <button
+          type="button"
+          data-reset-token={field.key}
+          title={`恢复${field.label}默认值`}
+          style={resetStyle}
+          disabled={disabled || !canReset}
+          onClick={() => onEdit(field.key, undefined)}
+        >
+          恢复默认
+        </button>
+      </div>
+    </div>
   );
 }
 
-/** 颜色字段：色板（#hex）+ 文本框（任意 CSS 颜色；空 = 清除回退默认）。 */
 function ColorField({
   field,
   rawValue,
+  effectiveValue,
   disabled,
+  defaults,
   onEdit,
 }: {
   field: TokenFieldDef;
   rawValue: string | number | undefined;
+  effectiveValue: string | number | undefined;
   disabled: boolean;
+  defaults: RendererAppearanceDefaults | undefined;
   onEdit: (key: string, value: string | number | undefined) => void;
 }) {
-  const hex = hexColorOrNull(rawValue);
+  const effectiveHex = hexColorOrNull(effectiveValue);
   return (
     <span style={colorRowStyle}>
-      <input
-        type="color"
-        style={colorSwatchStyle}
-        // rgba()/渐变等非 hex 值色板无法表达，显示占位黑并以 title 说明
-        value={hex ?? "#000000"}
-        title={hex ? undefined : "当前值不是纯色（如 rgba/渐变），色板为占位显示；文本框里是真实值"}
-        disabled={disabled}
-        onChange={(event) => onEdit(field.key, event.target.value)}
+      <span
+        aria-label={`${field.label}当前颜色`}
+        title={effectiveValue === undefined ? "界面风格未公开这个默认值" : String(effectiveValue)}
+        style={{
+          ...colorPreviewStyle,
+          background: effectiveValue === undefined ? "transparent" : String(effectiveValue),
+        }}
       />
+      {effectiveHex && (
+        <input
+          aria-label={`${field.label}色板`}
+          type="color"
+          style={colorSwatchStyle}
+          value={effectiveHex}
+          disabled={disabled}
+          onChange={(event) => onEdit(field.key, event.target.value)}
+        />
+      )}
       <input
+        aria-label={field.label}
         type="text"
         style={{ ...inputStyle, flex: 1 }}
         value={rawValue === undefined ? "" : String(rawValue)}
-        placeholder={tokenDefaultPlaceholder(field.key)}
+        placeholder={tokenDefaultPlaceholder(field.key, defaults)}
         disabled={disabled}
         onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
       />
@@ -167,63 +234,21 @@ function ColorField({
   );
 }
 
-const panelStyle: React.CSSProperties = {
-  padding: "var(--space-3)",
-};
+function isAdvancedField(field: TokenFieldDef): boolean {
+  return GEOMETRY_FIELDS.has(field.key.split(".").at(-1) ?? "");
+}
 
-const groupStyle: React.CSSProperties = {
-  marginBottom: "var(--space-4)",
-};
-
-const groupTitleStyle: React.CSSProperties = {
-  fontSize: "var(--text-sm)",
-  fontWeight: 600,
-  color: "var(--text-secondary)",
-  marginBottom: "var(--space-2)",
-  paddingBottom: "var(--space-1)",
-  borderBottom: "1px solid var(--border)",
-};
-
-const fieldRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "64px minmax(0, 1fr)",
-  alignItems: "center",
-  gap: "var(--space-2)",
-  marginBottom: "var(--space-2)",
-  fontSize: "var(--text-sm)",
-};
-
-const fieldLabelStyle: React.CSSProperties = {
-  color: "var(--text-secondary)",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  padding: "4px 6px",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-app)",
-  color: "var(--text-primary)",
-  fontSize: "var(--text-sm)",
-};
-
-const colorRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-2)",
-  minWidth: 0,
-};
-
-const colorSwatchStyle: React.CSSProperties = {
-  width: 28,
-  height: 24,
-  padding: 0,
-  border: "1px solid var(--border-input)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--bg-app)",
-  flexShrink: 0,
-};
+const panelStyle: React.CSSProperties = { padding: "var(--space-3)" };
+const groupStyle: React.CSSProperties = { marginBottom: "var(--space-4)" };
+const groupTitleStyle: React.CSSProperties = { marginBottom: "var(--space-2)", paddingBottom: "var(--space-1)", borderBottom: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "var(--text-sm)", fontWeight: 650 };
+const fieldRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", alignItems: "start", gap: "var(--space-2)", marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" };
+const fieldLabelStyle: React.CSSProperties = { paddingTop: 5, overflow: "hidden", color: "var(--text-primary)", fontWeight: 550, textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const fieldControlStyle: React.CSSProperties = { minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "var(--space-1)" };
+const inputStyle: React.CSSProperties = { width: "100%", minWidth: 0, padding: "4px 6px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-input)", background: "var(--bg-app)", color: "var(--text-primary)", fontSize: "var(--text-sm)" };
+const resetStyle: React.CSSProperties = { minHeight: 26, padding: "3px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius-pill)", background: "transparent", color: "var(--text-secondary)", fontSize: "var(--text-xs)", whiteSpace: "nowrap", cursor: "pointer" };
+const colorRowStyle: React.CSSProperties = { minWidth: 0, display: "flex", alignItems: "center", gap: "var(--space-1)" };
+const colorPreviewStyle: React.CSSProperties = { width: 28, height: 24, flex: "0 0 28px", border: "1px solid var(--border-input)", borderRadius: "var(--radius-sm)", backgroundImage: "linear-gradient(45deg, #bbb 25%, transparent 25%), linear-gradient(-45deg, #bbb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #bbb 75%), linear-gradient(-45deg, transparent 75%, #bbb 75%)", backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0", backgroundSize: "12px 12px" };
+const colorSwatchStyle: React.CSSProperties = { width: 28, height: 24, padding: 0, border: "1px solid var(--border-input)", borderRadius: "var(--radius-sm)", background: "var(--bg-app)", flexShrink: 0 };
+const advancedStyle: React.CSSProperties = { marginTop: "var(--space-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--bg-inset)" };
+const advancedSummaryStyle: React.CSSProperties = { padding: "var(--space-2)", color: "var(--text-secondary)", fontSize: "var(--text-xs)", fontWeight: 600, cursor: "pointer" };
+const advancedFieldsStyle: React.CSSProperties = { padding: "0 var(--space-2) var(--space-2)" };

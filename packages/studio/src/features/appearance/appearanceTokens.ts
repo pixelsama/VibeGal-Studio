@@ -94,6 +94,143 @@ export function mergeTokenOverrides(
   };
 }
 
+export const APPEARANCE_PRESETS = [
+  {
+    id: "soft-glow",
+    name: "柔光",
+    description: "明亮柔和的樱粉与天蓝，适合日常和轻喜剧。",
+    tokens: {
+      "dialogueBox.bgColor": "rgba(255, 255, 255, 0.88)",
+      "dialogueBox.borderColor": "rgba(255, 255, 255, 0.72)",
+      "dialogueBox.textColor": "#3a3f55",
+      "nameBox.textColor": "#ffffff",
+      "choiceButton.bgColor": "rgba(255, 255, 255, 0.92)",
+      "choiceButton.textColor": "#3a3f55",
+      "choiceButton.hoverColor": "#ff6f9f",
+      "choiceButton.hoverTextColor": "#ffffff",
+      "hud.bgColor": "rgba(18, 20, 30, 0.45)",
+      "hud.textColor": "#ffffff",
+      "titleScreen.bgColor": "rgba(13, 18, 32, 0.72)",
+      "titleScreen.titleColor": "#ffffff",
+      "titleScreen.buttonBgColor": "rgba(13, 18, 32, 0.12)",
+      "titleScreen.buttonTextColor": "rgba(255, 255, 255, 0.9)",
+      "titleScreen.buttonHoverColor": "rgba(255, 111, 159, 0.92)",
+    },
+  },
+  {
+    id: "nightfall",
+    name: "夜幕",
+    description: "深蓝黑底与冷白文字，适合悬疑和夜景。",
+    tokens: {
+      "dialogueBox.bgColor": "rgba(10, 16, 30, 0.9)",
+      "dialogueBox.borderColor": "rgba(122, 168, 255, 0.3)",
+      "dialogueBox.textColor": "#eef4ff",
+      "nameBox.bgColor": "#4f6fb3",
+      "nameBox.textColor": "#ffffff",
+      "choiceButton.bgColor": "rgba(18, 28, 50, 0.92)",
+      "choiceButton.textColor": "#edf4ff",
+      "choiceButton.hoverColor": "#668ee8",
+      "choiceButton.hoverTextColor": "#ffffff",
+      "hud.bgColor": "rgba(5, 9, 18, 0.76)",
+      "hud.textColor": "#f5f8ff",
+      "titleScreen.bgColor": "rgba(5, 9, 18, 0.82)",
+      "titleScreen.titleColor": "#f5f8ff",
+      "titleScreen.buttonBgColor": "rgba(31, 48, 82, 0.52)",
+      "titleScreen.buttonTextColor": "#edf4ff",
+      "titleScreen.buttonHoverColor": "#668ee8",
+    },
+  },
+  {
+    id: "paper",
+    name: "纸页",
+    description: "暖白纸张与棕墨色，适合历史和文学题材。",
+    tokens: {
+      "dialogueBox.bgColor": "rgba(247, 239, 218, 0.94)",
+      "dialogueBox.borderColor": "rgba(112, 82, 52, 0.28)",
+      "dialogueBox.textColor": "#4a3828",
+      "nameBox.bgColor": "#8a6542",
+      "nameBox.textColor": "#fffaf0",
+      "choiceButton.bgColor": "rgba(247, 239, 218, 0.94)",
+      "choiceButton.textColor": "#4a3828",
+      "choiceButton.hoverColor": "#9c7149",
+      "choiceButton.hoverTextColor": "#fffaf0",
+      "hud.bgColor": "rgba(70, 50, 34, 0.72)",
+      "hud.textColor": "#fffaf0",
+      "titleScreen.bgColor": "rgba(58, 42, 30, 0.74)",
+      "titleScreen.titleColor": "#fff4dc",
+      "titleScreen.buttonBgColor": "rgba(247, 239, 218, 0.14)",
+      "titleScreen.buttonTextColor": "#fff4dc",
+      "titleScreen.buttonHoverColor": "#9c7149",
+    },
+  },
+  {
+    id: "neon",
+    name: "霓虹",
+    description: "高对比紫蓝与荧光粉，适合赛博和都市题材。",
+    tokens: {
+      "dialogueBox.bgColor": "rgba(11, 8, 28, 0.9)",
+      "dialogueBox.borderColor": "#31d8ff",
+      "dialogueBox.textColor": "#f7f3ff",
+      "nameBox.bgColor": "#ff3fd2",
+      "nameBox.textColor": "#ffffff",
+      "choiceButton.bgColor": "rgba(24, 12, 52, 0.92)",
+      "choiceButton.textColor": "#f7f3ff",
+      "choiceButton.hoverColor": "#ff3fd2",
+      "choiceButton.hoverTextColor": "#ffffff",
+      "hud.bgColor": "rgba(11, 8, 28, 0.84)",
+      "hud.textColor": "#56e6ff",
+      "titleScreen.bgColor": "rgba(11, 8, 28, 0.82)",
+      "titleScreen.titleColor": "#56e6ff",
+      "titleScreen.buttonBgColor": "rgba(49, 216, 255, 0.1)",
+      "titleScreen.buttonTextColor": "#f7f3ff",
+      "titleScreen.buttonHoverColor": "#ff3fd2",
+    },
+  },
+] as const;
+
+export type AppearancePreset = (typeof APPEARANCE_PRESETS)[number];
+
+export function rendererSupportsAppearancePresets(defaults: RendererAppearanceDefaults): boolean {
+  const requiredKeys = new Set(
+    APPEARANCE_PRESETS.flatMap((preset) => Object.keys(preset.tokens)),
+  );
+  return [...requiredKeys].every((key) => key in defaults);
+}
+
+export function applyAppearancePreset(
+  manifest: Manifest,
+  skinId: string,
+  preset: AppearancePreset,
+  defaults: RendererAppearanceDefaults,
+): Manifest {
+  const skins = manifest.uiSkins ?? {};
+  const skin = skins[skinId];
+  if (!skin || !rendererSupportsAppearancePresets(defaults)) return manifest;
+
+  const standardKeys = new Set(
+    APPEARANCE_TOKEN_GROUPS.flatMap((group) => group.fields.map((field) => field.key)),
+  );
+  const customTokens = Object.fromEntries(
+    Object.entries(skin.tokens ?? {}).filter(([key]) => !standardKeys.has(key)),
+  );
+  const completeTokens: Record<string, string | number> = {
+    ...customTokens,
+    ...defaults,
+    ...preset.tokens,
+  };
+  return {
+    ...manifest,
+    uiSkins: { ...skins, [skinId]: { ...skin, tokens: completeTokens } },
+  };
+}
+
+export function resetUiSkinTokens(manifest: Manifest, skinId: string): Manifest {
+  const skins = manifest.uiSkins ?? {};
+  const skin = skins[skinId];
+  if (!skin) return manifest;
+  return { ...manifest, uiSkins: { ...skins, [skinId]: { ...skin, tokens: {} } } };
+}
+
 // ──────────────────────────────────────────────
 // 保存结果判定（revision 冲突语义：save_manifest 返回 null = 磁盘已被改写）
 // ──────────────────────────────────────────────
@@ -162,6 +299,8 @@ export interface RendererAppearanceGroupLike {
     step?: number;
   }[];
 }
+
+export type RendererAppearanceDefaults = Readonly<Record<string, string | number>>;
 
 export function tokenGroupsFromRendererAppearance(groups: readonly RendererAppearanceGroupLike[] | undefined): TokenGroupDef[] {
   if (!groups || groups.length === 0) return APPEARANCE_TOKEN_GROUPS;
@@ -419,12 +558,45 @@ const NULL_DEFAULT_HINTS: Record<string, string> = {
   "titleScreen.bgOpacity": "仅配背景色生效",
 };
 
+export function tokenDefaultValue(
+  key: string,
+  rendererDefaults?: RendererAppearanceDefaults,
+): string | number | undefined {
+  if (rendererDefaults !== undefined) return rendererDefaults[key];
+  return TOKEN_DEFAULT_VALUES[key];
+}
+
+export function effectiveTokenValue(
+  tokens: Record<string, string | number>,
+  key: string,
+  rendererDefaults?: RendererAppearanceDefaults,
+): string | number | undefined {
+  return tokens[key] ?? tokenDefaultValue(key, rendererDefaults);
+}
+
+export function tokenHasOverride(
+  tokens: Record<string, string | number>,
+  key: string,
+  rendererDefaults?: RendererAppearanceDefaults,
+): boolean {
+  if (!(key in tokens)) return false;
+  const fallback = tokenDefaultValue(key, rendererDefaults);
+  return fallback === undefined || tokens[key] !== fallback;
+}
+
 /** 输入框 placeholder：显示该 token 的默认值（null 语义键显示行为说明）。 */
-export function tokenDefaultPlaceholder(key: string): string {
+export function tokenDefaultPlaceholder(
+  key: string,
+  rendererDefaults?: RendererAppearanceDefaults,
+): string {
+  if (rendererDefaults !== undefined) {
+    const value = rendererDefaults[key];
+    return value === undefined ? "默认" : `默认：${String(value)}`;
+  }
   const hint = NULL_DEFAULT_HINTS[key];
   if (hint) return `默认：${hint}`;
-  const value = TOKEN_DEFAULT_VALUES[key];
-  return value === undefined ? "默认" : `默认：${String(value)}`;
+  const fallback = TOKEN_DEFAULT_VALUES[key];
+  return fallback === undefined ? "默认" : `默认：${String(fallback)}`;
 }
 
 /**
@@ -447,7 +619,7 @@ export function visibleTokenEditValue(checked: boolean): number | undefined {
   return checked ? undefined : 0;
 }
 
-/** 色板用的 #rrggbb 提取：只认 #rgb/#rrggbb，rgba()/渐变等返回 null（色板显示占位色）。 */
+/** 色板用的 #rrggbb 提取：只认 #rgb/#rrggbb；其它 CSS 颜色仍由预览色块和文本框无损承载。 */
 export function hexColorOrNull(value: string | number | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();

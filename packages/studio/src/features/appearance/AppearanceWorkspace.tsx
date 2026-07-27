@@ -31,15 +31,21 @@ import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 import { SceneFixtureView, fixtureScenesForPreview, setFixtureUiHintGlobal } from "../preview/SceneFixtureView";
 import type { FixtureScene } from "../../export/snapshotScenes";
 import {
+  applyAppearancePreset,
   mergeTokenOverrides,
   readSkinTokens,
+  rendererSupportsAppearancePresets,
+  resetUiSkinTokens,
   saveAppearanceManifest,
   selectEditableSkinId,
   tokenGroupsForRendererPart,
   tokenGroupsFromRendererAppearance,
   withDefaultUiSkin,
   withUiSkinToken,
+  type AppearancePreset,
+  type RendererAppearanceDefaults,
 } from "./appearanceTokens";
+import { AppearancePresetPicker } from "./AppearancePresetPicker";
 import { TokenEditorPanel } from "./TokenEditorPanel";
 import { SkinAssetsSection } from "./SkinAssetsSection";
 import { StageDesignView } from "./StageDesignView";
@@ -105,6 +111,8 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
     () => tokenGroupsFromRendererAppearance(renderer?.appearance?.groups),
     [renderer?.appearance?.groups],
   );
+  const rendererDefaults = renderer?.appearance?.defaults as RendererAppearanceDefaults | undefined;
+  const presetsSupported = rendererDefaults !== undefined && rendererSupportsAppearancePresets(rendererDefaults);
 
   // 预览链路吃 display manifest：draft（编辑中/落盘中）与真实数据走同一条通路
   const displayProject = useMemo<ProjectData>(
@@ -194,6 +202,24 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
     },
     [skinId, readOnly, displayManifest, schedulePersist],
   );
+
+  const handleApplyPreset = useCallback(
+    (preset: AppearancePreset) => {
+      if (!skinId || readOnly || !rendererDefaults || !presetsSupported) return;
+      const next = applyAppearancePreset(displayManifest, skinId, preset, rendererDefaults);
+      if (next === displayManifest) return;
+      setDraft(next);
+      schedulePersist(next);
+    },
+    [skinId, readOnly, rendererDefaults, presetsSupported, displayManifest, schedulePersist],
+  );
+
+  const handleResetAll = useCallback(() => {
+    if (!skinId || readOnly || Object.keys(skinTokens).length === 0) return;
+    const next = resetUiSkinTokens(displayManifest, skinId);
+    setDraft(next);
+    schedulePersist(next);
+  }, [skinId, readOnly, skinTokens, displayManifest, schedulePersist]);
 
   const handleEnableAppearance = useCallback(() => {
     const next = withDefaultUiSkin(displayManifest);
@@ -315,8 +341,17 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
                 </button>
               </div>
             )}
+            {presetsSupported && (
+              <AppearancePresetPicker
+                disabled={readOnly}
+                canResetAll={Object.keys(skinTokens).length > 0}
+                onApply={handleApplyPreset}
+                onResetAll={handleResetAll}
+              />
+            )}
             <TokenEditorPanel
               tokens={skinTokens}
+              defaults={rendererDefaults}
               fontFamilies={fontFamilies}
               disabled={readOnly}
               groups={selectedPart !== null && viewMode === "single"

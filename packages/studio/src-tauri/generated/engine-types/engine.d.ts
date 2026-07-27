@@ -251,6 +251,8 @@ import type { ComponentType } from "react";
 
   export interface RendererAppearance {
     groups: readonly RendererAppearanceGroup[];
+    /** Renderer-owned public fallback values for creator-facing controls. */
+    defaults?: Readonly<Record<string, string | number>>;
   }
 
   export interface RendererAppearanceControl {

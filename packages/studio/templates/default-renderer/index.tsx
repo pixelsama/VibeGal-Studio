@@ -8,6 +8,59 @@
  */
 import type { RendererManifest } from "@vibegal/engine";
 import { Stage } from "./Stage";
+import { palette } from "./uiTheme";
+import { DEFAULT_UI_TOKENS } from "./useUiTokens";
+
+const appearanceDefaults = {
+  "dialogueBox.x": DEFAULT_UI_TOKENS.dialogueBox.x,
+  "dialogueBox.y": DEFAULT_UI_TOKENS.dialogueBox.y,
+  "dialogueBox.width": DEFAULT_UI_TOKENS.dialogueBox.width,
+  "dialogueBox.height": DEFAULT_UI_TOKENS.dialogueBox.height,
+  "dialogueBox.bgColor": palette.frost,
+  "dialogueBox.radius": DEFAULT_UI_TOKENS.dialogueBox.radius,
+  "dialogueBox.padding": DEFAULT_UI_TOKENS.dialogueBox.padding,
+  "dialogueBox.borderColor": "rgba(255, 255, 255, 0.65)",
+  "dialogueBox.textColor": DEFAULT_UI_TOKENS.dialogueBox.textColor,
+  "dialogueBox.fontSize": DEFAULT_UI_TOKENS.dialogueBox.fontSize,
+  "dialogueBox.fontFamily": DEFAULT_UI_TOKENS.dialogueBox.fontFamily,
+  "dialogueBox.lineHeight": DEFAULT_UI_TOKENS.dialogueBox.lineHeight,
+  "nameBox.x": DEFAULT_UI_TOKENS.nameBox.x,
+  "nameBox.y": DEFAULT_UI_TOKENS.nameBox.y,
+  "nameBox.textColor": DEFAULT_UI_TOKENS.nameBox.textColor,
+  "nameBox.fontSize": DEFAULT_UI_TOKENS.nameBox.fontSize,
+  "nameBox.visible": 1,
+  "choiceBox.x": DEFAULT_UI_TOKENS.choiceBox.x,
+  "choiceBox.y": DEFAULT_UI_TOKENS.choiceBox.y,
+  "choiceBox.width": DEFAULT_UI_TOKENS.choiceBox.width,
+  "choiceButton.bgColor": DEFAULT_UI_TOKENS.choiceButton.bgColor,
+  "choiceButton.textColor": DEFAULT_UI_TOKENS.choiceButton.textColor,
+  "choiceButton.hoverColor": DEFAULT_UI_TOKENS.choiceButton.hoverColor,
+  "choiceButton.hoverTextColor": DEFAULT_UI_TOKENS.choiceButton.hoverTextColor,
+  "choiceButton.radius": DEFAULT_UI_TOKENS.choiceButton.radius,
+  "choiceButton.fontSize": DEFAULT_UI_TOKENS.choiceButton.fontSize,
+  "hud.textColor": DEFAULT_UI_TOKENS.hud.textColor,
+  "hud.bgColor": DEFAULT_UI_TOKENS.hud.bgColor,
+  "hud.fontSize": DEFAULT_UI_TOKENS.hud.fontSize,
+  "hud.visible": 1,
+  "menuWindow.x": DEFAULT_UI_TOKENS.menuWindow.x,
+  "menuWindow.y": DEFAULT_UI_TOKENS.menuWindow.y,
+  "menuWindow.width": DEFAULT_UI_TOKENS.menuWindow.width,
+  "menuWindow.height": DEFAULT_UI_TOKENS.menuWindow.height,
+  "titleScreen.x": DEFAULT_UI_TOKENS.titleScreen.x,
+  "titleScreen.y": DEFAULT_UI_TOKENS.titleScreen.y,
+  "titleScreen.width": DEFAULT_UI_TOKENS.titleScreen.width,
+  "titleScreen.height": DEFAULT_UI_TOKENS.titleScreen.height,
+  "titleScreen.bgColor": palette.titlePanel,
+  "titleScreen.titleColor": DEFAULT_UI_TOKENS.titleScreen.titleColor,
+  "titleScreen.titleFontSize": DEFAULT_UI_TOKENS.titleScreen.titleFontSize,
+  "titleScreen.titleFontFamily": DEFAULT_UI_TOKENS.titleScreen.titleFontFamily,
+  "titleScreen.buttonBgColor": DEFAULT_UI_TOKENS.titleScreen.buttonBgColor,
+  "titleScreen.buttonTextColor": DEFAULT_UI_TOKENS.titleScreen.buttonTextColor,
+  "titleScreen.buttonHoverColor": DEFAULT_UI_TOKENS.titleScreen.buttonHoverColor,
+  "titleScreen.buttonRadius": DEFAULT_UI_TOKENS.titleScreen.buttonRadius,
+  "titleScreen.buttonFontSize": DEFAULT_UI_TOKENS.titleScreen.buttonFontSize,
+  "stage.fontFamily": DEFAULT_UI_TOKENS.stageFontFamily,
+} as const;
 
 const appearanceGroups = [
   {
@@ -133,7 +186,7 @@ const defaultRenderer: RendererManifest = {
   name: "默认界面风格",
   contractVersion: 1,
   capabilities: ["player-ui-v1", "gallery-ui-v1", "layout-parts-v1"],
-  appearance: { groups: appearanceGroups },
+  appearance: { defaults: appearanceDefaults, groups: appearanceGroups },
   description: "现代扁平二次元风：磨砂白对话框 + 樱粉点缀 + 全套玩家面板的默认实现",
   Component: Stage,
 };
