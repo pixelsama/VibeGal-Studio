@@ -7,14 +7,15 @@
         { "t": "bgm", "id": "theme" },
         { "t": "sfx", "id": "bell" },
         { "t": "voice", "id": "line" },
-        { "t": "char", "id": "hero" },
-        { "t": "say", "id": "say-1", "who": "hero", "text": "Hello" },
-        { "t": "narrate", "id": "narrate-1", "text": "Narration" },
+        { "t": "char", "id": "hero", "scale": 1.25, "flip": true, "moveFrom": "left", "exprMs": 180 },
+        { "t": "say", "id": "say-1", "who": "hero", "text": "Hello", "textKey": "opening.hello", "voice": "line" },
+        { "t": "narrate", "id": "narrate-1", "text": "Narration", "textKey": "opening.narration" },
         { "t": "set", "key": "route", "value": "a" },
         { "t": "wait", "id": "wait-1", "ms": 10 },
         { "t": "effect", "type": "shake" },
         { "t": "transition", "type": "fade_in" },
         { "t": "pause", "id": "pause-1" },
+        { "t": "inputName", "id": "ask-name", "key": "playerName", "prompt": "Your name?" },
         { "t": "unlock", "kind": "cg", "id": "ending" },
         { "t": "showCg", "id": "ending" },
         { "t": "playVideo", "id": "opening" },
@@ -156,6 +157,22 @@
       "input": { "typingSpeedCps": 0 },
       "issues": [
         { "code": "meta_invalid_timing", "severity": "error", "source": "meta", "jsonPath": "$.typingSpeedCps" }
+      ]
+    },
+    {
+      "id": "meta.invalid.locale-default",
+      "schema": "meta",
+      "input": { "locale": { "default": "zh-CN", "available": ["en"] } },
+      "issues": [
+        { "code": "meta_invalid_locale", "severity": "error", "source": "meta", "jsonPath": "$.locale.default" }
+      ]
+    },
+    {
+      "id": "locale.invalid.non-string-value",
+      "schema": "locale",
+      "input": { "opening.hello": 42 },
+      "issues": [
+        { "code": "locale_invalid_structure", "severity": "error", "source": "locale", "jsonPath": "$[\"opening.hello\"]" }
       ]
     },
     {

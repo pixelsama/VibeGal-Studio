@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ChapterSchema, ManifestSchema, MetaSchema, ProjectGraphSchema, VariableRegistrySchema } from "./schema";
+import { ChapterSchema, LocaleTableSchema, ManifestSchema, MetaSchema, ProjectGraphSchema, VariableRegistrySchema } from "./schema";
 import { FixtureFileSchema } from "./fixtures";
 
-export type SchemaName = "nodeFile" | "graph" | "manifest" | "meta" | "variables" | "fixture";
+export type SchemaName = "nodeFile" | "graph" | "manifest" | "meta" | "variables" | "locale" | "fixture";
 
 export const SCHEMAS: Record<SchemaName, z.ZodType> = {
   nodeFile: ChapterSchema,
@@ -10,6 +10,7 @@ export const SCHEMAS: Record<SchemaName, z.ZodType> = {
   manifest: ManifestSchema,
   meta: MetaSchema,
   variables: VariableRegistrySchema,
+  locale: LocaleTableSchema,
   fixture: FixtureFileSchema,
 };
 

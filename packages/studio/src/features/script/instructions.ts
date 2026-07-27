@@ -101,6 +101,9 @@ export function defaultInstruction(kind: InsertableKind): Instruction {
         ms: 600,
         clear: false,
         remove: false,
+        scale: 1,
+        flip: false,
+        exprMs: 0,
       };
     case "effect":
       return { t: "effect", type: "shake", intensity: 6, ms: 400 };

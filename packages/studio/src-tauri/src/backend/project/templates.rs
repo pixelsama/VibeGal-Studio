@@ -11,6 +11,7 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 - `content/manifest.json` defines character, background, and audio ids used by instructions.
 - `content/meta.json` stores global playback settings and the fixed stage size.
 - `content/variables.json` declares typed run/global variables, defaults, scopes, and descriptions.
+- `content/locales/*.json` are optional flat translation tables keyed by `textKey`. Validate each file against `.galstudio/schemas/locale.json`.
 - `content/fixtures/*.json` are custom preview scenes. Each file is one scene: a required `state` (NovelState snapshot), optional `title`, `persistent.unlock` id lists, and `uiHint.panel`. Validate against `.galstudio/schemas/fixture.json`.
 - `renderers/<id>/index.tsx` is a renderer layer entry file.
 
@@ -155,12 +156,16 @@ tsconfig.json
     manifest.json
     meta.json
     fixture.json
+    variables.json
+    locale.json
 content/
   manifest.json
   meta.json
   graph.json
+  variables.json
   nodes/
     start.json
+  locales/
   fixtures/
 renderers/
   default/
@@ -248,6 +253,7 @@ Local JSON Schema snapshots are in `.galstudio/schemas/`:
 - `meta.json` validates `content/meta.json`.
 - `fixture.json` validates each `content/fixtures/*.json` file.
 - `variables.json` validates `content/variables.json`.
+- `locale.json` validates each optional `content/locales/*.json` translation table.
 
 These files are copied from the VibeGal-Studio product at project initialization time.
 
@@ -324,7 +330,7 @@ pub(crate) const PROJECT_REACT_DTS: &str =
 pub(crate) const PROJECT_TSCONFIG_JSON: &str =
     include_str!("../../../../templates/project-tsconfig.json");
 
-pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 6] = [
+pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 7] = [
     (
         "graph.json",
         include_str!("../../../generated/contracts/graph.schema.json"),
@@ -349,10 +355,14 @@ pub(crate) const PROJECT_SCHEMA_FILES: [(&str, &str); 6] = [
         "variables.json",
         include_str!("../../../generated/contracts/variables.schema.json"),
     ),
+    (
+        "locale.json",
+        include_str!("../../../generated/contracts/locale.schema.json"),
+    ),
 ];
 
 /// 项目自描述文件全集（相对路径 → 内容）。
-const SELF_DESCRIPTION_FILES: [(&str, &str); 12] = [
+const SELF_DESCRIPTION_FILES: [(&str, &str); 13] = [
     ("AGENTS.md", PROJECT_AGENTS_MD),
     (".galstudio/README.md", PROJECT_README_MD),
     (
@@ -374,6 +384,7 @@ const SELF_DESCRIPTION_FILES: [(&str, &str); 12] = [
     (".galstudio/schemas/meta.json", PROJECT_SCHEMA_FILES[3].1),
     (".galstudio/schemas/fixture.json", PROJECT_SCHEMA_FILES[4].1),
     (".galstudio/schemas/variables.json", PROJECT_SCHEMA_FILES[5].1),
+    (".galstudio/schemas/locale.json", PROJECT_SCHEMA_FILES[6].1),
 ];
 
 /// 初始化时写入整套自描述文件（调用方已确认不会覆盖既有文件）。

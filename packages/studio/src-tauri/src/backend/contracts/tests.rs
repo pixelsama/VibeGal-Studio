@@ -75,6 +75,7 @@ fn rust_contract_validator_matches_shared_structural_corpus() {
             "manifest" => ContractSchemaKind::Manifest,
             "meta" => ContractSchemaKind::Meta,
             "variables" => ContractSchemaKind::Variables,
+            "locale" => ContractSchemaKind::Locale,
             schema => panic!("unsupported shared corpus schema: {schema}"),
         };
         assert_eq!(
@@ -128,6 +129,7 @@ fn rust_default_projection_matches_contracts_corpus() {
             "manifest" => ContractSchemaKind::Manifest,
             "meta" => ContractSchemaKind::Meta,
             "variables" => ContractSchemaKind::Variables,
+            "locale" => ContractSchemaKind::Locale,
             schema => panic!("unsupported default corpus schema: {schema}"),
         };
         let mut projected = case["input"].clone();

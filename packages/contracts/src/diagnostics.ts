@@ -1,6 +1,6 @@
 /** Stable, product-owned diagnostics and semantic rules exported alongside schemas. */
 export type DiagnosticSeverity = "error" | "warn";
-export type DiagnosticSource = "node" | "graph" | "manifest" | "meta" | "variables" | "contract";
+export type DiagnosticSource = "node" | "graph" | "manifest" | "meta" | "variables" | "locale" | "contract";
 
 export interface ContractDiagnostic {
   severity: DiagnosticSeverity;
@@ -50,14 +50,16 @@ export const contractDiagnostics = {
   meta_invalid_title: { severity: "error", source: "meta" },
   meta_invalid_timing: { severity: "error", source: "meta" },
   meta_invalid_stage: { severity: "error", source: "meta" },
+  meta_invalid_locale: { severity: "error", source: "meta" },
   meta_invalid_structure: { severity: "error", source: "meta" },
+  locale_invalid_structure: { severity: "error", source: "locale" },
   contract_invalid_value: { severity: "error", source: "contract" },
   contract_error_truncated: { severity: "error", source: "contract" },
 } as const satisfies Record<string, ContractDiagnostic>;
 
 export type DiagnosticCode = keyof typeof contractDiagnostics;
 
-export type ContractDocumentName = "nodeFile" | "graph" | "manifest" | "meta" | "variables";
+export type ContractDocumentName = "nodeFile" | "graph" | "manifest" | "meta" | "variables" | "locale";
 
 export type StructuralPathOverride = {
   code: DiagnosticCode;
@@ -93,6 +95,7 @@ export const contractStructuralPolicies = {
     pathOverrides: [
       { code: "meta_invalid_title", exact: ["$.title"] },
       { code: "meta_invalid_stage", exact: ["$.stage"], prefixes: ["$.stage."] },
+      { code: "meta_invalid_locale", exact: ["$.locale"], prefixes: ["$.locale."] },
       {
         code: "meta_invalid_timing",
         exact: ["$.typingSpeedCps", "$.autoAdvanceMs", "$.chapterGapMs"],
@@ -106,10 +109,20 @@ export const contractStructuralPolicies = {
       { code: "variable_default_type_mismatch", prefixes: ["$.variables"], exact: [] },
     ],
   },
+  locale: {
+    defaultCode: "locale_invalid_structure",
+  },
 } as const satisfies Record<ContractDocumentName, ContractStructuralPolicy>;
 
 export type RegistryRule = {
   kind: "registry";
+  registryPath: string[];
+  idField: string;
+  missingCode: DiagnosticCode;
+};
+
+export type OptionalRegistryRule = {
+  kind: "optionalRegistry";
   registryPath: string[];
   idField: string;
   missingCode: DiagnosticCode;
@@ -134,6 +147,7 @@ export type RegistryByDiscriminatorRule = {
 export type StoryPointRule = { kind: "storyPoint" };
 export type InstructionRule =
   | RegistryRule
+  | OptionalRegistryRule
   | CharacterExpressionRule
   | RegistryByDiscriminatorRule
   | StoryPointRule;
@@ -149,13 +163,17 @@ export const instructionPolicies = {
   sfx: { references: [{ kind: "registry", registryPath: ["audio", "sfx"], idField: "id", missingCode: "missing_sfx_ref" }] },
   voice: { references: [{ kind: "registry", registryPath: ["audio", "voice"], idField: "id", missingCode: "missing_voice_ref" }] },
   char: { references: [{ kind: "characterExpression", characterIdField: "id", expressionField: "expr", defaultExpression: "default" }] },
-  say: { storyPoint: true, references: [{ kind: "characterExpression", characterIdField: "who", expressionField: "expr", defaultExpression: "default" }] },
+  say: { storyPoint: true, references: [
+    { kind: "characterExpression", characterIdField: "who", expressionField: "expr", defaultExpression: "default" },
+    { kind: "optionalRegistry", registryPath: ["audio", "voice"], idField: "voice", missingCode: "missing_voice_ref" },
+  ] },
   narrate: { storyPoint: true },
   set: {},
   wait: { storyPoint: true },
   effect: {},
   transition: {},
   pause: { storyPoint: true },
+  inputName: { storyPoint: true },
   unlock: { references: [{ kind: "registryByDiscriminator", discriminatorField: "kind", idField: "id", registryPath: ["unlocks"], registryByValue: { cg: ["cg"], music: ["music"], replay: ["replay"], endings: ["endings"] }, missingCode: "missing_unlock_ref" }] },
   showCg: { references: [{ kind: "registry", registryPath: ["cg"], idField: "id", missingCode: "missing_cg_ref" }] },
   playVideo: { references: [{ kind: "registry", registryPath: ["videos"], idField: "id", missingCode: "missing_video_ref" }] },

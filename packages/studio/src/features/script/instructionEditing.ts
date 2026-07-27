@@ -88,6 +88,9 @@ export function createInstructionDraft(kind: EditableInstructionKind): Instructi
         ms: 600,
         clear: false,
         remove: false,
+        scale: 1,
+        flip: false,
+        exprMs: 0,
       };
     case "set":
       return { t: "set", key: "flag", value: true };

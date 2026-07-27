@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { ManifestSchema } from "../schema";
-import { validateChapter, validateContent, validateManifest, validateMeta, validateReferences } from "../validate";
+import { validateChapter, validateContent, validateLocale, validateManifest, validateMeta, validateReferences } from "../validate";
 
 const manifest = {
   characters: {
@@ -284,7 +284,7 @@ describe("shared node validation contract", () => {
       nodeCases: Array<{ id: string; input: unknown; issues: Array<Record<string, unknown>> }>;
       schemaCases: Array<{
         id: string;
-        schema: "graph" | "manifest" | "meta";
+        schema: "graph" | "manifest" | "meta" | "locale";
         input: unknown;
         issues: Array<Record<string, unknown>>;
       }>;
@@ -303,7 +303,9 @@ describe("shared node validation contract", () => {
     for (const testCase of corpus.schemaCases.filter(({ schema }) => schema !== "graph")) {
       const issues = testCase.schema === "manifest"
         ? validateManifest(testCase.input, `${testCase.id}.json`)
-        : validateMeta(testCase.input, `${testCase.id}.json`);
+        : testCase.schema === "locale"
+          ? validateLocale(testCase.input, `${testCase.id}.json`)
+          : validateMeta(testCase.input, `${testCase.id}.json`);
       expect(stable(issues), testCase.id).toEqual(testCase.issues);
     }
   });

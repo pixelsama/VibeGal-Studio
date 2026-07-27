@@ -51,7 +51,7 @@ pub(crate) fn validate_node_semantics(node: &Value, manifest: &Value) -> Vec<Nod
             .flatten()
         {
             match rule.get("kind").and_then(Value::as_str) {
-                Some("registry") => {
+                Some("registry") | Some("optionalRegistry") => {
                     execute_registry_rule(&mut issues, instruction, manifest, rule, index)
                 }
                 Some("characterExpression") => execute_character_expression_rule(

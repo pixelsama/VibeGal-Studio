@@ -217,6 +217,7 @@ export function applyInstruction(
         currentCueMs: null,
       };
 
+    case "inputName":
     case "unlock":
     case "showCg":
     case "playVideo":

@@ -183,6 +183,26 @@
           "remove": {
             "default": false,
             "type": "boolean"
+          },
+          "scale": {
+            "default": 1,
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 4
+          },
+          "flip": {
+            "default": false,
+            "type": "boolean"
+          },
+          "moveFrom": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exprMs": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": [
@@ -223,6 +243,14 @@
             "type": "string",
             "minLength": 1
           },
+          "textKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "voice": {
+            "type": "string",
+            "minLength": 1
+          },
           "ms": {
             "type": "integer",
             "minimum": 0,
@@ -242,6 +270,15 @@
               "characterIdField": "who",
               "expressionField": "expr",
               "defaultExpression": "default"
+            },
+            {
+              "kind": "optionalRegistry",
+              "registryPath": [
+                "audio",
+                "voice"
+              ],
+              "idField": "voice",
+              "missingCode": "missing_voice_ref"
             }
           ]
         }
@@ -259,6 +296,10 @@
             "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
           },
           "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "textKey": {
             "type": "string",
             "minLength": 1
           },
@@ -426,6 +467,47 @@
         "required": [
           "t"
         ],
+        "x-vibegal": {
+          "storyPoint": true
+        }
+      },
+      {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "const": "inputName"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable story-point id for stoppable/runtime-restorable instructions. Required by validation for say/narrate/wait/pause."
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": {
+            "type": "string"
+          },
+          "maxLength": {
+            "default": 20,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "t",
+          "id",
+          "key",
+          "prompt"
+        ],
+        "additionalProperties": false,
         "x-vibegal": {
           "storyPoint": true
         }

@@ -1,13 +1,14 @@
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
-pub const CONTRACT_ARTIFACTS: [&str; 7] = [
+pub const CONTRACT_ARTIFACTS: [&str; 8] = [
     "nodeFile.schema.json",
     "graph.schema.json",
     "manifest.schema.json",
     "meta.schema.json",
     "fixture.schema.json",
     "variables.schema.json",
+    "locale.schema.json",
     "diagnostics.json",
 ];
 

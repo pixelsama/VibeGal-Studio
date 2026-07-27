@@ -137,6 +137,8 @@ pub struct GraphPosition {
 pub struct GraphChapter {
     pub id: String,
     pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Clone)]

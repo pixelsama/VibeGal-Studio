@@ -67,10 +67,12 @@ fn validate_graph_flags_duplicate_chapter_ids() {
         GraphChapter {
             id: "opening".to_string(),
             title: "序章".to_string(),
+            checkpoint: None,
         },
         GraphChapter {
             id: "opening".to_string(),
             title: "重复".to_string(),
+            checkpoint: None,
         },
     ];
 

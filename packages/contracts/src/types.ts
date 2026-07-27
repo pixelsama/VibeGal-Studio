@@ -21,6 +21,7 @@ import type {
   EffectInstruction,
   TransitionInstruction,
   PauseInstruction,
+  InputNameInstruction,
   UnlockInstruction,
   ShowCgInstruction,
   PlayVideoInstruction,
@@ -35,6 +36,11 @@ import type {
   GraphNodeSchema,
   GraphEdgeSchema,
   GraphPositionSchema,
+  LocaleConfigSchema,
+  LocaleTableSchema,
+  ChapterCheckpointSchema,
+  AnimationAtlasClipSchema,
+  CharacterSpriteRefSchema,
 } from "./schema";
 
 export type Instruction = z.infer<typeof InstructionSchema>;
@@ -53,6 +59,11 @@ export type VariableDeclaration = z.infer<typeof VariableDeclarationSchema>;
 export type VariableKind = z.infer<typeof VariableKindSchema>;
 export type VariableBand = z.infer<typeof VariableBandSchema>;
 export type VariableOption = z.infer<typeof VariableOptionSchema>;
+export type LocaleConfig = z.infer<typeof LocaleConfigSchema>;
+export type LocaleTable = z.infer<typeof LocaleTableSchema>;
+export type ChapterCheckpoint = z.infer<typeof ChapterCheckpointSchema>;
+export type AnimationAtlasClip = z.infer<typeof AnimationAtlasClipSchema>;
+export type CharacterSpriteRef = z.infer<typeof CharacterSpriteRefSchema>;
 
 // 便于在 interpreter 的 switch 里精确收窄
 export type BgInstr = z.infer<typeof BgInstruction>;
@@ -67,6 +78,7 @@ export type WaitInstr = z.infer<typeof WaitInstruction>;
 export type EffectInstr = z.infer<typeof EffectInstruction>;
 export type TransitionInstr = z.infer<typeof TransitionInstruction>;
 export type PauseInstr = z.infer<typeof PauseInstruction>;
+export type InputNameInstr = z.infer<typeof InputNameInstruction>;
 export type UnlockInstr = z.infer<typeof UnlockInstruction>;
 export type ShowCgInstr = z.infer<typeof ShowCgInstruction>;
 export type PlayVideoInstr = z.infer<typeof PlayVideoInstruction>;

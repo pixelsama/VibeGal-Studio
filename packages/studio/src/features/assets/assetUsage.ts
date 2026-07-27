@@ -1,4 +1,4 @@
-import type { Manifest, NodeEntry } from "../../lib/types";
+import type { CharacterSpriteRef, Manifest, NodeEntry } from "../../lib/types";
 
 export interface AssetUsageSummary {
   usageCountByPath: Map<string, number>;
@@ -69,7 +69,7 @@ function resolveCharacterSpritePaths(characterId: string | null, expr: string, m
   const character = manifest.characters[characterId];
   if (!character) return [];
   const sprite = character.sprites[expr] ?? character.sprites.default;
-  return sprite ? [sprite] : [];
+  return sprite ? characterSpriteAssetPaths(sprite) : [];
 }
 
 function collectDeclaredPaths(manifest: Manifest): Set<string> {
@@ -79,7 +79,14 @@ function collectDeclaredPaths(manifest: Manifest): Set<string> {
   Object.values(manifest.audio.sfx).forEach((path) => paths.add(path));
   Object.values(manifest.audio.voice).forEach((path) => paths.add(path));
   Object.values(manifest.characters).forEach((character) => {
-    Object.values(character.sprites).forEach((path) => paths.add(path));
+    Object.values(character.sprites).forEach((sprite) => {
+      characterSpriteAssetPaths(sprite).forEach((path) => paths.add(path));
+    });
   });
   return paths;
+}
+
+export function characterSpriteAssetPaths(sprite: CharacterSpriteRef): string[] {
+  if (typeof sprite === "string") return [sprite];
+  return [sprite.fallback];
 }

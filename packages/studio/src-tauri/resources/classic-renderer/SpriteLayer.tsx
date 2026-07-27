@@ -39,7 +39,8 @@ function resolvePos(pos: string): string {
  */
 function SpriteItem({ sprite, manifest, contentBase }: { sprite: ActiveSprite; manifest: Manifest; contentBase: string }) {
   const char = manifest.characters[sprite.id];
-  const rel = char?.sprites[sprite.expr] ?? char?.sprites.default ?? null;
+  const spriteRef = char?.sprites[sprite.expr] ?? char?.sprites.default ?? null;
+  const rel = typeof spriteRef === "string" ? spriteRef : spriteRef?.fallback ?? null;
   const [fadeOut, setFadeOut] = useState(false);
 
   // leaving 时启动淡出

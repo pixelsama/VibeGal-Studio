@@ -11,6 +11,11 @@ const manifest: Manifest = {
       sprites: {
         default: "assets/characters/hero_default.png",
         smile: "assets/characters/hero_smile.png",
+        animated: {
+          atlas: "heroAtlas",
+          clip: "idle",
+          fallback: "assets/characters/hero_idle.png",
+        },
       },
     },
   },
@@ -60,5 +65,6 @@ describe("asset usage analysis", () => {
     expect(summary.usageCountByPath.get("assets/backgrounds/school.png")).toBe(1);
     expect(summary.unusedManifestPaths.has("assets/backgrounds/beach.png")).toBe(true);
     expect(summary.unusedManifestPaths.has("assets/audio/bgm/theme.mp3")).toBe(true);
+    expect(summary.unusedManifestPaths.has("assets/characters/hero_idle.png")).toBe(true);
   });
 });

@@ -41,6 +41,7 @@ fn ensure_project_shell_targets_available(
         project_path.join(".galstudio/schemas/meta.json"),
         project_path.join(".galstudio/schemas/fixture.json"),
         project_path.join(".galstudio/schemas/variables.json"),
+        project_path.join(".galstudio/schemas/locale.json"),
     ] {
         ensure_can_create_file(&path)?;
     }

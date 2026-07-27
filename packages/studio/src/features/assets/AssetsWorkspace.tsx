@@ -1251,7 +1251,8 @@ function collectManifestEntrySources(manifest: Manifest): { source: string; path
   const entries: { source: string; path: string }[] = [];
   Object.entries(manifest.backgrounds ?? {}).forEach(([id, path]) => entries.push({ source: `backgrounds.${id}`, path }));
   Object.entries(manifest.characters ?? {}).forEach(([id, character]) => {
-    Object.entries(character.sprites ?? {}).forEach(([expr, path]) => {
+    Object.entries(character.sprites ?? {}).forEach(([expr, sprite]) => {
+      const path = typeof sprite === "string" ? sprite : sprite.fallback;
       entries.push({ source: `characters.${id}.sprites.${expr}`, path });
     });
   });

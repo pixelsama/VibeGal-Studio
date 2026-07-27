@@ -11,6 +11,8 @@ pub(crate) enum ContractSchemaKind {
     Manifest,
     Meta,
     Variables,
+    #[allow(dead_code)]
+    Locale,
 }
 
 impl ContractSchemaKind {
@@ -21,6 +23,7 @@ impl ContractSchemaKind {
             Self::Manifest => "manifest.schema.json",
             Self::Meta => "meta.schema.json",
             Self::Variables => "variables.schema.json",
+            Self::Locale => "locale.schema.json",
         }
     }
 
@@ -31,6 +34,7 @@ impl ContractSchemaKind {
             Self::Manifest => include_str!("../../../generated/contracts/manifest.schema.json"),
             Self::Meta => include_str!("../../../generated/contracts/meta.schema.json"),
             Self::Variables => include_str!("../../../generated/contracts/variables.schema.json"),
+            Self::Locale => include_str!("../../../generated/contracts/locale.schema.json"),
         }
     }
 
@@ -41,6 +45,7 @@ impl ContractSchemaKind {
             Self::Manifest => "manifest",
             Self::Meta => "meta",
             Self::Variables => "variables",
+            Self::Locale => "locale",
         }
     }
 }
@@ -97,6 +102,7 @@ static GRAPH_SCHEMA: OnceLock<Value> = OnceLock::new();
 static MANIFEST_SCHEMA: OnceLock<Value> = OnceLock::new();
 static META_SCHEMA: OnceLock<Value> = OnceLock::new();
 static VARIABLES_SCHEMA: OnceLock<Value> = OnceLock::new();
+static LOCALE_SCHEMA: OnceLock<Value> = OnceLock::new();
 static NODE_BRANCHES: OnceLock<HashMap<String, Value>> = OnceLock::new();
 static CONTRACT_METADATA: OnceLock<ContractMetadata> = OnceLock::new();
 
@@ -107,6 +113,7 @@ pub(crate) fn schema(kind: ContractSchemaKind) -> &'static Value {
         ContractSchemaKind::Manifest => &MANIFEST_SCHEMA,
         ContractSchemaKind::Meta => &META_SCHEMA,
         ContractSchemaKind::Variables => &VARIABLES_SCHEMA,
+        ContractSchemaKind::Locale => &LOCALE_SCHEMA,
     };
     slot.get_or_init(|| {
         serde_json::from_str(kind.raw())
@@ -217,7 +224,7 @@ fn contract_metadata() -> &'static ContractMetadata {
                 assert!(
                     matches!(
                         definition.source.as_str(),
-                        "node" | "graph" | "manifest" | "meta" | "variables" | "contract"
+                        "node" | "graph" | "manifest" | "meta" | "variables" | "locale" | "contract"
                     ),
                     "diagnostic {code} has invalid source {}",
                     definition.source
@@ -232,7 +239,7 @@ fn contract_metadata() -> &'static ContractMetadata {
             })
             .collect::<HashMap<_, _>>();
 
-        let expected_policies = ["nodeFile", "graph", "manifest", "meta", "variables"]
+        let expected_policies = ["nodeFile", "graph", "manifest", "meta", "variables", "locale"]
             .into_iter()
             .collect::<HashSet<_>>();
         assert_eq!(
@@ -294,7 +301,7 @@ fn validate_instruction_policy(instruction_type: &str, policy: &Value) {
     for rule in references {
         let kind = required_string(rule, "kind", instruction_type);
         match kind {
-            "registry" => {
+            "registry" | "optionalRegistry" => {
                 required_string(rule, "idField", instruction_type);
                 required_string_array(rule, "registryPath", instruction_type);
                 let code = required_string(rule, "missingCode", instruction_type);

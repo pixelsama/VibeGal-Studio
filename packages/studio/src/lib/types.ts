@@ -2,6 +2,7 @@
  * 项目相关类型 —— studio 与 Rust 后端之间的数据契约。
  */
 import type { Manifest as EngineManifest, VariableRegistry } from "@vibegal/engine";
+import type { ChapterCheckpoint, CharacterSpriteRef } from "@vibegal/engine";
 import type { Instruction, SetInstr } from "@vibegal/engine";
 
 /** gal.project.json 的结构 */
@@ -54,6 +55,7 @@ export interface GraphNode {
 export interface GraphChapter {
   id: string;
   title: string;
+  checkpoint?: ChapterCheckpoint;
 }
 
 /** 图边 */
@@ -120,7 +122,7 @@ export interface AssetReport {
 // ──────────────────────────────────────────────
 
 /** 问题来源，决定全局面板的分组 */
-export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta" | "fixture" | "variables";
+export type ProjectIssueSource = "graph" | "node" | "asset" | "manifest" | "meta" | "fixture" | "variables" | "locale";
 
 export interface ProjectIssue {
   severity: GraphIssueSeverity;
@@ -169,6 +171,7 @@ export type ManifestVideoAssetRef = Manifest["videos"][string];
 export type ManifestFontAsset = Manifest["fonts"][string];
 export type ManifestUiSkin = Manifest["uiSkins"][string];
 export type ManifestAnimationAtlas = Manifest["animationAtlases"][string];
+export type { CharacterSpriteRef };
 export type ManifestUnlocks = Manifest["unlocks"];
 
 /** 空的 manifest 常量，用于渲染层 props 的回退值（保持 audio 三子表结构合法）。 */

@@ -25,17 +25,42 @@ static GRAPH_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 static MANIFEST_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 static META_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 static VARIABLES_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
+static LOCALE_VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
 
 pub(crate) fn validate_schema(kind: ContractSchemaKind, value: &Value) -> Vec<ContractViolation> {
     if kind == ContractSchemaKind::NodeFile {
         return validate_node_file(value);
     }
-    truncate_sort(normalize_errors(
+    let mut violations = normalize_errors(
         kind,
         value,
         validator(kind).iter_errors(value),
         None,
-    ))
+    );
+    if kind == ContractSchemaKind::Meta {
+        validate_meta_locale_membership(value, &mut violations);
+    }
+    truncate_sort(violations)
+}
+
+fn validate_meta_locale_membership(value: &Value, violations: &mut Vec<ContractViolation>) {
+    let Some(locale) = value.get("locale").and_then(Value::as_object) else {
+        return;
+    };
+    let Some(default) = locale.get("default").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(available) = locale.get("available").and_then(Value::as_array) else {
+        return;
+    };
+    if !available.iter().any(|tag| tag.as_str() == Some(default)) {
+        violations.push(violation(
+            "meta_invalid_locale",
+            "默认语言必须包含在 available 中".to_string(),
+            "$.locale.default".to_string(),
+            "semantic".to_string(),
+        ));
+    }
 }
 
 fn validate_node_file(value: &Value) -> Vec<ContractViolation> {
@@ -117,6 +142,7 @@ fn validator(kind: ContractSchemaKind) -> &'static jsonschema::Validator {
         ContractSchemaKind::Manifest => &MANIFEST_VALIDATOR,
         ContractSchemaKind::Meta => &META_VALIDATOR,
         ContractSchemaKind::Variables => &VARIABLES_VALIDATOR,
+        ContractSchemaKind::Locale => &LOCALE_VALIDATOR,
     };
     slot.get_or_init(|| compile(schema(kind)))
 }

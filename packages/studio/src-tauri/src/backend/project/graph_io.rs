@@ -44,6 +44,7 @@ fn empty_project_graph() -> ProjectGraph {
         chapters: vec![GraphChapter {
             id: "chapter_1".to_string(),
             title: "第一章".to_string(),
+            checkpoint: None,
         }],
         nodes: vec![],
         edges: vec![],
@@ -126,6 +127,7 @@ fn project_graph_from_valid_json(
                         .as_str()
                         .expect("validated graph chapter title")
                         .to_string(),
+                    checkpoint: chapter.get("checkpoint").cloned(),
                 })
                 .collect::<Vec<_>>()
         })

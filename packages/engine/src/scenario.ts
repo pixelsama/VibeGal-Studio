@@ -489,6 +489,8 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
       return `@showCg ${instruction.id}`;
     case "playVideo":
       return `@playVideo ${instruction.id}${instruction.skippable == null ? "" : ` ${instruction.skippable}`}`;
+    case "inputName":
+      return `@instruction ${stringifyScenarioJson(instruction)}`;
     case "wait":
       return `@wait ${instruction.ms}`;
     case "effect":

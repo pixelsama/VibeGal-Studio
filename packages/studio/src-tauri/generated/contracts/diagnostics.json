@@ -153,9 +153,17 @@
       "severity": "error",
       "source": "meta"
     },
+    "meta_invalid_locale": {
+      "severity": "error",
+      "source": "meta"
+    },
     "meta_invalid_structure": {
       "severity": "error",
       "source": "meta"
+    },
+    "locale_invalid_structure": {
+      "severity": "error",
+      "source": "locale"
     },
     "contract_invalid_value": {
       "severity": "error",
@@ -209,6 +217,15 @@
           ]
         },
         {
+          "code": "meta_invalid_locale",
+          "exact": [
+            "$.locale"
+          ],
+          "prefixes": [
+            "$.locale."
+          ]
+        },
+        {
           "code": "meta_invalid_timing",
           "exact": [
             "$.typingSpeedCps",
@@ -235,6 +252,9 @@
           "exact": []
         }
       ]
+    },
+    "locale": {
+      "defaultCode": "locale_invalid_structure"
     }
   }
 }

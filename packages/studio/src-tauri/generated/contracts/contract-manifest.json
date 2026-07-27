@@ -3,20 +3,21 @@
   "generatorVersion": 1,
   "zodVersion": "4.4.3",
   "sourceSha256": {
-    "src/schema.ts": "09c6b13933b0073b3a79a1c732f5cff30c5aa565bd4dbc8633fc4b9b0026f07c",
-    "src/diagnostics.ts": "c29670728e36078b42cc25e1704ee4d528001230c9d09b70e0ac01f4e11864b2",
+    "src/schema.ts": "cfe38aecfa09f806aede8689a93540fc79b0be681f540bc49b84d6cae1e5652c",
+    "src/diagnostics.ts": "716e426683789801caf218d6f8fb447310615aa352f43482ecbacb9ae0ed7fe6",
     "src/fixtures.ts": "0f13210537f7debc9940f8ef5423fdcdd318ca353bd00c3b9660dbc0ffb2e271",
-    "src/schemaExport.ts": "4bb5581a542685fc4c52ec728418eb36c4af2d21fe931eeb532e36ddb811efab",
+    "src/schemaExport.ts": "06e22e363261778f06c8652c4071319c8b103a80c155d71570b23a702536836c",
     "scripts/generate-contracts.ts": "70950ba39d5cd15e9ba4b836a72d568fc5b98bc693340d62b561a5818fee79fc",
     "package.json": "a0fe1e6cf4490a471dc8aacf431ad5a25b2a24946f60ec834524e4077730627c"
   },
   "artifactSha256": {
-    "nodeFile.schema.json": "93b3e104ab6358055af73232194103e3a00e875a933bc673d723b54743568a67",
-    "graph.schema.json": "4a7d13bbe70113f40f656b787910520778fccf58f98695d9c6989460668dd81c",
-    "manifest.schema.json": "a96e46e82aa581597b372806f2d27522fe5069883c075552826bf080d91f25b7",
-    "meta.schema.json": "04b94a6153bc11bb010b483cbf209fb89cef979bc94b014d3a471ad0610b8ca5",
+    "nodeFile.schema.json": "a9d063cc53230459a281e236436b3faa0b5c0bfeceea14175bfc1e95839ebf52",
+    "graph.schema.json": "e1fa193d0d4a8f45bcd64ddb15f8be3e0332721965e54edde20ff8ef073abffd",
+    "manifest.schema.json": "d4fc9657f6541f78ca6233f4d6cab8fe9a41b219ae5948677a57a4bec0f67ac1",
+    "meta.schema.json": "f3a82b1877c6fe4723625392ad10215a43a7fc934387fba8f38a7fd746c1b9af",
     "variables.schema.json": "cb74f2605f56034d52df9e569303d0d10e1972419f6b1628f848847575a54d1b",
+    "locale.schema.json": "3eeda6013a2237c7696f2e13eb5112784569f245ccf0dd6776190de669164ce3",
     "fixture.schema.json": "d602022250899ec442dccbf776b33cb20a518ea0056e87bdb440db5fc9c23921",
-    "diagnostics.json": "e159e464ba26d05c7d203af279bbebf29266de603752c00a027e24de861d388b"
+    "diagnostics.json": "50e648c985807d6ead08fea9a547cc2e382db0f2f0072349e260fbf75c5a2f57"
   }
 }

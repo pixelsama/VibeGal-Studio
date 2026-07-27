@@ -8,8 +8,19 @@
 export const INSTRUCTION_DEFAULTS = {
   bg: { trans: "fade", ms: 1000 },
   bgm: { fade: 1500, loop: true },
-  char: { expr: "default", pos: "center", trans: "fade", ms: 600, clear: false, remove: false },
+  char: {
+    expr: "default",
+    pos: "center",
+    trans: "fade",
+    ms: 600,
+    clear: false,
+    remove: false,
+    scale: 1,
+    flip: false,
+    exprMs: 0,
+  },
   say: { expr: "default" },
+  inputName: { maxLength: 20 },
   effect: { intensity: 6, ms: 400 },
   transition: { ms: 1000 },
 } as const satisfies Record<string, Record<string, string | number | boolean>>;

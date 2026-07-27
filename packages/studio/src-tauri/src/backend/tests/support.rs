@@ -238,7 +238,7 @@ pub(crate) fn one_node_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
-        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string(), checkpoint: None, }],
         nodes: vec![graph_node("start", "nodes/start.json")],
         edges: vec![],
     }
@@ -248,7 +248,7 @@ pub(crate) fn valid_project_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "prologue".to_string(),
-        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string(), checkpoint: None, }],
         nodes: vec![
             graph_node("prologue", "nodes/prologue.json"),
             graph_node("ending", "nodes/ending.json"),
@@ -272,7 +272,7 @@ pub(crate) fn choice_branch_graph() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
-        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string(), checkpoint: None, }],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("stay", "nodes/stay.json"),
@@ -289,7 +289,7 @@ pub(crate) fn cyclic_graph_without_ending() -> ProjectGraph {
     ProjectGraph {
         version: 1,
         entry_node_id: "start".to_string(),
-        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string() }],
+        chapters: vec![GraphChapter { id: "chapter_1".to_string(), title: "第一章".to_string(), checkpoint: None, }],
         nodes: vec![
             graph_node("start", "nodes/start.json"),
             graph_node("loop_a", "nodes/loop_a.json"),

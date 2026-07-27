@@ -18,7 +18,7 @@ const fixture = JSON.parse(readFileSync(
   nodeCases: Array<{ id: string; input: unknown; issues: ExpectedIssue[] }>;
   schemaCases: Array<{
     id: string;
-    schema: "graph" | "manifest" | "meta";
+    schema: "graph" | "manifest" | "meta" | "locale";
     input: unknown;
     issues: ExpectedIssue[];
   }>;

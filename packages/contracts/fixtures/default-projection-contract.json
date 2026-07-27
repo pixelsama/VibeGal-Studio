@@ -7,13 +7,15 @@
         { "t": "bg", "id": "room" },
         { "t": "bgm", "id": "theme" },
         { "t": "char", "id": "hero" },
-        { "t": "say", "id": "line-1", "who": "hero", "text": "Hello" }
+        { "t": "say", "id": "line-1", "who": "hero", "text": "Hello" },
+        { "t": "inputName", "id": "ask-name", "key": "playerName", "prompt": "Your name?" }
       ],
       "expected": [
         { "t": "bg", "id": "room", "trans": "fade", "ms": 1000 },
         { "t": "bgm", "id": "theme", "fade": 1500, "loop": true },
-        { "t": "char", "id": "hero", "pos": "center", "expr": "default", "trans": "fade", "ms": 600, "clear": false, "remove": false },
-        { "t": "say", "id": "line-1", "who": "hero", "expr": "default", "text": "Hello" }
+        { "t": "char", "id": "hero", "pos": "center", "expr": "default", "trans": "fade", "ms": 600, "clear": false, "remove": false, "scale": 1, "flip": false, "exprMs": 0 },
+        { "t": "say", "id": "line-1", "who": "hero", "expr": "default", "text": "Hello" },
+        { "t": "inputName", "id": "ask-name", "key": "playerName", "prompt": "Your name?", "maxLength": 20 }
       ]
     },
     {
@@ -52,6 +54,27 @@
         "chapterGapMs": 1500,
         "stage": { "width": 1280, "height": 720 }
       }
+    },
+    {
+      "id": "meta.normalizes.locale-tags",
+      "schema": "meta",
+      "input": {
+        "locale": { "default": "ZH-cn", "available": ["ZH-cn", "en"] }
+      },
+      "expected": {
+        "title": "",
+        "typingSpeedCps": 30,
+        "autoAdvanceMs": 1200,
+        "chapterGapMs": 1500,
+        "stage": { "width": 1280, "height": 720 },
+        "locale": { "default": "zh-CN", "available": ["zh-CN", "en"] }
+      }
+    },
+    {
+      "id": "locale.preserves.flat-table",
+      "schema": "locale",
+      "input": { "opening.hello": "Hello" },
+      "expected": { "opening.hello": "Hello" }
     },
     {
       "id": "graph.defaults.nodes-and-edges",

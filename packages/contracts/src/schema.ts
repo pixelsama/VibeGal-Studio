@@ -46,6 +46,10 @@ export const CharInstruction = z.object({
   ms: z.number().int().nonnegative().default(600),
   clear: z.boolean().default(false), // true = 先清空场上所有立绘再登场
   remove: z.boolean().default(false), // true = 让该角色退场
+  scale: z.number().min(0.1).max(4).default(1),
+  flip: z.boolean().default(false),
+  moveFrom: z.string().min(1).optional(),
+  exprMs: z.number().int().nonnegative().default(0),
 }).meta({ "x-vibegal": instructionPolicies.char });
 
 export const StableInstructionIdSchema = z
@@ -59,6 +63,8 @@ export const SayInstruction = z.object({
   who: z.string(), // 引用 manifest.characters 的 key
   expr: z.string().default("default"),
   text: z.string().min(1),
+  textKey: z.string().min(1).optional(),
+  voice: z.string().min(1).optional(), // 引用 manifest.audio.voice 的 key
   ms: z.number().int().nonnegative().optional(), // 打完后的停顿覆盖（0=跟随全局）
 }).meta({ "x-vibegal": instructionPolicies.say });
 
@@ -66,6 +72,7 @@ export const NarrateInstruction = z.object({
   t: z.literal("narrate"),
   id: StableInstructionIdSchema.optional(),
   text: z.string().min(1),
+  textKey: z.string().min(1).optional(),
   ms: z.number().int().nonnegative().optional(), // 该条旁白的自动停顿覆盖（0=跟随全局）
 }).meta({ "x-vibegal": instructionPolicies.narrate });
 
@@ -118,6 +125,15 @@ export const PauseInstruction = z.object({
   id: StableInstructionIdSchema.optional(),
 }).meta({ "x-vibegal": instructionPolicies.pause });
 
+export const InputNameInstruction = z.strictObject({
+  t: z.literal("inputName"),
+  id: StableInstructionIdSchema,
+  key: z.string().min(1),
+  prompt: z.string().min(1),
+  default: z.string().optional(),
+  maxLength: z.number().int().min(1).max(100).default(20),
+}).meta({ "x-vibegal": instructionPolicies.inputName });
+
 export const UnlockInstruction = z.object({
   t: z.literal("unlock"),
   kind: z.enum(["cg", "music", "replay", "endings"]),
@@ -154,6 +170,7 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   EffectInstruction,
   TransitionInstruction,
   PauseInstruction,
+  InputNameInstruction,
   UnlockInstruction,
   ShowCgInstruction,
   PlayVideoInstruction,
@@ -224,12 +241,30 @@ export const UiSkinSchema = z.strictObject({
   tokens: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
 });
 
+export const AnimationAtlasClipSchema = z.strictObject({
+  frames: z.array(z.number().int().nonnegative()).min(1),
+  fps: z.number().min(1).max(60),
+  loop: z.boolean().default(true),
+});
+
 export const AnimationAtlasSchema = z.strictObject({
   image: z.string().min(1),
   json: z.string().optional(),
   frameWidth: z.number().int().positive().optional(),
   frameHeight: z.number().int().positive().optional(),
+  clips: z.record(z.string(), AnimationAtlasClipSchema).optional(),
 });
+
+export const AtlasSpriteRefSchema = z.strictObject({
+  atlas: z.string().min(1),
+  clip: z.string().min(1),
+  fallback: z.string().min(1),
+});
+
+export const CharacterSpriteRefSchema = z.union([
+  z.string().min(1),
+  AtlasSpriteRefSchema,
+]);
 
 export const UnlockRegistrySchema = z.strictObject({
   cg: z.record(z.string(), z.strictObject({
@@ -256,7 +291,7 @@ export const ManifestSchema = z.strictObject({
     z.object({
       name: z.string(),
       color: z.string().default("#ffffff"),
-      sprites: z.record(z.string(), z.string()), // expr → 路径
+      sprites: z.record(z.string(), CharacterSpriteRefSchema), // expr → 静态路径或 atlas clip
     }),
   ),
   backgrounds: z.record(z.string(), z.string()), // id → 路径
@@ -278,13 +313,56 @@ export const StageConfigSchema = z.object({
   height: z.number().int().min(180).max(4320).default(720),
 }).default({ width: 1280, height: 720 });
 
+export const LocaleTagSchema = z.string().regex(
+  /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/,
+  "语言标签必须使用 BCP 47 风格，例如 zh-CN 或 en",
+).transform(canonicalizeLocaleTag);
+
+export const LocaleConfigSchema = z.strictObject({
+  default: LocaleTagSchema,
+  available: z.array(LocaleTagSchema).min(1),
+}).superRefine((locale, context) => {
+  if (!locale.available.includes(locale.default)) {
+    context.addIssue({
+      code: "custom",
+      path: ["default"],
+      message: "默认语言必须包含在 available 中",
+    });
+  }
+  const seen = new Set<string>();
+  locale.available.forEach((tag, index) => {
+    if (seen.has(tag)) {
+      context.addIssue({
+        code: "custom",
+        path: ["available", index],
+        message: `语言标签 ${tag} 重复`,
+      });
+    }
+    seen.add(tag);
+  });
+});
+
+export const LocaleTableSchema = z.record(z.string().min(1), z.string());
+
 export const MetaSchema = z.object({
   title: z.string().default(""),
   typingSpeedCps: z.number().positive().default(30), // 每秒字符数
   autoAdvanceMs: z.number().int().nonnegative().default(1200),
   chapterGapMs: z.number().int().nonnegative().default(1500),
   stage: StageConfigSchema,
+  locale: LocaleConfigSchema.optional(),
 });
+
+function canonicalizeLocaleTag(tag: string): string {
+  return tag.split("-").map((part, index) => {
+    if (index === 0) return part.toLowerCase();
+    if (/^[A-Za-z]{4}$/.test(part)) {
+      return `${part[0].toUpperCase()}${part.slice(1).toLowerCase()}`;
+    }
+    if (/^(?:[A-Za-z]{2}|\d{3})$/.test(part)) return part.toUpperCase();
+    return part.toLowerCase();
+  }).join("-");
+}
 
 // ──────────────────────────────────────────────
 // graph：脚本图结构（content/graph.json + content/nodes/*.json）
@@ -306,9 +384,28 @@ export const GraphNodeSchema = z.object({
   chapterId: z.string().min(1),
 });
 
+export const ChapterCheckpointSchema = z.strictObject({
+  nodeId: z.string().min(1),
+  instructionId: z.string().min(1).nullable().optional(),
+  vars: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
+  background: z.string().nullable().default(null),
+  sprites: z.array(z.strictObject({
+    id: z.string().min(1),
+    pos: z.string().min(1),
+    expr: z.string().min(1),
+    scale: z.number().min(0.1).max(4).default(1),
+    flip: z.boolean().default(false),
+  })).default([]),
+  bgm: z.strictObject({
+    id: z.string().min(1),
+    loop: z.boolean().default(true),
+  }).nullable().default(null),
+});
+
 export const GraphChapterSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
+  checkpoint: ChapterCheckpointSchema.optional(),
 });
 
 export const GraphEdgeSchema = z.object({

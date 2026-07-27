@@ -101,7 +101,17 @@ fn open_project_loads_graph_chapter_metadata_without_changing_flow() {
             "version": 1,
             "entryNodeId": "start",
             "chapters": [
-                { "id": "opening", "title": "序章" },
+                {
+                    "id": "opening",
+                    "title": "序章",
+                    "checkpoint": {
+                        "nodeId": "start",
+                        "vars": { "route": "opening" },
+                        "background": null,
+                        "sprites": [],
+                        "bgm": null
+                    }
+                },
                 { "id": "route", "title": "分支章" }
             ],
             "nodes": [
@@ -120,6 +130,7 @@ fn open_project_loads_graph_chapter_metadata_without_changing_flow() {
     let graph = opened.graph.unwrap();
 
     assert_eq!(graph.chapters.len(), 2);
+    assert_eq!(graph.chapters[0].checkpoint.as_ref().unwrap()["nodeId"], "start");
     assert_eq!(graph.chapters[1].title, "分支章");
     assert_eq!(graph.nodes[0].chapter_id, "opening");
     assert_eq!(graph.nodes[1].chapter_id, "route");
@@ -534,6 +545,7 @@ fn open_project_is_read_only_and_reports_missing_support_files() {
             ".galstudio/renderer-contract.md".to_string(),
             ".galstudio/schemas/fixture.json".to_string(),
             ".galstudio/schemas/graph.json".to_string(),
+            ".galstudio/schemas/locale.json".to_string(),
             ".galstudio/schemas/manifest.json".to_string(),
             ".galstudio/schemas/meta.json".to_string(),
             ".galstudio/schemas/nodeFile.json".to_string(),

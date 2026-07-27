@@ -15,8 +15,8 @@ import {
   type DiagnosticCode,
   type DiagnosticSource,
   type InstructionPolicy,
-  type InstructionRule,
 } from "@vibegal/contracts";
+import type { InstructionRule } from "@vibegal/contracts/diagnostics";
 import type { Manifest, Meta, Chapter } from "./types";
 
 export interface ValidationIssue {
@@ -92,6 +92,11 @@ export function validateManifest(raw: unknown, file = "manifest.json"): Validati
   return contractIssues("manifest", raw, file);
 }
 
+/** 校验 locale 表结构 */
+export function validateLocale(raw: unknown, file = "locale.json"): ValidationIssue[] {
+  return contractIssues("locale", raw, file);
+}
+
 /** 校验 meta 结构 */
 export function validateMeta(raw: unknown, file = "meta.json"): ValidationIssue[] {
   return contractIssues("meta", raw, file);
@@ -127,8 +132,9 @@ function validateReferenceRule(
   index: number,
   issues: ValidationIssue[],
 ) {
-  if (rule.kind === "registry") {
+  if (rule.kind === "registry" || rule.kind === "optionalRegistry") {
     const id = fields[rule.idField];
+    if (rule.kind === "optionalRegistry" && id == null) return;
     const registry = recordAtPath(manifest, rule.registryPath);
     if (typeof id === "string" && !(id in registry)) {
       issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `$[${index}].${rule.idField}`));
@@ -183,7 +189,7 @@ function recordAtPath(value: unknown, path: readonly string[]): Record<string, u
 }
 
 function contractIssues(
-  schema: "nodeFile" | "manifest" | "meta",
+  schema: "nodeFile" | "manifest" | "meta" | "locale",
   raw: unknown,
   file: string,
 ): ValidationIssue[] {

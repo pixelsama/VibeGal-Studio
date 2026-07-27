@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import { X, UserRoundPlus } from "lucide-react";
-import type { Manifest, ManifestCharacter } from "../../lib/types";
+import type { Manifest, ManifestCharacter, CharacterSpriteRef } from "../../lib/types";
 import { importAsset, pickAssetFiles } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { EmptyState } from "../common/EmptyState";
@@ -114,7 +114,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
     const char = manifest.characters[id];
     if (!char || !newExpr.trim() || oldExpr === newExpr) return;
     const entries = Object.entries(char.sprites);
-    const reordered = entries.reduce<Record<string, string>>((acc, [k, v]) => {
+    const reordered = entries.reduce<Record<string, CharacterSpriteRef>>((acc, [k, v]) => {
       acc[k === oldExpr ? newExpr : k] = v;
       return acc;
     }, {});
@@ -222,11 +222,11 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
 
             <div style={propGroupStyle}>
               <div style={panelTitleStyle}>表情资源</div>
-              {Object.entries(selected.sprites).map(([expr, path]) => (
+              {Object.entries(selected.sprites).map(([expr, sprite]) => (
                 <SpriteExprRow
                   key={expr}
                   expr={expr}
-                  path={path}
+                  sprite={sprite}
                   projectPath={projectPath}
                   isDefault={expr === "default"}
                   onRename={(newExpr) => renameSpriteExpr(selectedId, expr, newExpr)}
@@ -234,7 +234,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                   onSetDefault={() => {
                     if (disabled) return;
                     if (expr === "default") return;
-                    const reordered = { default: path, ...omit(selected.sprites, expr) };
+                    const reordered = { default: sprite, ...omit(selected.sprites, expr) };
                     updateCharacter(selectedId, { sprites: reordered });
                   }}
                   disabled={disabled}
@@ -276,7 +276,10 @@ function formatUnknownError(error: unknown): string {
 
 /** 中间舞台：渲染选中角色的 default sprite。 */
 function CharacterStage({ char, projectPath }: { char: ManifestCharacter; projectPath: string }) {
-  const defaultPath = char.sprites.default;
+  const defaultSprite = char.sprites.default;
+  const defaultPath = defaultSprite
+    ? typeof defaultSprite === "string" ? defaultSprite : defaultSprite.fallback
+    : null;
   return (
     <div style={stageInnerStyle}>
       {defaultPath ? (
@@ -299,7 +302,7 @@ function CharacterStage({ char, projectPath }: { char: ManifestCharacter; projec
 
 function SpriteExprRow({
   expr,
-  path,
+  sprite,
   projectPath,
   isDefault,
   onRename,
@@ -308,7 +311,7 @@ function SpriteExprRow({
   disabled,
 }: {
   expr: string;
-  path: string;
+  sprite: CharacterSpriteRef;
   projectPath: string;
   isDefault: boolean;
   onRename: (newExpr: string) => void;
@@ -318,6 +321,7 @@ function SpriteExprRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(expr);
+  const path = typeof sprite === "string" ? sprite : sprite.fallback;
   return (
     <div style={exprRowStyle}>
       <AssetImagePreview
@@ -363,7 +367,9 @@ function SpriteExprRow({
             {isDefault && <span style={defaultTagStyle}>默认</span>}
           </button>
         )}
-        <span style={exprPathStyle} title={path}>{path}</span>
+        <span style={exprPathStyle} title={path}>
+          {typeof sprite === "string" ? path : `${path} · 图集 ${sprite.atlas}/${sprite.clip}`}
+        </span>
       </div>
       <div style={{ display: "flex", gap: "var(--space-1)" }}>
         {!isDefault && (
@@ -435,7 +441,7 @@ function SpriteExprAddForm({
 export function spriteExprNameForImport(
   draft: string,
   fileName: string,
-  sprites: Record<string, string>,
+  sprites: Record<string, CharacterSpriteRef>,
 ): string {
   const typed = draft.trim();
   if (typed) return typed;
@@ -453,7 +459,7 @@ function fileStem(fileName: string): string {
   return dot > 0 ? file.slice(0, dot) : file;
 }
 
-function uniqueSpriteExprName(base: string, sprites: Record<string, string>): string {
+function uniqueSpriteExprName(base: string, sprites: Record<string, CharacterSpriteRef>): string {
   const seed = base.trim() || "sprite";
   if (!Object.prototype.hasOwnProperty.call(sprites, seed)) return seed;
 

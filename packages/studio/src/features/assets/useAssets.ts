@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { listAssets } from "../../lib/tauri";
 import type { AssetEntry, AssetKind, AssetReport, Manifest } from "../../lib/types";
+import { characterSpriteAssetPaths } from "./assetUsage";
 
 export interface AssetView {
   /** 磁盘上存在的资产（list_assets 返回） */
@@ -44,13 +45,15 @@ function collectDeclared(manifest: Manifest): DanglingAsset[] {
   }
 
   for (const [charId, char] of Object.entries(manifest.characters)) {
-    for (const [expr, path] of Object.entries(char.sprites)) {
-      out.push({
-        kind: "character",
-        id: `${charId}/${expr}`,
-        path,
-        source: `characters.${charId}.sprites.${expr}`,
-      });
+    for (const [expr, sprite] of Object.entries(char.sprites)) {
+      for (const path of characterSpriteAssetPaths(sprite)) {
+        out.push({
+          kind: "character",
+          id: `${charId}/${expr}`,
+          path,
+          source: `characters.${charId}.sprites.${expr}`,
+        });
+      }
     }
   }
 
