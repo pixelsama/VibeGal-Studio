@@ -1,0 +1,10 @@
+[
+  { "t": "transition", "type": "white_in", "ms": 900 },
+  { "t": "char", "id": "protagonist", "pos": "center", "expr": "default", "trans": "fade", "ms": 500 },
+  { "t": "say", "id": "protect_001", "who": "protagonist", "expr": "default", "text": "让开。" },
+  { "t": "sfx", "id": "sfx_boom" },
+  { "t": "narrate", "id": "protect_002", "text": "她挡在了那条不肯走的船前面。海面为她立起一道墙。" },
+  { "t": "unlock", "kind": "cg", "id": "smoke_ocean" },
+  { "t": "showCg", "id": "smoke_ocean" },
+  { "t": "completeEnding", "id": "protect_ending", "endingId": "guardian" }
+]

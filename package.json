@@ -15,6 +15,7 @@
     "check:schemas": "node scripts/check-schema-drift.mjs",
     "check:engine-types": "node scripts/check-engine-types-drift.mjs",
     "check:renderer-template": "node scripts/check-default-renderer-drift.mjs",
+    "check:example-template": "node scripts/check-example-template-drift.mjs",
     "check:doc-contract": "node scripts/check-doc-contract.mjs",
     "check:vocabulary": "node scripts/check-vocabulary.mjs",
     "smoke:release": "node scripts/release-smoke.mjs"

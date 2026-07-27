@@ -1,5 +1,12 @@
 //! Stable backend DTOs shared by the CLI facade and domain services.
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectTemplate {
+    Blank,
+    Example,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProjectMeta {
     pub name: String,

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070b18"/>
+      <stop offset="1" stop-color="#141a2e"/>
+    </linearGradient>
+    <linearGradient id="sea2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#10162a"/>
+      <stop offset="1" stop-color="#05080f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="640" fill="url(#sky2)"/>
+  <rect y="640" width="1920" height="440" fill="url(#sea2)"/>
+  <g fill="#ffffff">
+    <circle cx="180" cy="120" r="1.5" opacity="0.8"/>
+    <circle cx="420" cy="200" r="1" opacity="0.6"/>
+    <circle cx="760" cy="90" r="1.8" opacity="0.9"/>
+    <circle cx="1100" cy="160" r="1" opacity="0.5"/>
+    <circle cx="1450" cy="110" r="1.4" opacity="0.7"/>
+    <circle cx="1700" cy="220" r="1" opacity="0.6"/>
+    <circle cx="320" cy="320" r="1.2" opacity="0.7"/>
+    <circle cx="980" cy="280" r="0.9" opacity="0.5"/>
+    <circle cx="1620" cy="340" r="1.3" opacity="0.7"/>
+  </g>
+  <circle cx="1500" cy="180" r="46" fill="#e8e4d0" opacity="0.92"/>
+  <circle cx="1525" cy="172" r="42" fill="#070b18"/>
+</svg>

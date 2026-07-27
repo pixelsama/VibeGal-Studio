@@ -4,7 +4,9 @@
 pub(crate) fn create_project(
     parent_dir: &str,
     name: &str,
+    template: ProjectTemplate,
     default_renderer_dir: &Path,
+    example_content_dir: &Path,
 ) -> Result<PathBuf, String> {
     // 校验项目名：只允许文件名片段，禁止路径分隔符与 ..
     validate_plain_name(&name, "项目名")?;
@@ -16,7 +18,17 @@ pub(crate) fn create_project(
         return Err(format!("目录已存在: {}", project_path.display()));
     }
 
-    initialize_project_root(&project_path, name, default_renderer_dir)?;
+    match template {
+        ProjectTemplate::Blank => {
+            initialize_project_root(&project_path, name, default_renderer_dir)?;
+        }
+        ProjectTemplate::Example => initialize_project_root_from_example(
+            &project_path,
+            name,
+            default_renderer_dir,
+            example_content_dir,
+        )?,
+    }
     Ok(project_path)
 }
 
@@ -658,8 +670,12 @@ use super::fs::{
 use super::identity::{
     assign_missing_story_point_ids, AssignedInstructionId, InstructionIdentityContext,
 };
-use super::model::{AssetEntry, FileRevision, GraphPositionPatchInput, ProjectMeta};
-use super::project::{initialize_project_root, list_asset_entries};
+use super::model::{
+    AssetEntry, FileRevision, GraphPositionPatchInput, ProjectMeta, ProjectTemplate,
+};
+use super::project::{
+    initialize_project_root, initialize_project_root_from_example, list_asset_entries,
+};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};

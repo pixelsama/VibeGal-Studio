@@ -1,0 +1,5 @@
+[
+  { "t": "narrate", "id": "shore_001", "text": "她停在浅滩上，看着那片火光慢慢矮下去。" },
+  { "t": "say", "id": "shore_002", "who": "protagonist", "expr": "hurt", "text": "……不是我的事。" },
+  { "t": "narrate", "id": "shore_003", "text": "潮水回来了，盖住了她的脚印。" }
+]

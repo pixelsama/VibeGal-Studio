@@ -9,7 +9,7 @@ use super::game_build::{
 };
 use super::model::{
     AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, ProjectData,
-    ProjectListItem, ProjectMeta,
+    ProjectListItem, ProjectMeta, ProjectTemplate,
 };
 use super::mutation;
 use super::project;
@@ -113,11 +113,19 @@ pub(crate) fn open_project(
 pub(crate) fn create_project(
     parent_dir: String,
     name: String,
+    template: ProjectTemplate,
     app_handle: tauri::AppHandle,
     scope_state: tauri::State<'_, AssetScopeState>,
 ) -> Result<ProjectData, String> {
-    let template = resources::default_renderer_dir(&app_handle)?;
-    let project_path = mutation::create_project(&parent_dir, &name, &template)?;
+    let renderer_template = resources::default_renderer_dir(&app_handle)?;
+    let example_content = resources::example_content_dir(&app_handle)?;
+    let project_path = mutation::create_project(
+        &parent_dir,
+        &name,
+        template,
+        &renderer_template,
+        &example_content,
+    )?;
     open_project_with_scope(
         project_path.to_string_lossy().as_ref(),
         &app_handle,

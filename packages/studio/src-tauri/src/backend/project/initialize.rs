@@ -8,13 +8,25 @@ pub(crate) fn ensure_initialization_targets_available(
     project_path: &Path,
     default_renderer_dir: &Path,
 ) -> Result<(), String> {
+    ensure_project_shell_targets_available(project_path, default_renderer_dir)?;
     for path in [
-        project_path.join("gal.project.json"),
         project_path.join("content/manifest.json"),
         project_path.join("content/meta.json"),
         project_path.join("content/graph.json"),
         project_path.join("content/variables.json"),
         project_path.join("content/nodes/start.json"),
+    ] {
+        ensure_can_create_file(&path)?;
+    }
+    Ok(())
+}
+
+fn ensure_project_shell_targets_available(
+    project_path: &Path,
+    default_renderer_dir: &Path,
+) -> Result<(), String> {
+    for path in [
+        project_path.join("gal.project.json"),
         project_path.join("AGENTS.md"),
         project_path.join(".galstudio/README.md"),
         project_path.join(".galstudio/renderer-contract.md"),
@@ -149,6 +161,42 @@ pub(crate) fn initialize_project_root(
         &project_path.join("content/nodes/start.json"),
         &initial_node.node,
     )?;
+    write_project_shell(project_path, name, default_renderer_dir)
+}
+
+pub(crate) fn initialize_project_root_from_example(
+    project_path: &Path,
+    name: &str,
+    default_renderer_dir: &Path,
+    example_content_dir: &Path,
+) -> Result<(), String> {
+    ensure_project_shell_targets_available(project_path, default_renderer_dir)?;
+    ensure_copy_targets_available(example_content_dir, &project_path.join("content"))?;
+
+    let meta_path = example_content_dir.join("meta.json");
+    let mut meta = super::super::fs::read_json(&meta_path)?;
+    let object = meta
+        .as_object_mut()
+        .ok_or_else(|| "示例内容 meta.json 必须是对象".to_string())?;
+    object.insert(
+        "title".to_string(),
+        serde_json::Value::String(name.to_string()),
+    );
+
+    copy_dir_all(example_content_dir, &project_path.join("content"))
+        .map_err(|e| format!("复制示例内容失败: {}", e))?;
+    write_json(&project_path.join("content/meta.json"), &meta)?;
+
+    write_project_shell(project_path, name, default_renderer_dir)
+}
+
+fn write_project_shell(
+    project_path: &Path,
+    name: &str,
+    default_renderer_dir: &Path,
+) -> Result<(), String> {
+    fs::create_dir_all(project_path.join("renderers/default"))
+        .map_err(|e| format!("创建 renderers/default 失败: {}", e))?;
     super::write_project_self_description(project_path)?;
     copy_dir_all(
         default_renderer_dir,

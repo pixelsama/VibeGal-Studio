@@ -1,0 +1,5 @@
+[
+  { "t": "narrate", "id": "adrift_001", "text": "天亮了。海面上什么都没剩下。" },
+  { "t": "say", "id": "adrift_002", "who": "protagonist", "expr": "hurt", "text": "我还是不记得自己的名字。" },
+  { "t": "completeEnding", "id": "adrift_ending", "endingId": "adrift" }
+]

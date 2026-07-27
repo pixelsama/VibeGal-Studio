@@ -9,6 +9,24 @@ pub use super::identity::{
     InstructionIdentityError,
 };
 
+pub use super::model::ProjectTemplate;
+
+pub fn create_project_from_template(
+    parent_dir: &str,
+    name: &str,
+    template: ProjectTemplate,
+    default_renderer_dir: &std::path::Path,
+    example_content_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    super::mutation::create_project(
+        parent_dir,
+        name,
+        template,
+        default_renderer_dir,
+        example_content_dir,
+    )
+}
+
 pub fn open_project_for_cli(path: &str) -> Result<ProjectData, String> {
     super::project::open_project_for_cli(path)
 }

@@ -5,6 +5,7 @@ import {
   buildDesktopGame,
   buildWebGame,
   cancelDesktopGameBuild,
+  createProject,
   desktopBuildPreflight,
   isDesktopBuildResult,
   normalizeDesktopBuildFailure,
@@ -59,6 +60,20 @@ const webSuccessResult: WebBuildResult = {
 beforeEach(() => {
   invokeMock.mockReset();
   openMock.mockReset();
+});
+
+describe("createProject", () => {
+  it("passes the required blank/example template value to Rust", async () => {
+    invokeMock.mockResolvedValue({ path: "/projects/Story" });
+
+    await createProject("/projects", "Story", "example");
+
+    expect(invokeMock).toHaveBeenCalledWith("create_project", {
+      parentDir: "/projects",
+      name: "Story",
+      template: "example",
+    });
+  });
 });
 
 describe("pickOverviewAssetFiles", () => {

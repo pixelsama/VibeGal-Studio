@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, FolderOpen, Plus, Settings as SettingsIcon, X } from "lucide-react";
-import { createProject, initializeProject, listProjects, openProject, pickDirectory } from "../../lib/tauri";
+import { createProject, initializeProject, listProjects, openProject, pickDirectory, type ProjectTemplate } from "../../lib/tauri";
 import type { ProjectData, ProjectListItem } from "../../lib/types";
 import {
   loadRecentProjects,
@@ -61,6 +61,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   const [error, setError] = useState<string | null>(null);
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectTemplate, setNewProjectTemplate] = useState<ProjectTemplate>("blank");
   const [initTarget, setInitTarget] = useState<string | null>(null);
   const [containedTarget, setContainedTarget] = useState<{
     path: string;
@@ -165,6 +166,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setError(null);
     setNewProjectParent(parentDir);
     setNewProjectName("");
+    setNewProjectTemplate("blank");
   };
 
   const handleCreateProject = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -175,7 +177,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     setLoading(true);
     setError(null);
     try {
-      completeOpen(await createProject(newProjectParent, projectName));
+      completeOpen(await createProject(newProjectParent, projectName, newProjectTemplate));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -275,6 +277,11 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
               style={inputStyle}
               disabled={loading}
             />
+            <ProjectTemplatePicker
+              value={newProjectTemplate}
+              disabled={loading}
+              onChange={setNewProjectTemplate}
+            />
             {error && <div style={modalErrorStyle}>{error}</div>}
             <div style={modalActionsStyle}>
               <Button
@@ -284,6 +291,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
                 onClick={() => {
                   setNewProjectParent(null);
                   setNewProjectName("");
+                  setNewProjectTemplate("blank");
                   setError(null);
                 }}
               >
@@ -328,6 +336,48 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
         />
       )}
     </div>
+  );
+}
+
+export function ProjectTemplatePicker({
+  value,
+  disabled = false,
+  onChange,
+}: {
+  value: ProjectTemplate;
+  disabled?: boolean;
+  onChange: (template: ProjectTemplate) => void;
+}) {
+  return (
+    <fieldset style={templateFieldsetStyle} disabled={disabled}>
+      <legend style={templateLegendStyle}>从哪里开始</legend>
+      <label style={templateOptionStyle}>
+        <input
+          type="radio"
+          name="project-template"
+          value="blank"
+          checked={value === "blank"}
+          onChange={() => onChange("blank")}
+        />
+        <span>
+          <strong style={templateTitleStyle}>空白项目</strong>
+          <span style={templateDescriptionStyle}>从一个起始节点开始写自己的故事。</span>
+        </span>
+      </label>
+      <label style={templateOptionStyle}>
+        <input
+          type="radio"
+          name="project-template"
+          value="example"
+          checked={value === "example"}
+          onChange={() => onChange("example")}
+        />
+        <span>
+          <strong style={templateTitleStyle}>带示例</strong>
+          <span style={templateDescriptionStyle}>包含可运行的分流、故事状态、结局与资源。</span>
+        </span>
+      </label>
+    </fieldset>
   );
 }
 
@@ -580,6 +630,42 @@ const inputStyle: React.CSSProperties = {
   color: "var(--text-primary)",
   fontFamily: "inherit",
   fontSize: "var(--text-md)",
+};
+const templateFieldsetStyle: React.CSSProperties = {
+  border: 0,
+  padding: 0,
+  margin: "var(--space-4) 0 0",
+  display: "grid",
+  gap: "var(--space-2)",
+};
+const templateLegendStyle: React.CSSProperties = {
+  padding: 0,
+  marginBottom: "var(--space-2)",
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-sm)",
+  fontWeight: 600,
+};
+const templateOptionStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto minmax(0, 1fr)",
+  alignItems: "start",
+  gap: "var(--space-2)",
+  padding: "var(--space-3)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  cursor: "pointer",
+};
+const templateTitleStyle: React.CSSProperties = {
+  display: "block",
+  color: "var(--text-primary)",
+  fontSize: "var(--text-sm)",
+};
+const templateDescriptionStyle: React.CSSProperties = {
+  display: "block",
+  marginTop: 2,
+  color: "var(--text-muted)",
+  fontSize: "var(--text-xs)",
+  lineHeight: 1.5,
 };
 const modalActionsStyle: React.CSSProperties = { display: "flex", justifyContent: "flex-end", gap: "var(--space-2)", marginTop: "var(--space-4)" };
 const errorStyle: React.CSSProperties = {

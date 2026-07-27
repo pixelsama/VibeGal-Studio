@@ -227,6 +227,32 @@ fn project_self_description_repair_rejects_symlinked_parent_directory() {
 }
 
 #[test]
+fn example_project_preflight_checks_every_content_target_before_writing() {
+    let root = unique_temp_dir("example-init-conflict");
+    let renderer_template = root.join("renderer-template");
+    let project = root.join("story");
+    let example_content = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/example-content");
+    let conflict = project.join("content/assets/backgrounds/ocean_dawn.svg");
+    write_text(&renderer_template.join("index.tsx"), "export default {};");
+    write_text(&conflict, "keep me");
+
+    let error = initialize_project_root_from_example(
+        &project,
+        "Story",
+        &renderer_template,
+        &example_content,
+    )
+    .unwrap_err();
+
+    assert!(error.contains("覆盖已有文件"), "unexpected error: {error}");
+    assert_eq!(fs::read_to_string(conflict).unwrap(), "keep me");
+    assert!(!project.join("gal.project.json").exists());
+    assert!(!project.join("content/graph.json").exists());
+    assert!(!project.join("renderers/default/index.tsx").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn initialize_project_root_does_not_overwrite_existing_files() {
     let root = unique_temp_dir("init-conflict");
     let renderer_template = root.join("template");

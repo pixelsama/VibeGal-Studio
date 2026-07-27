@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "variables": {
+    "resolve": {
+      "kind": "meter",
+      "label": "决心",
+      "type": "number",
+      "default": 0,
+      "nullable": false,
+      "scope": "run",
+      "min": 0,
+      "max": 10,
+      "bands": [
+        { "id": "adrift", "label": "漂着", "upTo": 2 },
+        { "id": "wavering", "label": "动摇", "upTo": 5 },
+        { "id": "certain", "label": "笃定" }
+      ],
+      "description": "她愿意为别人涉险到什么程度。"
+    },
+    "knows_the_fire": {
+      "kind": "flag",
+      "label": "看清了那场战斗",
+      "type": "boolean",
+      "default": false,
+      "nullable": false,
+      "scope": "run",
+      "description": "她是否真的看清了火光那边发生的事。"
+    },
+    "route": {
+      "kind": "state",
+      "label": "当前走向",
+      "type": "string",
+      "default": "drifting",
+      "nullable": false,
+      "scope": "run",
+      "options": [
+        { "id": "drifting", "label": "随波" },
+        { "id": "protector", "label": "护卫" }
+      ]
+    }
+  }
+}

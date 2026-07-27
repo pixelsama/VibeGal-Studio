@@ -4,6 +4,7 @@ import {
   ContainedProjectsDialog,
   formatRecentProjectOpenedAt,
   ProjectList,
+  ProjectTemplatePicker,
   RecentProjectList,
   WorkspaceProjectList,
   resolveProjectDirectory,
@@ -63,6 +64,20 @@ describe("ProjectList entry page", () => {
     expect(html).toContain("Recent");
     expect(html).toContain("工作区");
     expect(html).toContain("/ws");
+  });
+});
+
+describe("ProjectTemplatePicker", () => {
+  it("defaults creators to a blank project and explains the runnable example", () => {
+    const html = renderToStaticMarkup(
+      <ProjectTemplatePicker value="blank" onChange={() => {}} />,
+    );
+
+    expect(html).toContain("空白项目");
+    expect(html).toContain("带示例");
+    expect(html).toContain("可运行的分流、故事状态、结局与资源");
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*value="blank"/);
+    expect(html).not.toMatch(/<input[^>]*checked=""[^>]*value="example"/);
   });
 });
 

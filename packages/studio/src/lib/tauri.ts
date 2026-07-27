@@ -87,9 +87,19 @@ export async function openProject(path: string): Promise<ProjectData> {
   return withNormalizedManifest(await invoke<ProjectData>("open_project", { path }));
 }
 
+export type ProjectTemplate = "blank" | "example";
+
 /** 在指定目录初始化一个新项目（复制默认模板，写 gal.project.json） */
-export async function createProject(parentDir: string, name: string): Promise<ProjectData> {
-  return withNormalizedManifest(await invoke<ProjectData>("create_project", { parentDir, name }));
+export async function createProject(
+  parentDir: string,
+  name: string,
+  template: ProjectTemplate,
+): Promise<ProjectData> {
+  return withNormalizedManifest(await invoke<ProjectData>("create_project", {
+    parentDir,
+    name,
+    template,
+  }));
 }
 
 /** 把指定目录初始化为 VibeGal-Studio 项目（不额外套子目录），然后打开 */

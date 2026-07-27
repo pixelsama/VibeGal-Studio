@@ -29,11 +29,18 @@ fn cli_sidecar_target_triple() -> Option<&'static str> {
 }
 
 pub(crate) fn default_renderer_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app_handle
+    Ok(resource_dir(app_handle)?.join("resources/default-renderer"))
+}
+
+pub(crate) fn example_content_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(resource_dir(app_handle)?.join("resources/example-content"))
+}
+
+fn resource_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app_handle
         .path()
         .resource_dir()
-        .map_err(|e| format!("获取 resource_dir 失败: {}", e))?
-        .join("resources/default-renderer"))
+        .map_err(|e| format!("获取 resource_dir 失败: {}", e))
 }
 
 pub(crate) fn settings_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
