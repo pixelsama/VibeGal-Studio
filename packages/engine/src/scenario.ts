@@ -75,6 +75,83 @@ function pruneUndefined<T extends Record<string, unknown>>(value: T): T {
  * 台词行的说话人部分：`雪`、`雪(hurt)`、`雪(hurt, 1800ms)`、`雪(1800ms)`。
  * 表情与停顿写在冒号左边，右边永远是纯台词文本。
  */
+function parseScenarioStringArguments(raw: string):
+  | { ok: true; values: string[] }
+  | { ok: false; message: string } {
+  const values: string[] = [];
+  let cursor = 0;
+
+  while (cursor < raw.length) {
+    while (/\s/.test(raw[cursor] ?? "")) cursor += 1;
+    if (cursor >= raw.length) break;
+    if (raw[cursor] !== '"') {
+      return { ok: false, message: "提问和默认名字需要用引号包起来。" };
+    }
+
+    const start = cursor;
+    cursor += 1;
+    let escaped = false;
+    while (cursor < raw.length) {
+      const character = raw[cursor];
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') break;
+      cursor += 1;
+    }
+    if (cursor >= raw.length) return { ok: false, message: "引号没有闭合。" };
+
+    const serialized = raw.slice(start, cursor + 1);
+    try {
+      const value: unknown = JSON.parse(serialized);
+      if (typeof value !== "string") throw new TypeError("not a string");
+      values.push(value);
+    } catch {
+      return { ok: false, message: "引号里的文字无法读取。" };
+    }
+    cursor += 1;
+  }
+
+  return { ok: true, values };
+}
+
+function parseNameInputCommand(command: string, trimmed: string): ParsedLine {
+  const raw = trimmed.slice(command.length).trim();
+  const keyMatch = raw.match(/^(\S+)(?:\s+|$)/);
+  if (!keyMatch) return { ok: false, message: "玩家命名需要选择一个文本故事状态。" };
+
+  const key = keyMatch[1];
+  let rest = raw.slice(keyMatch[0].length).trim();
+  let maxLength: number | undefined;
+  const lengthMatch = rest.match(/^(\d+)(?:\s+|$)/);
+  if (lengthMatch) {
+    maxLength = Number.parseInt(lengthMatch[1], 10);
+    if (maxLength < 1 || maxLength > 100) {
+      return { ok: false, message: "名字长度必须在 1–100 个字符之间。" };
+    }
+    rest = rest.slice(lengthMatch[0].length).trim();
+  }
+
+  const strings = parseScenarioStringArguments(rest);
+  if (!strings.ok) return { ok: false, message: `玩家命名：${strings.message}` };
+  if (strings.values.length === 0 || !strings.values[0]) {
+    return { ok: false, message: "玩家命名需要一句提问。" };
+  }
+  if (strings.values.length > 2) {
+    return { ok: false, message: "玩家命名最多填写提问和默认名字两段文字。" };
+  }
+
+  return {
+    ok: true,
+    instruction: pruneUndefined({
+      t: "inputName",
+      key,
+      prompt: strings.values[0],
+      default: strings.values[1],
+      maxLength,
+    }) as Instruction,
+  };
+}
+
 function parseSpeakerHead(head: string):
   | { ok: true; who: string; expr?: string; voice?: string; ms?: number }
   | { ok: false; message: string } {
@@ -300,6 +377,8 @@ export function parseScenarioLine(line: string): ParsedLine {
         }
         return { ok: true, instruction: { t: "set", key, value: parseScenarioValue(valueRaw) } as Instruction };
       }
+      case "@inputName":
+        return parseNameInputCommand(command, trimmed);
       case "@completeEnding": {
         const endingId = parts[1];
         if (!endingId) return { ok: false, message: "@completeEnding 需要结局 ID。" };
@@ -503,7 +582,15 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
     case "playVideo":
       return `@playVideo ${instruction.id}${instruction.skippable == null ? "" : ` ${instruction.skippable}`}`;
     case "inputName":
-      return `@instruction ${stringifyScenarioJson(instruction)}`;
+      return joinTokens([
+        "@inputName",
+        instruction.key,
+        instruction.maxLength === defaults?.maxLength || instruction.maxLength === undefined
+          ? undefined
+          : String(instruction.maxLength),
+        JSON.stringify(instruction.prompt),
+        instruction.default === undefined ? undefined : JSON.stringify(instruction.default),
+      ]);
     case "wait":
       return `@wait ${instruction.ms}`;
     case "effect":
@@ -571,7 +658,8 @@ export function isBlockingInstruction(instruction: Instruction): boolean {
   return instruction.t === "say"
     || instruction.t === "narrate"
     || instruction.t === "wait"
-    || instruction.t === "pause";
+    || instruction.t === "pause"
+    || instruction.t === "inputName";
 }
 
 function parseScenarioValue(raw: string): string | number | boolean | null {

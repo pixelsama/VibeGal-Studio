@@ -200,6 +200,49 @@ hero(hurt, 0ms): 别把 : 和 @ 当成语法。
     expect(result.instructions).toEqual(instructions.map(withoutStoryPointId));
   });
 
+  it("parses player naming drafts before the backend assigns stable identity", () => {
+    const result = parseScenarioText('@inputName playerName "你的名字？"');
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+    expect(result.instructions).toEqual([
+      { t: "inputName", key: "playerName", prompt: "你的名字？" },
+    ]);
+  });
+
+  it("round-trips player naming without exposing instruction JSON or stable identity", () => {
+    const instruction = {
+      t: "inputName",
+      id: "ask_name",
+      key: "playerName",
+      prompt: "怎么称呼你？\n可以用昵称。",
+      default: "旅行者",
+      maxLength: 12,
+    } as Instruction;
+
+    const formatted = formatScenarioInstruction(instruction);
+    const parsed = parseScenarioLine(formatted);
+
+    expect(formatted).toBe('@inputName playerName 12 "怎么称呼你？\\n可以用昵称。" "旅行者"');
+    expect(formatted).not.toContain("@instruction");
+    expect(formatted).not.toContain("ask_name");
+    expect(parsed).toEqual({ ok: true, instruction: withoutStoryPointId(instruction) });
+  });
+
+  it("uses the naming length default and reports malformed naming commands", () => {
+    expect(parseScenarioLine('@inputName playerName "你的名字？"')).toEqual({
+      ok: true,
+      instruction: { t: "inputName", key: "playerName", prompt: "你的名字？" },
+    });
+    expect(parseScenarioLine("@inputName playerName 0 \"名字？\"")).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("1–100"),
+    });
+    expect(parseScenarioLine("@inputName playerName 名字？")).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("引号"),
+    });
+  });
+
   it("round-trips line voice in readable dialogue syntax", () => {
     const instruction = {
       t: "say",

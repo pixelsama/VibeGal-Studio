@@ -127,7 +127,8 @@ export const PauseInstruction = z.object({
 
 export const InputNameInstruction = z.strictObject({
   t: z.literal("inputName"),
-  id: StableInstructionIdSchema,
+  // New Scenario drafts may omit identity until saveNode assigns the stable story-point ID.
+  id: StableInstructionIdSchema.optional(),
   key: z.string().min(1),
   prompt: z.string().min(1),
   default: z.string().optional(),

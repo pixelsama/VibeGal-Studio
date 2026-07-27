@@ -503,7 +503,6 @@
         },
         "required": [
           "t",
-          "id",
           "key",
           "prompt"
         ],

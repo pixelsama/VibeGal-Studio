@@ -1,4 +1,4 @@
-import type { CSSProperties, ComponentProps, ReactNode, Ref } from "react";
+import { useRef, useState, type CSSProperties, type ComponentProps, type ReactNode, type Ref } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   formatScenarioInstruction,
@@ -9,6 +9,8 @@ import {
 } from "@vibegal/engine";
 import { ResourcePicker } from "../assets/ResourcePicker";
 import { StateChangeEditor } from "./StateChangeEditor";
+import { variableKind, type VariableDeclaration } from "@vibegal/engine";
+import { variableLabel } from "./storyState";
 import { BottomSheet } from "../common/BottomSheet";
 import { Field, NumberInput, Switch } from "../common/Form";
 import type { Manifest } from "../../lib/types";
@@ -27,6 +29,7 @@ export type ScenarioSelectionKind =
   | "effect"
   | "transition"
   | "set"
+  | "inputName"
   | "pause"
   | "unlock"
   | "showCg"
@@ -238,6 +241,11 @@ function inlineInstructionFields(
       </>;
     case "set":
       return <StateChangeEditor instruction={instruction} variables={variables} onChange={onChange} />;
+    case "inputName":
+      return <>
+        <CompactTextStatePicker label="保存为" manifest={manifest} variables={variables} value={instruction.key} onChange={(key) => onChange({ ...instruction, key })} />
+        <CompactNumber label="最多字符" value={instruction.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength} min={1} max={100} onChange={(maxLength) => onChange({ ...instruction, maxLength })} />
+      </>;
     default:
       return <span style={mutedTextStyle}>更多参数可在属性面板中编辑。</span>;
   }
@@ -256,8 +264,47 @@ function withOptionalVoice(
   return next;
 }
 
-function CompactNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return <label style={inlineFieldStyle}><span>{label}</span><NumberInput aria-label={label} value={value} min={0} onChange={(next) => onChange(Math.max(0, Math.round(next)))} /></label>;
+function CompactNumber({
+  label,
+  value,
+  min = 0,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  onChange: (value: number) => void;
+}) {
+  return <label style={inlineFieldStyle}><span>{label}</span><NumberInput aria-label={label} value={value} min={min} max={max} onChange={(next) => onChange(Math.max(min, Math.min(max ?? Number.POSITIVE_INFINITY, Math.round(next))))} /></label>;
+}
+
+function CompactTextStatePicker({
+  label,
+  manifest,
+  variables,
+  value,
+  onChange,
+}: {
+  label: string;
+  manifest: Manifest;
+  variables?: VariableRegistry;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const states = textStateOptions(variables);
+  return (
+    <label style={inlineFieldStyle}>
+      <span>{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+        {!states.some(([id]) => id === value) && <option value={value}>{value}</option>}
+        {states.map(([id, declaration]) => (
+          <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function CompactSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
@@ -269,7 +316,7 @@ function CompactSwitch({ label, checked, onChange }: { label: string; checked: b
 }
 
 function inlineInstructionTitle(instruction: Instruction): string {
-  return ({ say: "台词", narrate: "旁白", bg: "背景", char: "角色", bgm: "背景音乐", sfx: "音效", voice: "语音", showCg: "CG", playVideo: "视频", wait: "等待", effect: "画面效果", transition: "转场", set: "改变故事状态" } as Record<string, string>)[instruction.t] ?? instruction.t;
+  return ({ say: "台词", narrate: "旁白", bg: "背景", char: "角色", bgm: "背景音乐", sfx: "音效", voice: "语音", showCg: "CG", playVideo: "视频", wait: "等待", effect: "画面效果", transition: "转场", set: "改变故事状态", inputName: "玩家命名" } as Record<string, string>)[instruction.t] ?? instruction.t;
 }
 
 export function ScenarioInspector({
@@ -318,9 +365,11 @@ export function ScenarioInspector({
             value={instruction.who}
             onChange={(who) => onReplaceInstruction({ ...instruction, who })}
           />
-          <TextField
+          <ExpressiveTextField
             label="当前行文本"
             value={instruction.text}
+            manifest={manifest}
+            variables={variables}
             onChange={(text) => onReplaceInstruction({ ...instruction, text })}
           />
           <ResourcePicker
@@ -351,9 +400,11 @@ export function ScenarioInspector({
     case "narrate":
       return (
         <InspectorPanel title="旁白">
-          <TextField
+          <ExpressiveTextField
             label="当前行文本"
             value={instruction.text}
+            manifest={manifest}
+            variables={variables}
             onChange={(text) => onReplaceInstruction({ ...instruction, text })}
           />
           <OptionalMillisecondsField
@@ -447,6 +498,37 @@ export function ScenarioInspector({
             variables={variables}
             onChange={onReplaceInstruction}
           />
+        </InspectorPanel>
+      );
+    case "inputName":
+      return (
+        <InspectorPanel title="玩家命名">
+          <TextStateField
+            label="把名字保存为"
+            manifest={manifest}
+            variables={variables}
+            value={instruction.key}
+            onChange={(key) => onReplaceInstruction({ ...instruction, key })}
+          />
+          <TextField
+            label="向玩家提问"
+            value={instruction.prompt}
+            onChange={(prompt) => onReplaceInstruction({ ...instruction, prompt })}
+          />
+          <OptionalTextField
+            label="默认名字（可选）"
+            value={instruction.default}
+            onChange={(nextDefault) => onReplaceInstruction(withOptionalDefaultName(instruction, nextDefault))}
+          />
+          <NumberField
+            label="名字最多字符"
+            value={instruction.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength}
+            min={1}
+            max={100}
+            integer
+            onChange={(maxLength) => onReplaceInstruction({ ...instruction, maxLength })}
+          />
+          <div style={mutedTextStyle}>玩家填写后，名字会自动写入所选故事状态，后续台词可以直接插入它。</div>
         </InspectorPanel>
       );
     case "bgm":
@@ -643,6 +725,138 @@ function InspectorPanel({ title, children }: { title?: string; children: ReactNo
 
 function IssueText({ children }: { children: ReactNode }) {
   return <div style={issueTextStyle}>{children}</div>;
+}
+
+function ExpressiveTextField({
+  label,
+  value,
+  manifest,
+  variables,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  manifest: Manifest;
+  variables?: VariableRegistry;
+  onChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedState, setSelectedState] = useState(textStateOptions(variables)[0]?.[0] ?? "");
+  const [pauseMs, setPauseMs] = useState(500);
+  const [color, setColor] = useState("#FFD166");
+  const [ruby, setRuby] = useState("");
+
+  const insert = (before: string, after = "", fallback = "文字") => {
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? value.length;
+    const end = input?.selectionEnd ?? start;
+    const selected = value.slice(start, end) || (after ? fallback : "");
+    const replacement = `${before}${selected}${after}`;
+    onChange(`${value.slice(0, start)}${replacement}${value.slice(end)}`);
+    queueMicrotask(() => {
+      const next = inputRef.current;
+      if (!next) return;
+      const cursor = start + replacement.length;
+      next.focus();
+      next.setSelectionRange(cursor, cursor);
+    });
+  };
+
+  const states = textStateOptions(variables);
+  const themeColors = registeredThemeColors(manifest);
+  const currentState = states.some(([id]) => id === selectedState) ? selectedState : states[0]?.[0] ?? "";
+
+  return (
+    <div style={expressiveFieldStyle}>
+      <label style={fieldStyle}>
+        <span style={fieldLabelStyle}>{label}</span>
+        <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
+      </label>
+      <div style={expressiveToolbarStyle} aria-label="文本表达工具">
+        <label style={toolFieldStyle}>
+          <span>故事状态</span>
+          <select aria-label="要插入的故事状态" value={currentState} disabled={states.length === 0} onChange={(event) => setSelectedState(event.target.value)} style={toolInputStyle}>
+            {states.length === 0 && <option value="">还没有文本故事状态</option>}
+            {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>插入</button>
+        <label style={toolFieldStyle}>
+          <span>行内停顿</span>
+          <NumberInput aria-label="行内停顿毫秒" value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
+        </label>
+        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>插入</button>
+        <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>加粗</button>
+        <label style={toolFieldStyle}>
+          <span>文字颜色</span>
+          <select aria-label="文字颜色" value={color} onChange={(event) => setColor(event.target.value)} style={toolInputStyle}>
+            <option value="#FFD166">暖黄色</option>
+            <option value="#EF476F">强调红</option>
+            <option value="#06D6A0">清新绿</option>
+            <option value="#118AB2">深海蓝</option>
+            {themeColors.map(([id, resolved]) => <option key={id} value={id}>{id} · {resolved}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={() => insert(`[color=${color}]`, "[/color]")} style={toolButtonStyle}>变色</button>
+        <label style={toolFieldStyle}>
+          <span>注音</span>
+          <input aria-label="注音读音" type="text" value={ruby} placeholder="读音" onChange={(event) => setRuby(event.target.value)} style={toolInputStyle} />
+        </label>
+        <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>加注音</button>
+      </div>
+      <div style={mutedTextStyle}>先选中文字再点加粗、变色或加注音；没有选择时会插入一段可直接替换的示例文字。</div>
+    </div>
+  );
+}
+
+function TextStateField({
+  label,
+  manifest,
+  variables,
+  value,
+  onChange,
+}: {
+  label: string;
+  manifest: Manifest;
+  variables?: VariableRegistry;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const states = textStateOptions(variables);
+  return (
+    <label style={fieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+        {!states.some(([id]) => id === value) && <option value={value}>{value}</option>}
+        {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function OptionalTextField({ label, value, onChange }: { label: string; value?: string; onChange: (value: string) => void }) {
+  return <TextField label={label} value={value ?? ""} onChange={onChange} />;
+}
+
+function withOptionalDefaultName(
+  instruction: Extract<Instruction, { t: "inputName" }>,
+  nextDefault: string,
+): Extract<Instruction, { t: "inputName" }> {
+  const next = { ...instruction, default: nextDefault || undefined };
+  if (next.default == null) delete next.default;
+  return next;
+}
+
+function textStateOptions(variables?: VariableRegistry): Array<[string, VariableDeclaration]> {
+  return Object.entries(variables?.variables ?? {})
+    .filter(([, declaration]) => declaration.type === "string" && variableKind(declaration) === "text");
+}
+
+function registeredThemeColors(manifest: Manifest): Array<[string, string]> {
+  const skins = manifest.uiSkins ?? {};
+  const tokens = (skins.default ?? skins[Object.keys(skins)[0] ?? ""])?.tokens ?? {};
+  return Object.entries(tokens)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^#[0-9a-fA-F]{6}$/.test(entry[1]));
 }
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -916,6 +1130,47 @@ const inputStyle: CSSProperties = {
   background: "var(--bg-app)",
   color: "var(--text-primary)",
   fontSize: "var(--text-base)",
+};
+
+const expressiveFieldStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-2)",
+};
+
+const expressiveToolbarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+  gap: "var(--space-2)",
+  padding: "var(--space-2)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--bg-inset)",
+};
+
+const toolFieldStyle: CSSProperties = {
+  display: "grid",
+  gap: 2,
+  minWidth: 96,
+  color: "var(--text-secondary)",
+  fontSize: "var(--text-xs)",
+};
+
+const toolInputStyle: CSSProperties = {
+  ...inputStyle,
+  padding: "5px var(--space-2)",
+  fontSize: "var(--text-sm)",
+};
+
+const toolButtonStyle: CSSProperties = {
+  minHeight: 30,
+  padding: "5px var(--space-2)",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--bg-panel)",
+  color: "var(--text-primary)",
+  fontFamily: "inherit",
+  cursor: "pointer",
 };
 
 const mutedTextStyle: CSSProperties = {

@@ -67,6 +67,7 @@ export type InsertableKind =
   | "effect"
   | "transition"
   | "set"
+  | "inputName"
   | "showCg"
   | "playVideo";
 
@@ -111,6 +112,8 @@ export function defaultInstruction(kind: InsertableKind): Instruction {
       return { t: "transition", type: "fade_in", ms: 1000 };
     case "set":
       return { t: "set", key: "flag", value: true };
+    case "inputName":
+      return { t: "inputName", key: "playerName", prompt: "怎么称呼你？", maxLength: 20 };
     case "showCg":
       return { t: "showCg", id: "" };
     case "playVideo":

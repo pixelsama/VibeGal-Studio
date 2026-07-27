@@ -375,6 +375,28 @@ describe("GraphNovelPlayer playback history and skip", () => {
     }
   });
 
+  it("previewsUnsavedPlayerNamingWithIndexFallbackIdentity", () => {
+    const player = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    player.loadGraph(baseGraph, [{
+      id: "start",
+      instructions: [
+        { t: "inputName", key: "playerName", prompt: "怎么称呼你？", maxLength: 20 },
+        { t: "narrate", id: "line_01", text: "你好，{玩家名字}。" },
+      ],
+    }]);
+
+    player.advance();
+    expect(player.getState().nameInput).toMatchObject({ instructionId: "draft-name-input" });
+    expect(player.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "index:0" });
+    expect(player.submitName("小满")).toBe(true);
+    expect(player.getState().vars.playerName).toBe("小满");
+
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "index:0" });
+    expect(player.getState().nameInput).not.toBeNull();
+    expect(player.getState().vars.playerName).toBe("旅行者");
+    player.dispose();
+  });
+
   it("blocksForPlayerNamingAndRestoresThePreviousValueOnRollback", () => {
     const player = new GraphNovelPlayer({ manifest, meta, variables: registry });
     player.loadGraph(baseGraph, [{

@@ -3,7 +3,7 @@
   "generatorVersion": 1,
   "zodVersion": "4.4.3",
   "sourceSha256": {
-    "src/schema.ts": "cfe38aecfa09f806aede8689a93540fc79b0be681f540bc49b84d6cae1e5652c",
+    "src/schema.ts": "ec76f8215ee019a671be3b421a3a2bb34efb5da31093347bc26f7ce5b3018597",
     "src/diagnostics.ts": "716e426683789801caf218d6f8fb447310615aa352f43482ecbacb9ae0ed7fe6",
     "src/fixtures.ts": "0f13210537f7debc9940f8ef5423fdcdd318ca353bd00c3b9660dbc0ffb2e271",
     "src/schemaExport.ts": "06e22e363261778f06c8652c4071319c8b103a80c155d71570b23a702536836c",
@@ -11,7 +11,7 @@
     "package.json": "a0fe1e6cf4490a471dc8aacf431ad5a25b2a24946f60ec834524e4077730627c"
   },
   "artifactSha256": {
-    "nodeFile.schema.json": "a9d063cc53230459a281e236436b3faa0b5c0bfeceea14175bfc1e95839ebf52",
+    "nodeFile.schema.json": "7bce0b4dbab470146c558b52aa998d903aaca5d01fa7698bee6bb511331dc069",
     "graph.schema.json": "e1fa193d0d4a8f45bcd64ddb15f8be3e0332721965e54edde20ff8ef073abffd",
     "manifest.schema.json": "d4fc9657f6541f78ca6233f4d6cab8fe9a41b219ae5948677a57a4bec0f67ac1",
     "meta.schema.json": "f3a82b1877c6fe4723625392ad10215a43a7fc934387fba8f38a7fd746c1b9af",

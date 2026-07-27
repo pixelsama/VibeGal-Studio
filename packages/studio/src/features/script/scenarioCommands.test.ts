@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectData } from "../../lib/types";
 import {
+  defaultScenarioInstruction,
   insertScenarioParameterAtCursor,
+  scenarioCommandOptionsForQuery,
   scenarioParameterOptions,
   scenarioParameterTriggerAtCursor,
 } from "./scenarioCommands";
@@ -15,6 +17,8 @@ const project: ProjectData = {
       version: 1,
       variables: {
         affection: { type: "number", default: 0, nullable: false, scope: "run", label: "好感度" },
+        playerName: { kind: "text", type: "string", default: "旅行者", nullable: false, scope: "run", label: "玩家名字" },
+        route: { kind: "state", type: "string", default: "common", nullable: false, scope: "run", label: "当前路线", options: [{ id: "common", label: "共通线" }] },
       },
     },
     manifest: {
@@ -54,6 +58,7 @@ describe("Scenario parameter completion", () => {
       query: "sm",
     });
     expect(scenarioParameterTriggerAtCursor("@set aff", 8)).toMatchObject({ kind: "story-state", query: "aff" });
+    expect(scenarioParameterTriggerAtCursor("@inputName pla", 14)).toMatchObject({ kind: "name-state", query: "pla" });
     expect(scenarioParameterTriggerAtCursor("@unlock endings tru", 19)).toMatchObject({
       kind: "ending-unlock",
       query: "tru",
@@ -74,6 +79,10 @@ describe("Scenario parameter completion", () => {
       project,
     )).toEqual([{ id: "affection", label: "好感度", detail: "affection" }]);
     expect(scenarioParameterOptions(
+      { kind: "name-state", query: "", replaceStart: 0, replaceEnd: 0, line: 1 },
+      project,
+    )).toEqual([{ id: "playerName", label: "玩家名字", detail: "playerName" }]);
+    expect(scenarioParameterOptions(
       { kind: "cg", query: "重逢", replaceStart: 0, replaceEnd: 0, line: 1 },
       project,
     )[0]).toEqual({ id: "reunion", label: "重逢", detail: "reunion" });
@@ -81,6 +90,18 @@ describe("Scenario parameter completion", () => {
       { kind: "expression", ownerId: "akari", query: "sm", replaceStart: 0, replaceEnd: 0, line: 1 },
       project,
     )[0]?.id).toBe("smile");
+  });
+
+  it("offers a player naming command with a text-state draft", () => {
+    expect(scenarioCommandOptionsForQuery("命名")).toEqual([
+      expect.objectContaining({ kind: "inputName", label: "玩家命名" }),
+    ]);
+    expect(defaultScenarioInstruction("inputName", project)).toMatchObject({
+      t: "inputName",
+      key: "playerName",
+      prompt: "怎么称呼你？",
+      maxLength: 20,
+    });
   });
 
   it("replaces only the active token", () => {

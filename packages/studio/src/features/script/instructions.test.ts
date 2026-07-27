@@ -124,6 +124,15 @@ describe("defaultInstruction", () => {
     expect(defaultInstruction("wait")).toEqual({ t: "wait", ms: 1000 });
   });
 
+  it("inputName starts with a creator-facing naming prompt", () => {
+    expect(defaultInstruction("inputName")).toEqual({
+      t: "inputName",
+      key: "playerName",
+      prompt: "怎么称呼你？",
+      maxLength: 20,
+    });
+  });
+
   it("set has default variable assignment", () => {
     expect(defaultInstruction("set")).toEqual({ t: "set", key: "flag", value: true });
   });

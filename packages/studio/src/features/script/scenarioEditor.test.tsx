@@ -28,6 +28,17 @@ const manifest: Manifest = {
   audio: { bgm: { daily: "assets/audio/daily.mp3" }, sfx: {}, voice: { akari_001: "assets/audio/akari_001.ogg" } },
   cg: { cg_001: { path: "assets/cg/cg_001.png" } },
   videos: { op: { path: "assets/videos/op.mp4" } },
+  uiSkins: {
+    default: { assets: {}, tokens: { "text.highlight": "#FFD166" } },
+  },
+};
+
+const variables = {
+  version: 1 as const,
+  variables: {
+    playerName: { kind: "text" as const, type: "string" as const, default: "旅行者", nullable: false, scope: "run" as const, label: "玩家名字" },
+    route: { kind: "state" as const, type: "string" as const, default: "common", nullable: false, scope: "run" as const, label: "当前路线", options: [{ id: "common", label: "共通线" }] },
+  },
 };
 
 describe("scenario editor helpers", () => {
@@ -72,6 +83,12 @@ describe("ScenarioInlineControls", () => {
       variables: { version: 1, variables: { has_key: { type: "boolean", default: false, nullable: false, scope: "run", label: "拿到钥匙" } } },
       onChange: () => {},
     }));
+    const inputName = renderToStaticMarkup(createElement(ScenarioInlineControls, {
+      instruction: { t: "inputName", id: "ask_name", key: "playerName", prompt: "你的名字？", maxLength: 12 } as Instruction,
+      manifest,
+      variables,
+      onChange: () => {},
+    }));
 
     expect(say).toContain('aria-label="当前行可视化控件"');
     expect(say).toContain("表情");
@@ -83,6 +100,10 @@ describe("ScenarioInlineControls", () => {
     expect(character).toContain("退场");
     expect(state).toContain("改变故事状态");
     expect(state).toContain("拿到钥匙");
+    expect(inputName).toContain("玩家命名");
+    expect(inputName).toContain("玩家名字");
+    expect(inputName).toContain("最多字符");
+    expect(inputName).toContain('value="12"');
   });
 });
 
@@ -146,6 +167,54 @@ describe("ScenarioInspector", () => {
     expect(narrate).toContain("当前行文本");
     expect(narrate).toContain("新的故事从这里开始。");
     expect(narrate).not.toContain("textarea");
+  });
+
+  it("renders safe expressive-text tools with creator-facing story-state labels", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("akari: 你好，旅行者。", 0),
+      manifest,
+      variables,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(html).toContain('aria-label="文本表达工具"');
+    expect(html).toContain("故事状态");
+    expect(html).toContain("玩家名字");
+    expect(html).not.toContain(">当前路线<");
+    expect(html).toContain("行内停顿");
+    expect(html).toContain("加粗");
+    expect(html).toContain("文字颜色");
+    expect(html).toContain("text.highlight · #FFD166");
+    expect(html).toContain("加注音");
+  });
+
+  it("renders player naming as a structured form and readable scenario line", () => {
+    const selection = getScenarioSelection('@inputName playerName 12 "怎么称呼你？" "旅行者"', 0);
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection,
+      manifest,
+      variables,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(selection.kind).toBe("inputName");
+    expect(html).toContain("玩家命名");
+    expect(html).toContain("把名字保存为");
+    expect(html).toContain("玩家名字");
+    expect(html).not.toContain(">当前路线<");
+    expect(html).toContain("向玩家提问");
+    expect(html).toContain("怎么称呼你？");
+    expect(html).toContain("默认名字");
+    expect(html).toContain("旅行者");
+    expect(html).toContain("名字最多字符");
+    expect(html).toContain('value="12"');
+    expect(replaceScenarioSelectionInstruction(
+      '@inputName playerName 12 "怎么称呼你？" "旅行者"',
+      selection,
+      { t: "inputName", id: "ask_name", key: "playerName", prompt: "你的名字？", maxLength: 20 } as Instruction,
+    )).toBe('@inputName playerName "你的名字？"');
   });
 
   it("renders a remove-only character instruction without materializing missing fields", () => {

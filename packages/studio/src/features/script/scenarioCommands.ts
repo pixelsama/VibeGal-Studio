@@ -1,4 +1,4 @@
-import type { Instruction } from "@vibegal/engine";
+import { variableKind, type Instruction } from "@vibegal/engine";
 import type { ProjectData } from "../../lib/types";
 import {
   defaultInstruction,
@@ -18,6 +18,7 @@ export type ScenarioParameterKind =
   | "cg"
   | "video"
   | "story-state"
+  | "name-state"
   | "cg-unlock"
   | "music-unlock"
   | "replay-unlock"
@@ -81,6 +82,7 @@ export function scenarioParameterTriggerAtCursor(
       "@showCg": "cg",
       "@playVideo": "video",
       "@set": "story-state",
+      "@inputName": "name-state",
       "@completeEnding": "ending-unlock",
     }[command ?? ""] as ScenarioParameterKind | undefined ?? null;
   } else if (command === "@char" && index === 2) {
@@ -124,6 +126,11 @@ export function scenarioParameterOptions(
       options = Object.entries(project.content.variables?.variables ?? {}).map(([id, declaration]) => (
         option(id, variableLabel(id, declaration, manifest))
       ));
+      break;
+    case "name-state":
+      options = Object.entries(project.content.variables?.variables ?? {})
+        .filter(([, declaration]) => declaration.type === "string" && variableKind(declaration) === "text")
+        .map(([id, declaration]) => option(id, variableLabel(id, declaration, manifest)));
       break;
     case "cg-unlock":
       options = unlockOptions(manifest.unlocks.cg);
@@ -213,6 +220,7 @@ const SCENARIO_COMMANDS: ScenarioCommandOption[] = [
   { kind: "effect", label: "效果", detail: "触发画面效果", aliases: ["effect", "fx", "效果"] },
   { kind: "transition", label: "转场", detail: "触发转场覆盖层", aliases: ["transition", "trans", "转场"] },
   { kind: "set", label: "故事状态", detail: "改变故事状态", aliases: ["set", "state", "状态"] },
+  { kind: "inputName", label: "玩家命名", detail: "请玩家输入名字", aliases: ["inputname", "name", "命名", "名字"] },
 ];
 
 export interface ScenarioCommandTrigger {
@@ -288,6 +296,9 @@ export function defaultScenarioInstruction(kind: InsertableKind, project: Projec
   const firstVoice = Object.keys(manifest.audio.voice)[0] ?? "voice";
   const firstCg = Object.keys(manifest.cg ?? {})[0] ?? "cg";
   const firstVideo = Object.keys(manifest.videos ?? {})[0] ?? "video";
+  const firstNameState = Object.entries(project.content.variables?.variables ?? {})
+    .find(([, declaration]) => declaration.type === "string" && variableKind(declaration) === "text")?.[0]
+    ?? "playerName";
 
   switch (draft.t) {
     case "narrate":
@@ -310,6 +321,8 @@ export function defaultScenarioInstruction(kind: InsertableKind, project: Projec
       return { ...draft, id: firstVideo };
     case "set":
       return { ...draft, key: "flag", value: true };
+    case "inputName":
+      return { ...draft, key: firstNameState };
     default:
       return draft;
   }

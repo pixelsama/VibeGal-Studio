@@ -588,11 +588,14 @@ export class GraphNovelPlayer {
     nextState.flags.isWaiting = false;
     nextState.flags.progress.current = clamped;
     if (lastStable?.instruction.t === "inputName" && this.currentNodeId) {
-      nextState = this.restoreNameInputOrigin(
-        { nodeId: this.currentNodeId, instructionId: lastStable.instruction.id },
-        lastStable.instruction,
-        nextState,
-      );
+      const instructionId = getInstructionStoryPointId(lastStable.instruction, lastStable.index);
+      if (instructionId) {
+        nextState = this.restoreNameInputOrigin(
+          { nodeId: this.currentNodeId, instructionId },
+          lastStable.instruction,
+          nextState,
+        );
+      }
     }
     nextState = this.withRestoredAudio(nextState);
 
@@ -632,12 +635,12 @@ export class GraphNovelPlayer {
     const instr = this.currentInstructions()[index];
     this.ip += 1;
     if (instr.t === "inputName") {
-      this.nameInputOrigins.set(this.storyPointKey(instr.id), this.state.vars[instr.key]);
+      this.nameInputOrigins.set(this.storyPointKey(instr.id ?? `index:${index}`), this.state.vars[instr.key]);
     }
     try {
       this.state = this.applyRuntimeInstruction(this.state, instr, index);
     } catch (error) {
-      if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id));
+      if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id ?? `index:${index}`));
       this.stopOnAssignmentError(error, index);
       return;
     }
@@ -722,12 +725,12 @@ export class GraphNovelPlayer {
       const instr = instructions[index];
       this.ip += 1;
       if (instr.t === "inputName") {
-        this.nameInputOrigins.set(this.storyPointKey(instr.id), this.state.vars[instr.key]);
+        this.nameInputOrigins.set(this.storyPointKey(instr.id ?? `index:${index}`), this.state.vars[instr.key]);
       }
       try {
         this.state = this.applyRuntimeInstruction(this.state, instr, index);
       } catch (error) {
-        if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id));
+        if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id ?? `index:${index}`));
         this.stopOnAssignmentError(error, index);
         return;
       }
@@ -1159,7 +1162,9 @@ export class GraphNovelPlayer {
       };
     }
 
-    const index = instructions.findIndex((instr) => getInstructionStoryPointId(instr, -1) === point.instructionId);
+    const index = instructions.findIndex((instr, instructionIndex) => (
+      getInstructionStoryPointId(instr, instructionIndex) === point.instructionId
+    ));
     if (index < 0) {
       this.currentNodeId = point.nodeId;
       this.currentStoryPoint = null;
@@ -1191,8 +1196,11 @@ export class GraphNovelPlayer {
       ? this.restoreNameInputOrigin(point, instr, baseState)
       : baseState;
     this.varsAtNodeEntry = { ...restoredBase.vars };
-    if (instr.t === "inputName" && !this.nameInputOrigins.has(`${point.nodeId}\u0000${instr.id}`)) {
-      this.nameInputOrigins.set(`${point.nodeId}\u0000${instr.id}`, restoredBase.vars[instr.key]);
+    if (instr.t === "inputName") {
+      const key = `${point.nodeId}\u0000${point.instructionId}`;
+      if (!this.nameInputOrigins.has(key)) {
+        this.nameInputOrigins.set(key, restoredBase.vars[instr.key]);
+      }
     }
     this.state = this.applyRuntimeInstruction(restoredBase, instr);
     if (instr.t === "say" || instr.t === "narrate") this.state = revealFully(this.state);
@@ -1386,15 +1394,18 @@ export class GraphNovelPlayer {
   private currentNameInputOrigin(): RuntimeSnapshot["nameInputOrigin"] {
     const point = this.currentStoryPoint;
     if (!point) return undefined;
-    const instruction = this.instructionsByNodeId
-      .get(point.nodeId)
-      ?.find((candidate) => candidate.t === "inputName" && candidate.id === point.instructionId);
+    const instructions = this.instructionsByNodeId.get(point.nodeId) ?? [];
+    const instructionIndex = instructions.findIndex((candidate, index) => (
+      candidate.t === "inputName"
+      && getInstructionStoryPointId(candidate, index) === point.instructionId
+    ));
+    const instruction = instructions[instructionIndex];
     if (!instruction || instruction.t !== "inputName") return undefined;
-    const id = `${point.nodeId}\u0000${instruction.id}`;
+    const id = `${point.nodeId}\u0000${point.instructionId}`;
     if (!this.nameInputOrigins.has(id)) return undefined;
     const value = this.nameInputOrigins.get(id);
     return {
-      instructionId: instruction.id,
+      instructionId: point.instructionId,
       key: instruction.key,
       ...(value === undefined ? {} : { value }),
     };
@@ -1417,7 +1428,7 @@ export class GraphNovelPlayer {
     instruction: Extract<Instruction, { t: "inputName" }>,
     state: NovelState,
   ): NovelState {
-    const key = `${point.nodeId}\u0000${instruction.id}`;
+    const key = `${point.nodeId}\u0000${point.instructionId}`;
     if (!this.nameInputOrigins.has(key)) return state;
     const previous = this.nameInputOrigins.get(key);
     const vars = { ...state.vars };

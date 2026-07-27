@@ -241,7 +241,8 @@ export function applyInstruction(
         narration: null,
         choice: null,
         nameInput: {
-          instructionId: instr.id,
+          // Scenario 草稿在首次保存前还没有稳定 ID；此值只供预览界面关联当前输入。
+          instructionId: instr.id ?? "draft-name-input",
           key: instr.key,
           prompt: instr.prompt,
           default: instr.default,

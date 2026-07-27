@@ -28,6 +28,19 @@ describe("projectInstructionsWithoutStoryPointIds", () => {
 });
 
 describe("reconcileScenarioInstructionIdentities", () => {
+  it("preserves player naming identity while editing its structured fields", () => {
+    const previous = [
+      { t: "inputName", id: "ask_name", key: "playerName", prompt: "你的名字？", maxLength: 20 },
+    ] as Instruction[];
+    const parsed = [
+      { t: "inputName", key: "playerName", prompt: "怎么称呼你？", maxLength: 12 },
+    ] as Instruction[];
+
+    expect(reconcileScenarioInstructionIdentities(previous, parsed)).toEqual([
+      { t: "inputName", id: "ask_name", key: "playerName", prompt: "怎么称呼你？", maxLength: 12 },
+    ]);
+  });
+
   it("inherits ids for unique exact semantic matches after a move", () => {
     const previous = [
       { t: "say", id: "say_a", who: "hero", text: "A" },
