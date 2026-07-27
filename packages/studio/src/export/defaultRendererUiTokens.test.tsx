@@ -8,6 +8,7 @@ import {
   type RuntimeServices,
 } from "@vibegal/engine";
 import { DialogueBox } from "../../src-tauri/resources/default-renderer/DialogueBox";
+import { SpriteLayer, atlasFrameRect, nextAtlasClipFrame } from "../../src-tauri/resources/default-renderer/SpriteLayer";
 import { Stage } from "../../src-tauri/resources/default-renderer/Stage";
 import defaultRenderer from "../../src-tauri/resources/default-renderer/index";
 import { DEFAULT_UI_TOKENS, resolveUiTokens } from "../../src-tauri/resources/default-renderer/useUiTokens";
@@ -45,6 +46,29 @@ function narrationState(): NovelState {
 
 function runtime(): RuntimeServices {
   return createInMemoryRuntimeServices({ getState: createInitialState });
+}
+
+function spriteState(overrides: Partial<NovelState["sprites"][number]> = {}): NovelState {
+  return {
+    ...createInitialState(),
+    sprites: [{
+      id: "rin",
+      pos: "right",
+      expr: "smile",
+      scale: 1.25,
+      flip: true,
+      moveFrom: "left",
+      exprMs: 180,
+      ms: 650,
+      changeId: 2,
+      justEntered: false,
+      prevExpr: "default",
+      prevPos: "left",
+      trans: "slide",
+      leaving: false,
+      ...overrides,
+    }],
+  };
 }
 
 /**
@@ -366,6 +390,97 @@ describe("default renderer ui tokens rendering", () => {
         ]),
       }),
     ]));
+  });
+});
+
+describe("SpriteLayer", () => {
+  const manifest: Manifest = {
+    ...baseManifest(),
+    characters: {
+      rin: {
+        name: "凛",
+        color: "#ffffff",
+        sprites: {
+          default: "assets/rin/default.webp",
+          smile: "assets/rin/smile.webp",
+          animated: {
+            atlas: "rin",
+            clip: "idle",
+            fallback: "assets/rin/animated.webp",
+          },
+        },
+      },
+    },
+    animationAtlases: {
+      rin: {
+        image: "assets/rin/atlas.webp",
+        frameWidth: 512,
+        frameHeight: 512,
+        clips: {
+          idle: { frames: [0, 1, 3], fps: 12, loop: true },
+        },
+      },
+    },
+  };
+
+  it("renders semantic movement, scale, flip and expression cross-fade", () => {
+    const html = renderToStaticMarkup(
+      <SpriteLayer state={spriteState()} manifest={manifest} contentBase="./content" />,
+    );
+
+    expect(html).toContain("left:78%");
+    expect(html).toContain("--sprite-from-x:22%");
+    expect(html).toContain("--sprite-to-x:78%");
+    expect(html).toContain("scale(1.25) scaleX(-1)");
+    expect(html).toContain("spriteSlotMoveIn 650ms");
+    expect(html).toContain("assets/rin/default.webp");
+    expect(html).toContain("assets/rin/smile.webp");
+    expect(html).toContain("spriteExprOut 180ms");
+    expect(html).toContain("spriteExprIn 180ms");
+  });
+
+  it("resolves atlas frames row-major and honors loop mode", () => {
+    expect(atlasFrameRect(3, 1024, 1024, 512, 512)).toEqual({
+      x: 512,
+      y: 512,
+      width: 512,
+      height: 512,
+    });
+    expect(atlasFrameRect(4, 1024, 1024, 512, 512)).toBeNull();
+    expect(nextAtlasClipFrame(2, 3, true)).toBe(0);
+    expect(nextAtlasClipFrame(2, 3, false)).toBe(2);
+  });
+
+  it("renders an atlas canvas over its static fallback", () => {
+    const html = renderToStaticMarkup(
+      <SpriteLayer
+        state={spriteState({ expr: "animated", prevExpr: null, exprMs: 0, trans: "cut" })}
+        manifest={manifest}
+        contentBase="./content"
+      />,
+    );
+
+    expect(html).toContain("assets/rin/animated.webp");
+    expect(html).toContain('data-runtime-sprite-canvas="true"');
+    expect(html).toContain('width="512"');
+    expect(html).toContain('height="512"');
+  });
+
+  it("renders only the static fallback when the atlas clip is unavailable", () => {
+    const withoutClip: Manifest = {
+      ...manifest,
+      animationAtlases: {},
+    };
+    const html = renderToStaticMarkup(
+      <SpriteLayer
+        state={spriteState({ expr: "animated", prevExpr: null, exprMs: 0, trans: "cut" })}
+        manifest={withoutClip}
+        contentBase="./content"
+      />,
+    );
+
+    expect(html).toContain("assets/rin/animated.webp");
+    expect(html).not.toContain("data-runtime-sprite-canvas");
   });
 });
 

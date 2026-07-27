@@ -11,7 +11,7 @@ describe("RuntimeStateInspector", () => {
       vars: { affection: 3, has_key: true },
       background: "school",
       speaker: { id: "hero", name: "Hero", color: "#fff", expr: "smile" },
-      sprites: [{ id: "hero", pos: "center", expr: "smile", changeId: 1, justEntered: false, prevExpr: null, prevPos: null, trans: "fade", leaving: false }],
+      sprites: [{ id: "hero", pos: "center", expr: "smile", scale: 1, flip: false, exprMs: 0, ms: 0, changeId: 1, justEntered: false, prevExpr: null, prevPos: null, trans: "fade", leaving: false }],
       audio: { bgm: { id: "theme", fade: 500, loop: true }, sfx: [], voice: { id: "line01", seq: 1 } },
     };
 

@@ -49,6 +49,8 @@ export const SerializableSpriteSchema = z.strictObject({
   id: z.string().min(1),
   pos: z.string().min(1),
   expr: z.string().min(1),
+  scale: z.number().min(0.1).max(4).default(1),
+  flip: z.boolean().default(false),
 });
 export type SerializableSprite = z.infer<typeof SerializableSpriteSchema>;
 
@@ -248,7 +250,13 @@ export function createRuntimeSnapshot(
     background: state.background,
     sprites: state.sprites
       .filter((sprite) => !sprite.leaving)
-      .map((sprite) => ({ id: sprite.id, pos: sprite.pos, expr: sprite.expr })),
+      .map((sprite) => ({
+        id: sprite.id,
+        pos: sprite.pos,
+        expr: sprite.expr,
+        scale: sprite.scale,
+        flip: sprite.flip,
+      })),
     bgm: state.audio.bgm ? { id: state.audio.bgm.id, loop: state.audio.bgm.loop } : null,
     nameInputOrigin,
   });

@@ -190,6 +190,74 @@ const CHAR_TRANSITIONS = new Set(["fade", "cut", "slide"]);
 const EFFECT_TYPES = new Set(["shake", "flash", "blur"]);
 const TRANSITION_TYPES = new Set(["fade_in", "fade_out", "white_in", "white_out", "black"]);
 
+function parseCharCommand(parts: string[]): ParsedLine {
+  const id = parts[1];
+  if (!id) return { ok: false, message: "@char 需要角色 ID。" };
+  const positional: string[] = [];
+  let trans: "fade" | "cut" | "slide" | undefined;
+  let ms: number | undefined;
+  let scale: number | undefined;
+  let moveFrom: string | undefined;
+  let exprMs: number | undefined;
+  let clear: boolean | undefined;
+  let remove: boolean | undefined;
+  let flip: boolean | undefined;
+
+  for (const token of parts.slice(2)) {
+    if (CHAR_TRANSITIONS.has(token)) {
+      if (trans != null) return { ok: false, message: "@char 只能写一个转场。" };
+      trans = token as "fade" | "cut" | "slide";
+      continue;
+    }
+    if (token === "clear") clear = true;
+    else if (token === "out") remove = true;
+    else if (token === "flip") flip = true;
+    else if (token.startsWith("scale=")) {
+      const value = Number(token.slice("scale=".length));
+      if (!Number.isFinite(value) || value < 0.1 || value > 4) {
+        return { ok: false, message: "@char 缩放范围是 0.1–4。" };
+      }
+      scale = value;
+    } else if (token.startsWith("from=")) {
+      moveFrom = token.slice("from=".length);
+      if (!moveFrom) return { ok: false, message: "@char 移动起点不能为空。" };
+    } else if (token.startsWith("expr=")) {
+      const parsed = parseMsToken(token.slice("expr=".length));
+      if (parsed == null) return { ok: false, message: "@char 表情过渡需要写成 expr=180ms。" };
+      exprMs = parsed;
+    } else {
+      const parsed = parseMsToken(token);
+      if (parsed === null) return { ok: false, message: `@char 时长必须写成毫秒数，如 600ms（收到「${token}」）。` };
+      if (parsed !== undefined) {
+        if (ms != null) return { ok: false, message: "@char 只能写一个转场时长。" };
+        ms = parsed;
+      } else {
+        positional.push(token);
+      }
+    }
+  }
+
+  if (positional.length > 2) return { ok: false, message: `@char 不认识「${positional[2]}」。` };
+  const [expr, pos] = positional;
+  return {
+    ok: true,
+    instruction: pruneUndefined({
+      t: "char",
+      id,
+      expr,
+      pos,
+      trans,
+      ms,
+      clear,
+      remove,
+      scale,
+      flip,
+      moveFrom,
+      exprMs,
+    }) as Instruction,
+  };
+}
+
 export function parseScenarioText(text: string): ScenarioParseResult {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const instructions: Instruction[] = [];
@@ -316,34 +384,8 @@ export function parseScenarioLine(line: string): ParsedLine {
         if (!id) return { ok: false, message: "@voice 需要语音 ID。" };
         return { ok: true, instruction: { t: "voice", id } as Instruction };
       }
-      case "@char": {
-        const id = parts[1];
-        if (!id) return { ok: false, message: "@char 需要角色 ID。" };
-        const rest = readOptionTokens(parts.slice(2));
-        if (!rest.ok) return { ok: false, message: `@char ${rest.message}` };
-        const unknownFlag = rest.flags.find((flag) => flag !== "clear" && flag !== "out");
-        if (unknownFlag) return { ok: false, message: `@char 不认识「${unknownFlag}」。` };
-        // 位置参数：表情、位置、转场。转场名可以直接出现在任意位置（它自成词表），
-        // 于是 `@char akari smile left slide` 与 `@char akari slide` 都能写。
-        const words = [...rest.words];
-        const transIndex = words.findIndex((word) => CHAR_TRANSITIONS.has(word));
-        const trans = transIndex >= 0 ? words.splice(transIndex, 1)[0] : undefined;
-        if (words.length > 2) return { ok: false, message: `@char 不认识「${words[2]}」。` };
-        const [expr, pos] = words;
-        return {
-          ok: true,
-          instruction: pruneUndefined({
-            t: "char",
-            id,
-            expr,
-            pos,
-            trans,
-            ms: rest.ms,
-            clear: rest.flags.includes("clear") ? true : undefined,
-            remove: rest.flags.includes("out") ? true : undefined,
-          }) as Instruction,
-        };
-      }
+      case "@char":
+        return parseCharCommand(parts);
       case "@wait": {
         const raw = parts[1] ?? "";
         const ms = Number.parseInt(raw.endsWith("ms") ? raw.slice(0, -2) : raw, 10);
@@ -556,6 +598,14 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
         pos,
         instruction.trans === defaults?.trans ? undefined : instruction.trans,
         instruction.ms === defaults?.ms ? undefined : msToken(instruction.ms),
+        instruction.scale === defaults?.scale || instruction.scale === undefined
+          ? undefined
+          : `scale=${instruction.scale}`,
+        instruction.flip ? "flip" : undefined,
+        instruction.moveFrom ? `from=${instruction.moveFrom}` : undefined,
+        instruction.exprMs === defaults?.exprMs || instruction.exprMs === undefined
+          ? undefined
+          : `expr=${msToken(instruction.exprMs)}`,
         instruction.clear ? "clear" : undefined,
         instruction.remove ? "out" : undefined,
       ]);

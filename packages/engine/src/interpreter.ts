@@ -33,6 +33,22 @@ function charTrans(instr: { trans?: "fade" | "cut" | "slide" }): "fade" | "cut" 
   return instr.trans ?? INSTRUCTION_DEFAULTS.char.trans;
 }
 
+function charScale(instr: { scale?: number }): number {
+  return instr.scale ?? INSTRUCTION_DEFAULTS.char.scale;
+}
+
+function charFlip(instr: { flip?: boolean }): boolean {
+  return instr.flip ?? INSTRUCTION_DEFAULTS.char.flip;
+}
+
+function charExprMs(instr: { exprMs?: number }): number {
+  return instr.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs;
+}
+
+function charMs(instr: { ms?: number }): number {
+  return instr.ms ?? INSTRUCTION_DEFAULTS.char.ms;
+}
+
 function runtimeTextState(sourceText: string): RuntimeTextState {
   const content = parseRuntimeText(sourceText);
   return {
@@ -92,7 +108,14 @@ export function applyInstruction(
       const existing = state.sprites.find((s) => s.id === instr.id && !s.leaving);
       if (existing) {
         // 已在场 → 这是「换表情/移位」语义，不是登场
-        const changed = existing.expr !== charExpr(instr) || existing.pos !== charPos(instr);
+        const changed = existing.expr !== charExpr(instr)
+          || existing.pos !== charPos(instr)
+          || existing.scale !== charScale(instr)
+          || existing.flip !== charFlip(instr)
+          || (
+            instr.moveFrom != null
+            && instr.moveFrom !== charPos(instr)
+          );
         if (!changed) return state;
         const updated: ActiveSprite = {
           ...existing,
@@ -100,6 +123,11 @@ export function applyInstruction(
           prevPos: existing.pos,
           expr: charExpr(instr),
           pos: charPos(instr),
+          scale: charScale(instr),
+          flip: charFlip(instr),
+          moveFrom: instr.moveFrom,
+          exprMs: charExprMs(instr),
+          ms: charMs(instr),
           trans: charTrans(instr),
           changeId: nextSeq(),
           justEntered: false,
@@ -115,6 +143,11 @@ export function applyInstruction(
         id: instr.id,
         pos: charPos(instr),
         expr: charExpr(instr),
+        scale: charScale(instr),
+        flip: charFlip(instr),
+        moveFrom: instr.moveFrom,
+        exprMs: charExprMs(instr),
+        ms: charMs(instr),
         changeId: nextSeq(),
         justEntered: true,
         prevExpr: null,

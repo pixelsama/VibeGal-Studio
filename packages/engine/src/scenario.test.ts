@@ -133,7 +133,7 @@ akari: 早上好。
   it("parses all readable parameters without materializing omitted defaults", () => {
     const result = parseScenarioText(`@bg ocean_night dissolve 2375ms
 @bgm theme 0ms once
-@char hero hurt far-left slide 825ms clear out
+@char hero hurt far-left slide 825ms scale=1.25 flip from=left expr=180ms clear out
 hero(hurt, 0ms): 别把 : 和 @ 当成语法。
 @narrate 2600ms 风停了。
 @wait 715ms
@@ -144,7 +144,7 @@ hero(hurt, 0ms): 别把 : 和 @ 当成语法。
     expect(result.instructions).toEqual([
       { t: "bg", id: "ocean_night", trans: "dissolve", ms: 2375 },
       { t: "bgm", id: "theme", fade: 0, loop: false },
-      { t: "char", id: "hero", expr: "hurt", pos: "far-left", trans: "slide", ms: 825, clear: true, remove: true },
+      { t: "char", id: "hero", expr: "hurt", pos: "far-left", trans: "slide", ms: 825, scale: 1.25, flip: true, moveFrom: "left", exprMs: 180, clear: true, remove: true },
       { t: "say", who: "hero", expr: "hurt", text: "别把 : 和 @ 当成语法。", ms: 0 },
       { t: "narrate", text: "风停了。", ms: 2600 },
       { t: "wait", ms: 715 },
@@ -159,7 +159,7 @@ hero(hurt, 0ms): 别把 : 和 @ 当成语法。
       { t: "bgm", id: "theme", fade: 0, loop: false },
       { t: "sfx", id: "door" },
       { t: "voice", id: "line_001" },
-      { t: "char", id: "hero", expr: "hurt", pos: "far-left", trans: "slide", ms: 825, clear: true, remove: true },
+      { t: "char", id: "hero", expr: "hurt", pos: "far-left", trans: "slide", ms: 825, scale: 1.25, flip: true, moveFrom: "left", exprMs: 180, clear: true, remove: true },
       { t: "say", id: "say_001", who: "hero", expr: "hurt", text: "别把 : 和 @ 当成语法。", ms: 0 },
       { t: "narrate", id: "narrate_001", text: "风停了。", ms: 2600 },
       { t: "set", key: "route", value: "line one\n\"quoted\" : value" },

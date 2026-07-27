@@ -28,6 +28,14 @@ export interface ActiveSprite {
   id: string;
   pos: string;
   expr: string;
+  scale: number;
+  flip: boolean;
+  /** Optional semantic entry slot; renderer resolves it with the same position map as pos. */
+  moveFrom?: string;
+  /** Expression cross-fade duration. */
+  exprMs: number;
+  /** Position/entry transition duration. */
+  ms: number;
   changeId: number;
   justEntered: boolean;
   prevExpr: string | null;

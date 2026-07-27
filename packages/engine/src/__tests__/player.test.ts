@@ -247,6 +247,7 @@ describe("GraphNovelPlayer routing", () => {
       [
         { id: "start", instructions: [
           { t: "bg", id: "school", trans: "cut", ms: 0 },
+          { t: "char", id: "hero", pos: "right", expr: "default", trans: "cut", ms: 0, clear: false, remove: false, scale: 1.4, flip: true, exprMs: 0 },
           { t: "set", key: "route", value: "saved" },
           { t: "narrate", id: "line_01", text: "保存点。" },
         ] },
@@ -263,6 +264,19 @@ describe("GraphNovelPlayer routing", () => {
     expect(player.restoreSnapshot(snapshot)).toEqual({ warnings: [] });
 
     expect(player.getState().background).toBe("school");
+    expect(player.getState().sprites).toEqual([
+      expect.objectContaining({
+        id: "hero",
+        pos: "right",
+        expr: "default",
+        scale: 1.4,
+        flip: true,
+        exprMs: 0,
+        ms: 0,
+        trans: "cut",
+        justEntered: false,
+      }),
+    ]);
     expect(player.getState().vars.route).toBe("saved");
     expect(player.getState().narration?.text).toBe("保存点。");
     player.dispose();

@@ -5,7 +5,7 @@
   "sourceSha256": {
     "src/schema.ts": "ec76f8215ee019a671be3b421a3a2bb34efb5da31093347bc26f7ce5b3018597",
     "src/diagnostics.ts": "716e426683789801caf218d6f8fb447310615aa352f43482ecbacb9ae0ed7fe6",
-    "src/fixtures.ts": "0f13210537f7debc9940f8ef5423fdcdd318ca353bd00c3b9660dbc0ffb2e271",
+    "src/fixtures.ts": "64251a42bb705172f28f4159b2916c2a1ae7836078606dadee0c00cec1958534",
     "src/schemaExport.ts": "06e22e363261778f06c8652c4071319c8b103a80c155d71570b23a702536836c",
     "scripts/generate-contracts.ts": "70950ba39d5cd15e9ba4b836a72d568fc5b98bc693340d62b561a5818fee79fc",
     "package.json": "a0fe1e6cf4490a471dc8aacf431ad5a25b2a24946f60ec834524e4077730627c"
@@ -17,7 +17,7 @@
     "meta.schema.json": "f3a82b1877c6fe4723625392ad10215a43a7fc934387fba8f38a7fd746c1b9af",
     "variables.schema.json": "cb74f2605f56034d52df9e569303d0d10e1972419f6b1628f848847575a54d1b",
     "locale.schema.json": "3eeda6013a2237c7696f2e13eb5112784569f245ccf0dd6776190de669164ce3",
-    "fixture.schema.json": "d602022250899ec442dccbf776b33cb20a518ea0056e87bdb440db5fc9c23921",
+    "fixture.schema.json": "196608696a1de3317d67893d986452d918c353af9eb41418b8d8f45350a1e952",
     "diagnostics.json": "50e648c985807d6ead08fea9a547cc2e382db0f2f0072349e260fbf75c5a2f57"
   }
 }

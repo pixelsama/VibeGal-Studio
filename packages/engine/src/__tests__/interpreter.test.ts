@@ -46,7 +46,19 @@ describe("applyInstruction: say", () => {
 });
 
 // char 指令测试 fixture（补全 remove 字段）
-const charCmd = (over: Partial<{ id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean }> = {}) => ({
+const charCmd = (over: Partial<{
+  id: string;
+  pos: string;
+  expr: string;
+  trans: "fade" | "cut" | "slide";
+  ms: number;
+  clear: boolean;
+  remove: boolean;
+  scale: number;
+  flip: boolean;
+  moveFrom: string;
+  exprMs: number;
+}> = {}) => ({
   t: "char" as const,
   id: "protagonist",
   pos: "center",
@@ -55,6 +67,9 @@ const charCmd = (over: Partial<{ id: string; pos: string; expr: string; trans: "
   ms: 600,
   clear: false,
   remove: false,
+  scale: 1,
+  flip: false,
+  exprMs: 0,
   ...over,
 });
 
@@ -67,15 +82,53 @@ describe("applyInstruction: char", () => {
     expect(state.sprites[0].prevExpr).toBeNull();
   });
 
-  it("同一角色再发 char：识别为换表情，justEntered=false，prevExpr 记录", () => {
-    let state = applyInstruction(buildInitialState(), charCmd({ pos: "left", expr: "default" }), deps);
-    state = applyInstruction(state, charCmd({ pos: "right", expr: "hurt" }), deps);
+  it("同一角色再发 char：应用移动、缩放、翻转与表情过渡语义", () => {
+    let state = applyInstruction(buildInitialState(), charCmd({
+      pos: "left",
+      expr: "default",
+      scale: 1,
+    }), deps);
+    state = applyInstruction(state, charCmd({
+      pos: "right",
+      expr: "hurt",
+      scale: 1.25,
+      flip: true,
+      moveFrom: "far_left",
+      exprMs: 180,
+    }), deps);
     expect(state.sprites).toHaveLength(1);
-    expect(state.sprites[0].justEntered).toBe(false);
-    expect(state.sprites[0].expr).toBe("hurt");
-    expect(state.sprites[0].prevExpr).toBe("default");
-    expect(state.sprites[0].pos).toBe("right");
-    expect(state.sprites[0].prevPos).toBe("left");
+    expect(state.sprites[0]).toMatchObject({
+      justEntered: false,
+      expr: "hurt",
+      prevExpr: "default",
+      pos: "right",
+      prevPos: "left",
+      scale: 1.25,
+      flip: true,
+      moveFrom: "far_left",
+      exprMs: 180,
+      ms: 600,
+    });
+  });
+
+  it("同一位置也可用 moveFrom 重播语义移动", () => {
+    let state = applyInstruction(buildInitialState(), charCmd({ pos: "center" }), deps);
+    const changeId = state.sprites[0].changeId;
+    state = applyInstruction(state, charCmd({
+      pos: "center",
+      moveFrom: "left",
+      trans: "slide",
+      ms: 450,
+    }), deps);
+
+    expect(state.sprites[0]).toMatchObject({
+      pos: "center",
+      prevPos: "center",
+      moveFrom: "left",
+      ms: 450,
+      trans: "slide",
+    });
+    expect(state.sprites[0].changeId).not.toBe(changeId);
   });
 
   it("多个不同角色可同台", () => {
@@ -140,7 +193,15 @@ describe("applyInstruction: wait / effect / bg / bgm / sfx", () => {
     expect(state.backgroundMs).toBe(1000);
 
     state = applyInstruction(state, { t: "char", id: "protagonist" } as Instruction, deps);
-    expect(state.sprites[0]).toMatchObject({ expr: "default", pos: "center", trans: "fade" });
+    expect(state.sprites[0]).toMatchObject({
+      expr: "default",
+      pos: "center",
+      scale: 1,
+      flip: false,
+      exprMs: 0,
+      ms: 600,
+      trans: "fade",
+    });
 
     state = applyInstruction(state, { t: "say", who: "protagonist", text: "你好" } as Instruction, deps);
     expect(state.speaker?.expr).toBe("default");

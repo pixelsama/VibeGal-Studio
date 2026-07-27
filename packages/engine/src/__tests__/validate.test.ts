@@ -124,6 +124,9 @@ describe("validateContent: Zod 默认值必须应用（回归 bug #2）", () => 
       expect(instr.trans).toBe("fade");
       expect(instr.clear).toBe(false);
       expect(instr.remove).toBe(false);
+      expect(instr.scale).toBe(1);
+      expect(instr.flip).toBe(false);
+      expect(instr.exprMs).toBe(0);
     }
   });
 

@@ -27,6 +27,14 @@ import type { ComponentType, ReactNode } from "react";
     id: string;
     pos: string;
     expr: string;
+    scale: number;
+    flip: boolean;
+    /** Optional semantic entry slot; renderer resolves it with the same position map as pos. */
+    moveFrom?: string;
+    /** Expression cross-fade duration. */
+    exprMs: number;
+    /** Position/entry transition duration. */
+    ms: number;
     changeId: number;
     justEntered: boolean;
     prevExpr: string | null;
@@ -84,7 +92,7 @@ import type { ComponentType, ReactNode } from "react";
     jumpTo(point: StoryPointId): void;
   }
 
-  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; };
+  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; };
 
   export type EffectInstr = { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; };
 
@@ -421,7 +429,7 @@ import type { ComponentType, ReactNode } from "react";
     updateSettings(patch: Partial<RuntimeSettingsRecord>): Promise<void>;
   }
 
-  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; };
+  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; };
 
   export interface RuntimeStatusNotice {
     id: number;
@@ -496,7 +504,7 @@ import type { ComponentType, ReactNode } from "react";
     autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
   }
 
-  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; thumbnail?: string | undefined; } | undefined; };
+  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; thumbnail?: string | undefined; } | undefined; };
 
   export interface SaveSlotSummary {
     slotId: string;
@@ -510,7 +518,7 @@ import type { ComponentType, ReactNode } from "react";
 
   export type SerializableBgm = { id: string; loop: boolean; };
 
-  export type SerializableSprite = { id: string; pos: string; expr: string; };
+  export type SerializableSprite = { id: string; pos: string; expr: string; scale: number; flip: boolean; };
 
   export type SetInstr = { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; };
 

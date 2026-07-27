@@ -96,6 +96,9 @@ describe("ScenarioInlineControls", () => {
     expect(say).toContain("akari_001");
     expect(say).toContain("停顿");
     expect(character).toContain("位置");
+    expect(character).toContain("缩放");
+    expect(character).toContain("翻转");
+    expect(character).toContain("表情过渡");
     expect(character).toContain("清场");
     expect(character).toContain("退场");
     expect(state).toContain("改变故事状态");
@@ -334,7 +337,7 @@ describe("ScenarioInspector", () => {
       onReplaceInstruction: () => {},
     }));
     const char = renderToStaticMarkup(createElement(ScenarioInspector, {
-      selection: getScenarioSelection("@char akari smile left slide 650ms clear out", 0),
+      selection: getScenarioSelection("@char akari smile left slide 650ms scale=1.25 flip from=far-left expr=180ms clear out", 0),
       manifest,
       diagnostics: [],
       onReplaceInstruction: () => {},
@@ -364,10 +367,17 @@ describe("ScenarioInspector", () => {
     expect(bgm).toContain("循环播放");
     expect(bgm).toContain('role="switch"');
     expect(bgm).not.toContain('checked=""');
+    expect(char).toContain("移动起点槽（可选）");
+    expect(char).toContain('value="far-left"');
+    expect(char).toContain("缩放");
+    expect(char).toContain('value="1.25"');
+    expect(char).toContain("水平翻转");
+    expect(char).toContain("表情过渡（毫秒）");
+    expect(char).toContain('value="180"');
     expect(char).toContain("登场前清空其他角色");
     expect(char).toContain("让角色退场");
-    expect(char.match(/role="switch"/g)).toHaveLength(2);
-    expect(char.match(/checked=""/g)).toHaveLength(2);
+    expect(char.match(/role="switch"/g)).toHaveLength(3);
+    expect(char.match(/checked=""/g)).toHaveLength(3);
     expect(effect).toContain("效果强度");
     expect(effect).toContain('max="20"');
     expect(effect).toContain('value="8.5"');
@@ -409,8 +419,8 @@ describe("ScenarioInspector", () => {
     expect(replaceScenarioSelectionInstruction(
       "@char akari",
       charSelection,
-      { t: "char", id: "akari", expr: "smile", pos: "left", trans: "slide", ms: 650, clear: true, remove: true } as Instruction,
-    )).toBe("@char akari smile left slide 650ms clear out");
+      { t: "char", id: "akari", expr: "smile", pos: "left", trans: "slide", ms: 650, scale: 1.25, flip: true, moveFrom: "far-left", exprMs: 180, clear: true, remove: true } as Instruction,
+    )).toBe("@char akari smile left slide 650ms scale=1.25 flip from=far-left expr=180ms clear out");
     expect(replaceScenarioSelectionInstruction(
       "@effect shake",
       effectSelection,

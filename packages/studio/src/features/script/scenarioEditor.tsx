@@ -206,6 +206,9 @@ function inlineInstructionFields(
         <CompactResourcePicker label="角色" manifest={manifest} kind="character" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
         <CompactResourcePicker label="表情" manifest={manifest} kind="expression" characterId={instruction.id} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
         <CompactSelect label="位置" value={instruction.pos ?? "center"} options={["left", "center", "right"]} onChange={(pos) => onChange({ ...instruction, pos })} />
+        <CompactNumber label="缩放" value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale} min={0.1} max={4} step={0.1} integer={false} onChange={(scale) => onChange({ ...instruction, scale })} />
+        <CompactSwitch label="翻转" checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip} onChange={(flip) => onChange({ ...instruction, flip })} />
+        <CompactNumber label="表情过渡" value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs} onChange={(exprMs) => onChange({ ...instruction, exprMs })} />
         <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
         <CompactSwitch label="清场" checked={instruction.clear ?? false} onChange={(clear) => onChange({ ...instruction, clear })} />
         <CompactSwitch label="退场" checked={instruction.remove ?? false} onChange={(remove) => onChange({ ...instruction, remove })} />
@@ -269,15 +272,22 @@ function CompactNumber({
   value,
   min = 0,
   max,
+  step = 1,
+  integer = true,
   onChange,
 }: {
   label: string;
   value: number;
   min?: number;
   max?: number;
+  step?: number;
+  integer?: boolean;
   onChange: (value: number) => void;
 }) {
-  return <label style={inlineFieldStyle}><span>{label}</span><NumberInput aria-label={label} value={value} min={min} max={max} onChange={(next) => onChange(Math.max(min, Math.min(max ?? Number.POSITIVE_INFINITY, Math.round(next))))} /></label>;
+  return <label style={inlineFieldStyle}><span>{label}</span><NumberInput aria-label={label} value={value} min={min} max={max} step={step} onChange={(next) => {
+    const bounded = Math.max(min, Math.min(max ?? Number.POSITIVE_INFINITY, next));
+    onChange(integer ? Math.round(bounded) : bounded);
+  }} /></label>;
 }
 
 function CompactTextStatePicker({
@@ -464,6 +474,31 @@ export function ScenarioInspector({
             label="位置槽"
             value={instruction.pos ?? "center"}
             onChange={(pos) => onReplaceInstruction({ ...instruction, pos })}
+          />
+          <TextField
+            label="移动起点槽（可选）"
+            value={instruction.moveFrom ?? ""}
+            onChange={(moveFrom) => onReplaceInstruction(withOptionalMoveFrom(instruction, moveFrom))}
+          />
+          <NumberField
+            label="缩放"
+            value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale}
+            min={0.1}
+            max={4}
+            step={0.1}
+            onChange={(scale) => onReplaceInstruction({ ...instruction, scale })}
+          />
+          <BooleanField
+            label="水平翻转"
+            checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip}
+            onChange={(flip) => onReplaceInstruction({ ...instruction, flip })}
+          />
+          <NumberField
+            label="表情过渡（毫秒）"
+            value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs}
+            min={0}
+            integer
+            onChange={(exprMs) => onReplaceInstruction({ ...instruction, exprMs })}
           />
           <EnumField
             label="转场"
@@ -836,6 +871,15 @@ function TextStateField({
 
 function OptionalTextField({ label, value, onChange }: { label: string; value?: string; onChange: (value: string) => void }) {
   return <TextField label={label} value={value ?? ""} onChange={onChange} />;
+}
+
+function withOptionalMoveFrom(
+  instruction: Extract<Instruction, { t: "char" }>,
+  moveFrom: string,
+): Extract<Instruction, { t: "char" }> {
+  const next = { ...instruction, moveFrom: moveFrom.trim() || undefined };
+  if (next.moveFrom == null) delete next.moveFrom;
+  return next;
 }
 
 function withOptionalDefaultName(

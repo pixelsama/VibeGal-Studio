@@ -51,6 +51,10 @@ describe("runtime contract", () => {
           id: "hero",
           pos: "left",
           expr: "smile",
+          scale: 1.25,
+          flip: true,
+          exprMs: 180,
+          ms: 600,
           changeId: 42,
           justEntered: true,
           prevExpr: "default",
@@ -80,7 +84,13 @@ describe("runtime contract", () => {
     const json = JSON.stringify(slot);
 
     expect(slot.position).toEqual({ nodeId: "start", instructionId: "line_01" });
-    expect(slot.checkpoint.sprites).toEqual([{ id: "hero", pos: "left", expr: "smile" }]);
+    expect(slot.checkpoint.sprites).toEqual([{
+      id: "hero",
+      pos: "left",
+      expr: "smile",
+      scale: 1.25,
+      flip: true,
+    }]);
     expect(slot.checkpoint.bgm).toEqual({ id: "theme", loop: true });
     expect(json).not.toContain("effects");
     expect(json).not.toContain("transitions");
@@ -222,10 +232,22 @@ describe("runtime contract", () => {
     const checkpoint = createRuntimeSnapshot(createInitialState(), { currentNodeId: "start", currentStoryPoint: null });
     const legacy = { ...createSaveSlotRecord({ projectId: "project-a", now: "2026-01-01T00:00:00Z", checkpoint }), schemaVersion: 1 };
     delete (legacy.checkpoint as Partial<typeof legacy.checkpoint>).playthroughId;
+    legacy.checkpoint.sprites = [{
+      id: "hero",
+      pos: "left",
+      expr: "default",
+    }] as typeof legacy.checkpoint.sprites;
     const first = migrateSaveSlotRecord(legacy);
     const second = migrateSaveSlotRecord(legacy);
     expect(first.schemaVersion).toBe(2);
     expect(first.checkpoint.playthroughId).toBe(second.checkpoint.playthroughId);
+    expect(first.checkpoint.sprites).toEqual([{
+      id: "hero",
+      pos: "left",
+      expr: "default",
+      scale: 1,
+      flip: false,
+    }]);
 
     expect(migrateGlobalPersistentRecord({
       schemaVersion: 1,
