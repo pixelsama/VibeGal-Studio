@@ -35,8 +35,12 @@ import {
   CommandMenuSource,
   defaultScenarioInstruction,
   insertScenarioCommandAtCursor,
+  insertScenarioParameterAtCursor,
   scenarioCommandOptionsForQuery,
   scenarioCommandTriggerAtCursor,
+  scenarioParameterOptions,
+  scenarioParameterTriggerAtCursor,
+  type ScenarioParameterTrigger,
 } from "./scenarioCommands";
 import {
   getScenarioSelection,
@@ -267,6 +271,8 @@ export function NodeEditor({
   const [externalDiffOpen, setExternalDiffOpen] = useState(false);
   const externalFetchRequestedRef = useRef(false);
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
+  const [parameterTrigger, setParameterTrigger] = useState<ScenarioParameterTrigger | null>(null);
+  const [completionIndex, setCompletionIndex] = useState(0);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const layoutRootRef = useRef<HTMLDivElement | null>(null);
@@ -466,6 +472,11 @@ export function NodeEditor({
   );
   const commandQuery = commandMenuSource === "trigger" ? scenarioCommandTrigger?.query ?? "" : "";
   const visibleCommands = useMemo(() => scenarioCommandOptionsForQuery(commandQuery), [commandQuery]);
+  const visibleParameters = useMemo(
+    () => parameterTrigger ? scenarioParameterOptions(parameterTrigger, project) : [],
+    [parameterTrigger, project],
+  );
+  const parameterMenuVisible = mode === "scenario" && parameterTrigger != null && visibleParameters.length > 0;
   const commandMenuVisible = mode === "scenario"
     && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
   const lineActionTop = Math.max(
@@ -480,6 +491,10 @@ export function NodeEditor({
   useEffect(() => {
     if (commandMenuSource === "trigger" && !scenarioCommandTrigger) setCommandMenuSource(null);
   }, [commandMenuSource, scenarioCommandTrigger]);
+
+  useEffect(() => {
+    setCompletionIndex((current) => Math.min(current, Math.max(visibleParameters.length - 1, 0)));
+  }, [visibleParameters.length]);
 
   useEffect(() => {
     const offset = pendingSelectionRef.current;
@@ -680,12 +695,17 @@ export function NodeEditor({
     setTextareaScrollTop(textarea.scrollTop);
     if (mode !== "scenario") {
       setCommandMenuSource(null);
+      setParameterTrigger(null);
       return;
     }
-    if (scenarioCommandTriggerAtCursor(textarea.value, nextOffset)) {
+    const nextCommand = scenarioCommandTriggerAtCursor(textarea.value, nextOffset);
+    if (nextCommand) {
+      setParameterTrigger(null);
       setCommandMenuSource("trigger");
-    } else if (commandMenuSource === "trigger") {
-      setCommandMenuSource(null);
+    } else {
+      if (commandMenuSource === "trigger") setCommandMenuSource(null);
+      setParameterTrigger(scenarioParameterTriggerAtCursor(textarea.value, nextOffset));
+      setCompletionIndex(0);
     }
   };
 
@@ -695,7 +715,10 @@ export function NodeEditor({
     applyScenarioText(nextText);
     setCursorOffset(nextOffset);
     setTextareaScrollTop(textarea.scrollTop);
-    setCommandMenuSource(scenarioCommandTriggerAtCursor(nextText, nextOffset) ? "trigger" : null);
+    const nextCommand = scenarioCommandTriggerAtCursor(nextText, nextOffset);
+    setCommandMenuSource(nextCommand ? "trigger" : null);
+    setParameterTrigger(nextCommand ? null : scenarioParameterTriggerAtCursor(nextText, nextOffset));
+    setCompletionIndex(0);
   };
 
   const handleJsonTextChange = (textarea: HTMLTextAreaElement) => {
@@ -722,6 +745,16 @@ export function NodeEditor({
     applyScenarioText(templateText, { programmatic: true });
   };
 
+  const handleInsertParameter = (id: string) => {
+    if (!parameterTrigger || mode !== "scenario") return;
+    const inserted = insertScenarioParameterAtCursor(text, parameterTrigger, id);
+    pendingSelectionRef.current = inserted.cursorOffset;
+    setCursorOffset(inserted.cursorOffset);
+    setParameterTrigger(null);
+    setCompletionIndex(0);
+    applyScenarioText(inserted.text, { programmatic: true });
+  };
+
   const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mode === "scenario") {
       const shortcut = undoShortcutType(event);
@@ -745,9 +778,23 @@ export function NodeEditor({
         return;
       }
     }
-    if (event.key === "Escape" && commandMenuSource) {
+    if (parameterMenuVisible && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      setCompletionIndex((current) => {
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        return (current + delta + visibleParameters.length) % visibleParameters.length;
+      });
+      return;
+    }
+    if (event.key === "Escape" && (commandMenuSource || parameterTrigger)) {
       event.preventDefault();
       setCommandMenuSource(null);
+      setParameterTrigger(null);
+      return;
+    }
+    if ((event.key === "Enter" || event.key === "Tab") && parameterMenuVisible) {
+      event.preventDefault();
+      handleInsertParameter(visibleParameters[completionIndex]?.id ?? visibleParameters[0].id);
       return;
     }
     if ((event.key === "Enter" || event.key === "Tab") && commandMenuVisible && visibleCommands[0]) {
@@ -768,6 +815,7 @@ export function NodeEditor({
       undoHistoryRef.current = createUndoHistory();
       setMode("json");
       setFollowPreviewCursor(false);
+      setParameterTrigger(null);
       replaceText(built.payload);
       replaceValidInstructions(built.nextInstructions);
       setDiagnostics([]);
@@ -860,11 +908,16 @@ export function NodeEditor({
         lineActionTop={lineActionTop}
         commandMenuVisible={commandMenuVisible}
         visibleCommands={visibleCommands}
+        parameterMenuVisible={parameterMenuVisible}
+        visibleParameters={visibleParameters}
+        selectedParameterIndex={completionIndex}
         onToggleLineCommandMenu={() => {
+          setParameterTrigger(null);
           setCommandMenuSource(commandMenuSource === "line-plus" ? null : "line-plus");
           textareaRef.current?.focus();
         }}
         onInsertCommand={handleInsertCommand}
+        onInsertParameter={handleInsertParameter}
         onInsertTemplate={handleInsertTemplate}
         onScenarioTextChange={handleScenarioTextChange}
         onJsonTextChange={handleJsonTextChange}

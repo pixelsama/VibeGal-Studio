@@ -13,6 +13,13 @@ describe("highlightScenarioLine", () => {
     ]);
   });
 
+  it("uses a distinct token for story-state changes", () => {
+    expect(highlightScenarioLine("@set affection = affection + 1")).toEqual([
+      { kind: "state-change", text: "@set" },
+      { kind: "state-change", text: " affection = affection + 1" },
+    ]);
+  });
+
   it("dims @continue and @instruction payloads", () => {
     expect(highlightScenarioLine("@continue")).toEqual([{ kind: "dim", text: "@continue" }]);
 

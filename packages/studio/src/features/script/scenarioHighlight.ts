@@ -6,7 +6,7 @@
  */
 import { parseScenarioLine } from "@vibegal/engine";
 
-export type ScenarioTokenKind = "command" | "param" | "speaker" | "text" | "dim" | "invalid";
+export type ScenarioTokenKind = "command" | "param" | "speaker" | "text" | "state-change" | "dim" | "invalid";
 
 export interface ScenarioLineToken {
   kind: ScenarioTokenKind;
@@ -31,9 +31,10 @@ export function highlightScenarioLine(line: string): ScenarioLineToken[] {
     const commandMatch = line.match(/^(\s*@\S+)([\s\S]*)$/);
     if (commandMatch) {
       const [, command, rest] = commandMatch;
+      const kind = trimmed.startsWith("@set ") ? "state-change" : "command";
       return rest.length > 0
-        ? [{ kind: "command", text: command }, { kind: "param", text: rest }]
-        : [{ kind: "command", text: command }];
+        ? [{ kind, text: command }, { kind: kind === "state-change" ? "state-change" : "param", text: rest }]
+        : [{ kind, text: command }];
     }
     return [{ kind: "command", text: line }];
   }

@@ -14,8 +14,12 @@ function renderEditor(text: string, overrides: { currentLine?: number; implicitP
     lineActionTop: 16,
     commandMenuVisible: false,
     visibleCommands: [],
+    parameterMenuVisible: false,
+    visibleParameters: [],
+    selectedParameterIndex: 0,
     onToggleLineCommandMenu: () => {},
     onInsertCommand: () => {},
+    onInsertParameter: () => {},
     onInsertTemplate: () => {},
     onScenarioTextChange: () => {},
     onJsonTextChange: () => {},
@@ -61,6 +65,40 @@ describe("ScenarioTextEditor empty guide", () => {
 
     expect(html).toContain("data-pause-marker=\"2\"");
     expect(html).toContain("空行 = 一次停顿");
+  });
+
+  it("renders parameter completion with its active keyboard selection", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
+      mode: "scenario",
+      text: "@bg cla",
+      textareaRef: { current: null },
+      currentLine: 1,
+      implicitPauseLines: [],
+      lineActionTop: 16,
+      commandMenuVisible: false,
+      visibleCommands: [],
+      parameterMenuVisible: true,
+      visibleParameters: [
+        { id: "classroom", label: "教室", detail: "classroom" },
+        { id: "classroom_evening", label: "黄昏教室", detail: "classroom_evening" },
+      ],
+      selectedParameterIndex: 1,
+      onToggleLineCommandMenu: () => {},
+      onInsertCommand: () => {},
+      onInsertParameter: () => {},
+      onInsertTemplate: () => {},
+      onScenarioTextChange: () => {},
+      onJsonTextChange: () => {},
+      onSyncCursor: () => {},
+      onKeyDown: () => {},
+      onScroll: () => {},
+    }));
+
+    expect(html).toContain('role="listbox"');
+    expect(html).toContain('aria-label="剧本参数补全"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain("黄昏教室");
+    expect(html).toContain("classroom_evening");
   });
 
   it("renders a syntax highlight layer and disables soft wrap", () => {

@@ -4,8 +4,193 @@ import {
   defaultInstruction,
   type InsertableKind,
 } from "./instructions";
+import { variableLabel } from "./storyState";
 
 export type CommandMenuSource = "trigger" | "line-plus";
+
+export type ScenarioParameterKind =
+  | "character"
+  | "expression"
+  | "background"
+  | "bgm"
+  | "sfx"
+  | "voice"
+  | "cg"
+  | "video"
+  | "story-state"
+  | "cg-unlock"
+  | "music-unlock"
+  | "replay-unlock"
+  | "ending-unlock";
+
+export interface ScenarioParameterTrigger {
+  kind: ScenarioParameterKind;
+  query: string;
+  replaceStart: number;
+  replaceEnd: number;
+  line: number;
+  ownerId?: string;
+}
+
+export interface ScenarioParameterOption {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+export function scenarioParameterTriggerAtCursor(
+  text: string,
+  cursorOffset: number,
+): ScenarioParameterTrigger | null {
+  const bounds = lineBoundsAtCursor(text, cursorOffset);
+  const line = text.slice(bounds.start, bounds.end);
+  const localOffset = bounds.offset - bounds.start;
+  const prefix = line.slice(0, localOffset);
+
+  if (!prefix.trimStart().startsWith("@")) {
+    if (!/[:：]/.test(line)) return null;
+    const speaker = prefix.match(/^\s*([^:：\s(),]*)(?:\(([^,):：\s]*))?$/);
+    if (!speaker) return null;
+    if (speaker[2] !== undefined) {
+      return localTrigger(bounds, "expression", speaker[2], localOffset - speaker[2].length, localOffset, speaker[1]);
+    }
+    return localTrigger(bounds, "character", speaker[1], prefix.lastIndexOf(speaker[1]), localOffset);
+  }
+
+  const tokens = Array.from(line.matchAll(/\S+/g)).map((match) => ({
+    value: match[0],
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+  const current = tokenAtCursor(tokens, localOffset);
+  const index = current?.index ?? tokens.length;
+  const query = current?.token.value ?? "";
+  const replaceStart = current?.token.start ?? localOffset;
+  const replaceEnd = current?.token.end ?? localOffset;
+  const command = tokens[0]?.value;
+
+  let kind: ScenarioParameterKind | null = null;
+  let ownerId: string | undefined;
+  if (index === 1) {
+    kind = {
+      "@bg": "background",
+      "@bgm": "bgm",
+      "@sfx": "sfx",
+      "@voice": "voice",
+      "@char": "character",
+      "@showCg": "cg",
+      "@playVideo": "video",
+      "@set": "story-state",
+      "@completeEnding": "ending-unlock",
+    }[command ?? ""] as ScenarioParameterKind | undefined ?? null;
+  } else if (command === "@char" && index === 2) {
+    kind = "expression";
+    ownerId = tokens[1]?.value;
+  } else if (command === "@unlock" && index === 2) {
+    kind = unlockParameterKind(tokens[1]?.value);
+  }
+  if (!kind) return null;
+  return localTrigger(bounds, kind, query, replaceStart, replaceEnd, ownerId);
+}
+
+export function scenarioParameterOptions(
+  trigger: ScenarioParameterTrigger,
+  project: ProjectData,
+): ScenarioParameterOption[] {
+  const manifest = project.content.manifest;
+  let options: ScenarioParameterOption[];
+  switch (trigger.kind) {
+    case "character":
+      options = Object.entries(manifest.characters).map(([id, item]) => option(id, item.name));
+      break;
+    case "expression":
+      options = Object.keys(manifest.characters[trigger.ownerId ?? ""]?.sprites ?? {}).map((id) => option(id, id));
+      break;
+    case "background":
+      options = Object.keys(manifest.backgrounds).map((id) => option(id, id));
+      break;
+    case "bgm":
+    case "sfx":
+    case "voice":
+      options = Object.keys(manifest.audio[trigger.kind]).map((id) => option(id, id));
+      break;
+    case "cg":
+      options = Object.entries(manifest.cg).map(([id, item]) => option(id, item.name));
+      break;
+    case "video":
+      options = Object.entries(manifest.videos).map(([id, item]) => option(id, item.name));
+      break;
+    case "story-state":
+      options = Object.entries(project.content.variables?.variables ?? {}).map(([id, declaration]) => (
+        option(id, variableLabel(id, declaration, manifest))
+      ));
+      break;
+    case "cg-unlock":
+      options = unlockOptions(manifest.unlocks.cg);
+      break;
+    case "music-unlock":
+      options = unlockOptions(manifest.unlocks.music);
+      break;
+    case "replay-unlock":
+      options = unlockOptions(manifest.unlocks.replay);
+      break;
+    case "ending-unlock":
+      options = unlockOptions(manifest.unlocks.endings);
+      break;
+  }
+  const query = trigger.query.trim().toLowerCase();
+  return query
+    ? options.filter((item) => item.id.toLowerCase().includes(query) || item.label.toLowerCase().includes(query))
+    : options;
+}
+
+export function insertScenarioParameterAtCursor(
+  text: string,
+  trigger: ScenarioParameterTrigger,
+  id: string,
+): { text: string; cursorOffset: number } {
+  const nextText = `${text.slice(0, trigger.replaceStart)}${id}${text.slice(trigger.replaceEnd)}`;
+  return { text: nextText, cursorOffset: trigger.replaceStart + id.length };
+}
+
+function localTrigger(
+  bounds: ReturnType<typeof lineBoundsAtCursor>,
+  kind: ScenarioParameterKind,
+  query: string,
+  replaceStart: number,
+  replaceEnd: number,
+  ownerId?: string,
+): ScenarioParameterTrigger {
+  return {
+    kind,
+    query,
+    replaceStart: bounds.start + replaceStart,
+    replaceEnd: bounds.start + replaceEnd,
+    line: bounds.line,
+    ...(ownerId ? { ownerId } : {}),
+  };
+}
+
+function tokenAtCursor(tokens: Array<{ value: string; start: number; end: number }>, offset: number) {
+  const index = tokens.findIndex((token) => offset >= token.start && offset <= token.end);
+  return index >= 0 ? { index, token: tokens[index] } : null;
+}
+
+function unlockParameterKind(kind: string | undefined): ScenarioParameterKind | null {
+  if (kind === "cg") return "cg-unlock";
+  if (kind === "music") return "music-unlock";
+  if (kind === "replay") return "replay-unlock";
+  if (kind === "endings") return "ending-unlock";
+  return null;
+}
+
+function option(id: string, label: string | undefined): ScenarioParameterOption {
+  return { id, label: label?.trim() || id, detail: id };
+}
+
+function unlockOptions(registry: Record<string, { title?: string }>): ScenarioParameterOption[] {
+  return Object.entries(registry).map(([id, item]) => option(id, item.title));
+}
 
 export interface ScenarioCommandOption {
   kind: InsertableKind;
@@ -27,7 +212,7 @@ const SCENARIO_COMMANDS: ScenarioCommandOption[] = [
   { kind: "wait", label: "等待", detail: "等待指定毫秒", aliases: ["wait", "等待"] },
   { kind: "effect", label: "效果", detail: "触发画面效果", aliases: ["effect", "fx", "效果"] },
   { kind: "transition", label: "转场", detail: "触发转场覆盖层", aliases: ["transition", "trans", "转场"] },
-  { kind: "set", label: "变量", detail: "设置剧情变量", aliases: ["set", "var", "变量"] },
+  { kind: "set", label: "故事状态", detail: "改变故事状态", aliases: ["set", "state", "状态"] },
 ];
 
 export interface ScenarioCommandTrigger {

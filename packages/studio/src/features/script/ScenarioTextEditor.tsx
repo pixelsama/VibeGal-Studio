@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
-import type { ScenarioCommandOption } from "./scenarioCommands";
+import type { ScenarioCommandOption, ScenarioParameterOption } from "./scenarioCommands";
 import { highlightScenarioLine, type ScenarioTokenKind } from "./scenarioHighlight";
 
 /** 剧本编辑区的行高/内边距常量：gutter、高亮层、命令菜单定位共用同一份度量。 */
@@ -31,8 +31,12 @@ export function ScenarioTextEditor({
   lineActionTop,
   commandMenuVisible,
   visibleCommands,
+  parameterMenuVisible,
+  visibleParameters,
+  selectedParameterIndex,
   onToggleLineCommandMenu,
   onInsertCommand,
+  onInsertParameter,
   onInsertTemplate,
   onScenarioTextChange,
   onJsonTextChange,
@@ -48,8 +52,12 @@ export function ScenarioTextEditor({
   lineActionTop: number;
   commandMenuVisible: boolean;
   visibleCommands: ScenarioCommandOption[];
+  parameterMenuVisible: boolean;
+  visibleParameters: ScenarioParameterOption[];
+  selectedParameterIndex: number;
   onToggleLineCommandMenu: () => void;
   onInsertCommand: (kind: InsertableKind) => void;
+  onInsertParameter: (id: string) => void;
   onInsertTemplate: (text: string) => void;
   onScenarioTextChange: (textarea: HTMLTextAreaElement) => void;
   onJsonTextChange: (textarea: HTMLTextAreaElement) => void;
@@ -146,6 +154,31 @@ export function ScenarioTextEditor({
           ))}
         </div>
       )}
+      {parameterMenuVisible && (
+        <div
+          role="listbox"
+          aria-label="剧本参数补全"
+          style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
+        >
+          {visibleParameters.map((option, index) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={index === selectedParameterIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onInsertParameter(option.id)}
+              style={{
+                ...commandMenuButtonStyle,
+                background: index === selectedParameterIndex ? "var(--bg-hover)" : "transparent",
+              }}
+            >
+              <span style={commandMenuLabelStyle}>{option.label}</span>
+              {option.detail !== option.label && <span style={commandMenuDetailStyle}>{option.detail}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       {scenario && (
         <pre
           aria-hidden
@@ -196,6 +229,7 @@ const SCENARIO_TOKEN_COLORS: Record<ScenarioTokenKind, string> = {
   param: "var(--text-secondary)",
   speaker: "var(--status-ok-text)",
   text: "var(--text-primary)",
+  "state-change": "var(--status-warn-text)",
   dim: "var(--text-muted)",
   invalid: "var(--status-error-text)",
 };
