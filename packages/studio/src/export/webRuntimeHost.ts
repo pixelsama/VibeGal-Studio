@@ -115,6 +115,82 @@ export function defaultRuntimeSettings(): RuntimeSettingsRecord {
   return createDefaultRuntimeSettingsRecord();
 }
 
+interface WebThumbnailStore {
+  write(projectId: string, key: string, data: Blob): Promise<void>;
+  read(projectId: string, key: string): Promise<Blob | null>;
+  delete(projectId: string, key: string): Promise<void>;
+}
+
+function createWebThumbnailStore(): WebThumbnailStore {
+  if (typeof globalThis.indexedDB === "undefined") {
+    const memory = new Map<string, Blob>();
+    const key = (projectId: string, thumbnailId: string) =>
+      `${projectId}\u0000${thumbnailId}`;
+    return {
+      async write(projectId, thumbnailId, data) {
+        memory.set(key(projectId, thumbnailId), data);
+      },
+      async read(projectId, thumbnailId) {
+        return memory.get(key(projectId, thumbnailId)) ?? null;
+      },
+      async delete(projectId, thumbnailId) {
+        memory.delete(key(projectId, thumbnailId));
+      },
+    };
+  }
+
+  const database = openThumbnailDatabase(globalThis.indexedDB);
+  const transact = async <T>(
+    mode: IDBTransactionMode,
+    operation: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason: unknown) => void) => void,
+  ): Promise<T> => new Promise<T>((resolve, reject) => {
+    database.then((db) => {
+      const transaction = db.transaction("thumbnails", mode);
+      operation(transaction.objectStore("thumbnails"), resolve, reject);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    }, reject);
+  });
+  const key = (projectId: string, thumbnailId: string) => [projectId, thumbnailId];
+
+  return {
+    write(projectId, thumbnailId, data) {
+      return transact<void>("readwrite", (store, resolve, reject) => {
+        const request = store.put(data, key(projectId, thumbnailId));
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    },
+    read(projectId, thumbnailId) {
+      return transact<Blob | null>("readonly", (store, resolve, reject) => {
+        const request = store.get(key(projectId, thumbnailId));
+        request.onsuccess = () => resolve(request.result instanceof Blob ? request.result : null);
+        request.onerror = () => reject(request.error);
+      });
+    },
+    delete(projectId, thumbnailId) {
+      return transact<void>("readwrite", (store, resolve, reject) => {
+        const request = store.delete(key(projectId, thumbnailId));
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    },
+  };
+}
+
+function openThumbnailDatabase(indexedDb: IDBFactory): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDb.open("vibegal-runtime-assets", 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains("thumbnails")) {
+        request.result.createObjectStore("thumbnails");
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export function createWebStorageAdapter(
   projectId: string,
   storage: StorageLike | null = browserStorage(),
@@ -192,8 +268,23 @@ export function createWebStorageAdapter(
     return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : [];
   };
 
+  const thumbnails = createWebThumbnailStore();
+  const thumbnailId = (slotId: string) =>
+    `${encodeURIComponent(slotId)}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+
   return {
     ...adapter,
+    async writeThumbnail(readProjectId, slotId, data) {
+      const id = thumbnailId(slotId);
+      await thumbnails.write(readProjectId, id, data);
+      return id;
+    },
+    readThumbnail(readProjectId, id) {
+      return thumbnails.read(readProjectId, id);
+    },
+    deleteThumbnail(readProjectId, id) {
+      return thumbnails.delete(readProjectId, id);
+    },
     warnings,
     readGlobalSync(readProjectId) {
       const raw = readRaw(`vibegal:${readProjectId}:global`);

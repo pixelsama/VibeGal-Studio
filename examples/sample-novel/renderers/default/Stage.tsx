@@ -42,6 +42,7 @@ const fallbackSettings: RuntimeSettingsRecord = {
 };
 
 export function Stage({ state, manifest, meta, contentBase, controls, runtime }: RendererProps) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   // uiHint（fixture 场景宿主，Spec 17 第 4.1 节）：挂载前若存在
   // window.__VIBEGAL_FIXTURE_UI__ = { panel }，把它当作初始 UI 状态读一次；
   // 无该全局时初始 menuPage = null，与现状完全一致。
@@ -227,7 +228,11 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
   const performSave = async (slot: PlayerSlotView) => {
     if (!controller) return;
     try {
-      await controller.save(slot.slotId, slot.label);
+      await controller.save(
+        slot.slotId,
+        slot.label,
+        () => captureStageThumbnail(stageRef.current),
+      );
       showNotice({ tone: "success", message: `${slot.label}已保存。` }, true);
       await refreshSlots();
     } catch (error) {
@@ -246,7 +251,9 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
   const performQuickSave = async () => {
     if (!controller) return;
     try {
-      await controller.quickSave();
+      await controller.quickSave(
+        () => captureStageThumbnail(stageRef.current),
+      );
       showNotice({ tone: "success", message: "快速存档完成。" }, true);
       if (menuPage === "save") await refreshSlots();
     } catch (error) {
@@ -490,6 +497,7 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
 
   return (
     <div
+      ref={stageRef}
       data-player-stage="true"
       data-player-screen={screen}
       data-player-blocking={screen === "title" || state.nameInput != null || menuPage != null || confirmAction != null || busy ? "true" : "false"}
@@ -635,6 +643,7 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
               busy={busy}
               manifest={manifest}
               contentBase={contentBase}
+              runtime={runtime}
               onSave={requestSave}
               onLoad={(slot) => void performLoad(slot)}
               onDelete={(slot) => setConfirmAction({ kind: "delete", slot })}
@@ -702,6 +711,77 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
       )}
     </div>
   );
+}
+
+async function captureStageThumbnail(
+  stage: HTMLDivElement | null,
+): Promise<Blob | null> {
+  if (!stage || typeof document === "undefined") return null;
+  const stageRect = stage.getBoundingClientRect();
+  const width = Math.max(1, Math.round(stageRect.width || stage.clientWidth));
+  const height = Math.max(1, Math.round(stageRect.height || stage.clientHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.min(width, 640);
+  canvas.height = Math.max(1, Math.round(canvas.width * height / width));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  const background = stage.querySelector<HTMLImageElement>(
+    '[data-runtime-background="true"]',
+  );
+  if (!background?.complete || background.naturalWidth === 0) return null;
+
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  try {
+    const sourceAspect = background.naturalWidth / background.naturalHeight;
+    const targetAspect = canvas.width / canvas.height;
+    const sourceWidth = sourceAspect > targetAspect
+      ? background.naturalHeight * targetAspect
+      : background.naturalWidth;
+    const sourceHeight = sourceAspect > targetAspect
+      ? background.naturalHeight
+      : background.naturalWidth / targetAspect;
+    context.drawImage(
+      background,
+      (background.naturalWidth - sourceWidth) / 2,
+      (background.naturalHeight - sourceHeight) / 2,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+  } catch {
+    return null;
+  }
+
+  const scaleX = canvas.width / width;
+  const scaleY = canvas.height / height;
+  const sprites = Array.from(stage.querySelectorAll<HTMLImageElement>(
+    '[data-runtime-sprite="true"]',
+  )).filter((image) => image.complete && image.naturalWidth > 0);
+  for (const image of sprites) {
+    const imageRect = image.getBoundingClientRect();
+    const drawWidth = imageRect.width * scaleX;
+    const drawHeight = imageRect.height * scaleY;
+    if (drawWidth <= 0 || drawHeight <= 0) continue;
+    try {
+      context.drawImage(
+        image,
+        (imageRect.left - stageRect.left) * scaleX,
+        (imageRect.top - stageRect.top) * scaleY,
+        drawWidth,
+        drawHeight,
+      );
+    } catch {
+      // A transient sprite should not prevent a background thumbnail.
+    }
+  }
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, "image/webp", 0.78);
+  });
 }
 
 function playerErrorMessage(code: string): string {

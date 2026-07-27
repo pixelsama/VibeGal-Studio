@@ -100,10 +100,14 @@ export const SavePreviewTextTokenSchema = z.strictObject({
   ruby: z.string().optional(),
 });
 
+const OPAQUE_THUMBNAIL_KEY_PATTERN = /^(?!data:|blob:)[^\r\n]+$/i;
+
 export const SavePreviewSchema = z.strictObject({
   text: z.string().optional(),
   tokens: z.array(SavePreviewTextTokenSchema).optional(),
   background: z.string().nullable().optional(),
+  /** Opaque key owned by the runtime persistence adapter; never inline image data. */
+  thumbnail: z.string().min(1).regex(OPAQUE_THUMBNAIL_KEY_PATTERN).optional(),
 });
 export type SavePreview = z.infer<typeof SavePreviewSchema>;
 
@@ -159,6 +163,10 @@ export interface RuntimePersistenceAdapter {
   readSaveSlot(projectId: string, slotId: string): Promise<SaveSlotRecord | null>;
   writeSaveSlot(projectId: string, slotId: string, record: SaveSlotRecord): Promise<void>;
   deleteSaveSlot(projectId: string, slotId: string): Promise<void>;
+  /** Optional opaque thumbnail storage. Adapters without it keep save behavior unchanged. */
+  writeThumbnail?(projectId: string, slotId: string, data: Blob): Promise<string>;
+  readThumbnail?(projectId: string, key: string): Promise<Blob | null>;
+  deleteThumbnail?(projectId: string, key: string): Promise<void>;
   readGlobal(projectId: string): Promise<GlobalPersistentRecord>;
   writeGlobal(projectId: string, record: GlobalPersistentRecord): Promise<void>;
   readSettings(projectId: string): Promise<RuntimeSettingsRecord>;

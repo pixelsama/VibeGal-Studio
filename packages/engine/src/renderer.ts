@@ -64,6 +64,8 @@ export interface SaveSlotSummary {
 export interface SaveOptions {
   label?: string;
   preview?: SavePreview;
+  /** Optional renderer capture; save still succeeds when capture/storage is unavailable. */
+  captureThumbnail?: () => Blob | null | Promise<Blob | null>;
 }
 
 export interface SaveService {
@@ -71,6 +73,8 @@ export interface SaveService {
   save(slotId: string, options?: SaveOptions): Promise<SaveSlotSummary>;
   load(slotId: string): Promise<RuntimeRestoreResult & { slotId: string }>;
   delete(slotId: string): Promise<void>;
+  /** Optional for contract-v1 hosts that do not persist binary preview assets. */
+  readThumbnail?(key: string): Promise<Blob | null>;
   quickSave(): Promise<void>;
   quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }>;
   autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
@@ -481,6 +485,14 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         const decisions = options.decisionLog?.();
         return mutate(async () => {
           const existing = await persistenceAdapter.readSaveSlot(projectId, slotId);
+          const captured = await previewWithCapturedThumbnail({
+            projectId,
+            slotId,
+            existing: existing?.preview,
+            requested: saveOptions?.preview,
+            capture: saveOptions?.captureThumbnail,
+            persistenceAdapter,
+          });
           const slot = createSaveSlotRecord({
             projectId,
             now: now(),
@@ -488,9 +500,28 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
             decisions: decisions ?? existing?.decisions,
             createdAt: existing?.createdAt,
             label: saveOptions?.label ?? existing?.label,
-            preview: saveOptions?.preview ?? existing?.preview,
+            preview: captured.preview,
           });
-          await persistenceAdapter.writeSaveSlot(projectId, slotId, slot);
+          try {
+            await persistenceAdapter.writeSaveSlot(projectId, slotId, slot);
+          } catch (error) {
+            if (captured.thumbnail) {
+              await persistenceAdapter.deleteThumbnail?.(
+                projectId,
+                captured.thumbnail,
+              ).catch(() => undefined);
+            }
+            throw error;
+          }
+          if (
+            existing?.preview?.thumbnail
+            && existing.preview.thumbnail !== slot.preview?.thumbnail
+          ) {
+            await persistenceAdapter.deleteThumbnail?.(
+              projectId,
+              existing.preview.thumbnail,
+            ).catch(() => undefined);
+          }
           return toSummary(slotId, slot);
         });
       },
@@ -505,7 +536,19 @@ export function createInMemoryRuntimeServices(options: InMemoryRuntimeServicesOp
         });
       },
       async delete(slotId) {
-        await mutate(() => persistenceAdapter.deleteSaveSlot(projectId, slotId));
+        await mutate(async () => {
+          const existing = await persistenceAdapter.readSaveSlot(projectId, slotId);
+          await persistenceAdapter.deleteSaveSlot(projectId, slotId);
+          if (existing?.preview?.thumbnail) {
+            await persistenceAdapter.deleteThumbnail?.(
+              projectId,
+              existing.preview.thumbnail,
+            ).catch(() => undefined);
+          }
+        });
+      },
+      async readThumbnail(key) {
+        return persistenceAdapter.readThumbnail?.(projectId, key) ?? null;
       },
       async quickSave() {
         await this.save("quick", { preview: savePreviewFromState(options.getState()) });
@@ -773,6 +816,44 @@ function savePreviewFromState(state: NovelState): SavePreview {
     ...(tokens?.length ? { tokens } : {}),
     background: state.background,
   };
+}
+
+async function previewWithCapturedThumbnail(input: {
+  projectId: string;
+  slotId: string;
+  existing?: SavePreview;
+  requested?: SavePreview;
+  capture?: () => Blob | null | Promise<Blob | null>;
+  persistenceAdapter: RuntimePersistenceAdapter;
+}): Promise<{ preview?: SavePreview; thumbnail?: string }> {
+  const fallback = input.requested
+    ? { ...input.existing, ...input.requested }
+    : input.existing;
+  if (
+    !input.capture
+    || !input.persistenceAdapter.writeThumbnail
+  ) {
+    return { preview: fallback };
+  }
+
+  try {
+    const data = await input.capture();
+    if (!data) return { preview: fallback };
+    const thumbnail = await input.persistenceAdapter.writeThumbnail(
+      input.projectId,
+      input.slotId,
+      data,
+    );
+    return {
+      thumbnail,
+      preview: {
+        ...fallback,
+        thumbnail,
+      },
+    };
+  } catch {
+    return { preview: fallback };
+  }
 }
 
 function cloneSettings(settings: RuntimeSettingsRecord): RuntimeSettingsRecord {

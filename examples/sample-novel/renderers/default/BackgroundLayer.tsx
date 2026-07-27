@@ -32,6 +32,7 @@ function BackgroundLayerImpl({ state, manifest, contentBase }: Props) {
       {url && (
         <img
           key={url}
+          data-runtime-background="true"
           src={url}
           alt=""
           style={{

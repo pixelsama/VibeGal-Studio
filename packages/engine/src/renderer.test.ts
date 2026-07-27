@@ -455,6 +455,137 @@ describe("renderer contract", () => {
     ]);
   });
 
+  it("saveServiceCapturesAndCleansOpaqueThumbnailsWhenSupported", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const thumbnails = new Map<string, Blob>();
+    const writeThumbnail = vi.fn(async (_projectId: string, slotId: string, data: Blob) => {
+      const key = `thumb:${slotId}:${writeThumbnail.mock.calls.length}`;
+      thumbnails.set(key, data);
+      return key;
+    });
+    const readThumbnail = vi.fn(async (_projectId: string, key: string) => thumbnails.get(key) ?? null);
+    const deleteThumbnail = vi.fn(async (_projectId: string, key: string) => {
+      thumbnails.delete(key);
+    });
+    Object.assign(adapter, { writeThumbnail, readThumbnail, deleteThumbnail });
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "project-a",
+      persistenceAdapter: adapter,
+      getState: createInitialState,
+      now: () => "2026-07-27T00:00:00.000Z",
+    });
+
+    const first = await runtime.save.save("manual-01", {
+      preview: { text: "First" },
+      captureThumbnail: () => new Blob(["first"], { type: "image/webp" }),
+    });
+    const firstKey = first.preview?.thumbnail;
+    expect(firstKey).toBe("thumb:manual-01:1");
+    await expect(runtime.save.readThumbnail(firstKey!)).resolves.toEqual(
+      expect.objectContaining({ size: 5, type: "image/webp" }),
+    );
+
+    const second = await runtime.save.save("manual-01", {
+      preview: { text: "Second" },
+      captureThumbnail: () => new Blob(["second"], { type: "image/webp" }),
+    });
+    expect(second.preview?.thumbnail).toBe("thumb:manual-01:2");
+    expect(deleteThumbnail).toHaveBeenCalledWith("project-a", firstKey);
+
+    await runtime.save.delete("manual-01");
+    expect(deleteThumbnail).toHaveBeenLastCalledWith(
+      "project-a",
+      second.preview?.thumbnail,
+    );
+  });
+
+  it("saveServiceStillSucceedsWhenThumbnailCaptureFails", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    Object.assign(adapter, {
+      writeThumbnail: vi.fn(async () => {
+        throw new Error("quota exceeded");
+      }),
+    });
+    const runtime = createInMemoryRuntimeServices({
+      persistenceAdapter: adapter,
+      getState: createInitialState,
+    });
+
+    await expect(runtime.save.save("manual-01", {
+      preview: { text: "Fallback" },
+      captureThumbnail: () => new Blob(["image"]),
+    })).resolves.toEqual(expect.objectContaining({
+      preview: { text: "Fallback" },
+    }));
+  });
+
+  it("saveServiceKeepsThePreviousThumbnailWhenReplacementCaptureFails", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const deleteThumbnail = vi.fn(async () => undefined);
+    Object.assign(adapter, {
+      writeThumbnail: vi.fn(async () => {
+        throw new Error("capture storage unavailable");
+      }),
+      deleteThumbnail,
+    });
+    const existing = createSaveSlotRecord({
+      projectId: "project-a",
+      now: "2026-07-27T00:00:00.000Z",
+      checkpoint: createRuntimeSnapshot(createInitialState(), {
+        currentNodeId: "start",
+        currentStoryPoint: null,
+      }),
+      preview: {
+        text: "Before",
+        thumbnail: "thumb:manual-01:existing",
+      },
+    });
+    await adapter.writeSaveSlot("project-a", "manual-01", existing);
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "project-a",
+      persistenceAdapter: adapter,
+      getState: createInitialState,
+    });
+
+    const saved = await runtime.save.save("manual-01", {
+      preview: { text: "After", background: "school" },
+      captureThumbnail: () => new Blob(["replacement"]),
+    });
+
+    expect(saved.preview).toEqual({
+      text: "After",
+      background: "school",
+      thumbnail: "thumb:manual-01:existing",
+    });
+    expect(deleteThumbnail).not.toHaveBeenCalled();
+  });
+
+  it("saveServiceDeletesANewThumbnailWhenSavingItsRecordFails", async () => {
+    const adapter = createInMemoryRuntimePersistenceAdapter();
+    const deleteThumbnail = vi.fn(async () => undefined);
+    Object.assign(adapter, {
+      writeThumbnail: vi.fn(async () => "thumb:manual-01:new"),
+      deleteThumbnail,
+      writeSaveSlot: vi.fn(async () => {
+        throw new Error("save record failed");
+      }),
+    });
+    const runtime = createInMemoryRuntimeServices({
+      projectId: "project-a",
+      persistenceAdapter: adapter,
+      getState: createInitialState,
+    });
+
+    await expect(runtime.save.save("manual-01", {
+      preview: { text: "Fallback" },
+      captureThumbnail: () => new Blob(["image"]),
+    })).rejects.toThrow("save record failed");
+    expect(deleteThumbnail).toHaveBeenCalledWith(
+      "project-a",
+      "thumb:manual-01:new",
+    );
+  });
+
   it("saveServiceKeepsSafeRichTextTokensInItsPreview", async () => {
     const runtime = createInMemoryRuntimeServices({
       projectId: "project-a",

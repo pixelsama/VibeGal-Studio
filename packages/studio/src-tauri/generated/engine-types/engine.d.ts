@@ -375,6 +375,10 @@ import type { ComponentType, ReactNode } from "react";
     readSaveSlot(projectId: string, slotId: string): Promise<SaveSlotRecord | null>;
     writeSaveSlot(projectId: string, slotId: string, record: SaveSlotRecord): Promise<void>;
     deleteSaveSlot(projectId: string, slotId: string): Promise<void>;
+    /** Optional opaque thumbnail storage. Adapters without it keep save behavior unchanged. */
+    writeThumbnail?(projectId: string, slotId: string, data: Blob): Promise<string>;
+    readThumbnail?(projectId: string, key: string): Promise<Blob | null>;
+    deleteThumbnail?(projectId: string, key: string): Promise<void>;
     readGlobal(projectId: string): Promise<GlobalPersistentRecord>;
     writeGlobal(projectId: string, record: GlobalPersistentRecord): Promise<void>;
     readSettings(projectId: string): Promise<RuntimeSettingsRecord>;
@@ -474,21 +478,25 @@ import type { ComponentType, ReactNode } from "react";
   export interface SaveOptions {
     label?: string;
     preview?: SavePreview;
+    /** Optional renderer capture; save still succeeds when capture/storage is unavailable. */
+    captureThumbnail?: () => Blob | null | Promise<Blob | null>;
   }
 
-  export type SavePreview = { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; };
+  export type SavePreview = { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; thumbnail?: string | undefined; };
 
   export interface SaveService {
     listSlots(): Promise<SaveSlotSummary[]>;
     save(slotId: string, options?: SaveOptions): Promise<SaveSlotSummary>;
     load(slotId: string): Promise<RuntimeRestoreResult & { slotId: string }>;
     delete(slotId: string): Promise<void>;
+    /** Optional for contract-v1 hosts that do not persist binary preview assets. */
+    readThumbnail?(key: string): Promise<Blob | null>;
     quickSave(): Promise<void>;
     quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }>;
     autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
   }
 
-  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; } | undefined; };
+  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; thumbnail?: string | undefined; } | undefined; };
 
   export interface SaveSlotSummary {
     slotId: string;

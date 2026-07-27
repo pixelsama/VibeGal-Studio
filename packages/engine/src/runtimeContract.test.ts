@@ -90,6 +90,44 @@ describe("runtime contract", () => {
     expect(json).not.toContain("nameInputOrigin");
   });
 
+  it("keeps thumbnail previews as opaque keys instead of inline image data", () => {
+    const checkpoint = createRuntimeSnapshot(createInitialState(), {
+      currentNodeId: "start",
+      currentStoryPoint: null,
+    });
+    const slot = createSaveSlotRecord({
+      projectId: "project",
+      now: "2026-07-27T00:00:00.000Z",
+      checkpoint,
+      preview: {
+        text: "Current line",
+        thumbnail: "thumb:manual-01:revision-2",
+      },
+    });
+
+    expect(slot.preview).toEqual({
+      text: "Current line",
+      thumbnail: "thumb:manual-01:revision-2",
+    });
+    expect(JSON.stringify(slot)).not.toContain("data:image");
+    expect(() => createSaveSlotRecord({
+      projectId: "project",
+      now: "2026-07-27T00:00:00.000Z",
+      checkpoint,
+      preview: {
+        thumbnail: "data:image/webp;base64,UklGRg==",
+      },
+    })).toThrow();
+    expect(() => createSaveSlotRecord({
+      projectId: "project",
+      now: "2026-07-27T00:00:00.000Z",
+      checkpoint,
+      preview: {
+        thumbnail: "blob:https://example.invalid/preview",
+      },
+    })).toThrow();
+  });
+
   it("storesOnlyTheStablePlayerNameOriginNeededForRollback", () => {
     const state = { ...createInitialState(), vars: { playerName: "旅行者" } };
     const snapshot = createRuntimeSnapshot(

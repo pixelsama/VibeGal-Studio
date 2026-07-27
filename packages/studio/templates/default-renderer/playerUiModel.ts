@@ -7,10 +7,31 @@ import type {
   SaveSlotSummary,
 } from "@vibegal/engine";
 
+export const MANUAL_SLOT_PAGE_SIZE = 10;
+export const MANUAL_SLOT_PAGE_COUNT = 10;
 export const MANUAL_SLOT_IDS = Array.from(
-  { length: 12 },
+  { length: MANUAL_SLOT_PAGE_SIZE * MANUAL_SLOT_PAGE_COUNT },
   (_, index) => `manual-${String(index + 1).padStart(2, "0")}`,
 );
+
+export function playerSlotsForPage(
+  slots: PlayerSlotView[],
+  page: number,
+): PlayerSlotView[] {
+  const runtimeSlots = slots.filter((slot) => slot.kind !== "manual");
+  const manualSlots = slots.filter((slot) => slot.kind === "manual");
+  const safePage = Math.min(
+    MANUAL_SLOT_PAGE_COUNT - 1,
+    Math.max(0, Math.floor(page)),
+  );
+  return [
+    ...runtimeSlots,
+    ...manualSlots.slice(
+      safePage * MANUAL_SLOT_PAGE_SIZE,
+      (safePage + 1) * MANUAL_SLOT_PAGE_SIZE,
+    ),
+  ];
+}
 
 export const PLAYER_MENU_PAGES = [
   { id: "save", label: "存档 / 读档" },
@@ -216,15 +237,16 @@ export class PlayerUiController {
     return this.run(async () => buildPlayerSlots(await this.runtime.save.listSlots()));
   }
 
-  save(slotId: string, label: string): Promise<SaveSlotSummary> {
+  save(slotId: string, label: string, captureThumbnail?: () => Blob | null | Promise<Blob | null>): Promise<SaveSlotSummary> {
     return this.run(() => this.runtime.save.save(slotId, {
       label,
       preview: createCurrentSavePreview(this.getState()),
+      captureThumbnail,
     }));
   }
 
-  quickSave(): Promise<SaveSlotSummary> {
-    return this.save("quick", "Quick Save");
+  quickSave(captureThumbnail?: () => Blob | null | Promise<Blob | null>): Promise<SaveSlotSummary> {
+    return this.save("quick", "Quick Save", captureThumbnail);
   }
 
   quickLoad(): Promise<RuntimeRestoreResult & { slotId: string }> {

@@ -155,6 +155,24 @@ describe("web export runtime host", () => {
     runtime.dispose();
   });
 
+  it("webRuntimeStoresOpaqueThumbnailBlobsOutsideSaveJson", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    const storage = new MemoryStorage();
+    const adapter = createWebStorageAdapter("project-a", storage);
+    const thumbnail = new Blob(["preview-image"], { type: "image/webp" });
+
+    const key = await adapter.writeThumbnail!("project-a", "manual-01", thumbnail);
+
+    expect(key).not.toContain("data:");
+    await expect(adapter.readThumbnail!("project-a", key)).resolves.toEqual(
+      expect.objectContaining({ size: 13, type: "image/webp" }),
+    );
+    expect(storage.getItem(`vibegal:project-a:thumbnail:${key}`)).toBeNull();
+
+    await adapter.deleteThumbnail!("project-a", key);
+    await expect(adapter.readThumbnail!("project-a", key)).resolves.toBeNull();
+  });
+
   it("webRuntimePersistsSettingsSeparatelyFromSaveSlot", async () => {
     const storage = new MemoryStorage();
     const adapter = createWebStorageAdapter("project-a", storage);

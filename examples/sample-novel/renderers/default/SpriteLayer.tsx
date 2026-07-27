@@ -64,6 +64,7 @@ function SpriteItem({ sprite, manifest, contentBase }: { sprite: ActiveSprite; m
   return (
     <img
       key={`${sprite.id}-${sprite.changeId}`}
+      data-runtime-sprite="true"
       src={url}
       alt={sprite.id}
       style={{

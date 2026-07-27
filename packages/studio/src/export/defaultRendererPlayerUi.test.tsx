@@ -19,12 +19,15 @@ import { TitleScreen } from "../../src-tauri/resources/default-renderer/TitleScr
 import { DEFAULT_UI_TOKENS } from "../../src-tauri/resources/default-renderer/useUiTokens";
 import {
   MANUAL_SLOT_IDS,
+  MANUAL_SLOT_PAGE_COUNT,
+  MANUAL_SLOT_PAGE_SIZE,
   PLAYER_MENU_PAGES,
   PlayerUiController,
   buildPlayerSlots,
   createCurrentSavePreview,
   formatSlotTime,
   pickContinueSlot,
+  playerSlotsForPage,
   readFixtureUiHintScreen,
   runtimeErrorDetails,
   isPlayerShortcutTarget,
@@ -68,11 +71,14 @@ describe("default renderer player UI", () => {
     expect(html.match(/<button[^>]*aria-pressed="false"/g)).toHaveLength(5);
   });
 
-  it("definesTwelveManualSlotsAndTheThreeRuntimeSlots", () => {
-    expect(MANUAL_SLOT_IDS).toEqual([
-      "manual-01", "manual-02", "manual-03", "manual-04", "manual-05", "manual-06",
-      "manual-07", "manual-08", "manual-09", "manual-10", "manual-11", "manual-12",
+  it("definesOneHundredPagedManualSlotsAndTheThreeRuntimeSlots", () => {
+    expect(MANUAL_SLOT_PAGE_SIZE).toBe(10);
+    expect(MANUAL_SLOT_PAGE_COUNT).toBe(10);
+    expect(MANUAL_SLOT_IDS).toHaveLength(100);
+    expect(MANUAL_SLOT_IDS.slice(0, 3)).toEqual([
+      "manual-01", "manual-02", "manual-03",
     ]);
+    expect(MANUAL_SLOT_IDS.at(-1)).toBe("manual-100");
     expect(PLAYER_MENU_PAGES.map((page) => page.id)).toEqual(["save", "history", "gallery", "replay", "music", "endings", "settings", "system"]);
 
     const saved: SaveSlotSummary[] = [{
@@ -84,7 +90,7 @@ describe("default renderer player UI", () => {
     }];
     const slots = buildPlayerSlots(saved);
 
-    expect(slots).toHaveLength(15);
+    expect(slots).toHaveLength(103);
     expect(slots.map((slot) => slot.slotId)).toEqual([
       "quick", "auto:node", "auto:choice", ...MANUAL_SLOT_IDS,
     ]);
@@ -101,6 +107,13 @@ describe("default renderer player UI", () => {
       canDelete: false,
       canSave: false,
     }));
+    expect(playerSlotsForPage(slots, 0).map((slot) => slot.slotId)).toEqual([
+      "quick", "auto:node", "auto:choice", ...MANUAL_SLOT_IDS.slice(0, 10),
+    ]);
+    expect(playerSlotsForPage(slots, 1).map((slot) => slot.slotId)).toEqual([
+      "quick", "auto:node", "auto:choice", ...MANUAL_SLOT_IDS.slice(10, 20),
+    ]);
+    expect(playerSlotsForPage(slots, 99).at(-1)?.slotId).toBe("manual-100");
   });
 
   it("buildsSavePreviewFromTheCurrentTextAndBackground", () => {
@@ -233,6 +246,7 @@ describe("default renderer player UI", () => {
         busy={false}
         manifest={{ characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } }}
         contentBase="./content"
+        runtime={runtime()}
         onSave={vi.fn()}
         onLoad={vi.fn()}
         onDelete={vi.fn()}
@@ -253,8 +267,13 @@ describe("default renderer player UI", () => {
       />,
     );
 
-    expect((slotsHtml.match(/data-player-slot=/g) ?? [])).toHaveLength(15);
-    expect(slotsHtml).toContain("手动存档 12");
+    expect((slotsHtml.match(/data-player-slot=/g) ?? [])).toHaveLength(13);
+    expect(slotsHtml).toContain("手动存档 01");
+    expect(slotsHtml).toContain("手动存档 10");
+    expect(slotsHtml).not.toContain("手动存档 11");
+    expect(slotsHtml).toContain("手动存档 1 / 10");
+    expect(slotsHtml).toContain("上一页");
+    expect(slotsHtml).toContain("下一页");
     expect(settingsHtml).toContain("主音量");
     expect(settingsHtml).toContain("BGM 音量");
     expect(settingsHtml).toContain("音效音量");
@@ -284,6 +303,7 @@ describe("default renderer player UI", () => {
         busy={false}
         manifest={{ characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } }}
         contentBase="./content"
+        runtime={runtime()}
         onSave={vi.fn()}
         onLoad={vi.fn()}
         onDelete={vi.fn()}

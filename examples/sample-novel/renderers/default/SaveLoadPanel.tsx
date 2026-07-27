@@ -1,6 +1,10 @@
-import type { CSSProperties } from "react";
-import { renderRuntimeTextTokens, resolveAsset, type Manifest } from "@vibegal/engine";
-import type { PlayerSlotView } from "./playerUiModel";
+import { useEffect, useState, type CSSProperties } from "react";
+import { renderRuntimeTextTokens, resolveAsset, type Manifest, type RuntimeServices } from "@vibegal/engine";
+import {
+  MANUAL_SLOT_PAGE_COUNT,
+  playerSlotsForPage,
+  type PlayerSlotView,
+} from "./playerUiModel";
 import {
   cardStyle,
   itemMetaStyle,
@@ -17,6 +21,7 @@ interface SaveLoadPanelProps {
   busy: boolean;
   manifest: Manifest;
   contentBase: string;
+  runtime: RuntimeServices;
   onSave: (slot: PlayerSlotView) => void;
   onLoad: (slot: PlayerSlotView) => void;
   onDelete: (slot: PlayerSlotView) => void;
@@ -29,12 +34,16 @@ export function SaveLoadPanel({
   busy,
   manifest,
   contentBase,
+  runtime,
   onSave,
   onLoad,
   onDelete,
   onQuickSave,
   onQuickLoad,
 }: SaveLoadPanelProps) {
+  const [page, setPage] = useState(0);
+  const visibleSlots = playerSlotsForPage(slots, page);
+
   return (
     <div data-save-panel style={panelStyle}>
       <div style={toolbarStyle}>
@@ -46,14 +55,35 @@ export function SaveLoadPanel({
         </button>
       </div>
 
+      <div style={pageToolbarStyle} aria-label="手动存档分页">
+        <button
+          type="button"
+          disabled={busy || page === 0}
+          onClick={() => setPage((current) => Math.max(0, current - 1))}
+          style={secondaryPillButton}
+        >
+          上一页
+        </button>
+        <span style={pageLabelStyle}>手动存档 {page + 1} / {MANUAL_SLOT_PAGE_COUNT}</span>
+        <button
+          type="button"
+          disabled={busy || page >= MANUAL_SLOT_PAGE_COUNT - 1}
+          onClick={() => setPage((current) => Math.min(MANUAL_SLOT_PAGE_COUNT - 1, current + 1))}
+          style={secondaryPillButton}
+        >
+          下一页
+        </button>
+      </div>
+
       <div style={gridStyle}>
-        {slots.map((slot) => (
+        {visibleSlots.map((slot) => (
           <SlotCard
             key={slot.slotId}
             slot={slot}
             busy={busy}
             manifest={manifest}
             contentBase={contentBase}
+            runtime={runtime}
             onSave={onSave}
             onLoad={onLoad}
             onDelete={onDelete}
@@ -70,6 +100,7 @@ function SlotCard({
   busy,
   manifest,
   contentBase,
+  runtime,
   onSave,
   onLoad,
   onDelete,
@@ -78,6 +109,7 @@ function SlotCard({
   busy: boolean;
   manifest: Manifest;
   contentBase: string;
+  runtime: RuntimeServices;
   onSave: (slot: PlayerSlotView) => void;
   onLoad: (slot: PlayerSlotView) => void;
   onDelete: (slot: PlayerSlotView) => void;
@@ -85,6 +117,9 @@ function SlotCard({
   const backgroundId = slot.summary?.preview?.background;
   const backgroundPath = backgroundId ? manifest.backgrounds[backgroundId] : undefined;
   const backgroundUrl = backgroundPath ? resolveAsset(contentBase, backgroundPath) : undefined;
+  const thumbnailKey = slot.summary?.preview?.thumbnail;
+  const thumbnailUrl = useThumbnailUrl(runtime, thumbnailKey);
+  const previewUrl = thumbnailUrl ?? backgroundUrl;
   const position = slot.summary?.position;
 
   return (
@@ -93,12 +128,12 @@ function SlotCard({
         aria-hidden="true"
         style={{
           ...previewStyle,
-          backgroundImage: backgroundUrl
-            ? `linear-gradient(rgba(0,0,0,0.04), rgba(0,0,0,0.22)), url(${JSON.stringify(backgroundUrl)})`
+          backgroundImage: previewUrl
+            ? `linear-gradient(rgba(0,0,0,0.04), rgba(0,0,0,0.22)), url(${JSON.stringify(previewUrl)})`
             : undefined,
         }}
       >
-        {!backgroundUrl && <span style={emptyPreviewStyle}>{slot.empty ? "EMPTY" : "NO BG"}</span>}
+        {!previewUrl && <span style={emptyPreviewStyle}>{slot.empty ? "EMPTY" : "NO PREVIEW"}</span>}
       </div>
 
       <div style={contentStyle}>
@@ -144,6 +179,34 @@ function SlotCard({
   );
 }
 
+function useThumbnailUrl(
+  runtime: RuntimeServices,
+  thumbnail: string | undefined,
+): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setUrl(null);
+    const readThumbnail = runtime.save.readThumbnail;
+    if (!thumbnail || !readThumbnail) return undefined;
+
+    readThumbnail.call(runtime.save, thumbnail).then((blob) => {
+      if (cancelled || !blob) return;
+      objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+    }).catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [runtime, thumbnail]);
+
+  return url;
+}
+
 function formatDate(value: string | undefined): string {
   if (!value) return "";
   const date = new Date(value);
@@ -152,7 +215,20 @@ function formatDate(value: string | undefined): string {
 }
 
 const panelStyle: CSSProperties = { containerType: "inline-size" };
-const toolbarStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 };
+const toolbarStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 };
+const pageToolbarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 10,
+  marginBottom: 14,
+};
+const pageLabelStyle: CSSProperties = {
+  minWidth: 130,
+  color: palette.menuTextSoft,
+  fontSize: 12,
+  textAlign: "center",
+};
 const gridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 };
 const slotCardStyle: CSSProperties = {
   ...cardStyle,
@@ -200,9 +276,9 @@ function kindBadgeStyle(kind: PlayerSlotView["kind"]): CSSProperties {
 
 const responsiveCss = `
 @container (max-width: 940px) {
-  [data-save-panel] > div:nth-of-type(2) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  [data-save-panel] > div:nth-of-type(3) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @container (max-width: 620px) {
-  [data-save-panel] > div:nth-of-type(2) { grid-template-columns: minmax(0, 1fr) !important; }
+  [data-save-panel] > div:nth-of-type(3) { grid-template-columns: minmax(0, 1fr) !important; }
 }
 `;
