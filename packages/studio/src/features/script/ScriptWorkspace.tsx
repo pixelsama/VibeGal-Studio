@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Layers3, Plus } from "lucide-react";
-import { deleteFile, renameVariable, saveFile, saveGraph, saveGraphPositions, saveLocale, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
+import { deleteFile, renameVariable, saveFile, saveLocale, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
-import type { FileRevision, GraphIssueFocusRequest, GraphPositionPatch, LocaleTable, ProjectData, ProjectGraph } from "../../lib/types";
+import type { FileRevision, GraphIssueFocusRequest, LocaleTable, ProjectData, ProjectGraph } from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
@@ -24,16 +24,11 @@ import {
 } from "./graphEditing";
 import {
   applyGraphCommand,
-  createGraphHistoryState,
-  makeGraphRevisionToken,
-  reconcileGraphHistory,
   redoGraphHistory,
   undoGraphHistory,
 } from "./graphHistory";
 import { findNode } from "./graphMapping";
 import { loadNodeDetail, useAllProjectNodes, useNodeDetail } from "../../lib/projectNodeData";
-import { RevisionedProjectMutationQueue } from "../../lib/projectMutation";
-import { preventUnloadWhenDirty } from "./unsavedChanges";
 import "@xyflow/react/dist/style.css";
 import { endingsForNode, insertEndingCompletion, registerEnding, unregisterEnding, upsertEnding } from "./endingRegistry";
 import { referencesAffectedByNodeDeletion } from "./nodeReferences";
@@ -45,6 +40,21 @@ import {
   normalizeChapterScope,
   type ChapterScope,
 } from "./chapterEditing";
+
+import {
+  buildGraphPositionUpdates,
+  persistCreatedNodeWithCompensation,
+} from "./scriptWorkspaceOperations";
+import { useScriptGraphState } from "./useScriptGraphState";
+export {
+  buildGraphPositionUpdates,
+  persistCreatedNodeWithCompensation,
+  takePendingGraphPositionUpdates,
+} from "./scriptWorkspaceOperations";
+export type {
+  PersistCreatedNodeWithCompensationParams,
+  PersistCreatedNodeWithCompensationResult,
+} from "./scriptWorkspaceOperations";
 
 interface Props {
   project: ProjectData;
@@ -64,77 +74,6 @@ interface Props {
 export type ScriptWorkspaceLocation =
   | { view: "graph" }
   | { view: "node"; nodeId: string };
-
-const EMPTY_GRAPH = {
-  version: 1,
-  entryNodeId: "",
-  chapters: [{ id: "chapter_1", title: "第一章" }],
-  nodes: [],
-  edges: [],
-} satisfies ProjectGraph;
-
-export function buildGraphPositionUpdates(before: ProjectGraph, after: ProjectGraph): GraphPositionPatch[] {
-  const beforeById = new Map(before.nodes.map((node) => [node.id, node.position]));
-  return after.nodes
-    .filter((node) => {
-      const previous = beforeById.get(node.id);
-      return previous && (previous.x !== node.position.x || previous.y !== node.position.y);
-    })
-    .map((node) => ({ id: node.id, position: node.position }));
-}
-
-export function takePendingGraphPositionUpdates(
-  pending: Map<string, { x: number; y: number }>,
-): GraphPositionPatch[] {
-  const updates = Array.from(pending, ([id, position]) => ({ id, position }));
-  pending.clear();
-  return updates;
-}
-
-interface PersistCreatedNodeWithCompensationParams {
-  projectPath: string;
-  nodeFile: string;
-  content: string;
-  graph: ProjectGraph;
-  saveFileFn: (
-    projectPath: string,
-    relPath: string,
-    content: string,
-    expectedRevision?: FileRevision | null,
-  ) => Promise<FileRevision | null>;
-  persistGraphFn: (graph: ProjectGraph) => Promise<boolean>;
-  deleteFileFn: (
-    projectPath: string,
-    relPath: string,
-    expectedRevision?: FileRevision | null,
-  ) => Promise<void>;
-}
-
-export type PersistCreatedNodeWithCompensationResult =
-  | { saved: true; rolledBack: false }
-  | { saved: false; rolledBack: true }
-  | { saved: false; rolledBack: false; rollbackError: unknown };
-
-export async function persistCreatedNodeWithCompensation({
-  projectPath,
-  nodeFile,
-  content,
-  graph,
-  saveFileFn,
-  persistGraphFn,
-  deleteFileFn,
-}: PersistCreatedNodeWithCompensationParams): Promise<PersistCreatedNodeWithCompensationResult> {
-  const createdRevision = await saveFileFn(projectPath, `content/${nodeFile}`, content);
-  if (await persistGraphFn(graph)) {
-    return { saved: true, rolledBack: false };
-  }
-  try {
-    await deleteFileFn(projectPath, nodeFile, createdRevision);
-    return { saved: false, rolledBack: true };
-  } catch (rollbackError) {
-    return { saved: false, rolledBack: false, rollbackError };
-  }
-}
 
 export function ScriptWorkspace({
   project,
@@ -163,14 +102,19 @@ export function ScriptWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [chapterScope, setChapterScope] = useState<ChapterScope>({ kind: "all" });
-  const incomingGraph = useMemo(() => project.graph ?? EMPTY_GRAPH, [project.graph]);
-  const incomingRevisionToken = useMemo(() => makeGraphRevisionToken(project.graphRevision), [project.graphRevision]);
-  const graphReport = useMemo(() => project.graphReport ?? { graphIssues: [] }, [project.graphReport]);
-  const [graphHistory, setGraphHistory] = useState(() => createGraphHistoryState(incomingGraph, incomingRevisionToken));
-  const graph = graphHistory.graph;
-  const [savingGraph, setSavingGraph] = useState(false);
-  const [positionSavePending, setPositionSavePending] = useState(false);
-  const [graphStatus, setGraphStatus] = useState("");
+  const {
+    graph,
+    graphHistory,
+    graphReport,
+    savingGraph,
+    graphStatus,
+    setGraphHistory,
+    setSavingGraph,
+    setGraphStatus,
+    persistGraph,
+    schedulePositionSave,
+    replaceGraph,
+  } = useScriptGraphState({ project, view, onSaved, onDirtyChange });
   const [confirm, setConfirm] = useState<{
     message: string;
     onConfirm: () => void;
@@ -178,12 +122,6 @@ export function ScriptWorkspace({
     danger?: boolean;
   } | null>(null);
   const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; onConfirm: (v: string) => void } | null>(null);
-  const positionSaveTimerRef = useRef<number | null>(null);
-  const pendingPositionUpdatesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const graphMutationQueue = useMemo(
-    () => new RevisionedProjectMutationQueue(project.graphRevision),
-    [project.path],
-  );
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
   const selectedNodeDetail = useNodeDetail(
@@ -195,17 +133,8 @@ export function ScriptWorkspace({
   const visibleNodeIds = useMemo(() => new Set(scopedGraph.nodes.map((node) => node.id)), [scopedGraph.nodes]);
 
   useEffect(() => {
-    setGraphHistory((current) => reconcileGraphHistory(current, incomingGraph, incomingRevisionToken));
-    setGraphStatus("");
-  }, [incomingGraph, incomingRevisionToken]);
-
-  useEffect(() => {
     setChapterScope((current) => normalizeChapterScope(graph, current));
   }, [graph]);
-
-  useEffect(() => {
-    graphMutationQueue.synchronizeRevision(project.graphRevision);
-  }, [graphMutationQueue, project.graphRevision]);
 
   useEffect(() => {
     if (location.view === "node") {
@@ -238,108 +167,6 @@ export function ScriptWorkspace({
       setSelectedEdgeId(focusRequest.edgeId);
     }
   }, [focusRequest, graph]);
-
-  const persistGraph = useCallback(
-    async (next: ProjectGraph) => {
-      setSavingGraph(true);
-      setGraphStatus("");
-      try {
-        await graphMutationQueue.enqueue((expectedRevision) => (
-          saveGraph(project.path, next, expectedRevision)
-        ));
-        setGraphStatus("图结构已保存");
-        onSaved();
-        return true;
-      } catch (error) {
-        setGraphStatus(`保存图结构失败: ${error instanceof Error ? error.message : String(error)}`);
-        return false;
-      } finally {
-        setSavingGraph(false);
-      }
-    },
-    [graphMutationQueue, onSaved, project.path],
-  );
-
-  const persistGraphPositions = useCallback(
-    async (updates: GraphPositionPatch[]) => {
-      if (updates.length === 0) return true;
-      setSavingGraph(true);
-      setGraphStatus("");
-      try {
-        await graphMutationQueue.enqueue((expectedRevision) => (
-          saveGraphPositions(project.path, updates, expectedRevision)
-        ));
-        setGraphStatus("节点位置已保存");
-        onSaved();
-        return true;
-      } catch (error) {
-        setGraphStatus(`保存节点位置失败: ${error instanceof Error ? error.message : String(error)}`);
-        return false;
-      } finally {
-        setSavingGraph(false);
-      }
-    },
-    [graphMutationQueue, onSaved, project.path],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (positionSaveTimerRef.current != null) {
-        window.clearTimeout(positionSaveTimerRef.current);
-      }
-      const pending = takePendingGraphPositionUpdates(pendingPositionUpdatesRef.current);
-      if (pending.length === 0) return;
-      void graphMutationQueue.enqueue((expectedRevision) => (
-        saveGraphPositions(project.path, pending, expectedRevision)
-      )).then(() => onSaved()).catch((error) => {
-        console.warn("离开页面时保存节点位置失败:", error);
-      });
-    };
-  }, [graphMutationQueue, onSaved, project.path]);
-
-  useEffect(() => {
-    if (view !== "graph") return;
-    onDirtyChange?.(positionSavePending);
-    return () => onDirtyChange?.(false);
-  }, [onDirtyChange, positionSavePending, view]);
-
-  useEffect(() => {
-    if (!positionSavePending) return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      preventUnloadWhenDirty(event, true);
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [positionSavePending]);
-
-  const schedulePositionSave = useCallback(
-    (updates: GraphPositionPatch[]) => {
-      for (const update of updates) {
-        pendingPositionUpdatesRef.current.set(update.id, update.position);
-      }
-      setPositionSavePending(true);
-      if (positionSaveTimerRef.current != null) {
-        window.clearTimeout(positionSaveTimerRef.current);
-      }
-      positionSaveTimerRef.current = window.setTimeout(() => {
-        positionSaveTimerRef.current = null;
-        const pending = takePendingGraphPositionUpdates(pendingPositionUpdatesRef.current);
-        void persistGraphPositions(pending).then((saved) => {
-          if (!saved) {
-            for (const update of pending) {
-              if (!pendingPositionUpdatesRef.current.has(update.id)) {
-                pendingPositionUpdatesRef.current.set(update.id, update.position);
-              }
-            }
-          }
-          if (pendingPositionUpdatesRef.current.size === 0 && positionSaveTimerRef.current == null) {
-            setPositionSavePending(false);
-          }
-        });
-      }, 400);
-    },
-    [persistGraphPositions],
-  );
 
   const handleSelect = (id: string) => {
     if (!isNodeInChapterScope(graph, id, chapterScope)) {
@@ -607,7 +434,7 @@ export function ScriptWorkspace({
     try {
       const sourceDetail = await loadNodeDetail(project, source.file, _refreshKey);
       const content = JSON.stringify(sourceDetail.data, null, 2);
-      setGraphHistory(createGraphHistoryState(next, graphHistory.revisionToken));
+      replaceGraph(next);
       setSelectedNodeId(newNode.id);
       setSelectedEdgeId(null);
       const result = await persistCreatedNodeWithCompensation({
@@ -641,7 +468,7 @@ export function ScriptWorkspace({
     setSavingGraph(true);
     setGraphStatus("");
     try {
-      setGraphHistory(createGraphHistoryState(next, graphHistory.revisionToken));
+      replaceGraph(next);
       setSelectedNodeId(newNode.id);
       setSelectedEdgeId(null);
       const result = await persistCreatedNodeWithCompensation({
