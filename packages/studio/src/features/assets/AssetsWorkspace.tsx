@@ -11,22 +11,20 @@
  *
  * 根容器 position: relative 以锚定右下角的 StatusPanel（absolute）。
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Inbox, Upload } from "lucide-react";
-import { ManifestSchema } from "@vibegal/engine";
-import { EMPTY_MANIFEST, type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
+import { type ProjectData, type AssetEntry, type FileRevision, type Manifest } from "../../lib/types";
 import {
   deleteAsset,
   importAsset,
   pickAssetFiles,
   pickOverviewAssetFiles,
-  saveManifest,
 } from "../../lib/tauri";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { ConfirmDialog } from "../common/Dialogs";
 import { EmptyState } from "../common/EmptyState";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
-import { useSaveShortcut } from "../common/useSaveShortcut";
+import { isDraftSnapshotCurrent } from "../script/unsavedChanges";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
 import { AssetsSidebar, SECTIONS, type AssetSection } from "./AssetsSidebar";
 import { planAssetDrop, isRegistrableSection, type RegistrableAssetKind } from "./assetDrop";
@@ -38,16 +36,12 @@ import { analyzeAssetUsage } from "./assetUsage";
 import { CharacterEditor } from "./CharacterEditor";
 import { useAssets } from "./useAssets";
 import { baseName } from "./assetPreview";
-import { RevisionedProjectMutationQueue } from "../../lib/projectMutation";
 import {
-  clearProjectDraft,
-  getSessionDraftStorage,
-  loadProjectDraft,
-  projectDraftStorageKey,
-  saveProjectDraft,
-  type DraftStorage,
-} from "../../lib/draftRecovery";
-import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
+  createAssetDeleteFailureToast,
+  createImportFailureToast,
+  createManifestSaveFailureToast,
+} from "./assetManifestOperations";
+import { useAssetManifestDraft } from "./useAssetManifestDraft";
 
 interface AssetsWorkspaceProps {
   project: ProjectData;
@@ -76,118 +70,32 @@ export function AssetsWorkspace({
 }: AssetsWorkspaceProps) {
   const [section, setSection] = useState<AssetSection>(initialSection);
   const [search, setSearch] = useState("");
-  const draftStorage = useMemo(getSessionDraftStorage, []);
-  const draftStorageKey = useMemo(
-    () => projectDraftStorageKey(project.path, "content/manifest.json"),
-    [project.path],
-  );
-  const restoredManifestDraft = useMemo(
-    () => loadManifestDraft(draftStorage, draftStorageKey),
-    [draftStorage, draftStorageKey],
-  );
-  const [draftManifest, setDraftManifest] = useState<Manifest | null>(restoredManifestDraft?.manifest ?? null);
-  const [savingDraft, setSavingDraft] = useState(false);
-  const [draftBaseVersion, setDraftBaseVersion] = useState(0);
-  const draftVersionRef = useRef(0);
-  const draftBaseRevisionRef = useRef<FileRevision | null | undefined>(
-    restoredManifestDraft?.baseRevision ?? project.manifestRevision,
-  );
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const manifestMutationQueue = useMemo(
-    () => new RevisionedProjectMutationQueue(draftBaseRevisionRef.current),
-    [project.path],
-  );
-
-  useEffect(() => {
-    if (draftManifest) return;
-    manifestMutationQueue.synchronizeRevision(project.manifestRevision);
-    draftBaseRevisionRef.current = manifestMutationQueue.revision;
-  }, [draftManifest, manifestMutationQueue, project.manifestRevision]);
-
-  useEffect(() => {
-    if (draftManifest) {
-      saveProjectDraft(draftStorage, draftStorageKey, {
-        version: 1,
-        manifest: draftManifest,
-        baseRevision: draftBaseRevisionRef.current,
-      } satisfies StoredManifestDraft);
-    } else {
-      clearProjectDraft(draftStorage, draftStorageKey);
-    }
-    onDirtyChange?.(draftManifest !== null);
-  }, [draftBaseVersion, draftManifest, draftStorage, draftStorageKey, onDirtyChange]);
-
-  useEffect(() => () => {
-    onDirtyChange?.(false);
-  }, [onDirtyChange]);
-
-  useEffect(() => {
-    if (!draftManifest) return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      preventUnloadWhenDirty(event, true);
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [draftManifest]);
-
-  const handleStageManifestDraft = (next: Manifest) => {
-    draftVersionRef.current += 1;
-    stageManifestDraft(next, setDraftManifest);
-  };
-
-  const handleDiscardManifestDraft = () => {
-    draftVersionRef.current += 1;
-    discardDraftManifest(setDraftManifest);
-  };
-
-  const handleSaveManifestDraft = async () => {
-    if (!draftManifest || savingDraft) return;
-    const savedDraftVersion = draftVersionRef.current;
-    setSavingDraft(true);
-    try {
-      await saveDraftManifest({
-        projectPath: project.path,
-        draftManifest,
-        expectedRevision: project.manifestRevision,
-        saveManifestFn: saveManifestQueued,
-        onSaved,
-        setDraftManifest,
-        notify,
-        isDraftSnapshotCurrent: () => isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current),
-      });
-    } finally {
-      setSavingDraft(false);
-    }
-  };
-
-  useSaveShortcut(draftManifest !== null, () => void handleSaveManifestDraft());
-
-  // 防崩：project.content.manifest 类型声明为 Manifest，但运行时可能是坏数据
-  // （如旧 flat audio）。用 ManifestSchema.safeParse 兜底——解析失败则用
-  // EMPTY_MANIFEST，避免 Object.values(undefined) 崩溃。坏 manifest 的结构错误
-  // 已由后端 validate_manifest_structure 进全局 projectReport，资产页只需保证不崩。
-  const projectParsedManifest = useMemo(() => ManifestSchema.safeParse(project.content.manifest), [project.content.manifest]);
-  const manifest: Manifest = draftManifest ?? (projectParsedManifest.success ? projectParsedManifest.data : EMPTY_MANIFEST);
-  const manifestInvalid = !projectParsedManifest.success;
-  const readOnly = !canMutateAssets(manifestInvalid);
-  const isDirty = draftManifest !== null;
-
-  const view = useAssets(project.path, refreshKey, manifest, project.assetReport);
-  const assetUsage = useMemo(() => analyzeAssetUsage(manifest, project.nodes), [manifest, project.nodes]);
 
   function notify(input: ToastInput) {
     setToast({ id: Date.now(), ...input });
   }
 
-  async function saveManifestQueued(projectPath: string, next: Manifest): Promise<FileRevision | null> {
-    const nextRevision = await manifestMutationQueue.enqueue((expectedRevision) => (
-      saveManifest(projectPath, next, expectedRevision)
-    ));
-    draftBaseRevisionRef.current = nextRevision;
-    setDraftBaseVersion((version) => version + 1);
-    return nextRevision;
-  }
+  const {
+    manifest,
+    manifestInvalid,
+    draftManifest,
+    savingDraft,
+    draftVersionRef,
+    setDraftManifest,
+    stageDraft: handleStageManifestDraft,
+    discardDraft: handleDiscardManifestDraft,
+    saveDraft: handleSaveManifestDraft,
+    saveManifestQueued,
+    persistManifest,
+  } = useAssetManifestDraft({ project, onSaved, onDirtyChange, notify });
+
+  const readOnly = !canMutateAssets(manifestInvalid);
+  const isDirty = draftManifest !== null;
+
+  const view = useAssets(project.path, refreshKey, manifest, project.assetReport);
+  const assetUsage = useMemo(() => analyzeAssetUsage(manifest, project.nodes), [manifest, project.nodes]);
 
   // 磁盘路径 → 被多少 manifest 条目引用
   const refCountByPath = useMemo(() => countRefs(manifest), [manifest]);
@@ -335,21 +243,21 @@ export function AssetsWorkspace({
 
   function handleRegisterOrphan(entry: AssetEntry) {
     if (readOnly) return;
-    void persistManifest(registerOrphanAssets(manifest, [entry]));
+    void persistManifestFromWorkspace(registerOrphanAssets(manifest, [entry]));
   }
 
   function handleRemoveDanglingRef(source: string) {
     if (readOnly) return;
     // source 形如 "backgrounds.sky" / "audio.bgm.theme" / "characters.h.sprites.default"
     const next = removeManifestEntry(manifest, source);
-    void persistManifest(next);
+    void persistManifestFromWorkspace(next);
   }
 
   async function handleRegisterAllOrphans() {
     if (readOnly) return;
     const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
     if (candidates.length === 0) return;
-    await persistManifest(registerOrphanAssets(manifest, candidates));
+    await persistManifestFromWorkspace(registerOrphanAssets(manifest, candidates));
   }
 
   function handleCleanupManifestEntries() {
@@ -360,7 +268,7 @@ export function AssetsWorkspace({
         "不会删除磁盘文件。",
         ...cleanupProposal.diffPreview.slice(0, 8),
       ].join("\n"),
-      onConfirm: () => void persistManifest(applyAssetCleanupProposal(manifest, cleanupProposal)),
+      onConfirm: () => void persistManifestFromWorkspace(applyAssetCleanupProposal(manifest, cleanupProposal)),
     });
   }
 
@@ -378,19 +286,9 @@ export function AssetsWorkspace({
     });
   }
 
-  async function persistManifest(next: Manifest) {
+  async function persistManifestFromWorkspace(next: Manifest) {
     if (readOnly) return;
-    const savedDraftVersion = draftVersionRef.current;
-    await persistManifestWithFeedback({
-      projectPath: project.path,
-      next,
-      expectedRevision: project.manifestRevision,
-      saveManifestFn: saveManifestQueued,
-      onSaved,
-      setDraftManifest,
-      notify,
-      isDraftSnapshotCurrent: () => isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current),
-    });
+    await persistManifest(next);
   }
 
   const totalShown = filteredDisk.length + filteredDangling.length;
@@ -543,163 +441,24 @@ export function AssetsWorkspace({
 
 // ── manifest / 资产操作辅助（便于单测） ──
 
+export { loadManifestDraft } from "./useAssetManifestDraft";
+export {
+  createAssetDeleteFailureToast,
+  createImportFailureToast,
+  createManifestSaveFailureToast,
+  discardDraftManifest,
+  persistManifestWithFeedback,
+  saveDraftManifest,
+  stageManifestDraft,
+} from "./assetManifestOperations";
+export type {
+  PersistManifestWithFeedbackParams,
+  SaveDraftManifestParams,
+  StoredManifestDraft,
+} from "./assetManifestOperations";
+
 export function canMutateAssets(manifestInvalid: boolean): boolean {
   return !manifestInvalid;
-}
-
-export interface StoredManifestDraft {
-  version: 1;
-  manifest: Manifest;
-  baseRevision?: FileRevision | null;
-}
-
-export function loadManifestDraft(storage: DraftStorage | null, key: string): StoredManifestDraft | null {
-  const value = loadProjectDraft(storage, key);
-  if (!value || typeof value !== "object") return null;
-  const draft = value as Partial<StoredManifestDraft>;
-  if (draft.version !== 1) return null;
-  const parsed = ManifestSchema.safeParse(draft.manifest);
-  return parsed.success ? { ...draft, manifest: parsed.data } as StoredManifestDraft : null;
-}
-
-/** Character fields are edited locally and only persisted from the draft banner. */
-export function stageManifestDraft(
-  next: Manifest,
-  setDraftManifest: (manifest: Manifest | null) => void,
-): void {
-  setDraftManifest(next);
-}
-
-export interface SaveDraftManifestParams {
-  projectPath: string;
-  draftManifest: Manifest | null;
-  expectedRevision?: FileRevision | null;
-  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<FileRevision | null | void>;
-  onSaved: () => void | Promise<void>;
-  setDraftManifest: (manifest: Manifest | null) => void;
-  notify: (toast: ToastInput) => void;
-  isDraftSnapshotCurrent?: () => boolean;
-}
-
-export async function saveDraftManifest({
-  projectPath,
-  draftManifest,
-  expectedRevision,
-  saveManifestFn,
-  onSaved,
-  setDraftManifest,
-  notify,
-  isDraftSnapshotCurrent,
-}: SaveDraftManifestParams): Promise<void> {
-  if (!draftManifest) return;
-  await persistManifestWithFeedback({
-    projectPath,
-    next: draftManifest,
-    expectedRevision,
-    saveManifestFn,
-    onSaved,
-    setDraftManifest,
-    notify,
-    isDraftSnapshotCurrent,
-  });
-}
-
-export function discardDraftManifest(setDraftManifest: (manifest: Manifest | null) => void): void {
-  setDraftManifest(null);
-}
-
-export interface PersistManifestWithFeedbackParams {
-  projectPath: string;
-  next: Manifest;
-  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<FileRevision | null | void>;
-  onSaved: () => void | Promise<void>;
-  setDraftManifest: (manifest: Manifest | null) => void;
-  notify: (toast: ToastInput) => void;
-  expectedRevision?: FileRevision | null;
-  isDraftSnapshotCurrent?: () => boolean;
-}
-
-export async function persistManifestWithFeedback({
-  projectPath,
-  next,
-  expectedRevision,
-  saveManifestFn,
-  onSaved,
-  setDraftManifest,
-  notify,
-  isDraftSnapshotCurrent = () => true,
-}: PersistManifestWithFeedbackParams): Promise<void> {
-  try {
-    await saveManifestFn(projectPath, next, expectedRevision);
-    if (isDraftSnapshotCurrent()) setDraftManifest(null);
-    await onSaved();
-  } catch (error) {
-    if (isDraftSnapshotCurrent()) setDraftManifest(next);
-    notify(createManifestSaveFailureToast(error));
-  }
-}
-
-export function createManifestSaveFailureToast(error: unknown): ToastInput {
-  return {
-    kind: "error",
-    message: "保存资源登记表失败",
-    detail: `${formatUnknownError(error)}。当前草稿已保留。`,
-  };
-}
-
-export function createImportFailureToast(errors: string[], importedCount: number): ToastInput {
-  const failureCount = errors.length;
-  return {
-    kind: "error",
-    message:
-      importedCount > 0
-        ? `已导入 ${importedCount} 个资源，${failureCount} 个失败`
-        : `导入失败：${failureCount} 个资源失败`,
-    detail: errors.join("\n"),
-  };
-}
-
-export function createAssetDeleteFailureToast(
-  result: DeleteAssetAndPruneManifestRefsResult,
-  relPath: string,
-): ToastInput | null {
-  if (!result.deleted && result.manifestSaved) {
-    return {
-      kind: "error",
-      message: "引用已移除，但资产文件未删除",
-      detail: `${relPath}\n${formatUnknownError(result.error)}。文件仍在磁盘，可重新登记为资产。`,
-    };
-  }
-
-  if (!result.deleted && result.manifestSaveFailed) {
-    return {
-      kind: "error",
-      message: "资源登记表更新失败，未删除资产",
-      detail: `${relPath}\n${formatUnknownError(result.error)}。资产及原引用均已保留。`,
-    };
-  }
-
-  if (!result.deleted) {
-    return {
-      kind: "error",
-      message: "删除资产失败",
-      detail: `${relPath}\n${formatUnknownError(result.error)}`,
-    };
-  }
-
-  if (result.manifestSaveFailed) {
-    return {
-      kind: "error",
-      message: "资产已删除，但资源登记表更新失败",
-      detail: `${relPath}\n${formatUnknownError(result.error)}。请刷新项目后检查悬空引用。`,
-    };
-  }
-
-  return null;
-}
-
-function formatUnknownError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export interface DraftManifestBannerProps {
