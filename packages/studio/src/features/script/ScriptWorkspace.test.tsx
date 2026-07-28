@@ -6,6 +6,7 @@ import {
   buildGraphPositionUpdates,
   editorSnapshotAfterRefresh,
   nodeExternalChange,
+  nodeFileForEditorRoute,
   persistCreatedNodeWithCompensation,
   projectChangeAfterResolution,
   ScriptWorkspace,
@@ -137,6 +138,48 @@ describe("external node refresh retention", () => {
     text: '[{"t":"narrate","text":"disk"}]',
     revision: { ...baseDetail.revision, mtimeMs: 2 },
   };
+
+  it("loads the newly selected node instead of a retained snapshot from the previous route", () => {
+    expect(nodeFileForEditorRoute({
+      location: { view: "node", nodeId: "ending" },
+      projectPath: "/project",
+      selectedNodeFile: "nodes/ending.json",
+      retainedNode: {
+        projectPath: "/project",
+        nodeId: "prologue",
+        nodeFile: "nodes/prologue.json",
+      },
+    })).toBe("nodes/ending.json");
+  });
+
+  it("keeps the retained path only when it belongs to the active node route", () => {
+    expect(nodeFileForEditorRoute({
+      location: { view: "node", nodeId: "prologue" },
+      projectPath: "/project",
+      selectedNodeFile: undefined,
+      retainedNode: {
+        projectPath: "/project",
+        nodeId: "prologue",
+        nodeFile: "nodes/prologue.json",
+      },
+    })).toBe("nodes/prologue.json");
+    expect(nodeFileForEditorRoute({
+      location: { view: "node", nodeId: "prologue" },
+      projectPath: "/another-project",
+      selectedNodeFile: "nodes/replacement.json",
+      retainedNode: {
+        projectPath: "/project",
+        nodeId: "prologue",
+        nodeFile: "nodes/prologue.json",
+      },
+    })).toBe("nodes/replacement.json");
+    expect(nodeFileForEditorRoute({
+      location: { view: "graph" },
+      projectPath: "/project",
+      selectedNodeFile: "nodes/prologue.json",
+      retainedNode: null,
+    })).toBe("");
+  });
 
   it("retains the last good base while a dirty draft receives a refreshed detail", () => {
     expect(editorSnapshotAfterRefresh({

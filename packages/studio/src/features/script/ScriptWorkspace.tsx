@@ -153,12 +153,23 @@ export function ScriptWorkspace({
   const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; onConfirm: (v: string) => void } | null>(null);
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
+  const activeNodeFile = nodeFileForEditorRoute({
+    location,
+    projectPath: project.path,
+    selectedNodeFile: selectedNode?.file,
+    retainedNode: retainedNodeEditor
+      ? {
+        projectPath: retainedNodeEditor.projectPath,
+        nodeId: retainedNodeEditor.node.id,
+        nodeFile: retainedNodeEditor.node.file,
+      }
+      : null,
+  });
   const selectedNodeDetail = useNodeDetail(
     project,
-    view === "node" ? retainedNodeEditor?.node.file ?? selectedNode?.file ?? null : null,
+    activeNodeFile || null,
     _refreshKey,
   );
-  const activeNodeFile = retainedNodeEditor?.node.file ?? selectedNode?.file ?? "";
   const unresolvedProjectChange = projectChangeAfterResolution({
     payload: lastProjectChange,
     resolved: resolvedNodeChange,
@@ -1013,6 +1024,31 @@ export function ScriptWorkspace({
       )}
     </div>
   );
+}
+
+export function nodeFileForEditorRoute({
+  location,
+  projectPath,
+  selectedNodeFile,
+  retainedNode,
+}: {
+  location: ScriptWorkspaceLocation;
+  projectPath: string;
+  selectedNodeFile?: string;
+  retainedNode: {
+    projectPath: string;
+    nodeId: string;
+    nodeFile: string;
+  } | null;
+}): string {
+  if (location.view !== "node") return "";
+  if (
+    retainedNode?.projectPath === projectPath
+    && retainedNode.nodeId === location.nodeId
+  ) {
+    return retainedNode.nodeFile;
+  }
+  return selectedNodeFile ?? "";
 }
 
 export function projectChangeAfterResolution({
