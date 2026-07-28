@@ -5,7 +5,7 @@
  * 内部调用随应用分发的 vibegal-cli，成功/失败都是结构化 JSON（见 lib/tauri.ts）。
  * 构建/冒烟状态保存在模块级 buildStore，切换工作台不丢失。
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import {
   desktopBuildPreflight,
   pickDirectory,
@@ -15,219 +15,45 @@ import {
   type DesktopBuildFailure,
   type DesktopBuildPreflight,
   type DesktopBuildResult,
-  type DesktopRuntime,
 } from "../../lib/tauri";
 import type { ProjectData, ProjectIssue } from "../../lib/types";
-import { loadExportPrefs, saveExportPrefs, type ExportPrefs, type ExportTarget } from "../../lib/exportPrefs";
+import type { ExportTarget } from "../../lib/exportPrefs";
+import {
+  buildFailurePresentation,
+  buildStepLabel,
+  buildStepStatus,
+  DESKTOP_BUILD_STEPS,
+  exportIssueSourceLabel,
+  groupIssuesBySource,
+  RUNTIME_OPTIONS,
+  smokeCheckLabel,
+  WEB_BUILD_STEPS,
+} from "./exportWorkspaceLogic";
+export {
+  buildFailurePresentation,
+  buildStepLabel,
+  buildStepStatus,
+  defaultDesktopOutDir,
+  defaultWebOutDir,
+  DESKTOP_BUILD_STEPS,
+  exportIssueSourceLabel,
+  formatElapsedSeconds,
+  groupIssuesBySource,
+  preflightBlockReason,
+  smokeCheckLabel,
+  validateDesktopOutDir,
+  WEB_BUILD_STEPS,
+} from "./exportWorkspaceLogic";
+export type { BuildFailurePresentation, BuildStepStatus } from "./exportWorkspaceLogic";
 import {
   cancelDesktopBuild,
   startDesktopBuild,
   startDesktopSmoke,
   startWebBuild,
   startWebSmoke,
-  useDesktopBuildState,
   type DesktopBuildState,
 } from "./buildStore";
-
-// ──────────────────────────────────────────────
-// 纯逻辑（可单测）
-// ──────────────────────────────────────────────
-
-export function defaultWebOutDir(projectPath: string): string {
-  return `${projectPath}/dist/web`;
-}
-
-/** 默认桌面输出目录：<项目>/dist/desktop-<runtime>。dist 首级目录已被 watcher 忽略 */
-export function defaultDesktopOutDir(projectPath: string, runtime: DesktopRuntime): string {
-  return `${projectPath}/dist/desktop-${runtime}`;
-}
-
-function normalizePathForCheck(path: string): string {
-  return path.replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
-function isAbsolutePath(normalized: string): boolean {
-  return normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
-}
-
-function isFilesystemRoot(normalized: string): boolean {
-  return normalized === "" || /^[A-Za-z]:$/.test(normalized);
-}
-
-/**
- * 输出目录前端预校验，镜像 CLI ensure_export_out_dir_safe 的规则
- * （后端仍会兜底；这里只为尽早给出中文提示）。
- */
-export function validateDesktopOutDir(projectPath: string, outDir: string): string | null {
-  const trimmed = outDir.trim();
-  if (!trimmed) return "请选择输出目录";
-  const out = normalizePathForCheck(trimmed);
-  if (isFilesystemRoot(out)) return "输出目录不能是文件系统根目录";
-  if (!isAbsolutePath(out)) return "输出目录需要是绝对路径";
-
-  const root = normalizePathForCheck(projectPath);
-  if (out === root || root.startsWith(`${out}/`)) {
-    return "输出目录不能是项目根目录或其上级目录";
-  }
-  for (const protectedDir of ["content", "renderers", ".galstudio"]) {
-    const prefix = `${root}/${protectedDir}`;
-    if (out === prefix || out.startsWith(`${prefix}/`)) {
-      return `输出目录不能位于项目源目录 ${protectedDir}/ 内`;
-    }
-  }
-  return null;
-}
-
-/** 预检报告里会真正阻止构建的硬性问题；Electron 未缓存只提示（会自动下载） */
-export function preflightBlockReason(
-  report: DesktopBuildPreflight | null,
-  target: ExportTarget,
-  runtime: DesktopRuntime,
-): string | null {
-  if (!report) return null; // 检查中不阻塞
-  if (!report.cliAvailable) return "找不到随应用分发的 vibegal-cli，无法构建";
-  if (report.error) return "环境检查失败，无法构建";
-  if (report.node && !report.node.available) return "未找到 Node.js，无法构建";
-  if (report.exporter && !report.exporter.webWorker) {
-    return "Web 打包组件缺失，无法构建";
-  }
-  if (target === "desktop" && report.exporter && !report.exporter.desktopWorker) {
-    return "桌面打包组件缺失，无法构建";
-  }
-  if (target === "desktop" && runtime === "tauri" && report.tauriPlayer && !report.tauriPlayer.available) {
-    return "找不到 Tauri 轻量 Player，无法以轻量模式构建";
-  }
-  return null;
-}
-
-export const DESKTOP_BUILD_STEPS = ["validate", "web-build", "desktop-package"] as const;
-export const WEB_BUILD_STEPS = ["validate", "web-build"] as const;
-
-export function buildStepLabel(step: string): string {
-  if (step === "validate") return "校验项目";
-  if (step === "web-build") return "构建 Web 产物";
-  if (step === "desktop-package") return "打包桌面运行时";
-  return step;
-}
-
-export type BuildStepStatus = "done" | "active" | "pending";
-
-export function buildStepStatus(step: string, state: DesktopBuildState): BuildStepStatus {
-  if (state.completedSteps.includes(step)) return "done";
-  if (state.progress?.step === step) return "active";
-  return "pending";
-}
-
-export function smokeCheckLabel(check: string): string {
-  const labels: Record<string, string> = {
-    index: "入口页面",
-    gameManifest: "游戏清单",
-    runtime: "运行时",
-    content: "故事内容",
-    assets: "资产",
-    basePath: "部署路径",
-    browserBehavior: "浏览器行为",
-    desktopManifest: "桌面清单",
-    desktopExecutable: "可执行文件",
-    webPayload: "Web 产物",
-    desktopBehavior: "桌面行为",
-    advance: "播放推进",
-    saveRoundTrip: "存档读写",
-    mediaLoad: "媒体加载",
-  };
-  return labels[check] ?? check;
-}
-
-export interface BuildFailurePresentation {
-  title: string;
-  hint: string | null;
-}
-
-/** 把结构化失败映射为对用户友好的中文标题与引导 */
-export function buildFailurePresentation(failure: DesktopBuildFailure): BuildFailurePresentation {
-  switch (failure.code) {
-    case "desktop_cli_unavailable":
-      return { title: "找不到随应用分发的 vibegal-cli", hint: "请通过正式安装的 VibeGal-Studio 运行，或检查安装是否完整。" };
-    case "desktop_build_spawn_failed":
-      return { title: "无法启动构建进程", hint: null };
-    case "desktop_build_invalid_output":
-      return { title: "构建工具返回了无法解析的结果", hint: "应用与 CLI 版本可能不匹配，请更新 VibeGal-Studio。" };
-    case "desktop_build_task_failed":
-      return { title: "构建任务异常结束", hint: null };
-    case "desktop_build_in_progress":
-      return { title: "已有构建正在进行中", hint: null };
-    case "desktop_build_cancelled":
-      return { title: "构建已取消", hint: null };
-    case "desktop_build_failed":
-      return cliFailurePresentation(failure);
-    default:
-      return { title: "构建失败", hint: null };
-  }
-}
-
-function cliFailurePresentation(failure: DesktopBuildFailure): BuildFailurePresentation {
-  switch (failure.cliError?.code) {
-    case "validation_failed":
-    case "build_validation_failed":
-      return { title: "项目校验未通过", hint: "请根据下方问题列表修复后重试；仅警告时可在高级选项中允许警告。" };
-    case "build_path_error":
-      return { title: "输出目录不合法", hint: "输出目录不能是项目根目录或其上级，也不能位于 content/、renderers/、.galstudio/ 内。" };
-    case "desktop_worker_unavailable":
-      return { title: "找不到桌面打包组件", hint: "应用安装不完整，请重新安装 VibeGal-Studio。" };
-    case "desktop_tauri_player_unavailable":
-      return { title: "找不到 Tauri 轻量 Player", hint: "应用安装不完整，或检查 VIBEGAL_TAURI_PLAYER 配置。" };
-    case "desktop_worker_failed":
-      return { title: "桌面打包失败", hint: "桌面构建需要系统安装 Node.js（或配置 VIBEGAL_NODE 环境变量）。" };
-    case "desktop_worker_invalid_output":
-      return { title: "桌面打包组件返回了无法解析的结果", hint: "应用与打包组件版本可能不匹配。" };
-    case "desktop_base_path_unsupported":
-      return { title: "桌面构建不支持自定义 base path", hint: null };
-    case "renderer_compile_failed":
-      return { title: "界面风格编译失败", hint: "请根据下方诊断修复界面风格代码后重试。" };
-    default:
-      return { title: "构建失败", hint: null };
-  }
-}
-
-/** 与 Workspace.tsx 的 projectIssueSourceLabel 保持一致（这里独立一份避免循环依赖） */
-export function exportIssueSourceLabel(source: string): string {
-  if (source === "graph") return "图结构";
-  if (source === "node") return "节点内容";
-  if (source === "asset") return "资产";
-  if (source === "meta") return "项目设置";
-  if (source === "manifest") return "资源登记表";
-  return source;
-}
-
-/** 按 source 分组，保持首次出现顺序 */
-export function groupIssuesBySource(issues: ProjectIssue[]): [string, ProjectIssue[]][] {
-  const groups = new Map<string, ProjectIssue[]>();
-  for (const issue of issues) {
-    const list = groups.get(issue.source) ?? [];
-    list.push(issue);
-    groups.set(issue.source, list);
-  }
-  return [...groups.entries()];
-}
-
-export function formatElapsedSeconds(startedAt: number, now: number): number {
-  return Math.max(0, Math.floor((now - startedAt) / 1000));
-}
-
-const RUNTIME_OPTIONS: { id: DesktopRuntime; name: string; badge: string; description: string }[] = [
-  {
-    id: "electron",
-    name: "Electron 兼容模式",
-    badge: "默认",
-    description: "内置固定 Chromium，跨机器表现一致。首次构建需下载运行时（约 100MB），之后复用本地缓存。",
-  },
-  {
-    id: "tauri",
-    name: "Tauri 轻量模式",
-    badge: "轻量",
-    description: "使用系统网页引擎，产物体积更小；引擎版本随操作系统更新，不同机器表现可能有差异。",
-  },
-];
+import { useExportWorkspaceState } from "./useExportWorkspaceState";
 
 // ──────────────────────────────────────────────
 // 组件
@@ -243,105 +69,41 @@ export function ExportWorkspace({
   /** 可注入的预检加载器（测试用） */
   loadPreflight?: () => Promise<DesktopBuildPreflight>;
 }) {
-  const initialPrefs = useMemo(() => loadExportPrefs(project.path), [project.path]);
-  const [target, setTarget] = useState<ExportTarget>(initialPrefs.target);
-  const [runtime, setRuntime] = useState<DesktopRuntime>(initialPrefs.runtime);
-  const [webCustomOutDir, setWebCustomOutDir] = useState(initialPrefs.webCustomOutDir);
-  const [desktopCustomOutDir, setDesktopCustomOutDir] = useState(initialPrefs.desktopCustomOutDir);
-  const [rendererId, setRendererId] = useState(initialPrefs.rendererId);
-  const [strict, setStrict] = useState(initialPrefs.strict);
-  const [allowWarnings, setAllowWarnings] = useState(initialPrefs.allowWarnings);
-  const [copied, setCopied] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const buildState = useDesktopBuildState(project.path);
-  const building = buildState.phase === "building";
-
-  // 环境预检：挂载时加载一次，可手动刷新
-  const [preflight, setPreflight] = useState<DesktopBuildPreflight | null>(null);
-  const [preflightLoading, setPreflightLoading] = useState(false);
-  const refreshPreflight = useCallback(async () => {
-    setPreflightLoading(true);
-    try {
-      setPreflight(await loadPreflight());
-    } finally {
-      setPreflightLoading(false);
-    }
-  }, [loadPreflight]);
-  useEffect(() => {
-    let disposed = false;
-    setPreflightLoading(true);
-    void loadPreflight()
-      .then((report) => {
-        if (!disposed) setPreflight(report);
-      })
-      .finally(() => {
-        if (!disposed) setPreflightLoading(false);
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [loadPreflight]);
-
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!building) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [building]);
-
-  const persistPrefs = (patch: Partial<ExportPrefs>) => {
-    const next = { target, runtime, webCustomOutDir, desktopCustomOutDir, rendererId, strict, allowWarnings, ...patch };
-    saveExportPrefs(project.path, next);
-  };
-
-  const customOutDir = target === "web" ? webCustomOutDir : desktopCustomOutDir;
-  const effectiveOutDir = customOutDir.trim()
-    ? customOutDir
-    : target === "web"
-      ? defaultWebOutDir(project.path)
-      : defaultDesktopOutDir(project.path, runtime);
-  const effectiveRendererId = rendererId || project.meta.activeRendererId || project.rendererIds[0] || "";
-  const outDirError = validateDesktopOutDir(project.path, effectiveOutDir);
-  const blockReason = preflightBlockReason(preflight, target, runtime);
+  const {
+    target,
+    runtime,
+    strict,
+    allowWarnings,
+    copied,
+    actionError,
+    buildState,
+    building,
+    preflight,
+    preflightLoading,
+    customOutDir,
+    effectiveOutDir,
+    effectiveRendererId,
+    outDirError,
+    blockReason,
+    statusText,
+    refreshPreflight,
+    changeTarget: handleTargetChange,
+    changeRuntime: handleRuntimeChange,
+    changeRenderer: handleRendererChange,
+    changeOutDir: handleOutDirChange,
+    changeStrict: handleStrictChange,
+    changeAllowWarnings: handleAllowWarningsChange,
+    setCopied,
+    setActionError,
+  } = useExportWorkspaceState({ project, loadPreflight });
 
   const projectIssues = project.projectReport?.projectIssues ?? [];
   const errorCount = projectIssues.filter((issue) => issue.severity === "error").length;
   const warnCount = projectIssues.length - errorCount;
 
-  const handleTargetChange = (next: ExportTarget) => {
-    setTarget(next);
-    persistPrefs({ target: next });
-  };
-  const handleRuntimeChange = (next: DesktopRuntime) => {
-    setRuntime(next);
-    persistPrefs({ runtime: next });
-  };
-  const handleRendererChange = (next: string) => {
-    setRendererId(next);
-    persistPrefs({ rendererId: next });
-  };
-  const handleOutDirChange = (next: string) => {
-    if (target === "web") {
-      setWebCustomOutDir(next);
-      persistPrefs({ webCustomOutDir: next });
-    } else {
-      setDesktopCustomOutDir(next);
-      persistPrefs({ desktopCustomOutDir: next });
-    }
-  };
   const handleBrowse = async () => {
     const selected = await pickDirectory();
     if (selected) handleOutDirChange(selected);
-  };
-  const handleStrictChange = (next: boolean) => {
-    setStrict(next);
-    persistPrefs({ strict: next });
-  };
-  const handleAllowWarningsChange = (next: boolean) => {
-    setAllowWarnings(next);
-    persistPrefs({ allowWarnings: next });
   };
 
   const handleBuild = () => {
@@ -405,15 +167,6 @@ export function ExportWorkspace({
   };
 
   const buildDisabled = building || Boolean(outDirError) || Boolean(blockReason);
-  const statusText = building
-    ? `构建中…已用 ${formatElapsedSeconds(buildState.startedAt ?? now, now)} 秒`
-    : buildState.phase === "success"
-      ? "上一次构建成功"
-      : buildState.phase === "failure"
-        ? "上一次构建失败"
-        : buildState.phase === "cancelled"
-          ? "上一次构建已取消"
-          : null;
 
   return (
     <div style={pageStyle}>
