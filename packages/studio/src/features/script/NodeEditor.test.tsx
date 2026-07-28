@@ -4,13 +4,16 @@ import type { Instruction } from "@vibegal/engine";
 import { describe, expect, it, vi } from "vitest";
 import {
   clampNodeInspectorPaneWidth,
-  conflictDraftCopyPath,
+  createConflictClipboardText,
+  externalSnapshotRequestIsCurrent,
   insertScenarioCommandAtCursor,
   isWriteConflictError,
   JSON_IDENTITY_GUIDANCE,
+  keptLocalDraftBase,
   loadNodeInspectorPaneState,
   loadNodeEditorDraft,
   nodeEditorInitialText,
+  nodeExternalChange,
   NodeEditor,
   nodeEditorKeepsDraftOnWriteConflict,
   resolveNodeInspectorPaneLayout,
@@ -45,8 +48,102 @@ describe("NodeEditor safe persistence", () => {
     expect(isWriteConflictError(error)).toBe(true);
   });
 
-  it("builds conflict draft copy path next to the node file", () => {
-    expect(conflictDraftCopyPath("nodes/act1/start.json", 123)).toBe("nodes/act1/start.conflict-123.json");
+  it("copies base, local, and exact external text without merging", () => {
+    const copied = createConflictClipboardText({
+      relPath: "nodes/start.json",
+      baseText: '[{"text":"base"}]',
+      localText: '[{"text":"local"}]',
+      externalSnapshot: {
+        relPath: "nodes/start.json",
+        state: "present",
+        text: '[ { "text": "external" } ]\n',
+        revision: {
+          relPath: "content/nodes/start.json",
+          mtimeMs: 2,
+          size: 28,
+          sha256: "a".repeat(64),
+        },
+      },
+    });
+
+    expect(copied).toContain("===== BASE =====\n[{\"text\":\"base\"}]");
+    expect(copied).toContain("===== LOCAL DRAFT =====\n[{\"text\":\"local\"}]");
+    expect(copied).toContain("===== EXTERNAL =====\n[ { \"text\": \"external\" } ]\n");
+  });
+
+  it("copies a readable draft even when the renamed external file cannot be fetched", () => {
+    const copied = createConflictClipboardText({
+      relPath: "nodes/start.json",
+      baseText: '[{"text":"base"}]',
+      localText: '[{"text":"local"}]',
+      externalState: "renamed",
+      relatedPaths: ["content/nodes/renamed.json"],
+    });
+
+    expect(copied).toContain("External state: renamed");
+    expect(copied).toContain("Related path(s): content/nodes/renamed.json");
+    expect(copied).toContain('===== LOCAL DRAFT =====\n[{"text":"local"}]');
+    expect(copied).toContain("===== EXTERNAL =====\n(unavailable)");
+  });
+
+  it("preserves watcher rename, delete, and burst metadata for the edited path", () => {
+    const base = {
+      projectPath: "/project",
+      rendererChanged: false,
+      eventCount: 3,
+    };
+
+    expect(nodeExternalChange({
+      ...base,
+      changes: [{
+        kind: "rename",
+        paths: ["content/nodes/start.json", "content/nodes/renamed.json"],
+      }],
+    }, "nodes/start.json")).toEqual({
+      kind: "renamed",
+      eventCount: 3,
+      relatedPaths: ["content/nodes/renamed.json"],
+    });
+    expect(nodeExternalChange({
+      ...base,
+      changes: [{ kind: "remove", paths: ["content/nodes/start.json"] }],
+    }, "nodes/start.json")).toEqual({ kind: "deleted", eventCount: 3 });
+    expect(nodeExternalChange({
+      ...base,
+      changes: [{ kind: "modify", paths: ["content/nodes/other.json"] }],
+    }, "nodes/start.json")).toBeNull();
+  });
+
+  it("keeps a clean local draft writable after an external delete", () => {
+    expect(keptLocalDraftBase({
+      relPath: "nodes/start.json",
+      state: "deleted",
+    })).toEqual({
+      text: "",
+      revision: null,
+      dirty: true,
+    });
+  });
+
+  it("rejects a completed snapshot request after the editor path changes", () => {
+    expect(externalSnapshotRequestIsCurrent({
+      requestId: 3,
+      currentRequestId: 3,
+      requestedRelPath: "nodes/start.json",
+      currentRelPath: "nodes/renamed.json",
+    })).toBe(false);
+    expect(externalSnapshotRequestIsCurrent({
+      requestId: 3,
+      currentRequestId: 4,
+      requestedRelPath: "nodes/start.json",
+      currentRelPath: "nodes/start.json",
+    })).toBe(false);
+    expect(externalSnapshotRequestIsCurrent({
+      requestId: 3,
+      currentRequestId: 3,
+      requestedRelPath: "nodes/start.json",
+      currentRelPath: "nodes/start.json",
+    })).toBe(true);
   });
 
   it("restores pending backend-assigned identity provenance from the session draft", () => {
@@ -246,10 +343,9 @@ describe("NodeEditorToolbar external update entry", () => {
       saving: false,
       canSave: true,
       status: "",
-      draftCopyPath: null,
       onModeToggle: () => {},
       onOpenExternalDiff: () => {},
-      onSaveDraftCopy: () => {},
+      onCopyConflict: () => {},
       onSave: () => {},
     }));
   }
@@ -259,14 +355,15 @@ describe("NodeEditorToolbar external update entry", () => {
 
     expect(html).toContain("外部已更新，查看差异");
     expect(html).not.toContain("载入外部版本");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>保存<\/button>/);
   });
 
   it("routes write conflicts through the diff view and keeps the draft-copy escape", () => {
     const html = renderToolbar({ writeConflict: true });
 
     expect(html).toContain("冲突：查看差异");
-    expect(html).toContain("另存为副本");
-    expect(html).not.toContain("载入外部版本");
+    expect(html).toContain("复制差异");
+    expect(html).not.toContain("载入磁盘版本");
   });
 });
 

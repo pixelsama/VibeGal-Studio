@@ -16,10 +16,17 @@ function renderPanel(overrides: Partial<Parameters<typeof ExternalDiffPanel>[0]>
     writeConflict: false,
     loading: false,
     rows: ROWS,
+    summary: {
+      base: "base123",
+      local: "3 行草稿",
+      external: "disk456",
+      externalState: "present",
+    },
     saving: false,
     onLoadExternal: () => {},
-    onSaveDraftCopy: () => {},
-    onDismiss: () => {},
+    onKeepLocal: () => {},
+    onCopyConflict: () => {},
+    onRetry: () => {},
     ...overrides,
   }));
 }
@@ -39,19 +46,47 @@ describe("ExternalDiffPanel", () => {
     expect(html).toContain("akari: 新台词");
   });
 
-  it("offers load and dismiss actions for a plain external update", () => {
+  it("offers explicit safe resolution actions for a plain external update", () => {
     const html = renderPanel();
 
-    expect(html).toContain("载入外部版本");
-    expect(html).toContain("继续编辑");
+    expect(html).toContain("载入磁盘版本");
+    expect(html).toContain("保留我的修改");
+    expect(html).toContain("复制差异后手动处理");
+    expect(html).toContain("编辑基线");
+    expect(html).toContain("base123");
     expect(html).not.toContain("另存为副本");
   });
 
-  it("adds the draft-copy action in a write conflict", () => {
-    const html = renderPanel({ writeConflict: true });
+  it("labels a deleted disk version and disables loading it", () => {
+    const html = renderPanel({
+      writeConflict: true,
+      summary: {
+        base: "base123",
+        local: "3 行草稿",
+        external: "missing",
+        externalState: "deleted",
+      },
+    });
 
-    expect(html).toContain("保存冲突");
-    expect(html).toContain("另存为副本");
+    expect(html).toContain("已删除");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>载入磁盘版本<\/button>/);
+  });
+
+  it("shows related rename paths and watcher burst without claiming a direction", () => {
+    const html = renderPanel({
+      summary: {
+        base: "base123",
+        local: "3 行草稿",
+        external: "content/nodes/renamed.json",
+        externalState: "renamed",
+        burstCount: 4,
+      },
+    });
+
+    expect(html).toContain("已重命名");
+    expect(html).toContain("content/nodes/renamed.json");
+    expect(html).toContain("合并了 4 个连续事件");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>载入磁盘版本<\/button>/);
   });
 
   it("shows a fetching placeholder and disables loading while the external version is unavailable", () => {
@@ -59,6 +94,21 @@ describe("ExternalDiffPanel", () => {
 
     expect(html).toContain("正在获取外部版本");
     expect(html).not.toContain('data-diff-type=');
+  });
+
+  it("shows an explicit retry instead of an endless loading state after fetch failure", () => {
+    const html = renderPanel({
+      writeConflict: true,
+      loading: false,
+      error: "disk unavailable",
+      rows: null,
+    });
+
+    expect(html).toContain("获取外部版本失败：disk unavailable");
+    expect(html).toContain("重试获取");
+    expect(html).toContain("复制差异后手动处理");
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>复制差异后手动处理<\/button>/);
+    expect(html).not.toContain("正在获取外部版本，稍后这里会显示差异");
   });
 
   it("renders English conflict chrome while preserving draft text", () => {
@@ -69,17 +119,24 @@ describe("ExternalDiffPanel", () => {
         writeConflict: true,
         loading: false,
         rows: ROWS,
+        summary: {
+          base: "base123",
+          local: "3 draft lines",
+          external: "disk456",
+          externalState: "present",
+        },
         saving: false,
         onLoadExternal: () => {},
-        onSaveDraftCopy: () => {},
-        onDismiss: () => {},
+        onKeepLocal: () => {},
+        onCopyConflict: () => {},
+        onRetry: () => {},
       }),
     ));
 
     expect(html).toContain("Save conflict: the file changed externally");
-    expect(html).toContain("Load external version");
-    expect(html).toContain("Save draft copy");
-    expect(html).toContain("Keep editing");
+    expect(html).toContain("Load disk version");
+    expect(html).toContain("Keep my changes");
+    expect(html).toContain("Copy differences for manual resolution");
     expect(html).toContain("akari: 新台词");
     expect(html).not.toContain("保存冲突");
   });

@@ -3,7 +3,15 @@ import { Layers3, Plus } from "lucide-react";
 import { deleteFile, renameVariable, saveFile, saveLocale, saveManifest, saveVariables, saveNode } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { isEditableEventTarget, resolveUndoRedoShortcut } from "./graphShortcuts";
-import type { FileRevision, GraphIssueFocusRequest, LocaleTable, ProjectData, ProjectGraph } from "../../lib/types";
+import type {
+  FileRevision,
+  GraphIssueFocusRequest,
+  LocaleTable,
+  NodeDetail,
+  ProjectChangedPayload,
+  ProjectData,
+  ProjectGraph,
+} from "../../lib/types";
 import { CollapsibleSidebar } from "../common/CollapsibleSidebar";
 import { Breadcrumb } from "./Breadcrumb";
 import { GraphCanvas } from "./GraphCanvas";
@@ -12,7 +20,10 @@ import { TranslationComparison } from "./TranslationComparison";
 import { assignInstructionTextKey } from "./translationModel";
 import { RouteCoveragePanel } from "./RouteCoveragePanel";
 import { NodeInspector } from "./NodeInspector";
-import { NodeEditor } from "./NodeEditor";
+import {
+  NodeEditor,
+  nodeExternalChange as resolveNodeExternalChange,
+} from "./NodeEditor";
 import { StoryOutline } from "./StoryOutline";
 import { ConfirmDialog, PromptDialog } from "../common/Dialogs";
 import {
@@ -57,10 +68,22 @@ export type {
   PersistCreatedNodeWithCompensationResult,
 } from "./scriptWorkspaceOperations";
 
+interface RetainedNodeEditor {
+  projectPath: string;
+  node: ProjectGraph["nodes"][number];
+  detail: NodeDetail;
+}
+
+export interface ResolvedNodeChange {
+  payload: ProjectChangedPayload;
+  nodeFile: string;
+}
+
 interface Props {
   project: ProjectData;
   rendererId: string;
   refreshKey: number;
+  lastProjectChange?: ProjectChangedPayload | null;
   outlineCollapsed: boolean;
   onOutlineCollapsedChange: (collapsed: boolean) => void;
   location: ScriptWorkspaceLocation;
@@ -80,6 +103,7 @@ export function ScriptWorkspace({
   project,
   rendererId,
   refreshKey: _refreshKey,
+  lastProjectChange,
   outlineCollapsed,
   onOutlineCollapsedChange,
   location,
@@ -101,6 +125,9 @@ export function ScriptWorkspace({
   const needsFullNodeData = blockingFullNodeData || (view === "graph" && outlineSearchActive);
   const allNodeData = useAllProjectNodes(project, _refreshKey, needsFullNodeData);
   const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
+  const [retainedNodeEditor, setRetainedNodeEditor] = useState<RetainedNodeEditor | null>(null);
+  const [nodeEditorDirty, setNodeEditorDirty] = useState(false);
+  const [resolvedNodeChange, setResolvedNodeChange] = useState<ResolvedNodeChange | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [chapterScope, setChapterScope] = useState<ChapterScope>({ kind: "all" });
@@ -128,11 +155,62 @@ export function ScriptWorkspace({
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
   const selectedNodeDetail = useNodeDetail(
     project,
-    view === "node" ? selectedNode?.file ?? null : null,
+    view === "node" ? retainedNodeEditor?.node.file ?? selectedNode?.file ?? null : null,
     _refreshKey,
   );
+  const activeNodeFile = retainedNodeEditor?.node.file ?? selectedNode?.file ?? "";
+  const unresolvedProjectChange = projectChangeAfterResolution({
+    payload: lastProjectChange,
+    resolved: resolvedNodeChange,
+    nodeFile: activeNodeFile,
+  });
+  const activeNodeChange = useMemo(
+    () => resolveNodeExternalChange(unresolvedProjectChange, activeNodeFile),
+    [activeNodeFile, unresolvedProjectChange],
+  );
+  const preserveRetainedEditor = nodeEditorDirty || activeNodeChange != null;
+  const retainedEditorMatchesRoute = location.view === "node"
+    && retainedNodeEditor?.projectPath === project.path
+    && retainedNodeEditor.node.id === location.nodeId;
+  const editorNode = retainedEditorMatchesRoute && preserveRetainedEditor
+    ? retainedNodeEditor.node
+    : selectedNode;
+  const editorDetail = editorSnapshotAfterRefresh({
+    current: retainedEditorMatchesRoute ? retainedNodeEditor.detail : null,
+    incoming: selectedNodeDetail.detail,
+    dirty: nodeEditorDirty,
+    externalChange: activeNodeChange,
+  });
   const scopedGraph = useMemo(() => graphForChapterScope(graph, chapterScope), [chapterScope, graph]);
   const visibleNodeIds = useMemo(() => new Set(scopedGraph.nodes.map((node) => node.id)), [scopedGraph.nodes]);
+
+  useEffect(() => {
+    if (!selectedNode || !selectedNodeDetail.detail || nodeEditorDirty) return;
+    setRetainedNodeEditor({
+      projectPath: project.path,
+      node: selectedNode,
+      detail: selectedNodeDetail.detail,
+    });
+  }, [nodeEditorDirty, project.path, selectedNode, selectedNodeDetail.detail]);
+
+  useEffect(() => {
+    setRetainedNodeEditor(null);
+    setNodeEditorDirty(false);
+    setResolvedNodeChange(null);
+  }, [project.path]);
+
+  const handleNodeDirtyChange = useCallback((dirty: boolean) => {
+    setNodeEditorDirty(dirty);
+    onDirtyChange?.(dirty);
+  }, [onDirtyChange]);
+
+  const handleExternalChangeResolved = useCallback(() => {
+    if (!lastProjectChange || !activeNodeFile) return;
+    setResolvedNodeChange({
+      payload: lastProjectChange,
+      nodeFile: activeNodeFile,
+    });
+  }, [activeNodeFile, lastProjectChange]);
 
   useEffect(() => {
     setChapterScope((current) => normalizeChapterScope(graph, current));
@@ -144,6 +222,17 @@ export function ScriptWorkspace({
         setSelectedNodeId(location.nodeId);
         return;
       }
+      if (
+        retainedNodeEditor?.projectPath === project.path
+        && retainedNodeEditor.node.id === location.nodeId
+        && (
+          nodeEditorDirty
+          || resolveNodeExternalChange(unresolvedProjectChange, retainedNodeEditor.node.file)
+        )
+      ) {
+        setSelectedNodeId(null);
+        return;
+      }
       setSelectedNodeId(null);
       onReplaceWithGraph();
       return;
@@ -152,7 +241,16 @@ export function ScriptWorkspace({
     if (!selectedNodeId) return;
     if (findNode(graph, selectedNodeId)) return;
     setSelectedNodeId(null);
-  }, [graph, location, onReplaceWithGraph, selectedNodeId]);
+  }, [
+    graph,
+    location,
+    nodeEditorDirty,
+    onReplaceWithGraph,
+    project.path,
+    retainedNodeEditor,
+    selectedNodeId,
+    unresolvedProjectChange,
+  ]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -869,22 +967,25 @@ export function ScriptWorkspace({
             </div>
           </div>
         ) : (
-          selectedNode && (
-            selectedNodeDetail.loading ? (
+          editorNode && (
+            selectedNodeDetail.loading && !editorDetail ? (
               <WorkspaceDataState message={t("script.loading.node")} />
-            ) : selectedNodeDetail.error ? (
+            ) : selectedNodeDetail.error && !editorDetail ? (
               <WorkspaceDataState message={t("script.loading.nodeFailed", { detail: selectedNodeDetail.error })} error />
-            ) : selectedNodeDetail.detail ? (
+            ) : editorDetail ? (
               <NodeEditor
-                key={`${selectedNode.id}:${selectedNodeDetail.detail.revision.mtimeMs}:${selectedNodeDetail.detail.revision.size}`}
+                key={`${editorNode.id}:${editorDetail.revision.mtimeMs}:${editorDetail.revision.size}`}
                 project={project}
                 rendererId={rendererId}
-                node={selectedNode}
-                nodeData={selectedNodeDetail.detail.data}
-                nodeRevision={selectedNodeDetail.detail.revision}
+                node={editorNode}
+                nodeData={editorDetail.data}
+                nodeText={editorDetail.text}
+                nodeRevision={editorDetail.revision}
+                externalChange={activeNodeChange}
                 focusRequest={localFocus ?? focusRequest}
                 onSaved={onSaved}
-                onDirtyChange={onDirtyChange}
+                onDirtyChange={handleNodeDirtyChange}
+                onExternalChangeResolved={handleExternalChangeResolved}
               />
             ) : null
           )
@@ -913,6 +1014,42 @@ export function ScriptWorkspace({
     </div>
   );
 }
+
+export function projectChangeAfterResolution({
+  payload,
+  resolved,
+  nodeFile,
+}: {
+  payload: ProjectChangedPayload | null | undefined;
+  resolved: ResolvedNodeChange | null;
+  nodeFile: string;
+}): ProjectChangedPayload | null | undefined {
+  if (
+    payload
+    && resolved?.payload === payload
+    && resolved.nodeFile === nodeFile
+  ) {
+    return null;
+  }
+  return payload;
+}
+
+export function editorSnapshotAfterRefresh({
+  current,
+  incoming,
+  dirty,
+  externalChange,
+}: {
+  current: NodeDetail | null;
+  incoming: NodeDetail | null;
+  dirty: boolean;
+  externalChange: ReturnType<typeof resolveNodeExternalChange>;
+}): NodeDetail | null {
+  if ((dirty || externalChange) && current) return current;
+  return incoming;
+}
+
+export const nodeExternalChange = resolveNodeExternalChange;
 
 function WorkspaceDataState({ message, error = false }: { message: string; error?: boolean }) {
   return (

@@ -16,10 +16,9 @@ export function NodeEditorToolbar({
   saving,
   canSave,
   status,
-  draftCopyPath,
   onModeToggle,
   onOpenExternalDiff,
-  onSaveDraftCopy,
+  onCopyConflict,
   onSave,
   t = translateZhCN,
 }: {
@@ -32,10 +31,9 @@ export function NodeEditorToolbar({
   saving: boolean;
   canSave: boolean;
   status: string;
-  draftCopyPath: string | null;
   onModeToggle: (mode: NodeEditorMode) => void;
   onOpenExternalDiff: () => void;
-  onSaveDraftCopy: () => void;
+  onCopyConflict: () => void;
   onSave: () => void;
   t?: StudioTranslator;
 }) {
@@ -60,8 +58,8 @@ export function NodeEditorToolbar({
           <Button onClick={onOpenExternalDiff} disabled={saving} style={warnButtonStyle}>
             {t("script.editor.conflictDiff")}
           </Button>
-          <Button onClick={onSaveDraftCopy} disabled={saving} style={warnButtonStyle}>
-            {t("script.editor.saveCopy")}
+          <Button onClick={onCopyConflict} disabled={saving} style={warnButtonStyle}>
+            {t("script.editor.copyConflict")}
           </Button>
         </>
       )}
@@ -70,8 +68,12 @@ export function NodeEditorToolbar({
           {status}
         </StatusText>
       )}
-      {draftCopyPath && <span style={statusTextStyle}>{draftCopyPath}</span>}
-      <Button variant="primary" onClick={onSave} disabled={saving || !canSave} style={saveButtonStyle}>
+      <Button
+        variant="primary"
+        onClick={onSave}
+        disabled={saving || !canSave || hasExternalUpdate || writeConflict}
+        style={saveButtonStyle}
+      >
         {saving ? t("script.editor.saving") : t("script.editor.save")}
       </Button>
     </div>

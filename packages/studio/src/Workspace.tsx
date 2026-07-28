@@ -14,7 +14,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
-import type { GraphIssueFocusRequest, ProjectData, ProjectGraph } from "./lib/types";
+import type {
+  GraphIssueFocusRequest,
+  ProjectChangedPayload,
+  ProjectData,
+  ProjectGraph,
+} from "./lib/types";
 import { Preview } from "./features/preview/Preview";
 import { ScriptWorkspace } from "./features/script/ScriptWorkspace";
 import { AssetsWorkspace } from "./features/assets/AssetsWorkspace";
@@ -71,11 +76,6 @@ interface Props {
 
 type SyncState = "synced" | "syncing" | "error";
 type WindowDragMouseEvent = Pick<React.MouseEvent<HTMLElement>, "button" | "target">;
-
-interface ProjectChangedPayload {
-  projectPath: string;
-  rendererChanged: boolean;
-}
 
 export function graphFocusTargetFromIssue(
   issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string },
@@ -174,6 +174,7 @@ export function Workspace({
   const { t } = useStudioI18n();
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [lastProjectChange, setLastProjectChange] = useState<ProjectChangedPayload | null>(null);
   const refreshRequestRef = useRef(0);
   const [projectGeneration, setProjectGeneration] = useState(0);
   const [fullReport, setFullReport] = useState(project.analysisComplete ? project.projectReport ?? null : null);
@@ -326,6 +327,7 @@ export function Workspace({
       try {
         const stopListening = await listen<ProjectChangedPayload>("project_changed", (event) => {
           if (disposed || event.payload.projectPath !== project.path) return;
+          setLastProjectChange(event.payload);
           setSyncState("syncing");
           void refreshProject(event.payload.rendererChanged);
         });
@@ -600,6 +602,7 @@ export function Workspace({
             project={project}
             rendererId={rendererId}
             refreshKey={refreshKey}
+            lastProjectChange={lastProjectChange}
             outlineCollapsed={sidebarPrefs.scriptOutlineCollapsed}
             onOutlineCollapsedChange={handleScriptOutlineCollapsedChange}
             location={location.type === "script-node" ? { view: "node", nodeId: location.nodeId } : { view: "graph" }}

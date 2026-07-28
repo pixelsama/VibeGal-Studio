@@ -15,7 +15,7 @@ pub(crate) use initialize::{
 pub(crate) use loader::open_project_for_cli;
 pub(crate) use loader::{
     analyze_project, list_projects, open_project_inner, open_project_summary, read_node_detail,
-    read_project_meta, read_project_nodes,
+    read_node_file_snapshot, read_project_meta, read_project_nodes,
 };
 pub(crate) use templates::{
     ensure_project_self_description, missing_project_self_description_files,

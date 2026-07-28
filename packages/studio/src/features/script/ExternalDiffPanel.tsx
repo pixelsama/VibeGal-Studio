@@ -1,31 +1,48 @@
 import type { CSSProperties } from "react";
 import { Button } from "../common/Button";
 import { summarizeDiff, type DiffRow } from "./externalDiff";
-import { useStudioI18n } from "../../lib/i18n";
+import {
+  useStudioI18n,
+  type StudioMessageKey,
+} from "../../lib/i18n";
+
+export interface ExternalConflictSummary {
+  base: string;
+  local: string;
+  external: string;
+  externalState: "present" | "deleted" | "renamed";
+  burstCount?: number;
+}
 
 /**
- * 外部更新/写入冲突的确认面板：先展示"当前草稿 vs 外部版本"的行级 diff，
- * 再让用户决定载入外部版本、另存草稿副本或继续编辑。
+ * 外部更新/写入冲突的确认面板：展示 base/local/external 三方摘要和
+ * 当前草稿 vs 外部版本的行级 diff，再让用户明确选择安全解决动作。
  */
 export function ExternalDiffPanel({
   writeConflict,
   loading,
+  error,
   rows,
+  summary,
   saving,
   onLoadExternal,
-  onSaveDraftCopy,
-  onDismiss,
+  onKeepLocal,
+  onCopyConflict,
+  onRetry,
 }: {
   writeConflict: boolean;
   loading: boolean;
+  error?: string | null;
   rows: DiffRow[] | null;
+  summary: ExternalConflictSummary;
   saving: boolean;
   onLoadExternal: () => void;
-  onSaveDraftCopy: () => void;
-  onDismiss: () => void;
+  onKeepLocal: () => void;
+  onCopyConflict: () => void;
+  onRetry: () => void;
 }) {
   const { t } = useStudioI18n();
-  const summary = rows ? summarizeDiff(rows) : null;
+  const diffSummary = rows ? summarizeDiff(rows) : null;
   return (
     <div data-region="external-diff-panel" style={panelStyle}>
       <div style={headerStyle}>
@@ -35,13 +52,35 @@ export function ExternalDiffPanel({
         <div style={summaryStyle}>
           {loading
             ? t("script.externalDiff.fetching")
-            : summary && (summary.added > 0 || summary.removed > 0)
-              ? t("script.externalDiff.summary", { added: summary.added, removed: summary.removed })
-              : t("script.externalDiff.revisionOnly")}
+            : error
+              ? t("script.externalDiff.fetchFailed", { detail: error })
+              : diffSummary && (diffSummary.added > 0 || diffSummary.removed > 0)
+                ? t("script.externalDiff.summary", {
+                  added: diffSummary.added,
+                  removed: diffSummary.removed,
+                })
+                : t("script.externalDiff.revisionOnly")}
         </div>
+      </div>
+      <div data-region="external-conflict-summary" style={threeWaySummaryStyle}>
+        <ConflictSummaryItem label={t("script.externalDiff.base")} value={summary.base} />
+        <ConflictSummaryItem label={t("script.externalDiff.localDraft")} value={summary.local} />
+        <ConflictSummaryItem
+          label={t("script.externalDiff.externalVersion")}
+          value={summary.external}
+          state={t(externalStateMessageKey(summary.externalState))}
+        />
+        {(summary.burstCount ?? 0) > 1 && (
+          <ConflictSummaryItem
+            label={t("script.externalDiff.watcherBurst")}
+            value={t("script.externalDiff.watcherBurstCount", { count: summary.burstCount ?? 0 })}
+          />
+        )}
       </div>
       {loading ? (
         <div style={placeholderStyle}>{t("script.externalDiff.fetchingHint")}</div>
+      ) : error ? (
+        <div role="alert" style={errorStyle}>{t("script.externalDiff.fetchFailed", { detail: error })}</div>
       ) : (
         <>
           <div style={legendStyle}>
@@ -59,18 +98,56 @@ export function ExternalDiffPanel({
         </>
       )}
       <div style={actionsStyle}>
-        <Button variant="primary" onClick={onLoadExternal} disabled={saving || loading}>
+        <Button
+          variant="primary"
+          onClick={onLoadExternal}
+          disabled={saving || loading || Boolean(error) || summary.externalState !== "present"}
+        >
           {t("script.externalDiff.loadExternal")}
         </Button>
-        {writeConflict && (
-          <Button onClick={onSaveDraftCopy} disabled={saving}>
-            {t("script.externalDiff.saveDraftCopy")}
+        <Button
+          onClick={onKeepLocal}
+          disabled={saving || loading || Boolean(error)}
+        >
+          {t("script.externalDiff.keepLocal")}
+        </Button>
+        <Button
+          onClick={onCopyConflict}
+          disabled={saving || loading || (!rows && !error)}
+        >
+          {t("script.externalDiff.copyConflict")}
+        </Button>
+        {error && (
+          <Button onClick={onRetry} disabled={saving || loading}>
+            {t("script.externalDiff.retry")}
           </Button>
         )}
-        <Button onClick={onDismiss} disabled={saving}>
-          {t("script.externalDiff.keepEditing")}
-        </Button>
       </div>
+    </div>
+  );
+}
+
+function externalStateMessageKey(
+  state: ExternalConflictSummary["externalState"],
+): StudioMessageKey {
+  if (state === "deleted") return "script.externalDiff.state.deleted";
+  if (state === "renamed") return "script.externalDiff.state.renamed";
+  return "script.externalDiff.state.present";
+}
+
+function ConflictSummaryItem({
+  label,
+  value,
+  state,
+}: {
+  label: string;
+  value: string;
+  state?: string;
+}) {
+  return (
+    <div style={summaryItemStyle}>
+      <span style={summaryLabelStyle}>{label}</span>
+      <span style={summaryValueStyle}>{state ? `${state} · ${value}` : value}</span>
     </div>
   );
 }
@@ -128,6 +205,34 @@ const summaryStyle: CSSProperties = {
   color: "var(--text-muted)",
 };
 
+const threeWaySummaryStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "var(--space-2)",
+};
+
+const summaryItemStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-1)",
+  padding: "var(--space-2)",
+  border: "1px solid var(--border-subtle)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--bg-inset)",
+  minWidth: 0,
+};
+
+const summaryLabelStyle: CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "var(--text-xs)",
+};
+
+const summaryValueStyle: CSSProperties = {
+  color: "var(--text-secondary)",
+  fontFamily: "var(--font-mono, monospace)",
+  fontSize: "var(--text-xs)",
+  overflowWrap: "anywhere",
+};
+
 const legendStyle: CSSProperties = {
   display: "flex",
   gap: "var(--space-4)",
@@ -166,6 +271,12 @@ const placeholderStyle: CSSProperties = {
   color: "var(--text-muted)",
   border: "1px dashed var(--border)",
   borderRadius: "var(--radius-sm)",
+};
+
+const errorStyle: CSSProperties = {
+  ...placeholderStyle,
+  color: "var(--status-error-text)",
+  borderColor: "var(--status-error)",
 };
 
 const actionsStyle: CSSProperties = {

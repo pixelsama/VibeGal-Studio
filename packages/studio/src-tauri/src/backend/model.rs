@@ -214,7 +214,26 @@ pub struct NodeDetail {
     #[serde(rename = "relPath")]
     pub rel_path: String,
     pub data: serde_json::Value,
+    pub text: String,
     pub revision: FileRevision,
+}
+
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NodeFileSnapshotState {
+    Present,
+    Deleted,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct NodeFileSnapshot {
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    pub state: NodeFileSnapshotState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<FileRevision>,
 }
 
 /// content/fixtures/*.json 的一个自定义场景 fixture（Spec 17 步骤 5）。
@@ -452,23 +471,54 @@ pub struct CliToolStatus {
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectFileChangeKind {
+    Create,
+    Modify,
+    Remove,
+    Rename,
+    Other,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ProjectFileChange {
+    pub kind: ProjectFileChangeKind,
+    pub paths: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct ProjectChangedPayload {
     #[serde(rename = "projectPath")]
     pub project_path: String,
     #[serde(rename = "rendererChanged")]
     pub renderer_changed: bool,
+    pub changes: Vec<ProjectFileChange>,
+    #[serde(rename = "eventCount")]
+    pub event_count: usize,
 }
 
 impl ProjectChangedPayload {
-    pub(crate) fn new(project_path: String, renderer_changed: bool) -> Self {
+    pub(crate) fn new(
+        project_path: String,
+        renderer_changed: bool,
+        change: ProjectFileChange,
+    ) -> Self {
         Self {
             project_path,
             renderer_changed,
+            changes: vec![change],
+            event_count: 1,
         }
     }
 
     pub(crate) fn merge(&mut self, other: ProjectChangedPayload) {
         self.renderer_changed |= other.renderer_changed;
+        self.event_count += other.event_count;
+        for change in other.changes {
+            if !self.changes.contains(&change) {
+                self.changes.push(change);
+            }
+        }
     }
 }
 use serde::{Deserialize, Serialize};

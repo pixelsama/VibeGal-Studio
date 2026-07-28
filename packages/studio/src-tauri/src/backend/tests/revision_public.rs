@@ -176,6 +176,7 @@ fn read_node_detail_requires_graph_registration_and_returns_hashed_revision() {
     let detail = read_node_detail(project.to_string_lossy().as_ref(), "nodes/a.json").unwrap();
     assert_eq!(detail.rel_path, "nodes/a.json");
     assert_eq!(detail.data[0]["text"], "hello");
+    assert!(detail.text.contains("\"hello\""));
     assert_eq!(detail.revision.sha256.as_deref().map(str::len), Some(64));
     assert!(read_node_detail(
         project.to_string_lossy().as_ref(),
@@ -184,6 +185,62 @@ fn read_node_detail_requires_graph_registration_and_returns_hashed_revision() {
     .unwrap_err()
     .contains("不在 graph.json"));
     assert!(read_node_detail(project.to_string_lossy().as_ref(), "../gal.project.json").is_err());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn node_file_snapshot_preserves_raw_text_and_reports_deletion() {
+    let root = unique_temp_dir("node-file-snapshot");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "a",
+            "nodes": [{ "id": "a", "title": "A", "file": "nodes/a.json", "position": { "x": 0, "y": 0 } }],
+            "edges": []
+        }),
+        &[("nodes/a.json", serde_json::json!([]))],
+    );
+    let raw = "[\n  {\"t\": \"narrate\", \"text\": \"unfinished\"}\n";
+    write_text(&project.join("content/nodes/a.json"), raw);
+
+    let snapshot =
+        read_node_file_snapshot(project.to_string_lossy().as_ref(), "nodes/a.json").unwrap();
+    assert_eq!(snapshot.state, NodeFileSnapshotState::Present);
+    assert_eq!(snapshot.text.as_deref(), Some(raw));
+    let revision = snapshot.revision.unwrap();
+    assert_eq!(revision.size, raw.len() as u64);
+    assert_eq!(revision.sha256.as_deref().map(str::len), Some(64));
+
+    fs::remove_file(project.join("content/nodes/a.json")).unwrap();
+    let deleted =
+        read_node_file_snapshot(project.to_string_lossy().as_ref(), "nodes/a.json").unwrap();
+    assert_eq!(deleted.state, NodeFileSnapshotState::Deleted);
+    assert!(deleted.text.is_none());
+    assert!(deleted.revision.is_none());
+    write_text(
+        &project.join("content/nodes/unregistered.json"),
+        "{\n  broken\n",
+    );
+    let unregistered = read_node_file_snapshot(
+        project.to_string_lossy().as_ref(),
+        "nodes/unregistered.json",
+    )
+    .unwrap();
+    assert_eq!(unregistered.state, NodeFileSnapshotState::Present);
+    assert_eq!(unregistered.text.as_deref(), Some("{\n  broken\n"));
+    assert!(read_node_file_snapshot(
+        project.to_string_lossy().as_ref(),
+        "meta.json",
+    )
+    .unwrap_err()
+    .contains("nodes/"));
+    assert!(read_node_file_snapshot(
+        project.to_string_lossy().as_ref(),
+        "../gal.project.json",
+    )
+    .is_err());
     let _ = fs::remove_dir_all(&root);
 }
 

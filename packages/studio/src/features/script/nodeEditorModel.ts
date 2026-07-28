@@ -3,7 +3,19 @@ import {
   type Instruction,
 } from "@vibegal/engine";
 
+import type { FileRevision } from "../../lib/types";
+
 export type NodeEditorMode = "scenario" | "json";
+
+export function sameFileRevision(
+  left: FileRevision | null | undefined,
+  right: FileRevision | null | undefined,
+): boolean {
+  if (!left || !right) return left == null && right == null;
+  if (left.relPath !== right.relPath || left.size !== right.size) return false;
+  if (left.sha256 && right.sha256) return left.sha256 === right.sha256;
+  return Math.abs(left.mtimeMs - right.mtimeMs) < 0.001;
+}
 
 export function isWriteConflictError(error: unknown): boolean {
   if (error instanceof Error) return isWriteConflictError(error.message);
@@ -26,10 +38,6 @@ export function nodeEditorKeepsDraftOnWriteConflict<T extends { text: string; in
   return isWriteConflictError(error)
     ? { conflict: true, draft }
     : { conflict: false, draft: null };
-}
-
-export function conflictDraftCopyPath(nodeFile: string, stamp: number): string {
-  return nodeFile.replace(/\.json$/, `.conflict-${stamp}.json`);
 }
 
 export function serializeNodeData(nodeData: unknown | null): string {

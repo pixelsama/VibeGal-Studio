@@ -42,6 +42,13 @@ impl ProjectRoot {
         file_revision(&self.0, rel_path)
     }
 
+    pub(crate) fn read_snapshot(
+        &self,
+        rel_path: &str,
+    ) -> Result<Option<(Vec<u8>, FileRevision)>, String> {
+        read_file_snapshot(&self.0, rel_path)
+    }
+
     pub(crate) fn metadata_revision(&self, rel_path: &str) -> Result<Option<FileRevision>, String> {
         file_metadata_revision(&self.0, rel_path)
     }
@@ -195,6 +202,57 @@ pub(crate) fn file_revision(
     rel_path: &str,
 ) -> Result<Option<FileRevision>, String> {
     file_revision_with_hash(project_root, rel_path, true)
+}
+
+pub(crate) fn read_file_snapshot(
+    project_root: &Path,
+    rel_path: &str,
+) -> Result<Option<(Vec<u8>, FileRevision)>, String> {
+    let project_root = project_root
+        .canonicalize()
+        .map_err(|e| format!("无法定位项目目录 {}: {}", project_root.display(), e))?;
+    let target = resolve_relative_under(&project_root, rel_path)?;
+    let metadata = match fs::metadata(&target) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "读取文件信息失败 {}: {}",
+                target.display(),
+                error
+            ));
+        }
+    };
+    ensure_existing_path_within(&project_root, &target)?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&target)
+        .map_err(|e| format!("读取文件内容失败 {}: {}", target.display(), e))?;
+    ensure_existing_path_within(&project_root, &target)?;
+    let current_metadata = fs::metadata(&target)
+        .map_err(|e| format!("读取文件信息失败 {}: {}", target.display(), e))?;
+    let stable_identity = metadata.len() == current_metadata.len()
+        && metadata.modified().ok() == current_metadata.modified().ok();
+    if !stable_identity || bytes.len() as u64 != current_metadata.len() {
+        return Err(format!("读取文件时检测到并发修改: {}", target.display()));
+    }
+    let modified = current_metadata
+        .modified()
+        .map_err(|e| format!("读取文件修改时间失败 {}: {}", target.display(), e))?;
+    let mtime_ms = modified
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
+    Ok(Some((
+        bytes.clone(),
+        FileRevision {
+            rel_path: rel_path.replace('\\', "/"),
+            mtime_ms,
+            size: bytes.len() as u64,
+            sha256: Some(format!("{:x}", Sha256::digest(&bytes))),
+        },
+    )))
 }
 
 fn file_revision_with_hash(

@@ -234,20 +234,79 @@ pub(crate) fn read_node_detail(path: &str, rel_path: &str) -> Result<NodeDetail,
     let project_root = ProjectRoot::open(Path::new(path))?;
     let content_root = project_root.content_root()?;
     let (graph, _) = load_project_graph(&content_root)?;
-    if !graph.nodes.iter().any(|node| node.file == rel_path) {
-        return Err(format!("节点文件不在 graph.json 中: {rel_path}"));
-    }
-    let target = content_root.resolve_existing_file(rel_path)?;
-    let data = read_json(&target)?;
+    ensure_registered_node_file(&graph, rel_path)?;
+    content_root.resolve(rel_path)?;
     let project_rel_path = format!("content/{rel_path}");
-    let revision = project_root
-        .revision(&project_rel_path)?
+    let (bytes, revision) = project_root
+        .read_snapshot(&project_rel_path)?
         .ok_or_else(|| format!("节点文件不存在: {rel_path}"))?;
+    let text = String::from_utf8(bytes)
+        .map_err(|_| format!("节点文件不是 UTF-8 文本: {rel_path}"))?;
+    let data = serde_json::from_str(&text)
+        .map_err(|error| format!("解析 JSON 失败 ({project_rel_path}): {error}"))?;
     Ok(NodeDetail {
         rel_path: rel_path.to_string(),
         data,
+        text,
         revision,
     })
+}
+
+fn ensure_node_snapshot_path(rel_path: &str) -> Result<(), String> {
+    let path = Path::new(rel_path);
+    let mut components = path.components();
+    let under_nodes = matches!(
+        components.next(),
+        Some(std::path::Component::Normal(first)) if first == "nodes"
+    );
+    let is_json_file = path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"));
+    if under_nodes && components.next().is_some() && is_json_file {
+        Ok(())
+    } else {
+        Err(format!(
+            "节点快照路径必须位于 nodes/ 且为 JSON 文件: {rel_path}"
+        ))
+    }
+}
+
+pub(crate) fn read_node_file_snapshot(
+    path: &str,
+    rel_path: &str,
+) -> Result<NodeFileSnapshot, String> {
+    ensure_node_snapshot_path(rel_path)?;
+    let project_root = ProjectRoot::open(Path::new(path))?;
+    let content_root = project_root.content_root()?;
+    content_root.resolve(rel_path)?;
+    let project_rel_path = format!("content/{rel_path}");
+    let Some((bytes, revision)) = project_root.read_snapshot(&project_rel_path)? else {
+        return Ok(NodeFileSnapshot {
+            rel_path: rel_path.to_string(),
+            state: NodeFileSnapshotState::Deleted,
+            text: None,
+            revision: None,
+        });
+    };
+    let text = String::from_utf8(bytes)
+        .map_err(|_| format!("节点文件不是 UTF-8 文本: {rel_path}"))?;
+    Ok(NodeFileSnapshot {
+        rel_path: rel_path.to_string(),
+        state: NodeFileSnapshotState::Present,
+        text: Some(text),
+        revision: Some(revision),
+    })
+}
+
+fn ensure_registered_node_file(
+    graph: &super::super::model::ProjectGraph,
+    rel_path: &str,
+) -> Result<(), String> {
+    if graph.nodes.iter().any(|node| node.file == rel_path) {
+        Ok(())
+    } else {
+        Err(format!("节点文件不在 graph.json 中: {rel_path}"))
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -553,8 +612,8 @@ use super::super::contracts;
 use super::super::fs::{read_json, ContentRoot, ProjectRoot};
 use super::super::model::{
     AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, LocaleEntry, NodeDetail, NodeEntry,
-    NodeSummary, ProjectAnalysis, ProjectContent, ProjectData, ProjectIssue, ProjectListItem,
-    ProjectMeta, ProjectReport,
+    NodeFileSnapshot, NodeFileSnapshotState, NodeSummary, ProjectAnalysis, ProjectContent,
+    ProjectData, ProjectIssue, ProjectListItem, ProjectMeta, ProjectReport,
 };
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_locale_structure,

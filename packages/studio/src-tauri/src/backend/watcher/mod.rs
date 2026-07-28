@@ -1,8 +1,11 @@
 //! Native project watching, path classification, and debounced change delivery.
 
 use super::fs::ProjectRoot;
-use super::model::ProjectChangedPayload;
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use super::model::{ProjectChangedPayload, ProjectFileChange, ProjectFileChangeKind};
+use notify::{
+    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
+    Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use std::collections::HashMap;
 use std::path::{Component, Path};
 use std::sync::{
@@ -53,7 +56,10 @@ impl ProjectDebounceState {
 }
 
 enum WatchSignal {
-    Changed { renderer_changed: bool },
+    Changed {
+        renderer_changed: bool,
+        change: ProjectFileChange,
+    },
     Stop,
 }
 
@@ -92,22 +98,34 @@ where
         let Ok(event) = result else {
             return;
         };
-        let mut relevant = false;
         let mut renderer_changed = false;
-        for path in event.paths {
-            match classify_project_watch_path(&event_root, &path) {
+        let mut changed_paths = Vec::new();
+        for path in &event.paths {
+            match classify_project_watch_path(&event_root, path) {
                 Some(ProjectWatchKind::Renderer) => {
-                    relevant = true;
                     renderer_changed = true;
+                    if let Some(rel_path) = project_relative_watch_path(&event_root, path) {
+                        changed_paths.push(rel_path);
+                    }
                 }
                 Some(ProjectWatchKind::Content | ProjectWatchKind::ProjectMeta) => {
-                    relevant = true;
+                    if let Some(rel_path) = project_relative_watch_path(&event_root, path) {
+                        changed_paths.push(rel_path);
+                    }
                 }
                 None => {}
             }
         }
-        if relevant {
-            let _ = event_tx.send(WatchSignal::Changed { renderer_changed });
+        changed_paths.sort();
+        changed_paths.dedup();
+        if !changed_paths.is_empty() {
+            let _ = event_tx.send(WatchSignal::Changed {
+                renderer_changed,
+                change: ProjectFileChange {
+                    kind: project_file_change_kind(&event.kind),
+                    paths: changed_paths,
+                },
+            });
         }
     })
     .map_err(|e| format!("创建项目监听器失败: {}", e))?;
@@ -151,8 +169,11 @@ where
     loop {
         let timeout = state.remaining_delay(Instant::now(), PROJECT_WATCH_DEBOUNCE);
         match rx.recv_timeout(timeout) {
-            Ok(WatchSignal::Changed { renderer_changed }) => state.record(
-                ProjectChangedPayload::new(project_path.clone(), renderer_changed),
+            Ok(WatchSignal::Changed {
+                renderer_changed,
+                change,
+            }) => state.record(
+                ProjectChangedPayload::new(project_path.clone(), renderer_changed, change),
                 Instant::now(),
             ),
             Ok(WatchSignal::Stop) | Err(RecvTimeoutError::Disconnected) => break,
@@ -163,6 +184,33 @@ where
             }
         }
     }
+}
+
+pub(crate) fn project_file_change_kind(kind: &EventKind) -> ProjectFileChangeKind {
+    match kind {
+        EventKind::Create(CreateKind::Any)
+        | EventKind::Create(CreateKind::File)
+        | EventKind::Create(CreateKind::Folder)
+        | EventKind::Create(CreateKind::Other) => ProjectFileChangeKind::Create,
+        EventKind::Modify(ModifyKind::Name(
+            RenameMode::Any
+            | RenameMode::Both
+            | RenameMode::From
+            | RenameMode::To
+            | RenameMode::Other,
+        )) => ProjectFileChangeKind::Rename,
+        EventKind::Modify(_) => ProjectFileChangeKind::Modify,
+        EventKind::Remove(RemoveKind::Any)
+        | EventKind::Remove(RemoveKind::File)
+        | EventKind::Remove(RemoveKind::Folder)
+        | EventKind::Remove(RemoveKind::Other) => ProjectFileChangeKind::Remove,
+        _ => ProjectFileChangeKind::Other,
+    }
+}
+
+fn project_relative_watch_path(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    Some(rel.to_string_lossy().replace('\\', "/"))
 }
 
 pub(crate) fn classify_project_watch_path(root: &Path, path: &Path) -> Option<ProjectWatchKind> {

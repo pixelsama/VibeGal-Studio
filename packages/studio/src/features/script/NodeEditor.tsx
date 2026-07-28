@@ -7,8 +7,15 @@ import {
   type Instruction,
   type ScenarioDiagnostic,
 } from "@vibegal/engine";
-import { saveFile, saveNode } from "../../lib/tauri";
-import type { FileRevision, GraphIssueFocusRequest, GraphNode, ProjectData } from "../../lib/types";
+import { readNodeFileSnapshot, saveNode } from "../../lib/tauri";
+import type {
+  FileRevision,
+  GraphIssueFocusRequest,
+  GraphNode,
+  NodeFileSnapshot,
+  ProjectChangedPayload,
+  ProjectData,
+} from "../../lib/types";
 import type { InsertableKind } from "./instructions";
 import {
   instructionIndexFromJsonPath,
@@ -20,10 +27,10 @@ import {
   reconcileScenarioInstructionIdentities,
 } from "./instructionIdentity";
 import {
-  conflictDraftCopyPath,
   instructionsFromNodeData,
   nodeEditorKeepsDraftOnWriteConflict,
   parseJsonInstructionText,
+  sameFileRevision,
   scenarioTextFromNodeData,
   serializeNodeData,
   type NodeEditorMode,
@@ -75,7 +82,6 @@ import {
 import { useStudioI18n } from "../../lib/i18n";
 
 export {
-  conflictDraftCopyPath,
   isWriteConflictError,
   nodeEditorKeepsDraftOnWriteConflict,
 } from "./nodeEditorModel";
@@ -84,16 +90,26 @@ export {
   scenarioCommandTriggerAtCursor,
 } from "./scenarioCommands";
 
+interface NodeExternalChange {
+  kind: "modified" | "deleted" | "renamed";
+  eventCount: number;
+  relatedPaths?: string[];
+}
+
 interface NodeEditorProps {
   project: ProjectData;
   rendererId: string;
   node: GraphNode;
   nodeData: unknown | null;
+  /** 后端同一读取快照返回的精确 UTF-8 文本。 */
+  nodeText?: string;
   /** 按需读取节点正文时一并返回的精确版本；优先于项目聚合数据。 */
   nodeRevision?: FileRevision;
+  externalChange?: NodeExternalChange | null;
   focusRequest?: GraphIssueFocusRequest | null;
   onSaved: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onExternalChangeResolved?: () => void;
 }
 
 export interface PendingAssignedIdentitySource {
@@ -132,6 +148,102 @@ export interface NodeEditorStoredDraft {
   baseJsonText: string;
   baseRevision?: FileRevision | null;
   pendingAssignedIdentitySources?: PendingAssignedIdentitySource[];
+}
+
+export function revisionSummary(revision: FileRevision | null | undefined): string {
+  if (!revision) return "missing";
+  return revision.sha256?.slice(0, 12)
+    ?? `${Math.round(revision.mtimeMs)}:${revision.size}`;
+}
+
+export function nodeExternalChange(
+  payload: ProjectChangedPayload | null | undefined,
+  nodeFile: string,
+): NodeExternalChange | null {
+  if (!payload) return null;
+  const projectPath = `content/${nodeFile}`.replace(/\\/g, "/");
+  const matchingChanges = payload.changes.filter((change) => change.paths.includes(projectPath));
+  if (matchingChanges.length === 0) return null;
+
+  const rename = matchingChanges.find((change) => change.kind === "rename");
+  if (rename) {
+    return {
+      kind: "renamed",
+      eventCount: payload.eventCount,
+      relatedPaths: rename.paths.filter((path) => path !== projectPath),
+    };
+  }
+  if (matchingChanges.some((change) => change.kind === "remove")) {
+    return { kind: "deleted", eventCount: payload.eventCount };
+  }
+  return { kind: "modified", eventCount: payload.eventCount };
+}
+
+export function externalSnapshotRequestIsCurrent({
+  requestId,
+  currentRequestId,
+  requestedRelPath,
+  currentRelPath,
+}: {
+  requestId: number;
+  currentRequestId: number;
+  requestedRelPath: string;
+  currentRelPath: string;
+}): boolean {
+  return requestId === currentRequestId
+    && requestedRelPath === currentRelPath;
+}
+
+export function keptLocalDraftBase(snapshot: NodeFileSnapshot): {
+  text: string;
+  revision: FileRevision | null;
+  dirty: true;
+} {
+  return {
+    text: snapshot.text ?? "",
+    revision: snapshot.revision ?? null,
+    dirty: true,
+  };
+}
+
+export function createConflictClipboardText({
+  relPath,
+  baseText,
+  localText,
+  externalSnapshot,
+  externalState,
+  relatedPaths,
+}: {
+  relPath: string;
+  baseText: string;
+  localText: string;
+  externalSnapshot?: NodeFileSnapshot | null;
+  externalState?: NodeExternalChange["kind"];
+  relatedPaths?: string[];
+}): string {
+  const externalRevision = externalSnapshot?.revision?.sha256
+    ?? (externalSnapshot?.revision
+      ? `${externalSnapshot.revision.mtimeMs}:${externalSnapshot.revision.size}`
+      : "unavailable");
+  const state = externalState
+    ?? externalSnapshot?.state
+    ?? "modified";
+  return [
+    `Path: ${relPath}`,
+    `External state: ${state}`,
+    ...(relatedPaths?.length ? [`Related path(s): ${relatedPaths.join(", ")}`] : []),
+    `External revision: ${externalRevision}`,
+    "",
+    "===== BASE =====",
+    baseText,
+    "",
+    "===== LOCAL DRAFT =====",
+    localText,
+    "",
+    "===== EXTERNAL =====",
+    externalSnapshot?.text
+      ?? (state === "deleted" ? "(deleted)" : "(unavailable)"),
+  ].join("\n");
 }
 
 export function loadNodeEditorDraft(storage: DraftStorage | null, key: string): NodeEditorStoredDraft | null {
@@ -218,13 +330,19 @@ export function NodeEditor({
   rendererId,
   node,
   nodeData,
+  nodeText,
   nodeRevision,
+  externalChange,
   focusRequest,
   onSaved,
   onDirtyChange,
+  onExternalChangeResolved,
 }: NodeEditorProps) {
   const { t } = useStudioI18n();
-  const incomingJsonText = useMemo(() => serializeNodeData(nodeData), [nodeData]);
+  const incomingJsonText = useMemo(
+    () => nodeText ?? serializeNodeData(nodeData),
+    [nodeData, nodeText],
+  );
   const incomingScenarioText = useMemo(() => scenarioTextFromNodeData(nodeData), [nodeData]);
   const incomingInstructions = useMemo(() => instructionsFromNodeData(nodeData), [nodeData]);
   const draftStorage = useMemo(getSessionDraftStorage, []);
@@ -271,12 +389,16 @@ export function NodeEditor({
   const [draftBaseVersion, setDraftBaseVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(restoredDraft ? t("script.editor.restoredDraft") : "");
-  const [pendingExternalText, setPendingExternalText] = useState<string | null>(null);
+  const [externalSnapshot, setExternalSnapshot] = useState<NodeFileSnapshot | null>(null);
+  const [externalSnapshotError, setExternalSnapshotError] = useState<string | null>(null);
+  const [externalSnapshotLoading, setExternalSnapshotLoading] = useState(false);
+  const [externalChangeSummary, setExternalChangeSummary] = useState<NodeExternalChange | null>(null);
   const [hasExternalUpdate, setHasExternalUpdate] = useState(false);
   const [writeConflict, setWriteConflict] = useState(false);
-  const [draftCopyPath, setDraftCopyPath] = useState<string | null>(null);
   const [externalDiffOpen, setExternalDiffOpen] = useState(false);
-  const externalFetchRequestedRef = useRef(false);
+  const externalFetchRequestRef = useRef(0);
+  const currentNodeFileRef = useRef(node.file);
+  currentNodeFileRef.current = node.file;
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [parameterTrigger, setParameterTrigger] = useState<ScenarioParameterTrigger | null>(null);
   const [completionIndex, setCompletionIndex] = useState(0);
@@ -346,8 +468,12 @@ export function NodeEditor({
   useEffect(() => {
     const incomingRevision = nodeRevision ?? project.nodeRevisions?.[node.file];
     if (dirty) {
-      if (incomingJsonText !== loadedTextRef.current) {
-        setPendingExternalText(incomingJsonText);
+      if (
+        incomingJsonText !== loadedTextRef.current
+        || !sameFileRevision(incomingRevision, loadedRevisionRef.current)
+      ) {
+        setExternalSnapshot(null);
+        setExternalSnapshotError(null);
         setHasExternalUpdate(true);
       }
       return;
@@ -359,31 +485,90 @@ export function NodeEditor({
     replaceText(mode === "json" ? incomingJsonText : incomingScenarioText);
     replaceValidInstructions(incomingInstructions);
     setDiagnostics([]);
-    setPendingExternalText(null);
+    setExternalSnapshot(null);
+    setExternalSnapshotError(null);
+    setExternalChangeSummary(null);
     setHasExternalUpdate(false);
     setWriteConflict(false);
-    setDraftCopyPath(null);
     setExternalDiffOpen(false);
     setStatus("");
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, nodeRevision, project.nodeRevisions]);
 
-  const externalJsonText = pendingExternalText ?? incomingJsonText;
-  // 写入冲突刚发生时，watcher 可能还没把新内容送进来，此时没有可对比的外部文本。
-  const externalTextUnavailable = writeConflict
-    && pendingExternalText == null
-    && incomingJsonText === loadedTextRef.current;
-
-  // diff 面板打开但外部文本还没到位时，主动触发一次项目重读（每次打开只触发一次）。
   useEffect(() => {
-    if (!externalDiffOpen) {
-      externalFetchRequestedRef.current = false;
-      return;
+    if (!externalChange) return;
+    externalFetchRequestRef.current += 1;
+    setExternalSnapshotLoading(false);
+    setExternalChangeSummary(externalChange);
+    setExternalSnapshot(null);
+    setExternalSnapshotError(null);
+    setHasExternalUpdate(true);
+  }, [externalChange]);
+
+  const externalJsonText = externalSnapshot?.text ?? incomingJsonText;
+  const externalTextUnavailable = externalSnapshot == null;
+
+  const fetchExternalSnapshot = useCallback(async () => {
+    const requestedRelPath = node.file;
+    const requestId = externalFetchRequestRef.current + 1;
+    externalFetchRequestRef.current = requestId;
+    setExternalSnapshotLoading(true);
+    setExternalSnapshotError(null);
+    try {
+      const snapshot = await readNodeFileSnapshot(project.path, requestedRelPath);
+      if (!externalSnapshotRequestIsCurrent({
+        requestId,
+        currentRequestId: externalFetchRequestRef.current,
+        requestedRelPath,
+        currentRelPath: currentNodeFileRef.current,
+      })) return;
+      if (
+        snapshot.state === "present"
+        && snapshot.text === loadedTextRef.current
+        && sameFileRevision(snapshot.revision, loadedRevisionRef.current)
+      ) {
+        setExternalSnapshot(null);
+        setHasExternalUpdate(false);
+        setWriteConflict(false);
+        setExternalDiffOpen(false);
+        return;
+      }
+      setExternalSnapshot(snapshot);
+      setHasExternalUpdate(true);
+    } catch (error) {
+      if (!externalSnapshotRequestIsCurrent({
+        requestId,
+        currentRequestId: externalFetchRequestRef.current,
+        requestedRelPath,
+        currentRelPath: currentNodeFileRef.current,
+      })) return;
+      setExternalSnapshotError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (externalFetchRequestRef.current === requestId) {
+        setExternalSnapshotLoading(false);
+      }
     }
-    if (externalTextUnavailable && !externalFetchRequestedRef.current) {
-      externalFetchRequestedRef.current = true;
-      void onSaved();
-    }
-  }, [externalDiffOpen, externalTextUnavailable, onSaved]);
+  }, [node.file, project.path]);
+
+  useEffect(() => {
+    externalFetchRequestRef.current += 1;
+    setExternalSnapshotLoading(false);
+  }, [node.file]);
+
+  useEffect(() => {
+    if (
+      !externalDiffOpen
+      || externalSnapshot
+      || externalSnapshotLoading
+      || externalSnapshotError
+    ) return;
+    void fetchExternalSnapshot();
+  }, [
+    externalDiffOpen,
+    externalSnapshot,
+    externalSnapshotError,
+    externalSnapshotLoading,
+    fetchExternalSnapshot,
+  ]);
 
   const externalDiff = useMemo(() => {
     if (!externalDiffOpen || externalTextUnavailable) return null;
@@ -615,6 +800,11 @@ export function NodeEditor({
   };
 
   const handleSave = async () => {
+    if (hasExternalUpdate || writeConflict) {
+      setExternalDiffOpen(true);
+      setStatus(t("script.editor.resolveConflictBeforeSave"));
+      return;
+    }
     const built = buildPayload();
     if (!built.ok) {
       setStatus(built.message);
@@ -662,11 +852,13 @@ export function NodeEditor({
           }
           setStatus(t("script.editor.savedWithDraft"));
         }
-        setPendingExternalText(null);
+        setExternalSnapshot(null);
+        setExternalSnapshotError(null);
+        setExternalChangeSummary(null);
         setHasExternalUpdate(false);
         setWriteConflict(false);
-        setDraftCopyPath(null);
         setExternalDiffOpen(false);
+        onExternalChangeResolved?.();
       }
       if (!dirty) setStatus(t("script.editor.saved"));
       onSaved();
@@ -687,53 +879,86 @@ export function NodeEditor({
     }
   };
 
-  useSaveShortcut(!saving, () => void handleSave());
+  useSaveShortcut(
+    !saving && !hasExternalUpdate && !writeConflict,
+    () => void handleSave(),
+  );
 
   const handleLoadExternal = () => {
     if (saving) return;
-    if (writeConflict && pendingExternalText == null && incomingJsonText === loadedTextRef.current) {
+    if (!externalSnapshot) {
       setStatus(t("script.editor.loadingExternal"));
-      void onSaved();
+      void fetchExternalSnapshot();
       return;
     }
-    const nextJsonText = pendingExternalText ?? incomingJsonText;
+    if (externalSnapshot.state === "deleted") {
+      setStatus(t("script.editor.externalDeletedBlocked"));
+      return;
+    }
+    const nextJsonText = externalSnapshot.text ?? "";
     draftVersionRef.current += 1;
     undoHistoryRef.current = createUndoHistory();
     const parsed = parseJsonInstructionText(nextJsonText);
+    if (!parsed.ok) {
+      setMode("json");
+    }
     const nextInstructions = parsed.ok ? parsed.instructions : [];
     loadedTextRef.current = nextJsonText;
-    loadedRevisionRef.current = nodeRevision ?? project.nodeRevisions?.[node.file];
+    loadedRevisionRef.current = externalSnapshot.revision;
     clearPendingAssignedIdentities();
-    replaceText(mode === "json" ? nextJsonText : formatScenarioText(nextInstructions));
+    replaceText(mode === "json" || !parsed.ok ? nextJsonText : formatScenarioText(nextInstructions));
     replaceValidInstructions(nextInstructions);
     setDiagnostics(parsed.ok ? [] : [{ line: 1, message: parsed.error }]);
     setDirty(false);
-    setPendingExternalText(null);
+    setExternalSnapshot(null);
+    setExternalSnapshotError(null);
+    setExternalChangeSummary(null);
     setHasExternalUpdate(false);
     setWriteConflict(false);
-    setDraftCopyPath(null);
     setExternalDiffOpen(false);
     setStatus(t("script.editor.loadedExternal"));
+    onExternalChangeResolved?.();
   };
 
-  const handleSaveDraftCopy = async () => {
-    const built = buildPayload();
-    if (!built.ok) {
-      setStatus(built.message);
+  const handleKeepLocal = () => {
+    if (!externalSnapshot) {
+      void fetchExternalSnapshot();
       return;
     }
-    setSaving(true);
-    setStatus("");
+    const nextBase = keptLocalDraftBase(externalSnapshot);
+    loadedTextRef.current = nextBase.text;
+    loadedRevisionRef.current = nextBase.revision;
+    setDraftBaseVersion((version) => version + 1);
+    setDirty(nextBase.dirty);
+    setExternalSnapshot(null);
+    setExternalSnapshotError(null);
+    setExternalChangeSummary(null);
+    setHasExternalUpdate(false);
+    setWriteConflict(false);
+    setExternalDiffOpen(false);
+    setStatus(t("script.editor.keptLocal"));
+    onExternalChangeResolved?.();
+  };
+
+  const handleCopyConflict = async () => {
+    if (!externalSnapshot && !externalSnapshotError) {
+      void fetchExternalSnapshot();
+      return;
+    }
     try {
-      const copyPath = conflictDraftCopyPath(node.file, Date.now());
-      await saveFile(project.path, `content/${copyPath}`, built.payload);
-      setDraftCopyPath(copyPath);
-      setStatus(t("script.editor.draftCopySaved", { path: copyPath }));
-      onSaved();
+      await navigator.clipboard.writeText(createConflictClipboardText({
+        relPath: node.file,
+        baseText: loadedTextRef.current,
+        localText: text,
+        externalSnapshot,
+        externalState: externalChangeSummary?.kind,
+        relatedPaths: externalChangeSummary?.relatedPaths,
+      }));
+      setStatus(t("script.editor.conflictCopied"));
     } catch (error) {
-      setStatus(t("script.editor.draftCopyFailed", { detail: error instanceof Error ? error.message : String(error) }));
-    } finally {
-      setSaving(false);
+      setStatus(t("script.editor.conflictCopyFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     }
   };
 
@@ -957,22 +1182,44 @@ export function NodeEditor({
         saving={saving}
         canSave={canSave}
         status={status}
-        draftCopyPath={draftCopyPath}
         onModeToggle={handleModeToggle}
         onOpenExternalDiff={() => setExternalDiffOpen(true)}
-        onSaveDraftCopy={handleSaveDraftCopy}
+        onCopyConflict={handleCopyConflict}
         onSave={handleSave}
         t={t}
       />
       {externalDiffOpen && (hasExternalUpdate || writeConflict) && (
         <ExternalDiffPanel
           writeConflict={writeConflict}
-          loading={externalDiff == null}
+          loading={externalSnapshotLoading || (
+            externalDiff == null
+            && !externalSnapshotError
+          )}
+          error={externalSnapshotError}
           rows={externalDiff?.rows ?? null}
+          summary={{
+            base: revisionSummary(loadedRevisionRef.current),
+            local: t("script.externalDiff.localSummary", {
+              lines: text === "" ? 0 : text.split("\n").length,
+            }),
+            external: externalChangeSummary?.kind === "renamed"
+              && externalChangeSummary.relatedPaths?.length
+              ? externalChangeSummary.relatedPaths.join(" · ")
+              : revisionSummary(externalSnapshot?.revision),
+            externalState: externalChangeSummary?.kind === "renamed"
+              ? "renamed"
+              : externalSnapshot?.state ?? (
+                externalChangeSummary?.kind === "deleted"
+                  ? "deleted"
+                  : "present"
+              ),
+            burstCount: externalChangeSummary?.eventCount,
+          }}
           saving={saving}
           onLoadExternal={handleLoadExternal}
-          onSaveDraftCopy={handleSaveDraftCopy}
-          onDismiss={() => setExternalDiffOpen(false)}
+          onKeepLocal={handleKeepLocal}
+          onCopyConflict={handleCopyConflict}
+          onRetry={fetchExternalSnapshot}
         />
       )}
       <ScenarioTextEditor

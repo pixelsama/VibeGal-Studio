@@ -407,14 +407,34 @@ fn debounce_state_coalesces_changes_until_quiet_window() {
     let start = std::time::Instant::now();
     let delay = std::time::Duration::from_millis(250);
 
-    state.record(ProjectChangedPayload::new(root.clone(), false), start);
+    state.record(
+        ProjectChangedPayload::new(
+            root.clone(),
+            false,
+            ProjectFileChange {
+                kind: ProjectFileChangeKind::Modify,
+                paths: vec!["content/nodes/start.json".to_string()],
+            },
+        ),
+        start,
+    );
     assert_eq!(
         state.due(start + std::time::Duration::from_millis(249), delay),
         None
     );
 
     state.record(
-        ProjectChangedPayload::new(root.clone(), true),
+        ProjectChangedPayload::new(
+            root.clone(),
+            true,
+            ProjectFileChange {
+                kind: ProjectFileChangeKind::Rename,
+                paths: vec![
+                    "content/nodes/start.json".to_string(),
+                    "content/nodes/renamed.json".to_string(),
+                ],
+            },
+        ),
         start + std::time::Duration::from_millis(100),
     );
     assert_eq!(
@@ -427,9 +447,43 @@ fn debounce_state_coalesces_changes_until_quiet_window() {
         .unwrap();
     assert_eq!(payload.project_path, root);
     assert!(payload.renderer_changed);
+    assert_eq!(payload.event_count, 2);
+    assert_eq!(
+        payload.changes,
+        vec![
+            ProjectFileChange {
+                kind: ProjectFileChangeKind::Modify,
+                paths: vec!["content/nodes/start.json".to_string()],
+            },
+            ProjectFileChange {
+                kind: ProjectFileChangeKind::Rename,
+                paths: vec![
+                    "content/nodes/start.json".to_string(),
+                    "content/nodes/renamed.json".to_string(),
+                ],
+            },
+        ],
+    );
     assert_eq!(
         state.due(start + std::time::Duration::from_millis(700), delay),
         None
+    );
+}
+
+#[test]
+fn watcher_event_kinds_preserve_delete_and_rename_states() {
+    use notify::event::{ModifyKind, RemoveKind, RenameMode};
+    use notify::EventKind;
+
+    assert_eq!(
+        project_file_change_kind(&EventKind::Remove(RemoveKind::File)),
+        ProjectFileChangeKind::Remove,
+    );
+    assert_eq!(
+        project_file_change_kind(&EventKind::Modify(ModifyKind::Name(
+            RenameMode::Both,
+        ))),
+        ProjectFileChangeKind::Rename,
     );
 }
 

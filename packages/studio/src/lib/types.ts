@@ -107,7 +107,29 @@ export interface NodeSummary {
 export interface NodeDetail {
   relPath: string;
   data: unknown;
+  text: string;
   revision: FileRevision;
+}
+
+export interface NodeFileSnapshot {
+  relPath: string;
+  state: "present" | "deleted";
+  text?: string;
+  revision?: FileRevision;
+}
+
+export type ProjectFileChangeKind = "create" | "modify" | "remove" | "rename" | "other";
+
+export interface ProjectFileChange {
+  kind: ProjectFileChangeKind;
+  paths: string[];
+}
+
+export interface ProjectChangedPayload {
+  projectPath: string;
+  rendererChanged: boolean;
+  changes: ProjectFileChange[];
+  eventCount: number;
 }
 
 export type GraphIssueSeverity = "error" | "warn";

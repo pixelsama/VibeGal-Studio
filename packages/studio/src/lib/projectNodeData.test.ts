@@ -66,6 +66,7 @@ describe("project node caches", () => {
     vi.mocked(readNodeDetail).mockResolvedValue({
       relPath: "nodes/a.json",
       data: [],
+      text: "[]\n",
       revision: { relPath: "content/nodes/a.json", mtimeMs: 1, size: 2, sha256: "a".repeat(64) },
     });
 
@@ -84,6 +85,7 @@ describe("project node caches", () => {
     vi.mocked(readNodeDetail).mockResolvedValue({
       relPath: "nodes/a.json",
       data: [],
+      text: "[]\n",
       revision: { relPath: "content/nodes/a.json", mtimeMs: 1, size: 2 },
     });
 

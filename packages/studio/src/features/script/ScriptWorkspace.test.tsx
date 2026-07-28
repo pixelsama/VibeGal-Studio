@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { Breadcrumb } from "./Breadcrumb";
 import {
   buildGraphPositionUpdates,
+  editorSnapshotAfterRefresh,
+  nodeExternalChange,
   persistCreatedNodeWithCompensation,
+  projectChangeAfterResolution,
   ScriptWorkspace,
   takePendingGraphPositionUpdates,
 } from "./ScriptWorkspace";
@@ -115,6 +118,118 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("翻译对照");
   });
 
+});
+
+describe("external node refresh retention", () => {
+  const baseDetail = {
+    relPath: "nodes/prologue.json",
+    data: [{ t: "narrate", text: "base" }],
+    text: '[{"t":"narrate","text":"base"}]',
+    revision: {
+      relPath: "content/nodes/prologue.json",
+      mtimeMs: 1,
+      size: 32,
+    },
+  };
+  const diskDetail = {
+    ...baseDetail,
+    data: [{ t: "narrate", text: "disk" }],
+    text: '[{"t":"narrate","text":"disk"}]',
+    revision: { ...baseDetail.revision, mtimeMs: 2 },
+  };
+
+  it("retains the last good base while a dirty draft receives a refreshed detail", () => {
+    expect(editorSnapshotAfterRefresh({
+      current: baseDetail,
+      incoming: diskDetail,
+      dirty: true,
+      externalChange: { kind: "modified", eventCount: 2 },
+    })).toBe(baseDetail);
+  });
+
+  it("retains the last good base when deletion or rename removes the incoming detail", () => {
+    expect(editorSnapshotAfterRefresh({
+      current: baseDetail,
+      incoming: null,
+      dirty: true,
+      externalChange: { kind: "deleted", eventCount: 1 },
+    })).toBe(baseDetail);
+    expect(editorSnapshotAfterRefresh({
+      current: baseDetail,
+      incoming: null,
+      dirty: true,
+      externalChange: {
+        kind: "renamed",
+        eventCount: 3,
+        relatedPaths: ["content/nodes/renamed.json"],
+      },
+    })).toBe(baseDetail);
+  });
+
+  it("uses the refreshed detail after a clean editor refresh", () => {
+    expect(editorSnapshotAfterRefresh({
+      current: baseDetail,
+      incoming: diskDetail,
+      dirty: false,
+      externalChange: null,
+    })).toBe(diskDetail);
+  });
+
+  it("does not reopen a resolved watcher payload on an unrelated rerender", () => {
+    const payload = {
+      projectPath: "/project",
+      rendererChanged: false,
+      eventCount: 1,
+      changes: [{
+        kind: "modify" as const,
+        paths: ["content/nodes/prologue.json"],
+      }],
+    };
+
+    expect(projectChangeAfterResolution({
+      payload,
+      resolved: {
+        payload,
+        nodeFile: "nodes/prologue.json",
+      },
+      nodeFile: "nodes/prologue.json",
+    })).toBeNull();
+    expect(projectChangeAfterResolution({
+      payload,
+      resolved: {
+        payload,
+        nodeFile: "nodes/prologue.json",
+      },
+      nodeFile: "nodes/ending.json",
+    })).toBe(payload);
+    expect(projectChangeAfterResolution({
+      payload: { ...payload },
+      resolved: {
+        payload,
+        nodeFile: "nodes/prologue.json",
+      },
+      nodeFile: "nodes/prologue.json",
+    })).not.toBeNull();
+  });
+
+  it("classifies a rename before a coalesced remove in the same watcher burst", () => {
+    expect(nodeExternalChange({
+      projectPath: "/project",
+      rendererChanged: false,
+      eventCount: 2,
+      changes: [
+        { kind: "remove", paths: ["content/nodes/prologue.json"] },
+        {
+          kind: "rename",
+          paths: ["content/nodes/prologue.json", "content/nodes/renamed.json"],
+        },
+      ],
+    }, "nodes/prologue.json")).toEqual({
+      kind: "renamed",
+      eventCount: 2,
+      relatedPaths: ["content/nodes/renamed.json"],
+    });
+  });
 });
 
 describe("Breadcrumb", () => {

@@ -23,6 +23,7 @@ pub(crate) fn run() {
             super::commands::analyze_project,
             super::commands::read_project_nodes,
             super::commands::read_node_detail,
+            super::commands::read_node_file_snapshot,
             super::commands::create_project,
             super::commands::initialize_project,
             super::commands::repair_project_support_files,

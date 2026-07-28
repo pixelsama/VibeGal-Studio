@@ -127,7 +127,12 @@ export function useNodeDetail(
     : undefined;
   const [state, setState] = useState<{ detail: NodeDetail | null; loading: boolean; error: string | null }>({
     detail: eager?.data != null && eagerRevision
-      ? { relPath: relPath!, data: eager.data, revision: eagerRevision }
+      ? {
+        relPath: relPath!,
+        data: eager.data,
+        text: JSON.stringify(eager.data, null, 2),
+        revision: eagerRevision,
+      }
       : null,
     loading: Boolean(relPath && eager?.data == null),
     error: null,
@@ -140,7 +145,16 @@ export function useNodeDetail(
       return;
     }
     if (eager?.data != null && eagerRevision) {
-      setState({ detail: { relPath, data: eager.data, revision: eagerRevision }, loading: false, error: null });
+      setState({
+        detail: {
+          relPath,
+          data: eager.data,
+          text: JSON.stringify(eager.data, null, 2),
+          revision: eagerRevision,
+        },
+        loading: false,
+        error: null,
+      });
       return;
     }
     const requestId = requestRef.current + 1;

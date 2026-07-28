@@ -9,8 +9,8 @@ use super::game_build::{
 };
 use super::model::{
     AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, NodeDetail,
-    NodeEntry, ProjectAnalysis, ProjectData, ProjectListItem, ProjectMeta, ProjectTemplate,
-    RendererTemplate,
+    NodeEntry, NodeFileSnapshot, ProjectAnalysis, ProjectData, ProjectListItem, ProjectMeta,
+    ProjectTemplate, RendererTemplate,
 };
 use super::mutation;
 use super::project;
@@ -129,6 +129,14 @@ pub(crate) fn read_project_nodes(project_path: String) -> Result<Vec<NodeEntry>,
 #[tauri::command]
 pub(crate) fn read_node_detail(project_path: String, rel_path: String) -> Result<NodeDetail, String> {
     project::read_node_detail(&project_path, &rel_path)
+}
+
+#[tauri::command]
+pub(crate) fn read_node_file_snapshot(
+    project_path: String,
+    rel_path: String,
+) -> Result<NodeFileSnapshot, String> {
+    project::read_node_file_snapshot(&project_path, &rel_path)
 }
 
 #[tauri::command]

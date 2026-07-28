@@ -13,6 +13,7 @@ import type {
   GraphPositionPatch,
   Manifest,
   NodeDetail,
+  NodeFileSnapshot,
   NodeEntry,
   ProjectAnalysis,
   ProjectData,
@@ -103,6 +104,11 @@ export async function readProjectNodes(projectPath: string): Promise<NodeEntry[]
 /** 读取 graph 已登记节点的正文和同一快照 revision。 */
 export async function readNodeDetail(projectPath: string, relPath: string): Promise<NodeDetail> {
   return invoke<NodeDetail>("read_node_detail", { projectPath, relPath });
+}
+
+/** 读取项目内相对节点路径的精确 UTF-8 磁盘快照；缺失文件返回 deleted。 */
+export async function readNodeFileSnapshot(projectPath: string, relPath: string): Promise<NodeFileSnapshot> {
+  return invoke<NodeFileSnapshot>("read_node_file_snapshot", { projectPath, relPath });
 }
 
 export type ProjectTemplate = "blank" | "example";
