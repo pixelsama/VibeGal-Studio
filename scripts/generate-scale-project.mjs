@@ -172,6 +172,18 @@ async function generate(outDir) {
   await writeFile(path.join(root, "content/graph.json"), stableJson(graph));
   await writeFile(path.join(root, "content/manifest.json"), stableJson(manifest));
   await writeFile(path.join(root, "content/locales/zh-CN.json"), stableJson(localeTable()));
+  await mkdir(path.join(root, "renderers/default"), { recursive: true });
+  await writeFile(path.join(root, "renderers/default/index.tsx"), [
+    'import type { RendererProps } from "@vibegal/engine";',
+    'import React from "react";',
+    '',
+    'function ScaleRenderer({ state }: RendererProps) {',
+    '  return <main style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", background: "#111827", color: "#f8fafc" }}>{state.dialogue?.text ?? state.narration?.text ?? "Scale benchmark"}</main>;',
+    '}',
+    '',
+    'export default { id: "default", name: "Scale Benchmark", contractVersion: 1, Component: ScaleRenderer };',
+    '',
+  ].join("\n"));
 
   for (let index = 0; index < NODE_COUNT; index += 1) {
     await writeFile(path.join(root, `content/nodes/node_${padded(index)}.json`), stableJson(storyNode(index)));

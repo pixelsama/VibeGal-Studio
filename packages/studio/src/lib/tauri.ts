@@ -12,6 +12,9 @@ import type {
   FileRevision,
   GraphPositionPatch,
   Manifest,
+  NodeDetail,
+  NodeEntry,
+  ProjectAnalysis,
   ProjectData,
   ProjectGraph,
   ProjectIssue,
@@ -82,9 +85,24 @@ export async function listProjects(workspaceDir: string): Promise<ProjectListIte
   return invoke<ProjectListItem[]>("list_projects", { workspaceDir });
 }
 
-/** 打开项目：读取 gal.project.json + content + 渲染层列表 */
+/** 打开项目：只加载 graph/manifest/元数据；节点正文按需读取。 */
 export async function openProject(path: string): Promise<ProjectData> {
   return withNormalizedManifest(await invoke<ProjectData>("open_project", { path }));
+}
+
+/** 完整诊断显式走 full loader，避免懒加载节点被误判为「没有问题」。 */
+export async function analyzeProject(projectPath: string): Promise<ProjectAnalysis> {
+  return invoke<ProjectAnalysis>("analyze_project", { projectPath });
+}
+
+/** 显式读取全部节点正文，供预览、搜索和全局分析等完整数据场景使用。 */
+export async function readProjectNodes(projectPath: string): Promise<NodeEntry[]> {
+  return invoke<NodeEntry[]>("read_project_nodes", { projectPath });
+}
+
+/** 读取 graph 已登记节点的正文和同一快照 revision。 */
+export async function readNodeDetail(projectPath: string, relPath: string): Promise<NodeDetail> {
+  return invoke<NodeDetail>("read_node_detail", { projectPath, relPath });
 }
 
 export type ProjectTemplate = "blank" | "example";
@@ -264,9 +282,18 @@ export async function deleteAsset(
   await invoke("delete_asset", withExpectedRevision({ projectPath, relPath }, expectedRevision));
 }
 
-/** 读取 content/ 下的图片资产预览，返回 data URL（后端校验路径不越界）。 */
+/** 读取完整原图预览；只用于作者显式打开的预览。 */
 export async function readAssetPreviewDataUrl(projectPath: string, relPath: string): Promise<string> {
   return invoke<string>("read_asset_preview_data_url", { projectPath, relPath });
+}
+
+/** 读取 Rust 侧生成的有界缩略图。 */
+export async function readAssetThumbnailDataUrl(
+  projectPath: string,
+  relPath: string,
+  maxSize: number,
+): Promise<string> {
+  return invoke<string>("read_asset_thumbnail_data_url", { projectPath, relPath, maxSize });
 }
 
 /** 保存 content/manifest.json（整体覆盖，类型化输入） */

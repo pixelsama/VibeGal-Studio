@@ -88,6 +88,8 @@ interface NodeEditorProps {
   rendererId: string;
   node: GraphNode;
   nodeData: unknown | null;
+  /** 按需读取节点正文时一并返回的精确版本；优先于项目聚合数据。 */
+  nodeRevision?: FileRevision;
   focusRequest?: GraphIssueFocusRequest | null;
   onSaved: () => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -215,6 +217,7 @@ export function NodeEditor({
   rendererId,
   node,
   nodeData,
+  nodeRevision,
   focusRequest,
   onSaved,
   onDirtyChange,
@@ -289,7 +292,7 @@ export function NodeEditor({
   const undoHistoryRef = useRef<UndoHistory<ScenarioUndoSnapshot>>(createUndoHistory());
   const loadedTextRef = useRef(restoredDraft?.baseJsonText ?? incomingJsonText);
   const loadedRevisionRef = useRef<FileRevision | null | undefined>(
-    restoredDraft ? restoredDraft.baseRevision : project.nodeRevisions?.[node.file],
+    restoredDraft ? restoredDraft.baseRevision : nodeRevision ?? project.nodeRevisions?.[node.file],
   );
   const [inspectorPane, setInspectorPane] = useState<NodeInspectorPaneState>(() => loadNodeInspectorPaneState());
   const [layoutWidth, setLayoutWidth] = useState<number | undefined>(undefined);
@@ -339,7 +342,7 @@ export function NodeEditor({
   }, [node.file, node.id, project.projectReport]);
 
   useEffect(() => {
-    const incomingRevision = project.nodeRevisions?.[node.file];
+    const incomingRevision = nodeRevision ?? project.nodeRevisions?.[node.file];
     if (dirty) {
       if (incomingJsonText !== loadedTextRef.current) {
         setPendingExternalText(incomingJsonText);
@@ -360,7 +363,7 @@ export function NodeEditor({
     setDraftCopyPath(null);
     setExternalDiffOpen(false);
     setStatus("");
-  }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, project.nodeRevisions]);
+  }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, nodeRevision, project.nodeRevisions]);
 
   const externalJsonText = pendingExternalText ?? incomingJsonText;
   // 写入冲突刚发生时，watcher 可能还没把新内容送进来，此时没有可对比的外部文本。
@@ -689,7 +692,7 @@ export function NodeEditor({
     const parsed = parseJsonInstructionText(nextJsonText);
     const nextInstructions = parsed.ok ? parsed.instructions : [];
     loadedTextRef.current = nextJsonText;
-    loadedRevisionRef.current = project.nodeRevisions?.[node.file];
+    loadedRevisionRef.current = nodeRevision ?? project.nodeRevisions?.[node.file];
     clearPendingAssignedIdentities();
     replaceText(mode === "json" ? nextJsonText : formatScenarioText(nextInstructions));
     replaceValidInstructions(nextInstructions);

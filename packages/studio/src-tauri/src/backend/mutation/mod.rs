@@ -477,6 +477,57 @@ pub(crate) fn read_asset_preview_data_url(
     ))
 }
 
+/// 读取有界缩略图。位图在 Rust 侧解码并缩放，避免每个资产卡片把完整原图送进 WebView；
+/// SVG 在 WebView 中天然按目标盒子缩放；GIF 缩略图只取首帧，避免传输完整动画。
+pub(crate) fn read_asset_thumbnail_data_url(
+    project_path: String,
+    rel_path: String,
+    max_size: u32,
+) -> Result<String, String> {
+    if !(32..=1024).contains(&max_size) {
+        return Err(format!("缩略图尺寸必须在 32 到 1024 之间: {max_size}"));
+    }
+    let content_root = ProjectRoot::open(Path::new(&project_path))?.content_root()?;
+    let target = content_root.resolve_existing_file(&rel_path)?;
+    let mime = preview_image_mime(&rel_path)
+        .ok_or_else(|| format!("不支持预览的图片类型: {rel_path}"))?;
+    let size = fs::metadata(&target)
+        .map_err(|e| format!("读取资产信息失败 ({}): {}", target.display(), e))?
+        .len();
+    if size > MAX_ASSET_PREVIEW_BYTES {
+        return Err(format!(
+            "资产预览过大（{} bytes），超过 {} bytes",
+            size, MAX_ASSET_PREVIEW_BYTES
+        ));
+    }
+
+    if mime == "image/svg+xml" {
+        let bytes = fs::read(&target)
+            .map_err(|e| format!("读取资产预览失败 ({}): {}", target.display(), e))?;
+        return Ok(format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)));
+    }
+
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_ASSET_PREVIEW_DIMENSION);
+    limits.max_image_height = Some(MAX_ASSET_PREVIEW_DIMENSION);
+    limits.max_alloc = Some(MAX_ASSET_PREVIEW_ALLOC_BYTES);
+    let mut reader = image::ImageReader::open(&target)
+        .map_err(|error| format!("读取资产预览失败 ({}): {error}", target.display()))?;
+    reader.limits(limits);
+    let image = reader
+        .decode()
+        .map_err(|error| format!("解码资产预览失败 ({}): {error}", target.display()))?;
+    let thumbnail = image.thumbnail(max_size, max_size);
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    thumbnail
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .map_err(|error| format!("生成资产缩略图失败 ({}): {error}", target.display()))?;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        BASE64_STANDARD.encode(bytes.into_inner())
+    ))
+}
+
 fn preview_image_mime(rel_path: &str) -> Option<&'static str> {
     let ext = Path::new(rel_path)
         .extension()
@@ -730,6 +781,8 @@ use std::fs::{self, OpenOptions};
 use std::path::{Component, Path, PathBuf};
 
 const MAX_ASSET_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_ASSET_PREVIEW_DIMENSION: u32 = 16_384;
+const MAX_ASSET_PREVIEW_ALLOC_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(serde::Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

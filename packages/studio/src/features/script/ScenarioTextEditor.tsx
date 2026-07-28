@@ -289,6 +289,7 @@ export function ScenarioTextEditor({
       <textarea
         ref={textareaRef}
         value={text}
+        aria-label={scenario ? "剧本文本" : "节点 JSON"}
         wrap={scenario ? "off" : "soft"}
         onChange={(event) => {
           if (scenario) onScenarioTextChange(event.currentTarget);

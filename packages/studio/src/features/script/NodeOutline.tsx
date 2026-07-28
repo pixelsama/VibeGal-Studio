@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { UIEvent } from "react";
 import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData } from "./graphMapping";
 import { searchProject } from "./projectSearch";
+import { fixedListWindow } from "../common/virtualWindow";
 
 interface NodeOutlineProps {
   graph: ProjectGraph;
@@ -14,6 +16,8 @@ interface NodeOutlineProps {
 
 export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSelect, onSelectEdge }: NodeOutlineProps) {
   const [query, setQuery] = useState("");
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 480 });
+  const listRef = useRef<HTMLDivElement | null>(null);
   const orderedNodes = useMemo(() => {
     const entry = graph.nodes.find((node) => node.id === graph.entryNodeId);
     const rest = graph.nodes.filter((node) => node.id !== graph.entryNodeId);
@@ -30,6 +34,36 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
     [graph, manifest, nodeEntries, query],
   );
   const showingProjectSearch = query.trim().length > 0;
+  const listItems = showingProjectSearch ? searchResults : orderedNodes;
+  const rowHeight = showingProjectSearch ? 112 : 108;
+  const window = fixedListWindow(listItems.length, viewport.scrollTop, viewport.height, rowHeight);
+  const windowedItems = listItems.slice(window.start, window.end);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const update = () => setViewport((current) => ({ ...current, height: list.clientHeight || current.height }));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (showingProjectSearch || !selectedNodeId) return;
+    const index = orderedNodes.findIndex((node) => node.id === selectedNodeId);
+    const list = listRef.current;
+    if (index < 0 || !list) return;
+    const top = index * 108;
+    if (top < list.scrollTop || top + 108 > list.scrollTop + list.clientHeight) {
+      list.scrollTo({ top: Math.max(0, top - list.clientHeight / 2), behavior: "smooth" });
+    }
+  }, [orderedNodes, selectedNodeId, showingProjectSearch]);
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const scrollTop = event.currentTarget.scrollTop;
+    setViewport((current) => current.scrollTop === scrollTop ? current : { ...current, scrollTop });
+  };
 
   return (
     <div style={panelStyle}>
@@ -41,15 +75,28 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
           style={searchInputStyle}
         />
       </div>
-      <div style={listStyle}>
+      <div
+        ref={listRef}
+        role="listbox"
+        aria-label={showingProjectSearch ? "项目搜索结果" : "节点列表"}
+        style={listStyle}
+        onScroll={handleScroll}
+      >
+        <div aria-hidden="true" style={{ height: window.paddingTop, flexShrink: 0 }} />
         {showingProjectSearch ? (
           searchResults.length === 0 ? (
             <div style={emptyStyle}>没有匹配的结果</div>
           ) : (
-            searchResults.map((result, index) => (
+            windowedItems.map((item, visibleIndex) => {
+              const result = item as (typeof searchResults)[number];
+              const index = window.start + visibleIndex;
+              return (
               <button
                 key={`${result.kind}-${index}`}
                 type="button"
+                role="option"
+                aria-posinset={index + 1}
+                aria-setsize={searchResults.length}
                 onClick={() => {
                   if (result.kind === "edge") {
                     onSelectEdge?.(result.edgeId);
@@ -57,7 +104,7 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
                   }
                   if ("nodeId" in result && result.nodeId) onSelect(result.nodeId);
                 }}
-                style={itemStyle}
+                style={{ ...itemStyle, height: rowHeight - 8, flexShrink: 0 }}
               >
                 <div style={itemHeaderStyle}>
                   <span style={itemTitleStyle}>{result.label}</span>
@@ -68,12 +115,15 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
                   {result.kind === "manifest" ? result.manifestPath : result.file}
                 </div>
               </button>
-            ))
+              );
+            })
           )
         ) : orderedNodes.length === 0 ? (
           <div style={emptyStyle}>{query.trim() ? "没有匹配的节点" : "暂无节点"}</div>
         ) : (
-          orderedNodes.map((node) => {
+          windowedItems.map((item, visibleIndex) => {
+            const node = item as (typeof orderedNodes)[number];
+            const index = window.start + visibleIndex;
             const hasContent = findNodeData(nodeEntries, node.file) != null;
             const active = node.id === selectedNodeId;
 
@@ -81,9 +131,15 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
               <button
                 key={node.id}
                 type="button"
+                role="option"
+                aria-selected={active}
+                aria-posinset={index + 1}
+                aria-setsize={orderedNodes.length}
                 onClick={() => onSelect(node.id)}
                 style={{
                   ...itemStyle,
+                  height: rowHeight - 8,
+                  flexShrink: 0,
                   borderColor: active ? "var(--accent)" : "var(--border)",
                   background: active ? "var(--bg-active)" : "var(--bg-panel)",
                 }}
@@ -103,6 +159,7 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
             );
           })
         )}
+        <div aria-hidden="true" style={{ height: window.paddingBottom, flexShrink: 0 }} />
       </div>
     </div>
   );
@@ -134,6 +191,8 @@ const listStyle: React.CSSProperties = {
   gap: "var(--space-2)",
   padding: "var(--space-3)",
   overflowY: "auto",
+  minHeight: 0,
+  flex: 1,
 };
 
 const toolbarStyle: React.CSSProperties = {
@@ -157,6 +216,8 @@ const itemStyle: React.CSSProperties = {
   padding: "var(--space-3)",
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
+  boxSizing: "border-box",
+  overflow: "hidden",
   cursor: "pointer",
   color: "var(--text-primary)",
   textAlign: "left",

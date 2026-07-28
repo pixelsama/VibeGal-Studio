@@ -207,6 +207,56 @@ fn load_project_locales(
 }
 
 pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
+    open_project_with_mode(path, ProjectLoadMode::Full)
+}
+
+pub(crate) fn open_project_summary(path: &str) -> Result<ProjectData, String> {
+    open_project_with_mode(path, ProjectLoadMode::Summary)
+}
+
+pub(crate) fn analyze_project(path: &str) -> Result<ProjectAnalysis, String> {
+    let data = open_project_inner(path)?;
+    Ok(ProjectAnalysis {
+        graph_report: data.graph_report.expect("full loader returns graph report"),
+        asset_report: data.asset_report.expect("full loader returns asset report"),
+        project_report: data.project_report.expect("full loader returns project report"),
+    })
+}
+
+pub(crate) fn read_project_nodes(path: &str) -> Result<Vec<NodeEntry>, String> {
+    let project_root = ProjectRoot::open(Path::new(path))?;
+    let content_root = project_root.content_root()?;
+    let (graph, _) = load_project_graph(&content_root)?;
+    load_node_entries(&content_root, &graph)
+}
+
+pub(crate) fn read_node_detail(path: &str, rel_path: &str) -> Result<NodeDetail, String> {
+    let project_root = ProjectRoot::open(Path::new(path))?;
+    let content_root = project_root.content_root()?;
+    let (graph, _) = load_project_graph(&content_root)?;
+    if !graph.nodes.iter().any(|node| node.file == rel_path) {
+        return Err(format!("节点文件不在 graph.json 中: {rel_path}"));
+    }
+    let target = content_root.resolve_existing_file(rel_path)?;
+    let data = read_json(&target)?;
+    let project_rel_path = format!("content/{rel_path}");
+    let revision = project_root
+        .revision(&project_rel_path)?
+        .ok_or_else(|| format!("节点文件不存在: {rel_path}"))?;
+    Ok(NodeDetail {
+        rel_path: rel_path.to_string(),
+        data,
+        revision,
+    })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProjectLoadMode {
+    Full,
+    Summary,
+}
+
+fn open_project_with_mode(path: &str, mode: ProjectLoadMode) -> Result<ProjectData, String> {
     let project_root = ProjectRoot::open(Path::new(path))?;
     let project_path = project_root.path();
     let meta = serde_json::from_value::<ProjectMeta>(project_root.read_project_json()?)
@@ -225,20 +275,64 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let renderer_ids = list_renderer_ids(project_path);
     let missing_support_files = super::missing_project_self_description_files(project_path)?;
     let project_revision = project_root.revision("gal.project.json")?;
-    let (graph, nodes, mut graph_issues) = load_project_graph_data(&content_root)?;
+    let (graph, mut graph_issues) = load_project_graph(&content_root)?;
     let graph_revision = project_root.revision("content/graph.json")?;
     let manifest_revision = project_root.revision("content/manifest.json")?;
     let meta_revision = project_root.revision("content/meta.json")?;
     let variables_revision = project_root.revision("content/variables.json")?;
     let mut node_revisions = HashMap::new();
-    for node in &nodes {
-        node_revisions.insert(
-            node.rel_path.clone(),
-            project_root.revision(&format!("content/{}", node.rel_path))?,
-        );
+    let mut incoming_counts = HashMap::<&str, usize>::new();
+    let mut outgoing_counts = HashMap::<&str, usize>::new();
+    for edge in &graph.edges {
+        if edge.from != edge.to {
+            *outgoing_counts.entry(edge.from.as_str()).or_default() += 1;
+            *incoming_counts.entry(edge.to.as_str()).or_default() += 1;
+        }
     }
+    let mut node_summaries = Vec::with_capacity(graph.nodes.len());
+    for node in &graph.nodes {
+        let revision = if mode == ProjectLoadMode::Full {
+            project_root.revision(&format!("content/{}", node.file))?
+        } else {
+            project_root.metadata_revision(&format!("content/{}", node.file))?
+        };
+        node_revisions.insert(node.file.clone(), revision.clone());
+        node_summaries.push(NodeSummary {
+            id: node.id.clone(),
+            title: node.title.clone(),
+            rel_path: node.file.clone(),
+            chapter_id: node.chapter_id.clone(),
+            exists: revision.is_some(),
+            incoming: incoming_counts.get(node.id.as_str()).copied().unwrap_or(0),
+            outgoing: outgoing_counts.get(node.id.as_str()).copied().unwrap_or(0),
+            revision,
+        });
+    }
+    let nodes = if mode == ProjectLoadMode::Full {
+        load_node_entries(&content_root, &graph)?
+    } else {
+        graph
+            .nodes
+            .iter()
+            .map(|node| NodeEntry {
+                rel_path: node.file.clone(),
+                data: None,
+            })
+            .collect()
+    };
     graph_issues.extend(legacy_chapter_layout_issues(&content_root, &meta_json));
-    graph_issues.extend(validate_graph(&graph, &nodes));
+    if mode == ProjectLoadMode::Full {
+        graph_issues.extend(validate_graph(&graph, &nodes));
+    } else {
+        let existence_entries = node_summaries
+            .iter()
+            .map(|summary| super::super::model::NodeEntry {
+                rel_path: summary.rel_path.clone(),
+                data: summary.exists.then(|| serde_json::json!([])),
+            })
+            .collect::<Vec<_>>();
+        graph_issues.extend(validate_graph(&graph, &existence_entries));
+    }
     let graph_report = GraphReport { graph_issues };
     let asset_entries = super::list_asset_entries(&content_root);
     let asset_issues = match &asset_entries {
@@ -257,8 +351,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     let (fixtures, fixture_issues) = load_project_fixtures(&content_root);
     let (locales, locale_issues) = load_project_locales(&project_root, &content_root)?;
 
-    // 全局聚合：图结构 + 节点内容 + 资产 + manifest 结构问题汇总成一个报告
-    let node_issues = validate_node_contents_with_variables(&graph, &nodes, &manifest, &variables);
+    // summary open 只汇总控制文件、图结构和资产；读取节点正文的校验仅在显式 full path 执行。
     let manifest_issues = validate_manifest_structure(&manifest);
     let meta_issues = validate_meta_structure(&meta_json);
     let variable_issues =
@@ -274,33 +367,10 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
                 node_id: None,
                 edge_id: None,
             });
-    let graph_raw = content_root
-        .read_control_json("graph.json")
-        .unwrap_or_else(|_| serde_json::json!({}));
-    let image_dimensions = asset_entries
-        .as_ref()
-        .map(|entries| {
-            entries
-                .iter()
-                .filter_map(|entry| {
-                    Some((
-                        entry.rel_path.clone(),
-                        (entry.image_width?, entry.image_height?),
-                    ))
-                })
-                .collect::<std::collections::HashMap<_, _>>()
-        })
-        .unwrap_or_default();
-    let semantic_issues =
-        validate_project_semantics(&graph_raw, &nodes, &manifest, &image_dimensions);
     let manifest_node_issues = validate_manifest_node_references(&manifest, &graph);
-    let completion_issues = validate_ending_completions(&manifest, &nodes);
-    let condition_variable_issues = validate_condition_variables(&variables, &graph, &nodes);
-    let localization_issues = validate_localization_and_voice(
-        &meta_json, &manifest, &variables, &graph, &nodes, &locales,
-    );
     // 单 skin 收敛（Spec 19 §4.4）：多套 uiSkins 只提示不迁移
     let ui_skin_issues = validate_ui_skin_convergence(&manifest);
+    let full_project_report = mode == ProjectLoadMode::Full;
     let mut project_issues: Vec<ProjectIssue> = vec![];
     project_issues.extend(
         graph_report
@@ -308,7 +378,6 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
             .iter()
             .map(|i| graph_issue_to_project(i, "graph")),
     );
-    project_issues.extend(node_issues);
     project_issues.extend(
         asset_report
             .asset_issues
@@ -318,14 +387,43 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
     project_issues.extend(manifest_issues);
     project_issues.extend(meta_issues);
     project_issues.extend(variable_issues);
-    project_issues.extend(semantic_issues);
     project_issues.extend(manifest_node_issues);
-    project_issues.extend(completion_issues);
-    project_issues.extend(condition_variable_issues);
     project_issues.extend(ui_skin_issues);
     project_issues.extend(fixture_issues);
     project_issues.extend(locale_issues);
-    project_issues.extend(localization_issues);
+    if full_project_report {
+        project_issues.extend(validate_node_contents_with_variables(
+            &graph, &nodes, &manifest, &variables,
+        ));
+        let graph_raw = content_root
+            .read_control_json("graph.json")
+            .unwrap_or_else(|_| serde_json::json!({}));
+        let image_dimensions = asset_entries
+            .as_ref()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|entry| {
+                        Some((
+                            entry.rel_path.clone(),
+                            (entry.image_width?, entry.image_height?),
+                        ))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        project_issues.extend(validate_project_semantics(
+            &graph_raw,
+            &nodes,
+            &manifest,
+            &image_dimensions,
+        ));
+        project_issues.extend(validate_ending_completions(&manifest, &nodes));
+        project_issues.extend(validate_condition_variables(&variables, &graph, &nodes));
+        project_issues.extend(validate_localization_and_voice(
+            &meta_json, &manifest, &variables, &graph, &nodes, &locales,
+        ));
+    }
     project_issues.sort_by(|a, b| {
         (
             project_issue_source_order(&a.source),
@@ -354,7 +452,8 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         missing_support_files,
         project_revision,
         graph: Some(graph),
-        nodes: Some(nodes),
+        nodes: (mode == ProjectLoadMode::Full).then_some(nodes),
+        node_summaries: Some(node_summaries),
         graph_revision,
         manifest_revision,
         variables_revision,
@@ -362,6 +461,7 @@ pub(crate) fn open_project_inner(path: &str) -> Result<ProjectData, String> {
         node_revisions: Some(node_revisions),
         locales: Some(locales),
         fixtures: Some(fixtures),
+        analysis_complete: full_project_report,
         graph_report: Some(graph_report),
         asset_report: Some(asset_report),
         project_report: Some(project_report),
@@ -450,8 +550,9 @@ fn project_issue_source_order(source: &str) -> u8 {
 use super::super::contracts;
 use super::super::fs::{read_json, ContentRoot, ProjectRoot};
 use super::super::model::{
-    AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, LocaleEntry, ProjectContent,
-    ProjectData, ProjectIssue, ProjectListItem, ProjectMeta, ProjectReport,
+    AssetReport, FixtureEntry, GraphIssueSeverity, GraphReport, LocaleEntry, NodeDetail, NodeEntry,
+    NodeSummary, ProjectAnalysis, ProjectContent, ProjectData, ProjectIssue, ProjectListItem,
+    ProjectMeta, ProjectReport,
 };
 use super::super::validation::{
     graph_issue_to_project, validate_assets, validate_graph, validate_locale_structure,
@@ -459,7 +560,7 @@ use super::super::validation::{
     validate_meta_structure, validate_node_contents_with_variables, validate_project_semantics,
     validate_ui_skin_convergence,
 };
-use super::{legacy_chapter_layout_issues, load_project_graph_data};
+use super::{legacy_chapter_layout_issues, load_node_entries, load_project_graph};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

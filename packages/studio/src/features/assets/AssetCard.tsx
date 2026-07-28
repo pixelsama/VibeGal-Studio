@@ -54,6 +54,7 @@ export function AssetCard({
           <AssetImagePreview
             projectPath={projectPath}
             relPath={entry.relPath}
+            revision={entry.revision}
             alt={name}
             style={imgStyle}
             placeholderStyle={previewPlaceholderStyle}

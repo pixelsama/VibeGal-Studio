@@ -1075,6 +1075,88 @@ fn read_asset_preview_data_url_reads_image_under_content() {
 }
 
 #[test]
+fn read_asset_thumbnail_data_url_scales_bitmap_without_modifying_source() {
+    let dir = unique_temp_dir("asset-thumbnail-data-url");
+    write_asset_project(
+        &dir,
+        r#"{"characters":{},"backgrounds":{"sky":"assets/backgrounds/sky.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+        &[],
+    );
+    let target = dir.join("content/assets/backgrounds/sky.png");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    let image = image::DynamicImage::new_rgba8(240, 120);
+    image.save(&target).unwrap();
+    let before = fs::read(&target).unwrap();
+
+    let data_url = read_asset_thumbnail_data_url(
+        dir.to_string_lossy().to_string(),
+        "assets/backgrounds/sky.png".to_string(),
+        64,
+    )
+    .unwrap();
+    let encoded = data_url.strip_prefix("data:image/png;base64,").unwrap();
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).unwrap();
+    let thumbnail = image::load_from_memory(&bytes).unwrap();
+
+    assert!(thumbnail.width() <= 64);
+    assert!(thumbnail.height() <= 64);
+    assert_eq!(fs::read(&target).unwrap(), before);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn read_asset_thumbnail_data_url_rejects_oversized_decoded_dimensions() {
+    let dir = unique_temp_dir("asset-thumbnail-dimension-limit");
+    write_asset_project(
+        &dir,
+        r#"{"characters":{},"backgrounds":{"sky":"assets/backgrounds/sky.png"},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+        &[],
+    );
+    write_png_header(
+        &dir.join("content/assets/backgrounds/sky.png"),
+        16_385,
+        1,
+    );
+
+    let error = read_asset_thumbnail_data_url(
+        dir.to_string_lossy().to_string(),
+        "assets/backgrounds/sky.png".to_string(),
+        64,
+    )
+    .unwrap_err();
+
+    assert!(error.contains("解码资产预览失败"), "unexpected error: {error}");
+    assert!(error.to_lowercase().contains("limit"), "unexpected error: {error}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn read_asset_thumbnail_data_url_rejects_unsafe_inputs() {
+    let dir = unique_temp_dir("asset-thumbnail-invalid");
+    write_asset_project(
+        &dir,
+        r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}}}"#,
+        &[],
+    );
+
+    assert!(read_asset_thumbnail_data_url(
+        dir.to_string_lossy().to_string(),
+        "../gal.project.json".to_string(),
+        64,
+    )
+    .is_err());
+    assert!(read_asset_thumbnail_data_url(
+        dir.to_string_lossy().to_string(),
+        "assets/missing.png".to_string(),
+        8,
+    )
+    .unwrap_err()
+    .contains("32 到 1024"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn read_asset_preview_data_url_rejects_path_traversal() {
     let dir = unique_temp_dir("asset-preview-traversal");
     write_asset_project(

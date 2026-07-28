@@ -36,8 +36,14 @@ export interface StatusPanelProps {
   dialogAriaLabel: string;
   /** 弹窗内正常态副标题，如 "项目正常"；不传则用 okLabel */
   emptyDescription?: string;
-  /** 点击某条问题卡片时的回调（可选，无则卡片不可点击） */
+  /** 打开问题弹窗前触发；可用于显式加载完整诊断。 */
+  onOpen?: () => void;
+  /** 后台补全诊断时显示为进行中，避免把部分结果表示为「项目正常」。 */
+  loading?: boolean;
+  /** 点击问题卡片时跳转到对应位置。 */
   onIssueClick?: (issue: StatusIssue) => void;
+  /** 完整检查失败时显示错误并允许作者再次打开重试。 */
+  error?: boolean;
   /** 指定哪些问题卡片可点击；不传则只要有 onIssueClick 就全部可点击 */
   isIssueClickable?: (issue: StatusIssue) => boolean;
   /** 渲染每张卡片的额外标签，可选 */
@@ -53,6 +59,9 @@ export function StatusPanel({
   dialogTitle,
   dialogAriaLabel,
   emptyDescription,
+  onOpen,
+  loading = false,
+  error = false,
   onIssueClick,
   isIssueClickable,
   issueExtra,
@@ -62,7 +71,13 @@ export function StatusPanel({
   const errors = issues.filter((issue) => issue.severity === "error");
   const hasIssues = issues.length > 0;
   const hasErrors = errors.length > 0;
-  const label = hasIssues ? notOkLabel(issues.length) : okLabel;
+  const label = loading
+    ? "正在检查完整项目"
+    : error
+      ? "完整项目检查失败，点击重试"
+      : hasIssues
+      ? notOkLabel(issues.length)
+      : okLabel;
 
   return (
     <div style={indicatorShellStyle}>
@@ -70,7 +85,10 @@ export function StatusPanel({
         type="button"
         aria-label={label}
         title={label}
-        onClick={() => setDialogOpen(true)}
+        onClick={() => {
+          onOpen?.();
+          setDialogOpen(true);
+        }}
         className="gs-status-indicator"
         style={indicatorButtonStyle(hasIssues, hasErrors)}
       >
@@ -80,6 +98,8 @@ export function StatusPanel({
       {dialogOpen && (
         <StatusDialog
           issues={issues}
+          loading={loading}
+          error={error}
           okLabel={okLabel}
           emptyDescription={emptyDescription}
           dialogTitle={dialogTitle}
@@ -97,6 +117,8 @@ export function StatusPanel({
 
 export interface StatusDialogProps {
   issues: StatusIssue[];
+  loading?: boolean;
+  error?: boolean;
   okLabel: string;
   emptyDescription?: string;
   dialogTitle: string;
@@ -139,6 +161,8 @@ function groupBySource(
 
 export function StatusDialog({
   issues,
+  loading = false,
+  error = false,
   okLabel,
   emptyDescription,
   dialogTitle,
@@ -174,7 +198,13 @@ export function StatusDialog({
           <div>
             <div style={dialogTitleStyle}>{dialogTitle}</div>
             <div style={dialogMetaStyle}>
-              {issues.length > 0 ? `${errors.length} error / ${warnings.length} warn` : emptyDescription ?? okLabel}
+              {loading
+                ? "正在读取节点正文并检查完整项目…"
+                : error
+                  ? "完整检查失败；关闭后再次打开即可重试。"
+                  : issues.length > 0
+                  ? `${errors.length} error / ${warnings.length} warn`
+                  : emptyDescription ?? okLabel}
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label={`关闭 ${dialogTitle}`} className="gs-chip-btn">
@@ -182,7 +212,13 @@ export function StatusDialog({
           </button>
         </div>
         <div style={dialogContentStyle}>
-          {issues.length === 0 ? (
+          {loading ? (
+            <div role="status" style={loadingStyle}>正在检查完整项目…</div>
+          ) : error ? (
+            <div role="alert" style={{ ...loadingStyle, color: "var(--status-error-text)" }}>
+              完整项目检查失败。关闭后再次打开问题面板即可重试。
+            </div>
+          ) : issues.length === 0 ? (
             <div style={{ ...okStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>
               <Check size={14} />
               {emptyDescription ?? okLabel}
@@ -377,6 +413,11 @@ const dialogContentStyle: React.CSSProperties = {
   gap: 14,
   padding: "var(--space-4)",
   overflowY: "auto",
+};
+
+const loadingStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "var(--text-base)",
 };
 
 const okStyle: React.CSSProperties = {

@@ -7,13 +7,16 @@ pub(crate) mod loader;
 pub(crate) mod templates;
 
 pub(crate) use assets::list_asset_entries;
-pub(crate) use graph_io::{legacy_chapter_layout_issues, load_project_graph_data};
+pub(crate) use graph_io::{legacy_chapter_layout_issues, load_node_entries, load_project_graph};
 pub(crate) use initialize::{
     copy_dir_all, ensure_copy_targets_available, initialize_project_root,
     initialize_project_root_from_example,
 };
 pub(crate) use loader::open_project_for_cli;
-pub(crate) use loader::{list_projects, open_project_inner, read_project_meta};
+pub(crate) use loader::{
+    analyze_project, list_projects, open_project_inner, open_project_summary, read_node_detail,
+    read_project_meta, read_project_nodes,
+};
 pub(crate) use templates::{
     ensure_project_self_description, missing_project_self_description_files,
     write_project_self_description,

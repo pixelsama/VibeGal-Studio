@@ -1,12 +1,17 @@
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { UIEvent } from "react";
 import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import type { ChapterScope } from "./chapterEditing";
 import { searchProject } from "./projectSearch";
+import { fixedListWindow } from "../common/virtualWindow";
 
 interface StoryOutlineProps {
   graph: ProjectGraph;
   nodeEntries?: NodeEntry[];
+  loadingNodeEntries?: boolean;
+  nodeEntriesError?: string | null;
+  onSearchActiveChange?: (active: boolean) => void;
   manifest?: Manifest;
   scope: ChapterScope;
   selectedNodeId: string | null;
@@ -23,6 +28,9 @@ interface StoryOutlineProps {
 export function StoryOutline({
   graph,
   nodeEntries,
+  loadingNodeEntries = false,
+  nodeEntriesError = null,
+  onSearchActiveChange,
   manifest,
   scope,
   selectedNodeId,
@@ -36,16 +44,57 @@ export function StoryOutline({
   onDeleteChapter,
 }: StoryOutlineProps) {
   const [query, setQuery] = useState("");
+  const [listViewport, setListViewport] = useState({ scrollTop: 0, height: 480 });
+  const nodeListRef = useRef<HTMLDivElement | null>(null);
   const chapters = graph.chapters;
-  const visibleNodes = graph.nodes.filter((node) => {
+  const chapterCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const node of graph.nodes) counts.set(node.chapterId, (counts.get(node.chapterId) ?? 0) + 1);
+    return counts;
+  }, [graph.nodes]);
+  const visibleNodes = useMemo(() => graph.nodes.filter((node) => {
     if (scope.kind === "all") return true;
     return node.chapterId === scope.chapterId;
-  });
+  }), [graph.nodes, scope]);
   const searchResults = useMemo(
     () => searchProject({ graph, nodeEntries, manifest }, query),
     [graph, manifest, nodeEntries, query],
   );
   const searching = query.trim().length > 0;
+  useEffect(() => {
+    onSearchActiveChange?.(searching);
+    return () => onSearchActiveChange?.(false);
+  }, [onSearchActiveChange, searching]);
+  const listItems = searching ? searchResults : visibleNodes;
+  const rowHeight = searching ? 72 : 38;
+  const listWindow = fixedListWindow(listItems.length, listViewport.scrollTop, listViewport.height, rowHeight);
+  const windowedItems = listItems.slice(listWindow.start, listWindow.end);
+
+  useEffect(() => {
+    const list = nodeListRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const update = () => setListViewport((current) => ({ ...current, height: list.clientHeight || current.height }));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (searching || !selectedNodeId) return;
+    const index = visibleNodes.findIndex((node) => node.id === selectedNodeId);
+    const list = nodeListRef.current;
+    if (index < 0 || !list) return;
+    const top = index * 38;
+    if (top < list.scrollTop || top + 38 > list.scrollTop + list.clientHeight) {
+      list.scrollTo({ top: Math.max(0, top - list.clientHeight / 2), behavior: "smooth" });
+    }
+  }, [searching, selectedNodeId, visibleNodes]);
+
+  const handleListScroll = (event: UIEvent<HTMLDivElement>) => {
+    const scrollTop = event.currentTarget.scrollTop;
+    setListViewport((current) => current.scrollTop === scrollTop ? current : { ...current, scrollTop });
+  };
 
   return (
     <div style={panelStyle}>
@@ -81,7 +130,7 @@ export function StoryOutline({
             <ScopeButton
               active={scope.kind === "chapter" && scope.chapterId === chapter.id}
               title={chapter.title}
-              count={graph.nodes.filter((node) => node.chapterId === chapter.id).length}
+              count={chapterCounts.get(chapter.id) ?? 0}
               onClick={() => onScopeChange({ kind: "chapter", chapterId: chapter.id })}
             />
             <div style={chapterActionsStyle}>
@@ -109,22 +158,43 @@ export function StoryOutline({
 
       <div style={nodeSectionStyle}>
         <div style={nodeHeadingStyle}>{searching ? `搜索结果 · ${searchResults.length}` : `${scopeLabel(graph, scope)} · 节点`}</div>
-        <div style={nodeListStyle}>
+        <div
+          ref={nodeListRef}
+          role="listbox"
+          aria-label={searching ? "故事搜索结果" : "章节节点"}
+          aria-setsize={listItems.length}
+          style={nodeListStyle}
+          onScroll={handleListScroll}
+        >
+          <div aria-hidden="true" style={{ height: listWindow.paddingTop, flexShrink: 0 }} />
           {searching ? (
-            searchResults.length === 0 ? <div style={emptyStyle}>没有匹配的结果</div> : searchResults.map((result, index) => (
+            loadingNodeEntries ? (
+              <div role="status" style={emptyStyle}>正在读取全部节点内容…</div>
+            ) : nodeEntriesError ? (
+              <div role="alert" style={{ ...emptyStyle, color: "var(--status-error-text)" }}>
+                {`搜索节点内容失败：${nodeEntriesError}`}
+              </div>
+            ) : searchResults.length === 0 ? <div style={emptyStyle}>没有匹配的结果</div> : windowedItems.map((item, visibleIndex) => {
+              const result = item as (typeof searchResults)[number];
+              const index = listWindow.start + visibleIndex;
+              return (
               <button
                 key={`${result.kind}-${index}`}
                 type="button"
+                role="option"
+                aria-posinset={index + 1}
+                aria-setsize={searchResults.length}
                 onClick={() => {
                   if (result.kind === "edge") onSelectEdge?.(result.edgeId);
                   else if ("nodeId" in result && result.nodeId) onSelectNode(result.nodeId);
                 }}
-                style={searchResultStyle}
+                style={{ ...searchResultStyle, height: rowHeight - 2, boxSizing: "border-box", flexShrink: 0, overflow: "hidden" }}
               >
                 <span style={nodeTitleStyle}>{result.label}</span>
                 <span style={searchMetaStyle}>{result.preview}</span>
               </button>
-            ))
+              );
+            })
           ) : visibleNodes.length === 0 ? (
             <div style={emptyStyle}>
               <span>这个章节还没有节点。节点用来承载剧情内容。</span>
@@ -133,13 +203,23 @@ export function StoryOutline({
                 新建节点
               </button>
             </div>
-          ) : visibleNodes.map((node) => (
+          ) : windowedItems.map((item, visibleIndex) => {
+            const node = item as (typeof visibleNodes)[number];
+            const index = listWindow.start + visibleIndex;
+            return (
             <button
               key={node.id}
               type="button"
+              role="option"
+              aria-selected={selectedNodeId === node.id}
+              aria-posinset={index + 1}
+              aria-setsize={visibleNodes.length}
               onClick={() => onSelectNode(node.id)}
               style={{
                 ...nodeButtonStyle,
+                height: rowHeight - 2,
+                boxSizing: "border-box",
+                flexShrink: 0,
                 borderColor: selectedNodeId === node.id ? "var(--accent)" : "transparent",
                 background: selectedNodeId === node.id ? "var(--bg-active)" : "transparent",
               }}
@@ -147,7 +227,9 @@ export function StoryOutline({
               <span style={nodeTitleStyle}>{node.title}</span>
               {node.id === graph.entryNodeId && <span style={badgeStyle}>起点</span>}
             </button>
-          ))}
+            );
+          })}
+          <div aria-hidden="true" style={{ height: listWindow.paddingBottom, flexShrink: 0 }} />
         </div>
       </div>
     </div>
@@ -209,7 +291,7 @@ const chapterActionsStyle: React.CSSProperties = { display: "flex", gap: 1 };
 const smallActionStyle: React.CSSProperties = { width: 22, height: 22, display: "grid", placeItems: "center", border: 0, background: "transparent", borderRadius: 4, cursor: "pointer" };
 const nodeSectionStyle: React.CSSProperties = { display: "flex", flexDirection: "column", minHeight: 0, flex: 1, padding: "var(--space-3)" };
 const nodeHeadingStyle: React.CSSProperties = { padding: "var(--space-1) var(--space-2) var(--space-2)", color: "var(--text-muted)", fontSize: "var(--text-xs)" };
-const nodeListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" };
+const nodeListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", minHeight: 0, flex: 1 };
 const nodeButtonStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: "1px solid transparent", borderRadius: "var(--radius-sm)", color: "var(--text-primary)", cursor: "pointer", textAlign: "left" };
 const searchResultStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer", textAlign: "left" };
 const searchMetaStyle: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--text-xs)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };

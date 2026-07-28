@@ -32,16 +32,27 @@ export function mapGraphToFlow(
       .map((issue) => issue.edgeId as string) ?? [],
   );
 
+  const connectionCounts = summarizeAllNodeConnections(graph);
+  const endingIdsByNode = new Map<string, string[]>();
+  for (const [id, ending] of Object.entries(manifest?.unlocks?.endings ?? {})) {
+    if (!ending.nodeId) continue;
+    const ids = endingIdsByNode.get(ending.nodeId) ?? [];
+    ids.push(id);
+    endingIdsByNode.set(ending.nodeId, ids);
+  }
   const nodes: Node<FlowNodeData, typeof NODE_TYPE>[] = graph.nodes.map((node) => {
     // nodeEntries 未提供时（测试/旧调用），无法判定文件缺失，保守视为「有文件」。
     // 仅当明确提供 entries 且对应条目 data 为 null（后端确认文件缺失）时才判 missing-file。
     const entry = nodeEntries ? findNodeEntry(nodeEntries, node.file) : null;
     const hasFile = nodeEntries == null ? true : entry?.data != null;
-    const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
-    const baseStatus = deriveGraphNodeStatus(graph, node.id, { hasFile, duplicateNodeIds });
-    const endingIds = Object.entries(manifest?.unlocks?.endings ?? {})
-      .filter(([, ending]) => ending.nodeId === node.id)
-      .map(([id]) => id);
+    const { incoming, outgoing } = connectionCounts.get(node.id) ?? { incoming: 0, outgoing: 0 };
+    const baseStatus = deriveGraphNodeStatusFromSummary(
+      graph,
+      node.id,
+      connectionCounts.get(node.id) ?? { incoming: 0, outgoing: 0 },
+      { hasFile, duplicateNodeIds },
+    );
+    const endingIds = endingIdsByNode.get(node.id) ?? [];
     const badges = [
       ...(node.id === graph.entryNodeId ? ["起点"] : []),
       ...(outgoing === 0 ? ["图终点"] : []),
@@ -120,18 +131,40 @@ export function deriveGraphNodeStatus(
   nodeId: string,
   options: { hasFile?: boolean; duplicateNodeIds?: Set<string> } = {},
 ): GraphNodeStatus {
+  return deriveGraphNodeStatusFromSummary(graph, nodeId, summarizeNodeConnections(graph, nodeId), options);
+}
+
+function deriveGraphNodeStatusFromSummary(
+  graph: ProjectGraph,
+  nodeId: string,
+  summary: NodeConnectionSummary,
+  options: { hasFile?: boolean; duplicateNodeIds?: Set<string> } = {},
+): GraphNodeStatus {
   const { hasFile = true, duplicateNodeIds } = options;
   if (duplicateNodeIds?.has(nodeId)) return "duplicate";
   if (!hasFile) return "missing-file";
   if (nodeId === graph.entryNodeId) return "entry";
 
-  const summary = summarizeNodeConnections(graph, nodeId);
   const isConnected = summary.incoming > 0 || summary.outgoing > 0;
   if (!isConnected) return "orphan";
   if (summary.outgoing === 0) return "ending";
   if (graph.edges.some((edge) => edge.from === nodeId && edge.from !== edge.to && edge.mode === "choice")) return "branch";
   if (summary.outgoing >= 2) return "branch";
   return "normal";
+}
+
+export function summarizeAllNodeConnections(graph: ProjectGraph): Map<string, NodeConnectionSummary> {
+  const counts = new Map<string, NodeConnectionSummary>(
+    graph.nodes.map((node) => [node.id, { incoming: 0, outgoing: 0 }]),
+  );
+  for (const edge of graph.edges) {
+    if (edge.from === edge.to) continue;
+    const source = counts.get(edge.from);
+    if (source) source.outgoing += 1;
+    const target = counts.get(edge.to);
+    if (target) target.incoming += 1;
+  }
+  return counts;
 }
 
 /** 计算节点入边/出边数量（忽略自环：from === to 的边不计入任一方）。 */

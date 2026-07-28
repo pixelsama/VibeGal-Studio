@@ -453,7 +453,7 @@ export function AssetsWorkspace({
                 </button>
               </div>
             )}
-            <div style={scrollStyle}>
+            <div style={contentViewportStyle}>
               {totalShown === 0 ? (
                 search.trim() ? (
                   <EmptyState
@@ -1325,9 +1325,10 @@ const mainStyle: React.CSSProperties = {
   overflow: "hidden",
 };
 
-const scrollStyle: React.CSSProperties = {
+const contentViewportStyle: React.CSSProperties = {
   flex: 1,
-  overflowY: "auto",
+  minHeight: 0,
+  overflow: "hidden",
 };
 
 const assetCountHelpStyle: React.CSSProperties = {

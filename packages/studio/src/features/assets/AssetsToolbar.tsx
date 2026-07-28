@@ -48,6 +48,7 @@ export function AssetsToolbar({
         value={search}
         onChange={(e) => onSearch(e.target.value)}
         placeholder="搜索 id 或文件名…"
+        aria-label="搜索资产"
         style={searchInputStyle}
       />
       <span style={countStyle}>{count} 项</span>

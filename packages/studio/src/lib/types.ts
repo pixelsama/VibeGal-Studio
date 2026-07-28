@@ -92,6 +92,24 @@ export interface NodeEntry {
   data: unknown | null;
 }
 
+/** graph.json + 文件元数据派生的轻量节点索引，不包含指令正文。 */
+export interface NodeSummary {
+  id: string;
+  title: string;
+  relPath: string;
+  chapterId: string;
+  exists: boolean;
+  incoming: number;
+  outgoing: number;
+  revision?: FileRevision;
+}
+
+export interface NodeDetail {
+  relPath: string;
+  data: unknown;
+  revision: FileRevision;
+}
+
 export type GraphIssueSeverity = "error" | "warn";
 
 export interface GraphIssue {
@@ -138,6 +156,12 @@ export interface ProjectIssue {
 
 export interface ProjectReport {
   projectIssues: ProjectIssue[];
+}
+
+export interface ProjectAnalysis {
+  graphReport: GraphReport;
+  assetReport: AssetReport;
+  projectReport: ProjectReport;
 }
 
 /**
@@ -242,8 +266,10 @@ export interface ProjectData {
   projectRevision?: FileRevision;
   /** 图结构；项目剧本入口来自 content/graph.json */
   graph?: ProjectGraph;
-  /** 各节点的指令数据（按 graph.nodes 的 file 读取） */
+  /** 各节点的指令数据；summary open 不返回，按需用 readNodeDetail 读取。 */
   nodes?: NodeEntry[];
+  /** 不读取指令正文的轻量节点索引。 */
+  nodeSummaries?: NodeSummary[];
   graphRevision?: FileRevision;
   manifestRevision?: FileRevision;
   variablesRevision?: FileRevision;
@@ -254,6 +280,8 @@ export interface ProjectData {
   locales?: LocaleEntry[];
   /** content/fixtures/*.json 的自定义场景（按文件名排序）；无该目录时为空数组 */
   fixtures?: FixtureEntry[];
+  /** true 仅表示 projectReport 包含完整节点正文分析；summary open 为 false。 */
+  analysisComplete?: boolean;
   /** 图结构一致性报告；问题不阻断项目加载 */
   graphReport?: GraphReport;
   /** 资产一致性报告；问题不阻断项目加载 */

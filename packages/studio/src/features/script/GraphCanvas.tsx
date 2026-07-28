@@ -117,8 +117,20 @@ export function GraphCanvas({
   const colorMode = useResolvedTheme();
 
   const flow = useMemo(() => {
-    const baseFlow = mapGraphToFlow(graph, graphReport, nodeEntries, manifest, variables);
-    const visibleFlow = filterVisibleCanvasElements(baseFlow.nodes, baseFlow.edges, visibleNodeIds);
+    const visibleGraph = visibleNodeIds
+      ? {
+          ...graph,
+          nodes: graph.nodes.filter((node) => visibleNodeIds.has(node.id)),
+          edges: graph.edges.filter((edge) => visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to)),
+        }
+      : graph;
+    const visibleNodeFiles = visibleNodeIds
+      ? new Set(visibleGraph.nodes.map((node) => node.file))
+      : null;
+    const visibleEntries = visibleNodeFiles && nodeEntries
+      ? nodeEntries.filter((entry) => visibleNodeFiles.has(entry.relPath))
+      : nodeEntries;
+    const visibleFlow = mapGraphToFlow(visibleGraph, graphReport, visibleEntries, manifest, variables);
 
     const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => {
       return {

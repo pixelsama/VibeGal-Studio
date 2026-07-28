@@ -8,8 +8,9 @@ use super::game_build::{
     WebBuildRequest, WebSmokeRequest, DESKTOP_BUILD_PROGRESS_EVENT,
 };
 use super::model::{
-    AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, ProjectData,
-    ProjectListItem, ProjectMeta, ProjectTemplate, RendererTemplate,
+    AppSettings, AssetEntry, CliToolStatus, FileRevision, GraphPositionPatchInput, NodeDetail,
+    NodeEntry, ProjectAnalysis, ProjectData, ProjectListItem, ProjectMeta, ProjectTemplate,
+    RendererTemplate,
 };
 use super::mutation;
 use super::project;
@@ -70,8 +71,13 @@ fn open_project_with_scope(
     path: &str,
     app_handle: &tauri::AppHandle,
     scope_state: &AssetScopeState,
+    summary: bool,
 ) -> Result<ProjectData, String> {
-    let data = project::open_project_inner(path)?;
+    let data = if summary {
+        project::open_project_summary(path)?
+    } else {
+        project::open_project_inner(path)?
+    };
     let content_root = ProjectRoot::open(Path::new(&data.path))?.content_root()?;
     let scope = app_handle.asset_protocol_scope();
     let mut active = scope_state
@@ -106,7 +112,23 @@ pub(crate) fn open_project(
     app_handle: tauri::AppHandle,
     scope_state: tauri::State<'_, AssetScopeState>,
 ) -> Result<ProjectData, String> {
-    open_project_with_scope(&path, &app_handle, &scope_state)
+    open_project_with_scope(&path, &app_handle, &scope_state, true)
+}
+
+/// 显式完整分析入口。CLI/build 仍直接使用 full loader；Studio 仅在作者打开问题面板时调用。
+#[tauri::command]
+pub(crate) fn analyze_project(project_path: String) -> Result<ProjectAnalysis, String> {
+    project::analyze_project(&project_path)
+}
+
+#[tauri::command]
+pub(crate) fn read_project_nodes(project_path: String) -> Result<Vec<NodeEntry>, String> {
+    project::read_project_nodes(&project_path)
+}
+
+#[tauri::command]
+pub(crate) fn read_node_detail(project_path: String, rel_path: String) -> Result<NodeDetail, String> {
+    project::read_node_detail(&project_path, &rel_path)
 }
 
 #[tauri::command]
@@ -133,6 +155,7 @@ pub(crate) fn create_project(
         project_path.to_string_lossy().as_ref(),
         &app_handle,
         &scope_state,
+        true,
     )
 }
 
@@ -148,6 +171,7 @@ pub(crate) fn initialize_project(
         project_path.to_string_lossy().as_ref(),
         &app_handle,
         &scope_state,
+        true,
     )
 }
 
@@ -319,6 +343,15 @@ pub(crate) fn read_asset_preview_data_url(
     rel_path: String,
 ) -> Result<String, String> {
     mutation::read_asset_preview_data_url(project_path, rel_path)
+}
+
+#[tauri::command]
+pub(crate) fn read_asset_thumbnail_data_url(
+    project_path: String,
+    rel_path: String,
+    max_size: u32,
+) -> Result<String, String> {
+    mutation::read_asset_thumbnail_data_url(project_path, rel_path, max_size)
 }
 
 #[tauri::command]

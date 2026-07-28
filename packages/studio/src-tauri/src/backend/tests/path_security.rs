@@ -221,5 +221,12 @@ fn asset_reader_rejects_symlink_escape() {
     );
     assert!(result.is_err());
     assert!(result.err().unwrap().contains("符号链接"));
+    let thumbnail = read_asset_thumbnail_data_url(
+        project.to_string_lossy().into_owned(),
+        "assets/escaped.png".to_string(),
+        64,
+    );
+    assert!(thumbnail.is_err());
+    assert!(thumbnail.err().unwrap().contains("符号链接"));
     let _ = fs::remove_dir_all(&root);
 }

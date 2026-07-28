@@ -29,6 +29,7 @@ import { isEditableEventTarget } from "./features/script/graphShortcuts";
 import { collectDanglingExperienceIssues, collectStoryStateIssues } from "./features/script/storyStateIssues";
 import { ConfirmDialog } from "./features/common/Dialogs";
 import {
+  analyzeProject,
   openProject,
   saveProjectMeta,
   unwatchProject,
@@ -40,6 +41,8 @@ import { loadSidebarPrefs, saveSidebarPrefs, type SidebarPrefKey, type SidebarPr
 import { RevisionedProjectMutationQueue } from "./lib/projectMutation";
 import { getDesktopPlatform } from "./lib/platform";
 import { BlankProjectGuide } from "./features/onboarding/BlankProjectGuide";
+import { clearProjectNodeCache, loadAllProjectNodes, useAllProjectNodes, useNodeDetail } from "./lib/projectNodeData";
+import { clearAssetThumbnailCache } from "./features/assets/AssetImagePreview";
 import {
   INITIAL_BLANK_PROJECT_ONBOARDING,
   hasImportedBackground,
@@ -158,6 +161,15 @@ export function Workspace({
 }: Props) {
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
+  const refreshRequestRef = useRef(0);
+  const [projectGeneration, setProjectGeneration] = useState(0);
+  const [fullReport, setFullReport] = useState(project.analysisComplete ? project.projectReport ?? null : null);
+  const [analysisEntries, setAnalysisEntries] = useState<NonNullable<ProjectData["nodes"]>>(
+    project.analysisComplete ? project.nodes ?? [] : [],
+  );
+  const [analysisState, setAnalysisState] = useState<"idle" | "loading" | "ready" | "error">(
+    project.analysisComplete ? "ready" : "idle",
+  );
   const [syncState, setSyncState] = useState<SyncState>("synced");
   const [sidebarPrefs, setSidebarPrefs] = useState(loadSidebarPrefs);
   const [graphIssueFocus, setGraphIssueFocus] = useState<GraphIssueFocusRequest | null>(null);
@@ -169,17 +181,42 @@ export function Workspace({
     loadBlankProjectOnboarding(project.path) ?? INITIAL_BLANK_PROJECT_ONBOARDING
   ));
   const graphIssueFocusRequestIdRef = useRef(0);
+  const projectDataEpochRef = useRef(0);
   const projectMetaMutationQueue = useMemo(
     () => new RevisionedProjectMutationQueue(project.projectRevision),
     [project.path],
   );
   const rendererIdsKey = useMemo(() => project.rendererIds.join("\x00"), [project.rendererIds]);
   const workspace = workspaceFromLocation(location) ?? "render";
+  const needsFullNodeData = workspace === "render" || workspace === "assets";
+  const allNodeData = useAllProjectNodes(project, projectGeneration, needsFullNodeData);
+  const projectWithFullNodes = useMemo(
+    () => needsFullNodeData && !allNodeData.loading && !allNodeData.error
+      ? { ...project, nodes: allNodeData.entries }
+      : project,
+    [allNodeData.entries, allNodeData.error, allNodeData.loading, needsFullNodeData, project],
+  );
+  const blankEntryPath = blankProjectGuideActive
+    ? project.graph?.nodes.find((node) => node.id === project.graph?.entryNodeId)?.file ?? null
+    : null;
+  const blankEntryDetail = useNodeDetail(project, blankEntryPath, projectGeneration);
+  const projectForBlankGuide = useMemo(
+    () => blankEntryDetail.detail
+      ? { ...project, nodes: [{ relPath: blankEntryDetail.detail.relPath, data: blankEntryDetail.detail.data }] }
+      : project,
+    [blankEntryDetail.detail, project],
+  );
 
   useEffect(() => {
+    refreshRequestRef.current += 1;
     setHasUnsavedChanges(false);
     setUnsavedNavigation(null);
     setBlankProjectGuide(loadBlankProjectOnboarding(project.path) ?? INITIAL_BLANK_PROJECT_ONBOARDING);
+    setFullReport(project.analysisComplete ? project.projectReport ?? null : null);
+    setAnalysisEntries(project.analysisComplete ? project.nodes ?? [] : []);
+    setAnalysisState(project.analysisComplete ? "ready" : "idle");
+    projectDataEpochRef.current += 1;
+    setProjectGeneration((generation) => generation + 1);
   }, [project.path]);
 
   useEffect(() => {
@@ -234,16 +271,28 @@ export function Workspace({
   }, [project.meta, rendererId, saveProjectMetaQueued]);
 
   const refreshProject = useCallback(async (rendererChanged = false) => {
+    const requestId = refreshRequestRef.current + 1;
+    refreshRequestRef.current = requestId;
+    const refreshingPath = project.path;
     setSyncState("syncing");
+    projectDataEpochRef.current += 1;
+    setProjectGeneration((generation) => generation + 1);
+    clearProjectNodeCache(project.path);
+    clearAssetThumbnailCache(project.path);
+    setFullReport(null);
+    setAnalysisEntries([]);
+    setAnalysisState("idle");
     try {
       if (rendererChanged) {
         clearRendererCache();
       }
-      const fresh = await openProject(project.path);
+      const fresh = await openProject(refreshingPath);
+      if (refreshRequestRef.current !== requestId || fresh.path !== refreshingPath) return;
       onProjectChanged(fresh);
       setRefreshKey((k) => k + 1);
       setSyncState("synced");
     } catch (e) {
+      if (refreshRequestRef.current !== requestId) return;
       console.warn("刷新项目失败:", e);
       setSyncState("error");
     }
@@ -291,7 +340,7 @@ export function Workspace({
     await refreshProject(false);
   }, [refreshProject]);
 
-  const guideWritten = hasWrittenBlankProjectEntry(project);
+  const guideWritten = hasWrittenBlankProjectEntry(projectForBlankGuide);
   const guideBackgroundImported = hasImportedBackground(project);
   const guideVisible = blankProjectGuideActive
     && !blankProjectGuide.skipped
@@ -352,21 +401,46 @@ export function Workspace({
     });
   }, []);
 
-  const backendReport = project.projectReport ?? { projectIssues: [] };
-  // 故事状态的诊断由前端静态分析产出（后端不执行剧情），在这里并入唯一的问题收件箱。
+  const backendReport = fullReport ?? project.projectReport ?? { projectIssues: [] };
   const report = useMemo(() => ({
     ...backendReport,
-    projectIssues: [
-      ...backendReport.projectIssues,
-      ...collectStoryStateIssues({
-        graph: project.graph,
-        nodes: project.nodes,
-        registry: project.content.variables,
-        manifest: project.content.manifest,
-      }),
-      ...collectDanglingExperienceIssues(project.graph, project.nodes),
-    ],
-  }), [backendReport, project.graph, project.nodes, project.content.variables, project.content.manifest]);
+    projectIssues: fullReport
+      ? [
+          ...backendReport.projectIssues,
+          ...collectStoryStateIssues({
+            graph: project.graph,
+            nodes: analysisEntries,
+            registry: project.content.variables,
+            manifest: project.content.manifest,
+          }),
+          ...collectDanglingExperienceIssues(project.graph, analysisEntries),
+        ]
+      : backendReport.projectIssues,
+  }), [analysisEntries, backendReport, fullReport, project.graph, project.content.variables, project.content.manifest]);
+
+  const ensureFullAnalysis = useCallback(async () => {
+    if (analysisState === "loading" || fullReport) return;
+    const generation = projectGeneration;
+    const epoch = projectDataEpochRef.current;
+    setAnalysisState("loading");
+    try {
+      const [analysis, entries] = await Promise.all([
+        analyzeProject(project.path),
+        loadAllProjectNodes(project, generation),
+      ]);
+      if (epoch !== projectDataEpochRef.current) return;
+      setFullReport(analysis.projectReport);
+      setAnalysisEntries(entries);
+      setAnalysisState("ready");
+      if (entries.length === 0 && (project.graph?.nodes.length ?? 0) > 0) {
+        console.warn("完整分析没有返回节点正文");
+      }
+    } catch (error) {
+      if (epoch !== projectDataEpochRef.current) return;
+      console.warn("完整项目分析失败:", error);
+      setAnalysisState("error");
+    }
+  }, [analysisState, fullReport, project, projectGeneration]);
 
   const handleProjectIssueClick = useCallback((issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string }) => {
     const next = graphFocusTargetFromIssue(issue, graphIssueFocusRequestIdRef.current + 1, project.graph);
@@ -483,7 +557,8 @@ export function Workspace({
           <div style={renderWorkspaceStyle}>
             <Preview
               key={`${rendererId}-${refreshKey}`}
-              project={project}
+              project={projectWithFullNodes}
+              loadingContent={allNodeData.loading}
               rendererId={rendererId}
               onOpenNode={(nodeId, instructionIndex) => {
                 // 剧情检查里点「在某节点改变了它」→ 切到脚本并聚焦那一条指令。
@@ -525,7 +600,7 @@ export function Workspace({
         {workspace === "assets" && (
           <AssetsWorkspace
             key={`${project.path}-${guideVisible && !guideBackgroundImported ? "guide-background" : "default"}`}
-            project={project}
+            project={projectWithFullNodes}
             refreshKey={refreshKey}
             initialSection={guideVisible && !guideBackgroundImported ? "background" : "overview"}
             sidebarCollapsed={sidebarPrefs.assetsSidebarCollapsed}
@@ -580,6 +655,9 @@ export function Workspace({
           绿勾=全项目无问题，红图标=有某处问题，点开按来源分组。 */}
       <StatusPanel
         issues={report.projectIssues}
+        loading={analysisState === "loading"}
+        error={analysisState === "error"}
+        onOpen={() => void ensureFullAnalysis()}
         okLabel="项目正常"
         notOkLabel={(n) => `项目有 ${n} 个问题`}
         dialogTitle="Project Issues"

@@ -20,6 +20,9 @@ pub(crate) fn run() {
         .invoke_handler(tauri::generate_handler![
             super::commands::list_projects,
             super::commands::open_project,
+            super::commands::analyze_project,
+            super::commands::read_project_nodes,
+            super::commands::read_node_detail,
             super::commands::create_project,
             super::commands::initialize_project,
             super::commands::repair_project_support_files,
@@ -42,6 +45,7 @@ pub(crate) fn run() {
             super::commands::import_asset,
             super::commands::delete_asset,
             super::commands::read_asset_preview_data_url,
+            super::commands::read_asset_thumbnail_data_url,
             super::commands::save_manifest,
             super::commands::save_variables,
             super::commands::save_locale,

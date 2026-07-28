@@ -42,6 +42,10 @@ impl ProjectRoot {
         file_revision(&self.0, rel_path)
     }
 
+    pub(crate) fn metadata_revision(&self, rel_path: &str) -> Result<Option<FileRevision>, String> {
+        file_metadata_revision(&self.0, rel_path)
+    }
+
     pub(crate) fn resolve_write_target(&self, rel: &str) -> Result<PathBuf, String> {
         let target = resolve_relative_under(&self.0, rel)?;
         if target.exists() {
@@ -179,9 +183,24 @@ pub(crate) fn ensure_existing_path_within(base_canon: &Path, target: &Path) -> R
     Ok(())
 }
 
+pub(crate) fn file_metadata_revision(
+    project_root: &Path,
+    rel_path: &str,
+) -> Result<Option<FileRevision>, String> {
+    file_revision_with_hash(project_root, rel_path, false)
+}
+
 pub(crate) fn file_revision(
     project_root: &Path,
     rel_path: &str,
+) -> Result<Option<FileRevision>, String> {
+    file_revision_with_hash(project_root, rel_path, true)
+}
+
+fn file_revision_with_hash(
+    project_root: &Path,
+    rel_path: &str,
+    include_hash: bool,
 ) -> Result<Option<FileRevision>, String> {
     let project_root = project_root
         .canonicalize()
@@ -203,14 +222,18 @@ pub(crate) fn file_revision(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64() * 1000.0)
         .unwrap_or(0.0);
-    let bytes =
-        fs::read(&target).map_err(|e| format!("读取文件内容失败 {}: {}", target.display(), e))?;
-    let sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let sha256 = if include_hash {
+        let bytes = fs::read(&target)
+            .map_err(|e| format!("读取文件内容失败 {}: {}", target.display(), e))?;
+        Some(format!("{:x}", Sha256::digest(&bytes)))
+    } else {
+        None
+    };
     Ok(Some(FileRevision {
         rel_path: rel_path.replace('\\', "/"),
         mtime_ms,
         size: metadata.len(),
-        sha256: Some(sha256),
+        sha256,
     }))
 }
 

@@ -30,7 +30,8 @@ import {
   redoGraphHistory,
   undoGraphHistory,
 } from "./graphHistory";
-import { findNode, findNodeData } from "./graphMapping";
+import { findNode } from "./graphMapping";
+import { loadNodeDetail, useAllProjectNodes, useNodeDetail } from "../../lib/projectNodeData";
 import { RevisionedProjectMutationQueue } from "../../lib/projectMutation";
 import { preventUnloadWhenDirty } from "./unsavedChanges";
 import "@xyflow/react/dist/style.css";
@@ -153,6 +154,11 @@ export function ScriptWorkspace({
   /** 脚本工作台的一级视图：剧情流程 / 故事状态 / 翻译对照。 */
   const [primaryView, setPrimaryView] = useState<"flow" | "state" | "translation">("flow");
   const [coverageOpen, setCoverageOpen] = useState(false);
+  const [outlineSearchActive, setOutlineSearchActive] = useState(false);
+  const blockingFullNodeData = view === "graph"
+    && (primaryView === "state" || primaryView === "translation" || coverageOpen);
+  const needsFullNodeData = blockingFullNodeData || (view === "graph" && outlineSearchActive);
+  const allNodeData = useAllProjectNodes(project, _refreshKey, needsFullNodeData);
   const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -180,6 +186,11 @@ export function ScriptWorkspace({
   );
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
+  const selectedNodeDetail = useNodeDetail(
+    project,
+    view === "node" ? selectedNode?.file ?? null : null,
+    _refreshKey,
+  );
   const scopedGraph = useMemo(() => graphForChapterScope(graph, chapterScope), [chapterScope, graph]);
   const visibleNodeIds = useMemo(() => new Set(scopedGraph.nodes.map((node) => node.id)), [scopedGraph.nodes]);
 
@@ -543,6 +554,13 @@ export function ScriptWorkspace({
   const performDeleteNodes = async (uniqueIds: string[]) => {
     const { graph: next, removedFiles } = removeNodes(graph, uniqueIds);
     if (next === graph) return;
+    const removedFileRevisions = new Map<string, FileRevision | null | undefined>();
+    await Promise.all(removedFiles.map(async (removedFile) => {
+      const revision = await loadNodeDetail(project, removedFile, _refreshKey)
+        .then((detail) => detail.revision)
+        .catch(() => project.nodeRevisions?.[removedFile]);
+      removedFileRevisions.set(removedFile, revision);
+    }));
     setGraphHistory(applyGraphCommand(graphHistory, { kind: "removeNodes", nodeIds: uniqueIds }));
     if (selectedNodeId && uniqueIds.includes(selectedNodeId)) {
       setSelectedNodeId(null);
@@ -555,7 +573,7 @@ export function ScriptWorkspace({
 
     for (const removedFile of removedFiles) {
       try {
-        await deleteFile(project.path, removedFile, project.nodeRevisions?.[removedFile]);
+        await deleteFile(project.path, removedFile, removedFileRevisions.get(removedFile));
       } catch (error) {
         console.warn("删除节点文件失败（图已更新）:", error);
       }
@@ -587,8 +605,8 @@ export function ScriptWorkspace({
     setSavingGraph(true);
     setGraphStatus("");
     try {
-      const sourceData = findNodeData(project.nodes, source.file);
-      const content = sourceData == null ? "[]" : JSON.stringify(sourceData, null, 2);
+      const sourceDetail = await loadNodeDetail(project, source.file, _refreshKey);
+      const content = JSON.stringify(sourceDetail.data, null, 2);
       setGraphHistory(createGraphHistoryState(next, graphHistory.revisionToken));
       setSelectedNodeId(newNode.id);
       setSelectedEdgeId(null);
@@ -714,13 +732,18 @@ export function ScriptWorkspace({
       void saveManifest(project.path, unregisterEnding(project.content.manifest, endingId), project.manifestRevision).then(onSaved).catch((error) => setGraphStatus(`取消登记失败: ${error instanceof Error ? error.message : String(error)}`));
     } });
   };
-  const handleInsertEndingCompletion = (nodeId: string, endingId: string) => {
+  const handleInsertEndingCompletion = async (nodeId: string, endingId: string) => {
     const node = findNode(graph, nodeId);
     if (!node) return;
-    const data = findNodeData(project.nodes, node.file);
-    if (!Array.isArray(data)) return;
-    const next = insertEndingCompletion(data as never[], endingId);
-    void saveNode(project.path, node.file, next, project.nodeRevisions?.[node.file]).then(onSaved).catch((error) => setGraphStatus(`插入结算失败: ${error instanceof Error ? error.message : String(error)}`));
+    try {
+      const detail = await loadNodeDetail(project, node.file, _refreshKey);
+      if (!Array.isArray(detail.data)) throw new Error("节点内容不是指令列表");
+      const next = insertEndingCompletion(detail.data as never[], endingId);
+      await saveNode(project.path, node.file, next, detail.revision);
+      onSaved();
+    } catch (error) {
+      setGraphStatus(`插入结算失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   // Phase 9：自动排布（确定性分层）后一次性落盘
@@ -816,16 +839,20 @@ export function ScriptWorkspace({
         </div>
       )}
       <div style={contentStyle}>
-        {view === "graph" && primaryView === "translation" ? (
+        {blockingFullNodeData && allNodeData.loading ? (
+            <WorkspaceDataState message="正在按需加载完整节点内容…" />
+          ) : blockingFullNodeData && allNodeData.error ? (
+            <WorkspaceDataState message={`加载节点内容失败：${allNodeData.error}`} error />
+          ) : view === "graph" && primaryView === "translation" ? (
           <TranslationComparison
-            project={{ ...project, graph }}
+            project={{ ...project, graph, nodes: allNodeData.entries }}
             onAssignKey={async (row, textKey) => {
               const node = graph.nodes.find((candidate) => candidate.id === row.nodeId);
-              const entry = node ? project.nodes?.find((candidate) => candidate.relPath === node.file) : undefined;
-              if (!node || !entry) throw new Error("找不到要更新的节点。");
-              const instructions = assignInstructionTextKey(entry.data, row.instructionIndex, textKey);
+              if (!node) throw new Error("找不到要更新的节点。");
+              const detail = await loadNodeDetail(project, node.file, _refreshKey);
+              const instructions = assignInstructionTextKey(detail.data, row.instructionIndex, textKey);
               if (!instructions) throw new Error("节点内容已变化，请刷新后重试。");
-              await saveNode(project.path, node.file, instructions, project.nodeRevisions?.[node.file]);
+              await saveNode(project.path, node.file, instructions, detail.revision);
               onSaved();
             }}
             onSaveLocale={async (locale, value: LocaleTable) => {
@@ -841,7 +868,7 @@ export function ScriptWorkspace({
         ) : view === "graph" && primaryView === "state" ? (
           <StoryStateView
             graph={graph}
-            nodes={project.nodes}
+            nodes={allNodeData.entries}
             manifest={project.content.manifest}
             registry={project.content.variables}
             onChange={handleVariablesChange}
@@ -861,7 +888,10 @@ export function ScriptWorkspace({
               >
                 <StoryOutline
                   graph={graph}
-                  nodeEntries={project.nodes}
+                  nodeEntries={outlineSearchActive ? allNodeData.entries : undefined}
+                  loadingNodeEntries={outlineSearchActive && allNodeData.loading}
+                  nodeEntriesError={outlineSearchActive ? allNodeData.error : null}
+                  onSearchActiveChange={setOutlineSearchActive}
                   manifest={project.content.manifest}
                   scope={chapterScope}
                   selectedNodeId={selectedNodeId}
@@ -905,7 +935,7 @@ export function ScriptWorkspace({
                 {coverageOpen && (
                   <RouteCoveragePanel
                     graph={graph}
-                    nodeEntries={project.nodes}
+                    nodeEntries={allNodeData.entries}
                     manifest={project.content.manifest}
                     registry={project.content.variables}
                     onSelectNode={handleSelect}
@@ -915,7 +945,6 @@ export function ScriptWorkspace({
                   graph={graph}
                   visibleNodeIds={visibleNodeIds}
                   graphReport={graphReport}
-                  nodeEntries={project.nodes}
                   manifest={project.content.manifest}
                   variables={project.content.variables}
                   selectedNodeId={selectedNodeId}
@@ -945,7 +974,7 @@ export function ScriptWorkspace({
               <div style={inspectorContentStyle}>
                 <NodeInspector
                   graph={graph}
-                  nodeEntries={project.nodes}
+                  nodeSummaries={project.nodeSummaries}
                   selectedNodeId={selectedNodeId}
                   onEnter={handleEnter}
                   onRename={handleRenameNode}
@@ -965,16 +994,23 @@ export function ScriptWorkspace({
           </div>
         ) : (
           selectedNode && (
-            <NodeEditor
-              key={selectedNode.id}
-              project={project}
-              rendererId={rendererId}
-              node={selectedNode}
-              nodeData={findNodeData(project.nodes, selectedNode.file)}
-              focusRequest={localFocus ?? focusRequest}
-              onSaved={onSaved}
-              onDirtyChange={onDirtyChange}
-            />
+            selectedNodeDetail.loading ? (
+              <WorkspaceDataState message="正在加载节点内容…" />
+            ) : selectedNodeDetail.error ? (
+              <WorkspaceDataState message={`加载节点失败：${selectedNodeDetail.error}`} error />
+            ) : selectedNodeDetail.detail ? (
+              <NodeEditor
+                key={`${selectedNode.id}:${selectedNodeDetail.detail.revision.mtimeMs}:${selectedNodeDetail.detail.revision.size}`}
+                project={project}
+                rendererId={rendererId}
+                node={selectedNode}
+                nodeData={selectedNodeDetail.detail.data}
+                nodeRevision={selectedNodeDetail.detail.revision}
+                focusRequest={localFocus ?? focusRequest}
+                onSaved={onSaved}
+                onDirtyChange={onDirtyChange}
+              />
+            ) : null
           )
         )}
       </div>
@@ -1001,6 +1037,23 @@ export function ScriptWorkspace({
     </div>
   );
 }
+
+function WorkspaceDataState({ message, error = false }: { message: string; error?: boolean }) {
+  return (
+    <div role={error ? "alert" : "status"} style={workspaceDataStateStyle(error)}>
+      {message}
+    </div>
+  );
+}
+
+const workspaceDataStateStyle = (error: boolean): React.CSSProperties => ({
+  display: "grid",
+  placeItems: "center",
+  minHeight: 120,
+  padding: "var(--space-6)",
+  color: error ? "var(--status-error-text)" : "var(--text-muted)",
+  textAlign: "center",
+});
 
 const containerStyle: React.CSSProperties = {
   position: "relative",

@@ -6,9 +6,12 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 41] = [
+const COMMAND_NAMES: [&str; 45] = [
     "list_projects",
     "open_project",
+    "analyze_project",
+    "read_project_nodes",
+    "read_node_detail",
     "create_project",
     "initialize_project",
     "repair_project_support_files",
@@ -32,6 +35,7 @@ const COMMAND_NAMES: [&str; 41] = [
     "import_asset",
     "delete_asset",
     "read_asset_preview_data_url",
+    "read_asset_thumbnail_data_url",
     "save_manifest",
     "save_variables",
     "save_locale",
@@ -65,9 +69,12 @@ const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 41] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 45] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
+    ("analyze_project", &["projectPath"]),
+    ("read_project_nodes", &["projectPath"]),
+    ("read_node_detail", &["projectPath", "relPath"]),
     (
         "create_project",
         &["parentDir", "name", "template", "rendererTemplate"],
@@ -126,6 +133,10 @@ const COMMAND_JSON_KEYS: [(&str, &[&str]); 41] = [
         &["projectPath", "relPath", "expectedRevision"],
     ),
     ("read_asset_preview_data_url", &["projectPath", "relPath"]),
+    (
+        "read_asset_thumbnail_data_url",
+        &["projectPath", "relPath", "maxSize"],
+    ),
     (
         "save_manifest",
         &["projectPath", "manifest", "expectedRevision"],

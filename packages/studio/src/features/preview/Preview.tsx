@@ -32,6 +32,7 @@ export function nextStudioFastForwardMode(skipMode: "off" | "read" | "all"): "of
 interface Props {
   project: ProjectData;
   rendererId: string;
+  loadingContent?: boolean;
   /** 初始模式，默认剧情播放；场景快照初始模式给测试与外观面板嵌入用。 */
   initialPreviewMode?: PreviewMode;
   /** 从剧情检查跳到改变状态的那条指令。 */
@@ -39,7 +40,14 @@ interface Props {
   onSelectEdge?: (edgeId: string) => void;
 }
 
-export function Preview({ project, rendererId, initialPreviewMode = "story", onOpenNode, onSelectEdge }: Props) {
+export function Preview(props: Props) {
+  if (props.loadingContent && !props.project.nodes) {
+    return <Centered>正在按需加载剧情内容…</Centered>;
+  }
+  return <LoadedPreview {...props} />;
+}
+
+function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOpenNode, onSelectEdge }: Props) {
   const player = useProjectPlayer(project);
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 

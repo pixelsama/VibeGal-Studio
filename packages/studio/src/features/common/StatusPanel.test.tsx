@@ -56,6 +56,34 @@ describe("StatusPanel (通用指示器)", () => {
     expect(html).not.toContain("资源文件不存在");
   });
 
+  it("完整检查进行中与失败时不误报正常", () => {
+    const loadingHtml = renderToStaticMarkup(
+      <StatusPanel
+        issues={[]}
+        loading
+        okLabel="项目正常"
+        notOkLabel={(n) => `项目有 ${n} 个问题`}
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+      />,
+    );
+    const errorHtml = renderToStaticMarkup(
+      <StatusPanel
+        issues={[]}
+        error
+        okLabel="项目正常"
+        notOkLabel={(n) => `项目有 ${n} 个问题`}
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+      />,
+    );
+
+    expect(loadingHtml).toContain("正在检查完整项目");
+    expect(loadingHtml).not.toContain('aria-label="项目正常"');
+    expect(errorHtml).toContain("完整项目检查失败，点击重试");
+    expect(errorHtml).not.toContain('aria-label="项目正常"');
+  });
+
   it("issueExtra 的返回值不出现在折叠态（只在弹窗里）", () => {
     const html = renderToStaticMarkup(
       <StatusPanel
@@ -104,6 +132,34 @@ describe("StatusDialog (通用弹窗)", () => {
     );
     expect(html).toContain("tag:missing_asset");
     expect(html).toContain("tag:duplicate_asset_ref");
+  });
+
+  it("完整检查加载与失败状态优先于空项目正常态", () => {
+    const loadingHtml = renderToStaticMarkup(
+      <StatusDialog
+        issues={[]}
+        loading
+        okLabel="项目正常"
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+        onClose={() => {}}
+      />,
+    );
+    const errorHtml = renderToStaticMarkup(
+      <StatusDialog
+        issues={[]}
+        error
+        okLabel="项目正常"
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+        onClose={() => {}}
+      />,
+    );
+
+    expect(loadingHtml).toContain('role="status"');
+    expect(loadingHtml).toContain("正在检查完整项目");
+    expect(errorHtml).toContain('role="alert"');
+    expect(errorHtml).toContain("完整项目检查失败");
   });
 
   it("无问题时弹窗显示对勾与正常文案", () => {

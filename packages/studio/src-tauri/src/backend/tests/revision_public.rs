@@ -21,6 +21,22 @@ fn file_revision_changes_when_file_changes() {
 }
 
 #[test]
+fn metadata_revision_avoids_hashing_file_contents() {
+    let root = unique_temp_dir("file-metadata-revision");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    let rel_path = "content/nodes/a.json";
+    write_text(&project.join(rel_path), "[1]");
+
+    let revision = file_metadata_revision(&project, rel_path).unwrap().unwrap();
+
+    assert_eq!(revision.rel_path, rel_path);
+    assert_eq!(revision.size, 3);
+    assert!(revision.sha256.is_none());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn expected_revision_rejects_same_size_content_with_spoofed_metadata() {
     let root = unique_temp_dir("file-revision-hash-conflict");
     let project = root.join("project");
@@ -105,6 +121,73 @@ fn open_project_returns_graph_manifest_and_node_revisions() {
 }
 
 #[test]
+fn open_project_summary_returns_metadata_only_node_index() {
+    let root = unique_temp_dir("open-project-summary");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "present",
+            "nodes": [
+                { "id": "present", "title": "Present", "file": "nodes/present.json", "position": { "x": 0, "y": 0 } },
+                { "id": "missing", "title": "Missing", "file": "nodes/missing.json", "position": { "x": 260, "y": 0 } }
+            ],
+            "edges": []
+        }),
+        &[("nodes/present.json", serde_json::json!([{"t":"narrate","text":"secret"}]))],
+    );
+
+    let opened = open_project_summary(project.to_string_lossy().as_ref()).unwrap();
+    let summaries = opened.node_summaries.as_ref().unwrap();
+
+    assert!(!opened.analysis_complete);
+    assert!(opened.nodes.is_none());
+    assert_eq!(summaries.len(), 2);
+    assert!(summaries[0].exists);
+    assert!(summaries[0].revision.as_ref().unwrap().sha256.is_none());
+    assert!(!summaries[1].exists);
+    assert!(opened
+        .project_report
+        .as_ref()
+        .unwrap()
+        .project_issues
+        .iter()
+        .all(|issue| issue.source != "node"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn read_node_detail_requires_graph_registration_and_returns_hashed_revision() {
+    let root = unique_temp_dir("read-node-detail");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "a",
+            "nodes": [{ "id": "a", "title": "A", "file": "nodes/a.json", "position": { "x": 0, "y": 0 } }],
+            "edges": []
+        }),
+        &[("nodes/a.json", serde_json::json!([{"t":"narrate","text":"hello"}]))],
+    );
+    write_text(&project.join("content/nodes/unregistered.json"), "[]");
+
+    let detail = read_node_detail(project.to_string_lossy().as_ref(), "nodes/a.json").unwrap();
+    assert_eq!(detail.rel_path, "nodes/a.json");
+    assert_eq!(detail.data[0]["text"], "hello");
+    assert_eq!(detail.revision.sha256.as_deref().map(str::len), Some(64));
+    assert!(read_node_detail(
+        project.to_string_lossy().as_ref(),
+        "nodes/unregistered.json",
+    )
+    .unwrap_err()
+    .contains("不在 graph.json"));
+    assert!(read_node_detail(project.to_string_lossy().as_ref(), "../gal.project.json").is_err());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn public_project_and_issue_json_field_names_remain_stable() {
     let root = unique_temp_dir("public-json-contract");
     let project = root.join("project");
@@ -142,6 +225,8 @@ fn public_project_and_issue_json_field_names_remain_stable() {
                 "projectRevision",
                 "graph",
                 "nodes",
+                "nodeSummaries",
+                "analysisComplete",
                 "graphRevision",
                 "manifestRevision",
                 "metaRevision",

@@ -192,6 +192,31 @@ pub struct NodeEntry {
     pub data: Option<serde_json::Value>,
 }
 
+/// 图工作台首屏使用的节点索引。它只来自 graph.json 和文件元数据，
+/// 不读取节点正文；完整正文由 read_node_detail 按需读取。
+#[derive(Serialize, Clone)]
+pub struct NodeSummary {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    #[serde(rename = "chapterId")]
+    pub chapter_id: String,
+    pub exists: bool,
+    pub incoming: usize,
+    pub outgoing: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<FileRevision>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct NodeDetail {
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    pub data: serde_json::Value,
+    pub revision: FileRevision,
+}
+
 /// content/fixtures/*.json 的一个自定义场景 fixture（Spec 17 步骤 5）。
 /// loader 只保证单文件「是 JSON 对象」并提取 title；完整结构校验由
 /// fixture.schema.json（外部 Agent 自校验）与 snapshot worker 的形状归一化承担。
@@ -267,6 +292,16 @@ pub struct ProjectReport {
     pub project_issues: Vec<ProjectIssue>,
 }
 
+#[derive(Serialize, Clone)]
+pub struct ProjectAnalysis {
+    #[serde(rename = "graphReport")]
+    pub graph_report: GraphReport,
+    #[serde(rename = "assetReport")]
+    pub asset_report: AssetReport,
+    #[serde(rename = "projectReport")]
+    pub project_report: ProjectReport,
+}
+
 #[derive(Deserialize)]
 pub struct GraphPositionInput {
     pub x: f64,
@@ -294,6 +329,8 @@ pub struct ProjectData {
     pub graph: Option<ProjectGraph>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nodes: Option<Vec<NodeEntry>>,
+    #[serde(rename = "nodeSummaries", skip_serializing_if = "Option::is_none")]
+    pub node_summaries: Option<Vec<NodeSummary>>,
     #[serde(rename = "graphRevision", skip_serializing_if = "Option::is_none")]
     pub graph_revision: Option<FileRevision>,
     #[serde(rename = "manifestRevision", skip_serializing_if = "Option::is_none")]
@@ -308,6 +345,8 @@ pub struct ProjectData {
     pub locales: Option<Vec<LocaleEntry>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fixtures: Option<Vec<FixtureEntry>>,
+    #[serde(rename = "analysisComplete")]
+    pub analysis_complete: bool,
     #[serde(rename = "graphReport", skip_serializing_if = "Option::is_none")]
     pub graph_report: Option<GraphReport>,
     #[serde(rename = "assetReport", skip_serializing_if = "Option::is_none")]

@@ -1,11 +1,22 @@
 //! Graph and node-file loading under a validated content root.
 
+/// CLI/full project loading composes the graph index with every node body.
+#[allow(dead_code)]
 pub fn load_project_graph_data(
     content_root: &ContentRoot,
 ) -> Result<(ProjectGraph, Vec<NodeEntry>, Vec<GraphIssue>), String> {
+    let (graph, graph_issues) = load_project_graph(content_root)?;
+    let nodes = load_node_entries(content_root, &graph)?;
+    Ok((graph, nodes, graph_issues))
+}
+
+/// 只读取 graph.json。Studio 首屏走这个入口，避免 1000 个节点正文阻塞工作台。
+pub fn load_project_graph(
+    content_root: &ContentRoot,
+) -> Result<(ProjectGraph, Vec<GraphIssue>), String> {
     let graph_path = content_root.resolve("graph.json")?;
     if !graph_path.is_file() {
-        return Ok((empty_project_graph(), vec![], vec![missing_graph_issue()]));
+        return Ok((empty_project_graph(), vec![missing_graph_issue()]));
     }
 
     // A syntactically valid but contract-invalid graph is a project issue, not an
@@ -25,7 +36,7 @@ pub fn load_project_graph_data(
                 edge_id: None,
             })
             .collect();
-        return Ok((empty_project_graph(), vec![], issues));
+        return Ok((empty_project_graph(), issues));
     }
 
     let mut graph_projection = graph_raw.clone();
@@ -33,8 +44,28 @@ pub fn load_project_graph_data(
         &mut graph_projection,
         contracts::schema(contracts::ContractSchemaKind::Graph),
     );
-    let (graph, nodes) = project_graph_from_valid_json(content_root, &graph_projection)?;
-    Ok((graph, nodes, vec![]))
+    Ok((project_graph_from_valid_json(&graph_projection)?, vec![]))
+}
+
+pub(crate) fn load_node_entries(
+    content_root: &ContentRoot,
+    graph: &ProjectGraph,
+) -> Result<Vec<NodeEntry>, String> {
+    let mut entries = Vec::with_capacity(graph.nodes.len());
+    for node in &graph.nodes {
+        let node_path = content_root.resolve(&node.file)?;
+        let data = if node_path.exists() {
+            Some(read_json(&node_path)?)
+        } else {
+            log::warn!("节点 {} 的文件 {} 不存在，已跳过", node.id, node.file);
+            None
+        };
+        entries.push(NodeEntry {
+            rel_path: node.file.clone(),
+            data,
+        });
+    }
+    Ok(entries)
 }
 
 fn empty_project_graph() -> ProjectGraph {
@@ -98,9 +129,8 @@ pub(crate) fn legacy_chapter_layout_issues(
 }
 
 fn project_graph_from_valid_json(
-    content_root: &ContentRoot,
     graph_raw: &serde_json::Value,
-) -> Result<(ProjectGraph, Vec<NodeEntry>), String> {
+) -> Result<ProjectGraph, String> {
     // The embedded schema has validated structure and populated projection defaults.
     let version = graph_raw
         .get("version")
@@ -209,31 +239,13 @@ fn project_graph_from_valid_json(
         })
         .unwrap_or_default();
 
-    let mut node_entries = vec![];
-    for node in &graph_nodes {
-        let node_path = content_root.resolve(&node.file)?;
-        let data = if node_path.exists() {
-            Some(read_json(&node_path)?)
-        } else {
-            log::warn!("节点 {} 的文件 {} 不存在，已跳过", node.id, node.file);
-            None
-        };
-        node_entries.push(NodeEntry {
-            rel_path: node.file.clone(),
-            data,
-        });
-    }
-
-    Ok((
-        ProjectGraph {
-            version,
-            entry_node_id,
-            chapters,
-            nodes: graph_nodes,
-            edges: graph_edges,
-        },
-        node_entries,
-    ))
+    Ok(ProjectGraph {
+        version,
+        entry_node_id,
+        chapters,
+        nodes: graph_nodes,
+        edges: graph_edges,
+    })
 }
 use super::super::contracts;
 use super::super::fs::{read_json, ContentRoot};

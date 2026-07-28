@@ -124,6 +124,15 @@ describe("Preview 场景快照", () => {
     delete (globalThis as { window?: unknown }).window;
   });
 
+  it("摘要项目加载正文前不启动剧情 player", () => {
+    const html = renderToStaticMarkup(
+      <Preview project={{ ...project, nodes: undefined }} rendererId="default" loadingContent />,
+    );
+
+    expect(html).toContain("正在按需加载剧情内容");
+    expect(html).not.toContain("剧情模式台词");
+  });
+
   it("剧情播放模式（默认）：player 驱动，只显示调试起点而不显示场景下拉", () => {
     const html = renderToStaticMarkup(<Preview project={project} rendererId="default" />);
 

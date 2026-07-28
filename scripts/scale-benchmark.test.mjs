@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { compareScaleBenchmarkBaseline } from "./scale-benchmark-baseline.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generator = path.join(root, "scripts/generate-scale-project.mjs");
 const benchmark = path.join(root, "scripts/run-scale-benchmark.mjs");
@@ -45,7 +47,7 @@ function registryAssetCount(manifest) {
     + Object.keys(manifest.fonts).length;
 }
 
-test("scale benchmark reports raw data, environment, and deferred browser scenarios", async () => {
+test("scale benchmark reports raw data, environment, and opt-in browser scenarios", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), "vibegal-scale-report-"));
   try {
     const reportPath = path.join(temp, "report.json");
@@ -71,6 +73,68 @@ test("scale benchmark reports raw data, environment, and deferred browser scenar
   }
 });
 
+test("scale benchmark reports missing Chrome without claiming a browser run", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "vibegal-scale-no-browser-"));
+  try {
+    const reportPath = path.join(temp, "report.json");
+    const result = spawnSync(process.execPath, [benchmark, reportPath, "--browser"], {
+      encoding: "utf8",
+      env: { ...process.env, VIBEGAL_CHROME_PATH: path.join(temp, "missing-chrome") },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(await readFile(reportPath, "utf8"));
+    assert.equal(report.browser.status, "not-run");
+    assert.match(report.browser.reason, /Chrome executable not found/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("scale benchmark requires Chrome when strict browser mode is requested", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "vibegal-scale-require-browser-"));
+  try {
+    const reportPath = path.join(temp, "report.json");
+    const result = spawnSync(process.execPath, [benchmark, reportPath, "--browser", "--require-browser"], {
+      encoding: "utf8",
+      env: { ...process.env, VIBEGAL_CHROME_PATH: path.join(temp, "missing-chrome") },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Chrome executable not found/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("scale benchmark heap comparison enforces same-runner 20% regression threshold", () => {
+  const report = (peakJsHeapBytes, cpuModel = "benchmark-cpu") => ({
+    environment: {
+      platform: "darwin",
+      architecture: "arm64",
+      cpuModel,
+      cpuCount: 8,
+    },
+    browser: {
+      status: "completed",
+      browser: {
+        name: "Google Chrome",
+        viewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
+      },
+      measurements: { peakJsHeapBytes },
+    },
+  });
+
+  assert.equal(compareScaleBenchmarkBaseline(report(120), report(100)).passed, true);
+  assert.equal(compareScaleBenchmarkBaseline(report(121), report(100)).passed, false);
+  assert.throws(
+    () => compareScaleBenchmarkBaseline(report(100, "other-cpu"), report(100)),
+    /baseline runner does not match: environment.cpuModel/,
+  );
+  assert.throws(
+    () => compareScaleBenchmarkBaseline({ browser: { status: "not-run" } }, report(100)),
+    /Current browser benchmark is not completed/,
+  );
+});
+
 test("scale generator is byte-stable and covers the 1000/500 dataset", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), "vibegal-scale-generator-"));
   const first = path.join(temp, "first");
@@ -88,6 +152,7 @@ test("scale generator is byte-stable and covers the 1000/500 dataset", async () 
     const variables = JSON.parse(await readFile(path.join(first, "content/variables.json"), "utf8"));
     const locales = await readdir(path.join(first, "content/locales"));
     const nodes = await readdir(path.join(first, "content/nodes"));
+    const renderer = await readFile(path.join(first, "renderers/default/index.tsx"), "utf8");
 
     assert.deepEqual(dataset.assetKinds, { background: 100, audio: 100, cg: 100, video: 100, font: 100 });
     assert.equal(graph.nodes.length, 1_000);
@@ -97,6 +162,7 @@ test("scale generator is byte-stable and covers the 1000/500 dataset", async () 
     assert.equal(locales.length, 1);
     assert.equal(Object.keys(variables.variables).length, 1);
     assert.equal(Object.keys(manifest.characters).length, 20);
+    assert.match(renderer, /Scale Benchmark/);
     assert.ok(graph.edges.some((edge) => edge.mode === "linear"));
     assert.ok(graph.edges.some((edge) => edge.mode === "choice"));
     assert.ok(graph.edges.some((edge) => edge.mode === "auto" && edge.condition));

@@ -38,6 +38,8 @@ vi.mock("../../lib/tauri", () => ({
   saveManifest: vi.fn(),
   saveVariables: vi.fn(),
   renameVariable: vi.fn(),
+  readNodeDetail: vi.fn(),
+  readProjectNodes: vi.fn(),
 }));
 
 const graph: ProjectGraph = {

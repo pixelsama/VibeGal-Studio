@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
-import type { GraphEdge, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphEdge, Manifest, NodeEntry, NodeSummary, ProjectGraph } from "../../lib/types";
 import { findNode, findNodeData, summarizeNodeConnections } from "./graphMapping";
 import { parseGraphCondition } from "./graphCondition";
 import type { VariableRegistry } from "@vibegal/engine";
@@ -26,6 +26,7 @@ export function commitConditionDraft(source: string):
 interface NodeInspectorProps {
   graph: ProjectGraph;
   nodeEntries?: NodeEntry[];
+  nodeSummaries?: NodeSummary[];
   selectedNodeId: string | null;
   onEnter: (id: string) => void;
   onRename: (id: string, title: string) => void;
@@ -44,6 +45,7 @@ interface NodeInspectorProps {
 export function NodeInspector({
   graph,
   nodeEntries,
+  nodeSummaries,
   selectedNodeId,
   onEnter,
   onRename,
@@ -82,8 +84,9 @@ export function NodeInspector({
     );
   }
 
-  const hasContent = findNodeData(nodeEntries, node.file) != null;
-  const { incoming, outgoing } = summarizeNodeConnections(graph, node.id);
+  const summary = nodeSummaries?.find((candidate) => candidate.id === node.id);
+  const hasContent = summary ? summary.exists : findNodeData(nodeEntries, node.file) != null;
+  const { incoming, outgoing } = summary ?? summarizeNodeConnections(graph, node.id);
   const isEntry = node.id === graph.entryNodeId;
   const outgoingEdges = graph.edges.filter((edge) => edge.from === node.id).map(normalizeEdge);
   const linkedEndings = Object.entries(manifest?.unlocks?.endings ?? {}).filter(([, ending]) => ending.nodeId === node.id);
