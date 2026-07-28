@@ -18,6 +18,7 @@ fn save_graph_writes_graph_json() {
     let graph_text = fs::read_to_string(project.join("content/graph.json")).unwrap();
     let graph: serde_json::Value = serde_json::from_str(&graph_text).unwrap();
     assert!(graph_text.contains('\n'));
+    assert!(graph_text.ends_with('\n'));
     assert_eq!(graph["entryNodeId"], "prologue");
     assert_eq!(graph["nodes"][0]["title"], "Prologue");
     assert_eq!(graph["edges"][0]["id"], "prologue__ending");
@@ -81,6 +82,43 @@ fn save_graph_rejects_node_chapter_references_that_do_not_exist() {
 
     assert!(result.is_err());
     assert!(!project.join("content/graph.json").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn write_json_preserves_array_order_and_formats_objects_deterministically() {
+    let root = unique_temp_dir("stable-json-order");
+    let path = root.join("stable.json");
+    let value = serde_json::json!({
+        "z": 1,
+        "a": 2,
+        "instructions": [
+            { "t": "narrate", "text": "First" },
+            { "t": "narrate", "text": "Second" }
+        ]
+    });
+
+    write_json(&path, &value).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        concat!(
+            "{\n",
+            "  \"a\": 2,\n",
+            "  \"instructions\": [\n",
+            "    {\n",
+            "      \"t\": \"narrate\",\n",
+            "      \"text\": \"First\"\n",
+            "    },\n",
+            "    {\n",
+            "      \"t\": \"narrate\",\n",
+            "      \"text\": \"Second\"\n",
+            "    }\n",
+            "  ],\n",
+            "  \"z\": 1\n",
+            "}\n"
+        )
+    );
     let _ = fs::remove_dir_all(&root);
 }
 

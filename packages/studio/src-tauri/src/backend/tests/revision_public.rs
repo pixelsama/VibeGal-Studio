@@ -354,6 +354,70 @@ fn save_graph_rejects_stale_revision() {
 }
 
 #[test]
+fn no_op_json_save_preserves_revision_and_mtime() {
+    let root = unique_temp_dir("save-graph-no-op");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    write_text(&project.join("content/nodes/prologue.json"), "[]");
+    write_text(&project.join("content/nodes/ending.json"), "[]");
+    let graph = graph_input("nodes/prologue.json", "Stable");
+
+    let first_revision = save_graph(
+        project.to_string_lossy().into_owned(),
+        graph.clone(),
+        None,
+    )
+    .unwrap()
+    .unwrap();
+    let first_bytes = fs::read(project.join("content/graph.json")).unwrap();
+
+    let second_revision = save_graph(
+        project.to_string_lossy().into_owned(),
+        graph,
+        Some(serde_json::to_value(&first_revision).unwrap()),
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(second_revision.mtime_ms, first_revision.mtime_ms);
+    assert_eq!(second_revision.size, first_revision.size);
+    assert_eq!(second_revision.sha256, first_revision.sha256);
+    assert_eq!(fs::read(project.join("content/graph.json")).unwrap(), first_bytes);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn no_op_text_save_preserves_revision_and_mtime() {
+    let root = unique_temp_dir("save-text-no-op");
+    let project = root.join("project");
+    write_minimal_project(&project);
+    let rel_path = "renderers/default/index.tsx";
+    let content = "export default {};\n";
+
+    let first_revision = save_file(
+        project.to_string_lossy().into_owned(),
+        rel_path.to_string(),
+        content.to_string(),
+        Some(serde_json::Value::Null),
+    )
+    .unwrap()
+    .unwrap();
+    let second_revision = save_file(
+        project.to_string_lossy().into_owned(),
+        rel_path.to_string(),
+        content.to_string(),
+        Some(serde_json::to_value(&first_revision).unwrap()),
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(second_revision.mtime_ms, first_revision.mtime_ms);
+    assert_eq!(second_revision.size, first_revision.size);
+    assert_eq!(second_revision.sha256, first_revision.sha256);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn save_graph_returns_revision_that_can_guard_the_next_write() {
     let root = unique_temp_dir("save-graph-revision-chain");
     let project = root.join("project");

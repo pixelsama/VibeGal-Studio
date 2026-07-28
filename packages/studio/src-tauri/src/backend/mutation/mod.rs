@@ -157,8 +157,11 @@ pub(crate) fn save_node(
     let revision = project_root
         .revision(&project_rel_path)?
         .ok_or_else(|| format!("failed to read saved node revision: {project_rel_path}"))?;
-    let serialized_text = serde_json::to_string_pretty(&normalized_node)
-        .map_err(|error| format!("serialize saved node failed: {error}"))?;
+    let serialized_text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&normalized_node)
+            .map_err(|error| format!("serialize saved node failed: {error}"))?
+    );
 
     Ok(SaveNodeResult {
         instructions: normalized_node,

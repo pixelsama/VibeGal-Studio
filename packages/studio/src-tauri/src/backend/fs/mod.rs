@@ -314,6 +314,9 @@ fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .parent()
         .ok_or_else(|| format!("目标文件缺少父目录: {}", path.display()))?;
     fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    if fs::read(path).is_ok_and(|current| current == bytes) {
+        return Ok(());
+    }
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -428,7 +431,10 @@ pub(crate) fn write_json(path: &Path, value: &serde_json::Value) -> Result<(), S
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
-    let text = serde_json::to_string_pretty(value).map_err(|e| format!("序列化失败: {}", e))?;
+    let text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(value).map_err(|e| format!("序列化失败: {}", e))?
+    );
     atomic_write_text(path, &text).map_err(|e| format!("写文件失败 ({}): {}", path.display(), e))
 }
 

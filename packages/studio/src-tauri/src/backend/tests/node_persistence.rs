@@ -49,6 +49,7 @@ fn save_node_assigns_only_missing_story_point_ids_and_returns_authoritative_data
     assert_eq!(result.assigned[0].node_id, "start");
     assert_eq!(result.assigned[0].json_path, "$[0].id");
     assert_eq!(result.revision.rel_path, "content/nodes/start.json");
+    assert!(result.serialized_text.ends_with('\n'));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&result.serialized_text).unwrap(),
         result.instructions
