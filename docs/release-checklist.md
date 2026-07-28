@@ -31,6 +31,20 @@
 - [ ] 打开 `examples/sample-novel`，主工作区可切换 Render / Script / Assets
 - [ ] 记录一次热重载/外部改文件验收（有脚本：`docs/script-graph/14-release-readiness.spec.md` 的 Smoke 模板）
 
+## 签名、公证与更新安全
+- [ ] 普通 PR/CI 未要求签名凭据；无凭据演练在 manifest 中明确记录 `unsigned-dry-run`
+- [ ] protected secrets 完整性已核对，源码、日志和 artifact 不含证书、私钥、密码、Apple team/issuer 凭据
+- [ ] macOS app 在 DMG 生成前完成 codesign，DMG 已完成 codesign、notarytool、staple 与 Gatekeeper 验证
+- [ ] 重新挂载 DMG 后，其中 `.app` 的 codesign 与 Gatekeeper 验证仍成功
+- [ ] Windows 安装包已完成 Authenticode timestamp、`signtool verify /pa /all`
+- [ ] `SHA256SUMS.txt` 与 `release-manifest.json` 覆盖全部发布 artifact，版本、平台、架构、URL、hash 与签名状态正确
+- [ ] updater 无 endpoint/public key 时保持关闭；启用时 endpoint 为 HTTPS 且两项同时存在
+- [ ] `update-manifest.json` 已使用 protected Ed25519 key 签名，可信 public key 验签成功
+- [ ] mock updater 接受更高版本，拒绝同版本/降级、HTTP URL、篡改 hash 和非可信签名
+- [ ] 下载后 SHA-256 不符、manifest 验签失败或安装失败时保留当前安装，并可安全重试
+- [ ] 更新源保留当前与上一已验证版本；错误 manifest 的撤回/恢复和不可变 tag 重试步骤已演练
+- [ ] 真实 Apple notarization 与 Windows 证书链的外部验收证据已归档；无凭据时没有把 dry-run 描述为完成
+
 ## 包体与发布策略
 - [ ] macOS `.app`/安装包与 Windows NSIS bundle 均构建成功
 - [ ] macOS/Windows 安装后 CLI smoke 的 CI artifact/job 均成功
@@ -41,7 +55,7 @@
   - `docs/release-checklist.md`
   - `docs/packaging.md`
   - `docs/script-graph/14-release-readiness.spec.md`
-- [ ] 版本号和签名信息已更新记录（签名密钥不入仓库）
+- [ ] 版本号和签名状态已更新记录（签名密钥不入仓库）
 
 ## 最终确认
 - [ ] release 阶段模板已执行并留存链接/截图（至少一条）
