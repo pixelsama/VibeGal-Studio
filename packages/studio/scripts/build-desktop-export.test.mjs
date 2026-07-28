@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,13 +7,15 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "build-desktop-export.mjs");
+const studioRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const validPng = path.join(studioRoot, "src-tauri/icons/128x128@2x.png");
 
 async function createWebDist(root) {
   const dist = path.join(root, "web-dist");
   await mkdir(path.join(dist, "runtime"), { recursive: true });
   await mkdir(path.join(dist, "distribution-icons"), { recursive: true });
   await writeFile(path.join(dist, "distribution-icons/icon.ico"), "derived-icon");
-  await writeFile(path.join(dist, "distribution-icons/icon-512x512.png"), "derived-icon");
+  await cp(validPng, path.join(dist, "distribution-icons/icon-512x512.png"));
   await writeFile(path.join(dist, "index.html"), '<div id="root"></div>');
   await writeFile(path.join(dist, "runtime/bundle.js"), "export {};");
   await writeFile(path.join(dist, "game.manifest.json"), JSON.stringify({
@@ -42,6 +44,20 @@ async function createWebDist(root) {
 
 function runWorker(args) {
   return spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+}
+
+async function assertBundleIcon(outDir, relative) {
+  const icon = await readFile(path.join(outDir, relative));
+  if (process.platform === "darwin") {
+    assert.match(relative, /vibegal\.icns$/);
+    assert.equal(icon.subarray(0, 4).toString("ascii"), "icns");
+  } else if (process.platform === "win32") {
+    assert.match(relative, /vibegal-icon\.ico$/);
+    assert.equal(icon.toString("utf8"), "derived-icon");
+  } else {
+    assert.match(relative, /vibegal-icon\.png$/);
+    assert.deepEqual(icon, await readFile(validPng));
+  }
 }
 
 test("tauri runtime packages the exact web dist with a reusable player", async () => {
@@ -74,11 +90,7 @@ test("tauri runtime packages the exact web dist with a reusable player", async (
     assert.equal(manifest.version, "2.3.4-beta.1");
     assert.deepEqual(manifest.viewport, { mode: "fill", width: 1440, height: 810 });
     assert.equal(manifest.icon, "assets/icon.png");
-    assert.match(manifest.bundleIcon, /vibegal-icon\.(?:ico|png)$/);
-    assert.equal(
-      await readFile(path.join(outDir, manifest.bundleIcon), "utf8"),
-      "derived-icon",
-    );
+    await assertBundleIcon(outDir, manifest.bundleIcon);
     assert.deepEqual(manifest.updates, { enabled: false, channel: "preview" });
     if (process.platform === "darwin") {
       // macOS 导出为真正的 .app bundle：裸二进制下 WebKit/NSBundle 会崩溃。
@@ -88,6 +100,7 @@ test("tauri runtime packages the exact web dist with a reusable player", async (
       assert.match(plist, /<key>CFBundleExecutable<\/key>\s*<string>桌面测试游戏<\/string>/);
       assert.match(plist, /<key>CFBundlePackageType<\/key>\s*<string>APPL<\/string>/);
       assert.match(plist, /<key>CFBundleShortVersionString<\/key>\s*<string>2\.3\.4-beta\.1<\/string>/);
+      assert.match(plist, /<key>CFBundleIconFile<\/key>\s*<string>vibegal\.icns<\/string>/);
       await access(path.join(outDir, manifest.webDist, "game.manifest.json"));
       assert.equal(
         await readFile(path.join(outDir, manifest.webDist, "runtime/bundle.js"), "utf8"),
@@ -166,6 +179,7 @@ test("electron runtime packages the exact web dist with the bundled chromium she
       const plist = await readFile(path.join(outDir, "桌面测试游戏.app/Contents/Info.plist"), "utf8");
       assert.match(plist, /<string>桌面测试游戏<\/string>/, "the macOS bundle should be rebranded to the product name");
       assert.match(plist, /<key>CFBundleShortVersionString<\/key>\s*<string>2\.3\.4-beta\.1<\/string>/);
+      assert.match(plist, /<key>CFBundleIconFile<\/key>\s*<string>vibegal\.icns<\/string>/);
     }
     const manifest = JSON.parse(await readFile(path.join(outDir, "desktop.manifest.json"), "utf8"));
     assert.equal(manifest.runtime, "electron");
@@ -176,11 +190,7 @@ test("electron runtime packages the exact web dist with the bundled chromium she
     assert.equal(manifest.version, "2.3.4-beta.1");
     assert.deepEqual(manifest.viewport, { mode: "fill", width: 1440, height: 810 });
     assert.equal(manifest.icon, "assets/icon.png");
-    assert.match(manifest.bundleIcon, /vibegal-icon\.(?:ico|png)$/);
-    assert.equal(
-      await readFile(path.join(outDir, manifest.bundleIcon), "utf8"),
-      "derived-icon",
-    );
+    await assertBundleIcon(outDir, manifest.bundleIcon);
     assert.deepEqual(manifest.updates, { enabled: false, channel: "preview" });
   } finally {
     await rm(root, { recursive: true, force: true });

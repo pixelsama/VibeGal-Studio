@@ -5,6 +5,7 @@
  * Both shells receive the exact same already-built Web distribution. The
  * worker only adds a desktop host; it never recompiles renderer/runtime code.
  */
+import { spawnSync } from "node:child_process";
 import { chmod, cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -108,9 +109,12 @@ function bundleIdentifier(productName) {
   return `com.vibegal.${slug || "game"}`;
 }
 
-function macAppInfoPlist(productName, version) {
+function macAppInfoPlist(productName, version, iconFile = null) {
   const name = xmlEscape(productName);
   const escapedVersion = xmlEscape(version);
+  const icon = iconFile
+    ? `  <key>CFBundleIconFile</key>\n  <string>${xmlEscape(iconFile)}</string>\n`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -129,7 +133,7 @@ function macAppInfoPlist(productName, version) {
   <string>${escapedVersion}</string>
   <key>CFBundleShortVersionString</key>
   <string>${escapedVersion}</string>
-  <key>LSMinimumSystemVersion</key>
+${icon}  <key>LSMinimumSystemVersion</key>
   <string>11.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
@@ -145,12 +149,51 @@ function desktopIconSource(webDist, metadata) {
   return relative ? path.join(webDist, relative) : null;
 }
 
+async function installMacBundleIcon(source, bundle) {
+  const resources = path.join(bundle, "Contents/Resources");
+  const iconset = path.join(resources, "vibegal.iconset");
+  const target = path.join(resources, "vibegal.icns");
+  await mkdir(iconset, { recursive: true });
+  try {
+    for (const [filename, size] of [
+      ["icon_16x16.png", 16],
+      ["icon_16x16@2x.png", 32],
+      ["icon_32x32.png", 32],
+      ["icon_32x32@2x.png", 64],
+      ["icon_128x128.png", 128],
+      ["icon_128x128@2x.png", 256],
+      ["icon_256x256.png", 256],
+      ["icon_256x256@2x.png", 512],
+      ["icon_512x512.png", 512],
+      ["icon_512x512@2x.png", 1024],
+    ]) {
+      const resized = spawnSync(
+        "sips",
+        ["-z", String(size), String(size), source, "--out", path.join(iconset, filename)],
+        { encoding: "utf8" },
+      );
+      if (resized.status !== 0) {
+        throw new Error(resized.stderr || resized.stdout || `sips exited ${resized.status}`);
+      }
+    }
+    const converted = spawnSync("iconutil", ["-c", "icns", iconset, "-o", target], { encoding: "utf8" });
+    if (converted.status !== 0) throw new Error(converted.stderr || converted.stdout || `iconutil exited ${converted.status}`);
+  } catch (error) {
+    failure(
+      "desktop_bundle_icon_failed",
+      `Unable to create the macOS application icon: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    await rm(iconset, { recursive: true, force: true });
+  }
+  return target;
+}
+
 async function installDesktopIcon({ webDist, outDir, metadata, bundle }) {
   const source = desktopIconSource(webDist, metadata);
   if (!source) return null;
   if (process.platform === "darwin" && bundle) {
-    const target = path.join(bundle, "Contents/Resources/vibegal-icon.png");
-    await cp(source, target);
+    const target = await installMacBundleIcon(source, bundle);
     return path.relative(outDir, target).replaceAll(path.sep, "/");
   }
   const target = path.join(outDir, path.extname(source).toLowerCase() === ".ico" ? "vibegal-icon.ico" : "vibegal-icon.png");
@@ -185,7 +228,10 @@ async function packageTauri({ webDist, outDir, metadata, playerPath }) {
     await chmod(bundledExecutable, 0o755);
     await cp(webDist, path.join(resourcesDir, "game"), { recursive: true });
     const bundleIcon = await installDesktopIcon({ webDist, outDir, metadata, bundle });
-    await writeFile(path.join(bundle, "Contents/Info.plist"), macAppInfoPlist(productName, version));
+    await writeFile(
+      path.join(bundle, "Contents/Info.plist"),
+      macAppInfoPlist(productName, version, bundleIcon ? "vibegal.icns" : null),
+    );
     const webDistRelative = `${productName}.app/Contents/Resources/game`;
     await writeDesktopManifest(outDir, {
       target: "desktop",
@@ -375,7 +421,7 @@ app.on("window-all-closed", () => app.quit());
 `;
 }
 
-async function updateMacBundle(bundle, metadata) {
+async function updateMacBundle(bundle, metadata, iconFile = null) {
   const plist = path.join(bundle, "Contents/Info.plist");
   let text;
   try {
@@ -392,6 +438,7 @@ async function updateMacBundle(bundle, metadata) {
     ["CFBundleDisplayName", metadata.productName],
     ["CFBundleVersion", metadata.version],
     ["CFBundleShortVersionString", metadata.version],
+    ...(iconFile ? [["CFBundleIconFile", iconFile]] : []),
   ]);
   for (const [key, value] of replacements) {
     const escapedValue = xmlEscape(value);
@@ -424,7 +471,6 @@ async function packageElectron({ webDist, outDir, metadata, electronDist, electr
     const destinationBundle = path.join(outDir, `${productName}.app`);
     await mkdir(outDir, { recursive: true });
     await cp(sourceBundle, destinationBundle, { recursive: true });
-    await updateMacBundle(destinationBundle, metadata);
     appRoot = destinationBundle;
     appResources = path.join(destinationBundle, "Contents/Resources/app");
     executable = `${productName}.app/Contents/MacOS/Electron`;
@@ -454,6 +500,9 @@ async function packageElectron({ webDist, outDir, metadata, electronDist, electr
     metadata,
     bundle: process.platform === "darwin" ? appRoot : null,
   });
+  if (process.platform === "darwin") {
+    await updateMacBundle(appRoot, metadata, bundleIcon ? "vibegal.icns" : null);
+  }
   await writeDesktopManifest(outDir, {
     target: "desktop",
     runtime: "electron",
