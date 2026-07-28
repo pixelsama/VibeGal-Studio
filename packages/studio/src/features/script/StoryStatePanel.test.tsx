@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Manifest, VariableRegistry } from "@vibegal/engine";
 import type { ProjectGraph } from "../../lib/types";
 import { StoryStatePanel, declarationForKind, registerInferredVariable, slugify, uniqueName } from "./StoryStatePanel";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 const graph: ProjectGraph = {
   version: 1,
@@ -83,6 +84,28 @@ describe("StoryStatePanel", () => {
     expect(html).toContain("玩家的选择本身已经可以直接用在分流条件里");
   });
 
+  it("renders creator-facing controls in English without translating project content", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        StudioI18nProvider,
+        { preference: "en" },
+        createElement(StoryStatePanel, {
+          registry,
+          graph,
+          manifest,
+          onChange: () => {},
+        }),
+      ),
+    );
+
+    expect(html).toContain('aria-label="Search story state"');
+    expect(html).toContain("Display name");
+    expect(html).toContain("Initial value");
+    expect(html).toContain("Technical details");
+    expect(html).toContain("雪 · 好感度");
+    expect(html).not.toContain("技术详情");
+  });
+
   it("hides editing affordances in read-only mode", () => {
     const html = render({ onChange: undefined });
     expect(html).not.toContain("新建");
@@ -101,6 +124,19 @@ describe("new state defaults", () => {
     const declaration = declarationForKind("state", "当前路线");
     expect(declaration.options).toEqual([{ id: "state_1", label: "状态 1" }]);
     expect(declaration.default).toBe("state_1");
+  });
+
+  it("keeps persisted defaults independent from the Studio locale", () => {
+    expect(declarationForKind("meter", "Affection")).toMatchObject({
+      bands: [
+        { id: "low", label: "低", upTo: 29 },
+        { id: "mid", label: "中", upTo: 59 },
+        { id: "high", label: "高" },
+      ],
+    });
+    expect(declarationForKind("state", "Route")).toMatchObject({
+      options: [{ id: "state_1", label: "状态 1" }],
+    });
   });
 
   it("keeps a counter non-negative", () => {

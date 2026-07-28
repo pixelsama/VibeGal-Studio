@@ -18,6 +18,7 @@ import {
   type RecentProject,
 } from "../../lib/workspaceProjects";
 import { getDesktopPlatform } from "../../lib/platform";
+import { useStudioI18n, translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import { Button, IconButton } from "../common/Button";
 import { ConfirmDialog } from "../common/Dialogs";
 import { EmptyState } from "../common/EmptyState";
@@ -67,6 +68,7 @@ export async function resolveProjectDirectory(
 }
 
 export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSettings }: Props) {
+  const { t, locale } = useStudioI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
@@ -90,7 +92,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   const openDirectory = useCallback(async (dir: string) => {
     const target = dir.trim();
     if (!target) {
-      setError("先选择一个项目目录");
+      setError(t("projectList.chooseDirectory"));
       return;
     }
     setLoading(true);
@@ -109,7 +111,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
     } finally {
       setLoading(false);
     }
-  }, [completeOpen]);
+  }, [completeOpen, t]);
 
   const openRecentProject = useCallback(async (path: string) => {
     setLoading(true);
@@ -210,14 +212,14 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
   return (
     <div style={pageStyle}>
       <div style={navOverlayStyle}>
-        <IconButton disabled title="后退" aria-label="后退">
+        <IconButton disabled title={t("nav.back")} aria-label={t("nav.back")}>
           <ChevronLeft size={18} />
         </IconButton>
-        <IconButton onClick={onForward} disabled={!canGoForward} title="前进到上一个项目工作台" aria-label="前进">
+        <IconButton onClick={onForward} disabled={!canGoForward} title={t("projectList.forwardToWorkspace")} aria-label={t("nav.forward")}>
           <ChevronRight size={18} />
         </IconButton>
         {onOpenSettings && (
-          <IconButton onClick={onOpenSettings} title="设置" aria-label="设置">
+          <IconButton onClick={onOpenSettings} title={t("nav.settings")} aria-label={t("nav.settings")}>
             <SettingsIcon size={15} />
           </IconButton>
         )}
@@ -225,34 +227,36 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
 
       <header style={headerStyle}>
         <h1 style={titleStyle}>VibeGal-Studio</h1>
-        <p style={subtitleStyle}>galgame 开发工具</p>
+        <p style={subtitleStyle}>{t("projectList.tagline")}</p>
       </header>
 
       <section style={sectionStyle}>
         <div style={workspaceRow}>
-          <Button variant="secondary" onClick={handlePickProject} disabled={loading}>打开项目…</Button>
+          <Button variant="secondary" onClick={handlePickProject} disabled={loading}>{t("projectList.open")}</Button>
           <Button variant="primary" onClick={handleNew} disabled={loading}>
             <Plus size={15} />
-            新建项目
+            {t("projectList.create")}
           </Button>
           <Button variant="ghost" onClick={() => void handleBrowseWorkspace()} disabled={loading}>
             <FolderOpen size={15} />
-            {workspaceDir ? "更换工作区…" : "浏览工作区…"}
+            {workspaceDir ? t("projectList.changeWorkspace") : t("projectList.browseWorkspace")}
           </Button>
         </div>
 
         {error && !newProjectParent && <div style={errorStyle}>{error}</div>}
 
         <section style={recentSectionStyle}>
-          <div style={sectionHeadingStyle}>最近打开</div>
+          <div style={sectionHeadingStyle}>{t("projectList.recent")}</div>
           {recentProjects.length === 0 ? (
-            <div style={recentEmptyStyle}>打开或新建项目后会显示在这里。</div>
+            <div style={recentEmptyStyle}>{t("projectList.recentEmpty")}</div>
           ) : (
             <RecentProjectList
               items={recentProjects}
               disabled={loading}
               onOpen={(path) => void openRecentProject(path)}
               onRemove={(path) => setRecentProjects(removeRecentProject(path))}
+              t={t}
+              locale={locale}
             />
           )}
         </section>
@@ -260,7 +264,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
         {workspaceDir && (
           <section style={workspaceSectionStyle}>
             <div style={workspaceHeaderStyle}>
-              <span style={workspaceLabelStyle}>工作区</span>
+              <span style={workspaceLabelStyle}>{t("projectList.workspace")}</span>
               <span style={workspaceDirStyle} title={workspaceDir}>{workspaceDir}</span>
             </div>
             {workspaceProjects == null ? (
@@ -273,6 +277,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
               <WorkspaceEmptyState
                 disabled={loading}
                 onCreate={() => openNewProjectForm(workspaceDir)}
+                t={t}
               />
             ) : (
               <WorkspaceProjectList
@@ -288,13 +293,13 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
       {newProjectParent && (
         <div className="gs-anim-fade" style={modalOverlayStyle}>
           <form onSubmit={handleCreateProject} className="gs-anim-pop" style={modalStyle}>
-            <div style={modalHeaderStyle}>新建项目</div>
+            <div style={modalHeaderStyle}>{t("projectList.create")}</div>
             <div style={parentPathStyle}>{newProjectParent}</div>
             <input
               autoFocus
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
-              placeholder="项目名称"
+              placeholder={t("projectList.namePlaceholder")}
               style={inputStyle}
               disabled={loading}
             />
@@ -302,11 +307,13 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
               value={newProjectTemplate}
               disabled={loading}
               onChange={setNewProjectTemplate}
+              t={t}
             />
             <RendererTemplatePicker
               value={newProjectRenderer}
               disabled={loading}
               onChange={setNewProjectRenderer}
+              t={t}
             />
             {error && <div style={modalErrorStyle}>{error}</div>}
             <div style={modalActionsStyle}>
@@ -322,9 +329,9 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
                   setError(null);
                 }}
               >
-                取消
+                {t("projectList.cancel")}
               </Button>
-              <Button type="submit" variant="primary" disabled={!newProjectName.trim() || loading}>创建</Button>
+              <Button type="submit" variant="primary" disabled={!newProjectName.trim() || loading}>{t("projectList.confirmCreate")}</Button>
             </div>
           </form>
         </div>
@@ -334,13 +341,13 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
         <ConfirmDialog
           message={
             <>
-              <div>这个目录还不是 VibeGal-Studio 项目。</div>
+              <div>{t("projectList.initialize.title")}</div>
               <div style={{ marginTop: 10 }}>
-                是否在此目录中添加 VibeGal-Studio 工程文件？将创建 gal.project.json、content/ 和 renderers/default/。现有文件不会被删除或覆盖。
+                {t("projectList.initialize.description")}
               </div>
             </>
           }
-          confirmLabel="添加工程文件"
+          confirmLabel={t("projectList.initialize.confirm")}
           onConfirm={() => void confirmInitialize()}
           onClose={() => setInitTarget(null)}
         />
@@ -360,6 +367,7 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
             setInitTarget(containedTarget.path);
           }}
           onClose={() => setContainedTarget(null)}
+          t={t}
         />
       )}
     </div>
@@ -369,19 +377,21 @@ export function ProjectList({ onOpen, canGoForward = false, onForward, onOpenSet
 export function WorkspaceEmptyState({
   disabled = false,
   onCreate,
+  t = translateZhCN,
 }: {
   disabled?: boolean;
   onCreate: () => void;
+  t?: StudioTranslator;
 }) {
   return (
     <EmptyState
       icon={FolderOpen}
-      title="这个目录下还没有项目"
-      description="在这个工作区新建项目，或把已有项目目录放进来。"
+      title={t("projectList.empty.title")}
+      description={t("projectList.empty.description")}
       action={(
         <Button variant="primary" onClick={onCreate} disabled={disabled}>
           <Plus size={15} />
-          新建项目
+          {t("projectList.create")}
         </Button>
       )}
     />
@@ -392,14 +402,16 @@ export function ProjectTemplatePicker({
   value,
   disabled = false,
   onChange,
+  t = translateZhCN,
 }: {
   value: ProjectTemplate;
   disabled?: boolean;
   onChange: (template: ProjectTemplate) => void;
+  t?: StudioTranslator;
 }) {
   return (
     <fieldset style={templateFieldsetStyle} disabled={disabled}>
-      <legend style={templateLegendStyle}>从哪里开始</legend>
+      <legend style={templateLegendStyle}>{t("projectList.template.legend")}</legend>
       <label style={templateOptionStyle}>
         <input
           type="radio"
@@ -409,8 +421,8 @@ export function ProjectTemplatePicker({
           onChange={() => onChange("blank")}
         />
         <span>
-          <strong style={templateTitleStyle}>空白项目</strong>
-          <span style={templateDescriptionStyle}>从一个起始节点开始写自己的故事。</span>
+          <strong style={templateTitleStyle}>{t("projectList.template.blank")}</strong>
+          <span style={templateDescriptionStyle}>{t("projectList.template.blankDescription")}</span>
         </span>
       </label>
       <label style={templateOptionStyle}>
@@ -422,8 +434,8 @@ export function ProjectTemplatePicker({
           onChange={() => onChange("example")}
         />
         <span>
-          <strong style={templateTitleStyle}>带示例</strong>
-          <span style={templateDescriptionStyle}>包含可运行的分流、故事状态、结局与资源。</span>
+          <strong style={templateTitleStyle}>{t("projectList.template.example")}</strong>
+          <span style={templateDescriptionStyle}>{t("projectList.template.exampleDescription")}</span>
         </span>
       </label>
     </fieldset>
@@ -434,14 +446,16 @@ export function RendererTemplatePicker({
   value,
   disabled = false,
   onChange,
+  t = translateZhCN,
 }: {
   value: RendererTemplate;
   disabled?: boolean;
   onChange: (template: RendererTemplate) => void;
+  t?: StudioTranslator;
 }) {
   return (
     <fieldset style={templateFieldsetStyle} disabled={disabled}>
-      <legend style={templateLegendStyle}>界面风格</legend>
+      <legend style={templateLegendStyle}>{t("projectList.renderer.legend")}</legend>
       <label style={templateOptionStyle}>
         <input
           type="radio"
@@ -451,8 +465,8 @@ export function RendererTemplatePicker({
           onChange={() => onChange("default")}
         />
         <span>
-          <strong style={templateTitleStyle}>柔光现代</strong>
-          <span style={templateDescriptionStyle}>明亮磨砂面板、圆润控件与轻盈的樱粉强调。</span>
+          <strong style={templateTitleStyle}>{t("projectList.renderer.default")}</strong>
+          <span style={templateDescriptionStyle}>{t("projectList.renderer.defaultDescription")}</span>
         </span>
       </label>
       <label style={templateOptionStyle}>
@@ -464,8 +478,8 @@ export function RendererTemplatePicker({
           onChange={() => onChange("classic")}
         />
         <span>
-          <strong style={templateTitleStyle}>经典深色 ADV</strong>
-          <span style={templateDescriptionStyle}>底部横向对话框、紧凑 HUD、侧边菜单与暖金强调。</span>
+          <strong style={templateTitleStyle}>{t("projectList.renderer.classic")}</strong>
+          <span style={templateDescriptionStyle}>{t("projectList.renderer.classicDescription")}</span>
         </span>
       </label>
     </fieldset>
@@ -479,6 +493,7 @@ export function ContainedProjectsDialog({
   onOpen,
   onInitialize,
   onClose,
+  t = translateZhCN,
 }: {
   path: string;
   projects: ProjectListItem[];
@@ -486,20 +501,21 @@ export function ContainedProjectsDialog({
   onOpen: (path: string) => void;
   onInitialize: () => void;
   onClose: () => void;
+  t?: StudioTranslator;
 }) {
   return (
     <div className="gs-anim-fade" style={modalOverlayStyle}>
       <div className="gs-anim-pop" role="dialog" aria-modal="true" aria-labelledby="contained-projects-title" style={containedProjectsModalStyle}>
-        <div id="contained-projects-title" style={modalHeaderStyle}>这个目录本身不是项目</div>
+        <div id="contained-projects-title" style={modalHeaderStyle}>{t("projectList.contained.title")}</div>
         <div style={containedProjectsDescriptionStyle}>
-          里面有 {projects.length} 个项目。请选择要打开的项目，而不是把工作区目录初始化成嵌套项目。
+          {t("projectList.contained.description", { count: projects.length })}
         </div>
         <div style={parentPathStyle} title={path}>{path}</div>
         <WorkspaceProjectList items={projects} disabled={disabled} onOpen={onOpen} />
-        <div style={containedProjectsSafetyStyle}>仍然初始化时，只会添加工程文件，不会删除或覆盖现有文件。</div>
+        <div style={containedProjectsSafetyStyle}>{t("projectList.contained.safety")}</div>
         <div style={containedProjectsActionsStyle}>
-          <Button variant="ghost" disabled={disabled} onClick={onInitialize}>仍然在此目录初始化</Button>
-          <Button variant="secondary" disabled={disabled} onClick={onClose}>取消</Button>
+          <Button variant="ghost" disabled={disabled} onClick={onInitialize}>{t("projectList.contained.initialize")}</Button>
+          <Button variant="secondary" disabled={disabled} onClick={onClose}>{t("projectList.cancel")}</Button>
         </div>
       </div>
     </div>
@@ -540,11 +556,15 @@ export function RecentProjectList({
   disabled = false,
   onOpen,
   onRemove,
+  t = translateZhCN,
+  locale = "zh-CN",
 }: {
   items: RecentProject[];
   disabled?: boolean;
   onOpen: (path: string) => void;
   onRemove: (path: string) => void;
+  t?: StudioTranslator;
+  locale?: "zh-CN" | "en";
 }) {
   return (
     <ul style={projectListStyle}>
@@ -559,11 +579,11 @@ export function RecentProjectList({
           >
             <span style={projectNameStyle}>{item.name}</span>
             <span style={projectPathStyle}>{item.path}</span>
-            <span style={recentTimeStyle}>最后打开：{formatRecentProjectOpenedAt(item.lastOpenedAt)}</span>
+            <span style={recentTimeStyle}>{t("projectList.lastOpened", { time: formatRecentProjectOpenedAt(item.lastOpenedAt, undefined, locale) })}</span>
           </button>
           <IconButton
-            aria-label="从最近打开中移除"
-            title="从最近打开中移除"
+            aria-label={t("projectList.removeRecent")}
+            title={t("projectList.removeRecent")}
             disabled={disabled}
             onClick={() => onRemove(item.path)}
             style={recentRemoveStyle}
@@ -576,8 +596,12 @@ export function RecentProjectList({
   );
 }
 
-export function formatRecentProjectOpenedAt(value: string, timeZone?: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+export function formatRecentProjectOpenedAt(
+  value: string,
+  timeZone?: string,
+  locale: "zh-CN" | "en" = "zh-CN",
+): string {
+  return new Intl.DateTimeFormat(locale, {
     ...(timeZone ? { timeZone } : {}),
     year: "numeric",
     month: "2-digit",

@@ -4,6 +4,7 @@ import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData } from "./graphMapping";
 import { searchProject } from "./projectSearch";
 import { fixedListWindow } from "../common/virtualWindow";
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 
 interface NodeOutlineProps {
   graph: ProjectGraph;
@@ -15,6 +16,7 @@ interface NodeOutlineProps {
 }
 
 export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSelect, onSelectEdge }: NodeOutlineProps) {
+  const { t } = useStudioI18n();
   const [query, setQuery] = useState("");
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 480 });
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -71,21 +73,21 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索节点 / id"
+          placeholder={t("script.nodeList.searchPlaceholder")}
           style={searchInputStyle}
         />
       </div>
       <div
         ref={listRef}
         role="listbox"
-        aria-label={showingProjectSearch ? "项目搜索结果" : "节点列表"}
+        aria-label={showingProjectSearch ? t("script.nodeList.searchResultsLabel") : t("script.nodeList.label")}
         style={listStyle}
         onScroll={handleScroll}
       >
         <div aria-hidden="true" style={{ height: window.paddingTop, flexShrink: 0 }} />
         {showingProjectSearch ? (
           searchResults.length === 0 ? (
-            <div style={emptyStyle}>没有匹配的结果</div>
+            <div style={emptyStyle}>{t("script.nodeList.noResults")}</div>
           ) : (
             windowedItems.map((item, visibleIndex) => {
               const result = item as (typeof searchResults)[number];
@@ -108,7 +110,7 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
               >
                 <div style={itemHeaderStyle}>
                   <span style={itemTitleStyle}>{result.label}</span>
-                  <span style={entryBadgeStyle}>{searchKindLabel(result.kind)}</span>
+                  <span style={entryBadgeStyle}>{searchKindLabel(result.kind, t)}</span>
                 </div>
                 <div style={itemMetaStyle}>{result.preview}</div>
                 <div style={itemMetaStyle}>
@@ -119,7 +121,7 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
             })
           )
         ) : orderedNodes.length === 0 ? (
-          <div style={emptyStyle}>{query.trim() ? "没有匹配的节点" : "暂无节点"}</div>
+          <div style={emptyStyle}>{query.trim() ? t("script.nodeList.noResults") : t("script.nodeList.noNodes")}</div>
         ) : (
           windowedItems.map((item, visibleIndex) => {
             const node = item as (typeof orderedNodes)[number];
@@ -146,13 +148,13 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
               >
                 <div style={itemHeaderStyle}>
                   <span style={itemTitleStyle}>{node.title}</span>
-                  {node.id === graph.entryNodeId && <span style={entryBadgeStyle}>起点</span>}
+                  {node.id === graph.entryNodeId && <span style={entryBadgeStyle}>{t("script.outline.entry")}</span>}
                 </div>
                 <div style={itemMetaStyle}>{node.file}</div>
                 <div style={statusRowStyle}>
                   <span style={{ ...statusDotStyle, background: hasContent ? "var(--status-ok)" : "var(--status-warn)" }} />
                   <span style={{ color: hasContent ? "var(--status-ok-text)" : "var(--status-warn-text)" }}>
-                    {hasContent ? "已有内容" : "文件缺失"}
+                    {hasContent ? t("script.nodeInspector.hasContent") : t("script.nodeInspector.missingFile")}
                   </span>
                 </div>
               </button>
@@ -165,16 +167,16 @@ export function NodeOutline({ graph, nodeEntries, manifest, selectedNodeId, onSe
   );
 }
 
-function searchKindLabel(kind: "node" | "instruction" | "edge" | "manifest"): string {
+function searchKindLabel(kind: "node" | "instruction" | "edge" | "manifest", t: StudioTranslator): string {
   switch (kind) {
     case "node":
-      return "节点";
+      return t("script.nodeList.kind.node");
     case "instruction":
-      return "指令";
+      return t("script.nodeList.kind.instruction");
     case "edge":
-      return "边";
+      return t("script.nodeList.kind.edge");
     case "manifest":
-      return "资源";
+      return t("script.nodeList.kind.manifest");
   }
 }
 

@@ -46,6 +46,7 @@ import {
   persistCreatedNodeWithCompensation,
 } from "./scriptWorkspaceOperations";
 import { useScriptGraphState } from "./useScriptGraphState";
+import { useStudioI18n } from "../../lib/i18n";
 export {
   buildGraphPositionUpdates,
   persistCreatedNodeWithCompensation,
@@ -89,6 +90,7 @@ export function ScriptWorkspace({
   onSaved,
   onDirtyChange,
 }: Props) {
+  const { t } = useStudioI18n();
   const view = location.view;
   /** 脚本工作台的一级视图：剧情流程 / 故事状态 / 翻译对照。 */
   const [primaryView, setPrimaryView] = useState<"flow" | "state" | "translation">("flow");
@@ -245,11 +247,16 @@ export function ScriptWorkspace({
         setGraphHistory(graphHistory);
         setSelectedNodeId(null);
         if (!result.rolledBack) {
-          setGraphStatus(`图保存失败；新节点文件已保留: ${result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError)}`);
+          setGraphStatus(t("script.graph.saveFailedKept", {
+            kind: t("script.node.newKind"),
+            detail: result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError),
+          }));
         }
       }
     } catch (error) {
-      setGraphStatus(`新建节点失败: ${error instanceof Error ? error.message : String(error)}`);
+      setGraphStatus(t("script.node.createFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     } finally {
       setSavingGraph(false);
     }
@@ -273,8 +280,8 @@ export function ScriptWorkspace({
   const handleCreateChapter = () => {
     const id = generateChapterId(graph);
     setPrompt({
-      title: "新建章节",
-      label: "章节名称",
+      title: t("script.chapter.create"),
+      label: t("script.chapter.name"),
       initialValue: `第 ${graph.chapters.length + 1} 章`,
       onConfirm: (value) => {
         const title = value.trim();
@@ -293,8 +300,8 @@ export function ScriptWorkspace({
     const chapter = graph.chapters.find((candidate) => candidate.id === chapterId);
     if (!chapter) return;
     setPrompt({
-      title: "重命名章节",
-      label: "章节名称",
+      title: t("script.chapter.rename"),
+      label: t("script.chapter.name"),
       initialValue: chapter.title,
       onConfirm: (value) => {
         const title = value.trim();
@@ -319,17 +326,17 @@ export function ScriptWorkspace({
     if (!chapter) return;
     const nodeCount = graph.nodes.filter((node) => node.chapterId === chapterId).length;
     if (graph.chapters.length === 1) {
-      setGraphStatus("项目必须保留至少一个章节");
+      setGraphStatus(t("script.chapter.minimum"));
       return;
     }
     if (nodeCount > 0) {
-      setGraphStatus(`请先将「${chapter.title}」中的 ${nodeCount} 个节点移动到其他章节`);
+      setGraphStatus(t("script.chapter.moveNodesFirst", { title: chapter.title, count: nodeCount }));
       return;
     }
     const deletingActiveChapter = chapterScope.kind === "chapter" && chapterScope.chapterId === chapterId;
     setConfirm({
-      message: `删除空章节「${chapter.title}」？`,
-      confirmLabel: "删除章节",
+      message: t("script.chapter.deleteConfirm", { title: chapter.title }),
+      confirmLabel: t("script.chapter.delete"),
       danger: true,
       onConfirm: () => {
         const nextState = applyGraphCommand(graphHistory, { kind: "deleteChapter", chapterId });
@@ -364,16 +371,17 @@ export function ScriptWorkspace({
     const nodes = uniqueIds.map((id) => findNode(graph, id)).filter((node) => node != null);
     if (nodes.length === 0) return;
 
-    const label =
-      nodes.length === 1
-        ? `节点「${nodes[0].title}」`
-        : `${nodes.length} 个节点`;
+    const label = nodes.length === 1
+      ? t("script.node.singleLabel", { title: nodes[0].title })
+      : t("script.node.multipleLabel", { count: nodes.length });
     const affected = referencesAffectedByNodeDeletion(project.content.manifest, uniqueIds);
     const referenceWarning = affected.length > 0
-      ? `\n受影响的登记引用：${affected.map((item) => `${item.registry}:${item.id}`).join("、")}。这些资源登记条目不会自动删除，保存后校验会标出它们。`
+      ? t("script.node.referencesAffected", {
+        references: affected.map((item) => `${item.registry}:${item.id}`).join("、"),
+      })
       : "";
     setConfirm({
-      message: `确定删除${label}？节点文件也会被删除。${referenceWarning}`,
+      message: t("script.node.deleteConfirm", { label, warning: referenceWarning }),
       onConfirm: () => void performDeleteNodes(uniqueIds),
     });
   };
@@ -450,11 +458,16 @@ export function ScriptWorkspace({
         setGraphHistory(graphHistory);
         setSelectedNodeId(nodeId);
         if (!result.rolledBack) {
-          setGraphStatus(`图保存失败；复制的节点文件已保留: ${result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError)}`);
+          setGraphStatus(t("script.graph.saveFailedKept", {
+            kind: t("script.node.duplicatedKind"),
+            detail: result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError),
+          }));
         }
       }
     } catch (error) {
-      setGraphStatus(`复制节点失败: ${error instanceof Error ? error.message : String(error)}`);
+      setGraphStatus(t("script.node.duplicateFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     } finally {
       setSavingGraph(false);
     }
@@ -484,11 +497,16 @@ export function ScriptWorkspace({
         setGraphHistory(graphHistory);
         setSelectedNodeId(nodeId);
         if (!result.rolledBack) {
-          setGraphStatus(`图保存失败；新建的后续节点文件已保留: ${result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError)}`);
+          setGraphStatus(t("script.graph.saveFailedKept", {
+            kind: t("script.node.newKind"),
+            detail: result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError),
+          }));
         }
       }
     } catch (error) {
-      setGraphStatus(`创建后续节点失败: ${error instanceof Error ? error.message : String(error)}`);
+      setGraphStatus(t("script.node.successorFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     } finally {
       setSavingGraph(false);
     }
@@ -499,8 +517,8 @@ export function ScriptWorkspace({
     const node = findNode(graph, nodeId);
     if (!node) return;
     setPrompt({
-      title: "重命名节点",
-      label: "标题",
+      title: t("script.node.rename"),
+      label: t("script.node.title"),
       initialValue: node.title,
       onConfirm: (value) => {
         const nextState = applyGraphCommand(graphHistory, { kind: "renameNode", nodeId, title: value });
@@ -522,41 +540,68 @@ export function ScriptWorkspace({
   const handleManageEnding = (nodeId: string) => {
     const linked = endingsForNode(project.content.manifest, nodeId);
     setPrompt({
-      title: linked.length > 0 ? `关联结局：${linked.map(([id]) => id).join(", ")}` : "登记为正式结局",
-      label: "结局 ID（标题默认使用节点标题）",
+      title: linked.length > 0
+        ? t("script.ending.linked", { ids: linked.map(([id]) => id).join(", ") })
+        : t("script.ending.register"),
+      label: t("script.ending.idLabel"),
       initialValue: linked[0]?.[0] ?? "",
       onConfirm: (id) => {
         if (linked.some(([existing]) => existing === id)) return;
         try {
           const next = registerEnding(project.content.manifest, { id, title: findNode(graph, nodeId)?.title ?? id, nodeId });
-          void saveManifest(project.path, next, project.manifestRevision).then(() => { setGraphStatus("结局登记已保存"); onSaved(); }).catch((error) => setGraphStatus(`结局登记失败: ${error instanceof Error ? error.message : String(error)}`));
-        } catch (error) { setGraphStatus(`结局登记失败: ${error instanceof Error ? error.message : String(error)}`); }
+          void saveManifest(project.path, next, project.manifestRevision)
+            .then(() => { setGraphStatus(t("script.ending.saved")); onSaved(); })
+            .catch((error) => setGraphStatus(t("script.ending.saveFailed", {
+              detail: error instanceof Error ? error.message : String(error),
+            })));
+        } catch (error) {
+          setGraphStatus(t("script.ending.saveFailed", {
+            detail: error instanceof Error ? error.message : String(error),
+          }));
+        }
       },
     });
   };
   const handleVariablesChange = (variables: typeof project.content.variables) => {
-    void saveVariables(project.path, variables, project.variablesRevision).then(() => { setGraphStatus("变量声明已保存"); onSaved(); }).catch((error) => setGraphStatus(`变量保存失败: ${error instanceof Error ? error.message : String(error)}`));
+    void saveVariables(project.path, variables, project.variablesRevision)
+      .then(() => { setGraphStatus(t("script.variables.saved")); onSaved(); })
+      .catch((error) => setGraphStatus(t("script.variables.saveFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      })));
   };
   const handleRenameVariable = (from: string, to: string) => {
     // 后端一次性改写注册表、图条件与 set 指令；成功后整份项目重新加载。
     void renameVariable(project.path, from, to)
       .then((result) => {
-        setGraphStatus(`已改名：更新了 ${result.updatedConditions} 处判断、${result.updatedNodes} 个节点`);
+        setGraphStatus(t("script.variables.renamed", {
+          conditions: result.updatedConditions,
+          nodes: result.updatedNodes,
+        }));
         onSaved();
       })
-      .catch((error) => setGraphStatus(`改名失败: ${error instanceof Error ? error.message : String(error)}`));
+      .catch((error) => setGraphStatus(t("script.variables.renameFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      })));
   };
   const handleEditEnding = (endingId: string) => {
     const ending = project.content.manifest.unlocks.endings[endingId];
     if (!ending) return;
-    setPrompt({ title: `编辑结局 ${endingId}`, label: "标题", initialValue: ending.title, onConfirm: (title) => {
+    setPrompt({ title: t("script.ending.edit", { id: endingId }), label: t("script.node.title"), initialValue: ending.title, onConfirm: (title) => {
       const next = upsertEnding(project.content.manifest, { id: endingId, title, nodeId: ending.nodeId });
-      void saveManifest(project.path, next, project.manifestRevision).then(onSaved).catch((error) => setGraphStatus(`结局更新失败: ${error instanceof Error ? error.message : String(error)}`));
+      void saveManifest(project.path, next, project.manifestRevision)
+        .then(onSaved)
+        .catch((error) => setGraphStatus(t("script.ending.updateFailed", {
+          detail: error instanceof Error ? error.message : String(error),
+        })));
     } });
   };
   const handleUnregisterEnding = (endingId: string) => {
-    setConfirm({ message: `取消登记结局 ${endingId}？剧情中的 unlock/completeEnding 指令不会自动删除。`, danger: true, onConfirm: () => {
-      void saveManifest(project.path, unregisterEnding(project.content.manifest, endingId), project.manifestRevision).then(onSaved).catch((error) => setGraphStatus(`取消登记失败: ${error instanceof Error ? error.message : String(error)}`));
+    setConfirm({ message: t("script.ending.unregisterConfirm", { id: endingId }), danger: true, onConfirm: () => {
+      void saveManifest(project.path, unregisterEnding(project.content.manifest, endingId), project.manifestRevision)
+        .then(onSaved)
+        .catch((error) => setGraphStatus(t("script.ending.unregisterFailed", {
+          detail: error instanceof Error ? error.message : String(error),
+        })));
     } });
   };
   const handleInsertEndingCompletion = async (nodeId: string, endingId: string) => {
@@ -564,12 +609,14 @@ export function ScriptWorkspace({
     if (!node) return;
     try {
       const detail = await loadNodeDetail(project, node.file, _refreshKey);
-      if (!Array.isArray(detail.data)) throw new Error("节点内容不是指令列表");
+      if (!Array.isArray(detail.data)) throw new Error(t("script.ending.invalidNode"));
       const next = insertEndingCompletion(detail.data as never[], endingId);
       await saveNode(project.path, node.file, next, detail.revision);
       onSaved();
     } catch (error) {
-      setGraphStatus(`插入结算失败: ${error instanceof Error ? error.message : String(error)}`);
+      setGraphStatus(t("script.ending.insertFailed", {
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     }
   };
 
@@ -635,7 +682,7 @@ export function ScriptWorkspace({
         onBackToGraph={onOpenGraph}
       />
       {view === "graph" && (
-        <div className="gs-script-views" role="tablist" aria-label="脚本视图">
+        <div className="gs-script-views" role="tablist" aria-label={t("script.views")}>
           <button
             type="button"
             role="tab"
@@ -643,7 +690,7 @@ export function ScriptWorkspace({
             className={primaryView === "flow" ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={() => setPrimaryView("flow")}
           >
-            剧情流程
+            {t("script.view.flow")}
           </button>
           <button
             type="button"
@@ -652,7 +699,7 @@ export function ScriptWorkspace({
             className={primaryView === "state" ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={() => setPrimaryView("state")}
           >
-            故事状态
+            {t("script.view.state")}
           </button>
           <button
             type="button"
@@ -661,24 +708,24 @@ export function ScriptWorkspace({
             className={primaryView === "translation" ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={() => setPrimaryView("translation")}
           >
-            翻译对照
+            {t("script.view.translation")}
           </button>
         </div>
       )}
       <div style={contentStyle}>
         {blockingFullNodeData && allNodeData.loading ? (
-            <WorkspaceDataState message="正在按需加载完整节点内容…" />
+            <WorkspaceDataState message={t("script.loading.fullNodes")} />
           ) : blockingFullNodeData && allNodeData.error ? (
-            <WorkspaceDataState message={`加载节点内容失败：${allNodeData.error}`} error />
+            <WorkspaceDataState message={t("script.loading.fullNodesFailed", { detail: allNodeData.error })} error />
           ) : view === "graph" && primaryView === "translation" ? (
           <TranslationComparison
             project={{ ...project, graph, nodes: allNodeData.entries }}
             onAssignKey={async (row, textKey) => {
               const node = graph.nodes.find((candidate) => candidate.id === row.nodeId);
-              if (!node) throw new Error("找不到要更新的节点。");
+              if (!node) throw new Error(t("script.translation.nodeMissing"));
               const detail = await loadNodeDetail(project, node.file, _refreshKey);
               const instructions = assignInstructionTextKey(detail.data, row.instructionIndex, textKey);
-              if (!instructions) throw new Error("节点内容已变化，请刷新后重试。");
+              if (!instructions) throw new Error(t("script.translation.nodeChanged"));
               await saveNode(project.path, node.file, instructions, detail.revision);
               onSaved();
             }}
@@ -686,7 +733,7 @@ export function ScriptWorkspace({
               const existing = project.locales?.find((entry) => entry.locale === locale);
               const expectedRevision = existing ? existing.revision : null;
               if (existing && !expectedRevision) {
-                throw new Error("语言文件版本未知，请刷新项目后重试。");
+                throw new Error(t("script.translation.revisionMissing"));
               }
               await saveLocale(project.path, locale, value, expectedRevision);
               onSaved();
@@ -707,11 +754,11 @@ export function ScriptWorkspace({
           <div style={graphLayoutStyle}>
             <div style={outlinePaneStyle}>
               <CollapsibleSidebar
-                title="故事结构"
+                title={t("script.sidebar.story")}
                 collapsed={outlineCollapsed}
                 onCollapsedChange={onOutlineCollapsedChange}
                 expandedWidth={280}
-                collapsedLabel="章节"
+                collapsedLabel={t("script.sidebar.chapters")}
               >
                 <StoryOutline
                   graph={graph}
@@ -738,21 +785,23 @@ export function ScriptWorkspace({
                 <div style={toolbarStyle}>
                   <Button variant="primary" onClick={() => handleCreateNode()} disabled={savingGraph}>
                     <Plus size={15} />
-                    新建节点
+                    {t("script.createNode")}
                   </Button>
                   <span style={scopeIndicatorStyle}>
                     <Layers3 size={14} />
-                    {chapterScope.kind === "all" ? "全局视图" : graph.chapters.find((chapter) => chapter.id === chapterScope.chapterId)?.title ?? "章节"}
+                    {chapterScope.kind === "all"
+                      ? t("script.globalView")
+                      : graph.chapters.find((chapter) => chapter.id === chapterScope.chapterId)?.title ?? t("script.chapter")}
                   </span>
                   <Button onClick={() => setCoverageOpen((open) => !open)} aria-expanded={coverageOpen}>
-                    剧情覆盖
+                    {t("script.routeCoverage")}
                   </Button>
                   <div style={toolbarSpacerStyle} />
                   {graphStatus && (
                     <span
                       style={{
                         ...statusTextStyle,
-                        color: graphStatus.includes("失败") ? "var(--status-error-text)" : "var(--status-ok-text)",
+                        color: /失败|failed?/i.test(graphStatus) ? "var(--status-error-text)" : "var(--status-ok-text)",
                       }}
                     >
                       {graphStatus}
@@ -822,9 +871,9 @@ export function ScriptWorkspace({
         ) : (
           selectedNode && (
             selectedNodeDetail.loading ? (
-              <WorkspaceDataState message="正在加载节点内容…" />
+              <WorkspaceDataState message={t("script.loading.node")} />
             ) : selectedNodeDetail.error ? (
-              <WorkspaceDataState message={`加载节点失败：${selectedNodeDetail.error}`} error />
+              <WorkspaceDataState message={t("script.loading.nodeFailed", { detail: selectedNodeDetail.error })} error />
             ) : selectedNodeDetail.detail ? (
               <NodeEditor
                 key={`${selectedNode.id}:${selectedNodeDetail.detail.revision.mtimeMs}:${selectedNodeDetail.detail.revision.size}`}
@@ -847,7 +896,7 @@ export function ScriptWorkspace({
         <ConfirmDialog
           message={confirm.message}
           danger={confirm.danger ?? true}
-          confirmLabel={confirm.confirmLabel ?? "删除"}
+          confirmLabel={confirm.confirmLabel ?? t("script.delete")}
           onConfirm={confirm.onConfirm}
           onClose={() => setConfirm(null)}
         />

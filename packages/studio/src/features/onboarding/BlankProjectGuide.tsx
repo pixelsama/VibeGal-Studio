@@ -1,4 +1,5 @@
 import { Check, Circle, X } from "lucide-react";
+import { useStudioI18n, type StudioMessageKey, type StudioTranslator } from "../../lib/i18n";
 
 interface BlankProjectGuideProps {
   written: boolean;
@@ -19,67 +20,74 @@ export function BlankProjectGuide({
   onPreview,
   onSkip,
 }: BlankProjectGuideProps) {
+  const { t } = useStudioI18n();
   return (
-    <aside aria-label="新项目三步引导" style={panelStyle}>
+    <aside aria-label={t("onboarding.ariaLabel")} style={panelStyle}>
       <div style={headerStyle}>
         <div>
-          <div style={eyebrowStyle}>开始创作</div>
-          <div style={titleStyle}>用三步跑通第一个片段</div>
+          <div style={eyebrowStyle}>{t("onboarding.eyebrow")}</div>
+          <div style={titleStyle}>{t("onboarding.title")}</div>
         </div>
-        <button type="button" aria-label="跳过新项目引导" title="暂时跳过" onClick={onSkip} style={closeButtonStyle}>
+        <button type="button" aria-label={t("onboarding.skipGuide")} title={t("onboarding.skip")} onClick={onSkip} style={closeButtonStyle}>
           <X size={16} />
         </button>
       </div>
       <div style={stepListStyle}>
         <GuideStep
           done={written}
-          title="写第一个节点"
-          description="把起始节点的示例句改成你的故事。"
-          action="打开起始节点"
+          titleKey="onboarding.write.title"
+          descriptionKey="onboarding.write.description"
+          actionKey="onboarding.write.action"
+          t={t}
           onClick={onWrite}
         />
         <GuideStep
           done={backgroundImported}
-          title="导入一张背景"
-          description="登记第一张场景背景，之后可直接在剧本中选择。"
-          action="导入背景"
+          titleKey="onboarding.background.title"
+          descriptionKey="onboarding.background.description"
+          actionKey="onboarding.background.action"
+          t={t}
           onClick={onImportBackground}
         />
         <GuideStep
           done={previewConfirmed}
-          title="试演"
-          description="进入预览，确认这段故事可以运行。"
-          action="开始试演"
+          titleKey="onboarding.preview.title"
+          descriptionKey="onboarding.preview.description"
+          actionKey="onboarding.preview.action"
+          t={t}
           onClick={onPreview}
         />
       </div>
-      <button type="button" onClick={onSkip} style={skipButtonStyle}>暂时跳过</button>
+      <button type="button" onClick={onSkip} style={skipButtonStyle}>{t("onboarding.skip")}</button>
     </aside>
   );
 }
 
 function GuideStep({
   done,
-  title,
-  description,
-  action,
+  titleKey,
+  descriptionKey,
+  actionKey,
   onClick,
+  t,
 }: {
   done: boolean;
-  title: string;
-  description: string;
-  action: string;
+  titleKey: StudioMessageKey;
+  descriptionKey: StudioMessageKey;
+  actionKey: StudioMessageKey;
   onClick: () => void;
+  t: StudioTranslator;
 }) {
   const StatusIcon = done ? Check : Circle;
+  const action = t(actionKey);
   return (
     <div style={stepStyle}>
       <StatusIcon size={17} style={{ color: done ? "var(--status-ok)" : "var(--text-muted)", marginTop: 2, flexShrink: 0 }} />
       <div style={stepContentStyle}>
-        <div style={stepTitleStyle}>{title}</div>
-        <div style={stepDescriptionStyle}>{description}</div>
+        <div style={stepTitleStyle}>{t(titleKey)}</div>
+        <div style={stepDescriptionStyle}>{t(descriptionKey)}</div>
         <button type="button" className="gs-btn gs-btn--primary" onClick={onClick} style={stepButtonStyle}>
-          {done ? `再次${action}` : action}
+          {done ? t("onboarding.again", { action }) : action}
         </button>
       </div>
     </div>

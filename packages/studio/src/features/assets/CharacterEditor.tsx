@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { X, UserRoundPlus } from "lucide-react";
 import type { Manifest, ManifestCharacter, CharacterSpriteRef } from "../../lib/types";
+import { useStudioI18n, translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import { importAsset, pickAssetFiles } from "../../lib/tauri";
 import { Button } from "../common/Button";
 import { EmptyState } from "../common/EmptyState";
@@ -25,6 +26,7 @@ interface CharacterEditorProps {
 }
 
 export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, disabled = false }: CharacterEditorProps) {
+  const { t } = useStudioI18n();
   const characterIds = Object.keys(manifest.characters);
   const [selectedId, setSelectedId] = useState<string | null>(characterIds[0] ?? null);
   const [newExprDraft, setNewExprDraft] = useState<Record<string, string>>({});
@@ -88,7 +90,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
       updateCharacter(id, { sprites: { ...char.sprites, [normalizedExpr]: destRel } });
       setNewExprDraft((d) => ({ ...d, [id]: "" }));
     } catch (e) {
-      onFeedback?.(createCharacterSpriteImportFailureToast(fileName, e));
+      onFeedback?.(createCharacterSpriteImportFailureToast(fileName, e, t));
     } finally {
       setBusy(false);
     }
@@ -126,20 +128,20 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
       {/* 左：角色列表 */}
       <div style={listPanelStyle}>
         <div style={listHeaderStyle}>
-          <span style={panelTitleStyle}>角色</span>
+          <span style={panelTitleStyle}>{t("assets.character.title")}</span>
           <button
             type="button"
             style={{ ...smallBtnStyle, opacity: disabled ? 0.48 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
             onClick={addCharacter}
             disabled={disabled}
-            title={disabled ? "资源登记表结构异常，修复后才能编辑角色" : undefined}
+            title={disabled ? t("assets.character.editDisabledTitle") : undefined}
           >
-            ＋ 新建
+            {t("assets.character.new")}
           </button>
         </div>
-        {disabled && <div style={readOnlyHintStyle}>资源登记表结构异常，角色编辑已禁用。</div>}
+        {disabled && <div style={readOnlyHintStyle}>{t("assets.character.editDisabled")}</div>}
         <div style={listStyle}>
-          {characterIds.length === 0 && <div style={emptyRowStyle}>暂无角色</div>}
+          {characterIds.length === 0 && <div style={emptyRowStyle}>{t("assets.character.emptyList")}</div>}
           {characterIds.map((id) => (
             <button
               key={id}
@@ -163,16 +165,17 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
           <CharacterStage
             char={selected}
             projectPath={projectPath}
+            t={t}
           />
         ) : characterIds.length === 0 ? (
           <EmptyState
             icon={UserRoundPlus}
-            title="还没有角色"
-            description="新建第一个角色，再导入不同表情的立绘图片。"
-            action={!disabled ? <Button variant="primary" onClick={addCharacter}>新建第一个角色</Button> : undefined}
+            title={t("assets.character.emptyTitle")}
+            description={t("assets.character.emptyDescription")}
+            action={!disabled ? <Button variant="primary" onClick={addCharacter}>{t("assets.character.createFirst")}</Button> : undefined}
           />
         ) : (
-          <div style={emptyStageStyle}>选择一个角色</div>
+          <div style={emptyStageStyle}>{t("assets.character.select")}</div>
         )}
       </div>
 
@@ -181,9 +184,9 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
         {selected && selectedId ? (
           <>
             <div style={propGroupStyle}>
-              <div style={panelTitleStyle}>基本信息</div>
+              <div style={panelTitleStyle}>{t("assets.character.basic")}</div>
               <label style={fieldLabelStyle}>
-                名称
+                {t("assets.character.name")}
                 <input
                   type="text"
                   value={selected.name}
@@ -193,7 +196,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                 />
               </label>
               <label style={fieldLabelStyle}>
-                颜色
+                {t("assets.character.color")}
                 <input
                   type="color"
                   value={selected.color}
@@ -215,13 +218,13 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                   onClick={() => deleteCharacter(selectedId)}
                   disabled={disabled}
                 >
-                  删除角色
+                  {t("assets.character.delete")}
                 </button>
               </div>
             </div>
 
             <div style={propGroupStyle}>
-              <div style={panelTitleStyle}>表情资源</div>
+              <div style={panelTitleStyle}>{t("assets.character.expressions")}</div>
               {Object.entries(selected.sprites).map(([expr, sprite]) => (
                 <SpriteExprRow
                   key={expr}
@@ -238,6 +241,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                     updateCharacter(selectedId, { sprites: reordered });
                   }}
                   disabled={disabled}
+                  t={t}
                 />
               ))}
               <SpriteExprAddForm
@@ -246,11 +250,12 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                 onDraftChange={(v) => setNewExprDraft((d) => ({ ...d, [selectedId]: v }))}
                 onAdd={(expr) => void addSpriteExpr(selectedId, expr)}
                 disabled={disabled}
+                t={t}
               />
             </div>
 
             <div style={propGroupStyle}>
-              <div style={panelTitleStyle}>高级</div>
+              <div style={panelTitleStyle}>{t("assets.character.advanced")}</div>
               <div style={idStyle}>id: {selectedId}</div>
             </div>
           </>
@@ -262,10 +267,14 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   );
 }
 
-export function createCharacterSpriteImportFailureToast(fileName: string, error: unknown): ToastInput {
+export function createCharacterSpriteImportFailureToast(
+  fileName: string,
+  error: unknown,
+  t: StudioTranslator = translateZhCN,
+): ToastInput {
   return {
     kind: "error",
-    message: "导入角色表情失败",
+    message: t("assets.character.importFailed"),
     detail: `${fileName}\n${formatUnknownError(error)}`,
   };
 }
@@ -275,7 +284,15 @@ function formatUnknownError(error: unknown): string {
 }
 
 /** 中间舞台：渲染选中角色的 default sprite。 */
-function CharacterStage({ char, projectPath }: { char: ManifestCharacter; projectPath: string }) {
+function CharacterStage({
+  char,
+  projectPath,
+  t,
+}: {
+  char: ManifestCharacter;
+  projectPath: string;
+  t: StudioTranslator;
+}) {
   const defaultSprite = char.sprites.default;
   const defaultPath = defaultSprite
     ? typeof defaultSprite === "string" ? defaultSprite : defaultSprite.fallback
@@ -291,7 +308,7 @@ function CharacterStage({ char, projectPath }: { char: ManifestCharacter; projec
           placeholderStyle={stagePlaceholderStyle}
         />
       ) : (
-        <span style={stagePlaceholderStyle}>未设置默认表情</span>
+        <span style={stagePlaceholderStyle}>{t("assets.character.noDefaultExpression")}</span>
       )}
       <div style={{ ...stageNameStyle, color: char.color }}>
         {char.name}
@@ -309,6 +326,7 @@ function SpriteExprRow({
   onRemove,
   onSetDefault,
   disabled,
+  t,
 }: {
   expr: string;
   sprite: CharacterSpriteRef;
@@ -318,6 +336,7 @@ function SpriteExprRow({
   onRemove: () => void;
   onSetDefault: () => void;
   disabled: boolean;
+  t: StudioTranslator;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(expr);
@@ -360,15 +379,19 @@ function SpriteExprRow({
               setDraft(expr);
               setEditing(true);
             }}
-            title="点击重命名"
+            title={t("assets.character.renameExpression")}
             disabled={disabled}
           >
             {expr}
-            {isDefault && <span style={defaultTagStyle}>默认</span>}
+            {isDefault && <span style={defaultTagStyle}>{t("assets.character.defaultExpression")}</span>}
           </button>
         )}
         <span style={exprPathStyle} title={path}>
-          {typeof sprite === "string" ? path : `${path} · 图集 ${sprite.atlas}/${sprite.clip}`}
+          {typeof sprite === "string" ? path : t("assets.character.atlas", {
+            path,
+            atlas: sprite.atlas,
+            clip: sprite.clip,
+          })}
         </span>
       </div>
       <div style={{ display: "flex", gap: "var(--space-1)" }}>
@@ -377,7 +400,7 @@ function SpriteExprRow({
             type="button"
             style={{ ...tinyBtnStyle, opacity: disabled ? 0.48 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
             onClick={onSetDefault}
-            title="设为默认"
+            title={t("assets.character.setDefaultExpression")}
             disabled={disabled}
           >
             ★
@@ -392,7 +415,7 @@ function SpriteExprRow({
             cursor: disabled ? "not-allowed" : "pointer",
           }}
           onClick={onRemove}
-          title="删除表情"
+          title={t("assets.character.deleteExpression")}
           disabled={disabled}
         >
           <X size={14} />
@@ -408,19 +431,21 @@ function SpriteExprAddForm({
   onDraftChange,
   onAdd,
   disabled,
+  t,
 }: {
   draft: string;
   busy: boolean;
   onDraftChange: (v: string) => void;
   onAdd: (expr: string) => void;
   disabled: boolean;
+  t: StudioTranslator;
 }) {
   return (
     <div style={addFormStyle}>
       <input
         type="text"
         value={draft}
-        placeholder="表情名（留空为 default）"
+        placeholder={t("assets.character.expressionPlaceholder")}
         onChange={(e) => onDraftChange(e.target.value)}
         disabled={disabled}
         style={fieldInputStyle}
@@ -430,9 +455,11 @@ function SpriteExprAddForm({
         style={{ ...smallBtnStyle, opacity: busy || disabled ? 0.5 : 1, cursor: busy || disabled ? "not-allowed" : "pointer" }}
         disabled={disabled || busy}
         onClick={() => onAdd(draft)}
-        title={disabled ? "资源登记表结构异常，修复后才能导入角色图片" : "选择图片；表情名留空时会自动生成"}
+        title={disabled
+          ? t("assets.character.importDisabled")
+          : t("assets.character.chooseImageHint")}
       >
-        {busy ? "导入中…" : "选择图片"}
+        {busy ? t("assets.character.importing") : t("assets.character.chooseImage")}
       </button>
     </div>
   );

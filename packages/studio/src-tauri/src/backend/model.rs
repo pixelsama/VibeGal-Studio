@@ -384,12 +384,44 @@ impl<'de> Deserialize<'de> for ThemeMode {
     }
 }
 
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub enum StudioLanguage {
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+    #[serde(rename = "en")]
+    En,
+}
+
+impl Default for StudioLanguage {
+    fn default() -> Self {
+        StudioLanguage::System
+    }
+}
+
+impl<'de> Deserialize<'de> for StudioLanguage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "zh-CN" => StudioLanguage::ZhCn,
+            "en" => StudioLanguage::En,
+            _ => StudioLanguage::System,
+        })
+    }
+}
+
 /// 应用级设置（非项目级），持久化到 app config 目录。
 /// 新增字段时加 #[serde(default)] 保证向前兼容。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AppSettings {
     #[serde(default)]
     pub theme: ThemeMode,
+    #[serde(default, rename = "studioLanguage")]
+    pub studio_language: StudioLanguage,
     #[serde(default, rename = "rendererTrust")]
     pub renderer_trust: HashMap<String, String>,
 }
@@ -398,6 +430,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         AppSettings {
             theme: ThemeMode::default(),
+            studio_language: StudioLanguage::default(),
             renderer_trust: HashMap::new(),
         }
     }

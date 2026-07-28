@@ -15,6 +15,7 @@ import {
 } from "../../lib/draftRecovery";
 import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
 import { useSaveShortcut } from "../common/useSaveShortcut";
+import { useStudioI18n } from "../../lib/i18n";
 import {
   DEFAULT_STAGE_RESOLUTION,
   STAGE_HEIGHT_RANGE,
@@ -246,6 +247,7 @@ export function ProjectSettings({
   onSaved: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const { t } = useStudioI18n();
   const initialSettings = useMemo(() => readProjectMetaSettings(project.content.meta), [project.content.meta]);
   const draftStorage = useMemo(getSessionDraftStorage, []);
   const draftStorageKey = useMemo(
@@ -420,8 +422,8 @@ export function ProjectSettings({
       setDraftBaseVersion((version) => version + 1);
       await onSaved();
       setStatus(isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current)
-        ? "已保存"
-        : "已保存；保存期间的新改动仍未保存。");
+        ? t("projectSettings.saved")
+        : t("projectSettings.savedWithChanges"));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -458,7 +460,9 @@ export function ProjectSettings({
       const repairedSet = new Set(repaired);
       setMissingSupportFiles((current) => current.filter((path) => !repairedSet.has(path)));
       await onSaved();
-      setSupportFileStatus(repaired.length > 0 ? `已补齐 ${repaired.length} 个辅助文件` : "辅助文件已是完整状态");
+      setSupportFileStatus(repaired.length > 0
+        ? t("projectSettings.support.repaired", { count: repaired.length })
+        : t("projectSettings.support.complete"));
     } catch (error) {
       setSupportFileStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -470,7 +474,7 @@ export function ProjectSettings({
     <div className="gs-page-shell" style={pageStyle}>
       <section style={sectionStyle}>
         <div style={headerRowStyle}>
-          <h2 className="gs-page-title" style={sectionTitleStyle}>项目设置</h2>
+          <h2 className="gs-page-title" style={sectionTitleStyle}>{t("projectSettings.title")}</h2>
           {status && <span style={statusStyle}>{status}</span>}
         </div>
 
@@ -478,9 +482,9 @@ export function ProjectSettings({
           <div role="status" style={supportFilesNoticeStyle}>
             <div style={supportFilesHeaderStyle}>
               <div>
-                <strong style={supportFilesTitleStyle}>项目辅助文件不完整</strong>
+                <strong style={supportFilesTitleStyle}>{t("projectSettings.support.title")}</strong>
                 <p style={supportFilesTextStyle}>
-                  打开项目时不会自动写入文件。补齐后可恢复类型提示和项目结构说明，已有文件不会被覆盖。
+                  {t("projectSettings.support.description")}
                 </p>
               </div>
               <button
@@ -493,7 +497,7 @@ export function ProjectSettings({
                   cursor: repairingSupportFiles ? "default" : "pointer",
                 }}
               >
-                {repairingSupportFiles ? "补齐中" : "一键补齐"}
+                {repairingSupportFiles ? t("projectSettings.support.repairing") : t("projectSettings.support.repair")}
               </button>
             </div>
             <ul style={supportFilesListStyle}>
@@ -505,33 +509,33 @@ export function ProjectSettings({
 
         <div className="gs-settings-grid">
           <div className="gs-settings-card" style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>基础信息</span>
+            <span style={fieldLabelStyle}>{t("projectSettings.basic")}</span>
             <TextField
-              label="作品标题"
-              hint="玩家在标题画面和导出物里看到的名字。左上角的项目名只是磁盘上的文件夹标识。"
+              label={t("projectSettings.workTitle")}
+              hint={t("projectSettings.workTitleHint")}
               value={titleText}
               onChange={(value) => setDraftText(setTitleText, value)}
             />
             <div style={numberRowStyle}>
               <NumberField
-                label="默认打字速度"
-                hint="每秒显示几个字"
+                label={t("projectSettings.typingSpeed")}
+                hint={t("projectSettings.typingSpeedHint")}
                 value={typingSpeedText}
                 min={0.1}
                 step={0.1}
                 onChange={(value) => setDraftText(setTypingSpeedText, value)}
               />
               <NumberField
-                label="默认自动播放间隔"
-                hint="自动播放时每句停留的毫秒数"
+                label={t("projectSettings.autoAdvance")}
+                hint={t("projectSettings.autoAdvanceHint")}
                 value={autoAdvanceText}
                 min={0}
                 step={1}
                 onChange={(value) => setDraftText(setAutoAdvanceText, value)}
               />
               <NumberField
-                label="章节间隔"
-                hint="切换章节时的停顿毫秒数"
+                label={t("projectSettings.chapterGap")}
+                hint={t("projectSettings.chapterGapHint")}
                 value={chapterGapText}
                 min={0}
                 step={1}
@@ -541,7 +545,7 @@ export function ProjectSettings({
           </div>
 
           <div className="gs-settings-card" style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>舞台分辨率</span>
+            <span style={fieldLabelStyle}>{t("projectSettings.stage")}</span>
             <div style={presetRowStyle}>
               {STAGE_PRESETS.map((preset) => {
                 const active = activePreset === preset;
@@ -565,7 +569,7 @@ export function ProjectSettings({
             </div>
             <div style={numberRowStyle}>
               <NumberField
-                label="宽"
+                label={t("projectSettings.width")}
                 value={widthText}
                 min={STAGE_WIDTH_RANGE.min}
                 max={STAGE_WIDTH_RANGE.max}
@@ -573,7 +577,7 @@ export function ProjectSettings({
                 onChange={handleWidthChange}
               />
               <NumberField
-                label="高"
+                label={t("projectSettings.height")}
                 value={heightText}
                 min={STAGE_HEIGHT_RANGE.min}
                 max={STAGE_HEIGHT_RANGE.max}
@@ -590,35 +594,35 @@ export function ProjectSettings({
                   cursor: !draft || saving ? "default" : "pointer",
                 }}
               >
-                {saving ? "保存中" : "保存"}
+                {saving ? t("projectSettings.saving") : t("projectSettings.save")}
               </button>
             </div>
           </div>
 
           <div className="gs-settings-card" style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>导出信息</span>
+            <span style={fieldLabelStyle}>{t("projectSettings.distribution")}</span>
             <div style={numberRowStyle}>
               <TextField
-                label="作品版本"
-                hint="独立于 Studio 版本，使用 SemVer，例如 1.0.0。"
+                label={t("projectSettings.version")}
+                hint={t("projectSettings.versionHint")}
                 value={distributionVersionText}
                 onChange={(value) => setDraftText(setDistributionVersionText, value)}
               />
               <TextField
-                label="安装包名称"
-                hint="只控制包和窗口显示名；留空时沿用作品标题。"
+                label={t("projectSettings.packageName")}
+                hint={t("projectSettings.packageNameHint")}
                 value={distributionProductNameText}
                 onChange={(value) => setDraftText(setDistributionProductNameText, value)}
               />
               <TextField
-                label="图标路径"
-                hint="可选，只接受 assets/ 下的项目相对路径；构建不会改写源图。"
+                label={t("projectSettings.iconPath")}
+                hint={t("projectSettings.iconPathHint")}
                 value={distributionIconText}
                 onChange={(value) => setDraftText(setDistributionIconText, value)}
               />
             </div>
             <label style={numberFieldStyle}>
-              <span style={numberLabelStyle}>窗口适配</span>
+              <span style={numberLabelStyle}>{t("projectSettings.viewport")}</span>
               <select
                 value={distributionViewportMode}
                 onChange={(event) => setDraftText(
@@ -627,14 +631,14 @@ export function ProjectSettings({
                 )}
                 style={textInputStyle}
               >
-                <option value="fit">保持比例并留边</option>
-                <option value="fill">保持比例并裁切</option>
-                <option value="responsive">由界面风格自适应决定</option>
+                <option value="fit">{t("projectSettings.viewport.fit")}</option>
+                <option value="fill">{t("projectSettings.viewport.fill")}</option>
+                <option value="responsive">{t("projectSettings.viewport.responsive")}</option>
               </select>
             </label>
             <div style={numberRowStyle}>
               <NumberField
-                label="设计宽度"
+                label={t("projectSettings.designWidth")}
                 value={distributionViewportWidthText}
                 min={STAGE_WIDTH_RANGE.min}
                 max={STAGE_WIDTH_RANGE.max}
@@ -642,7 +646,7 @@ export function ProjectSettings({
                 onChange={(value) => setDraftText(setDistributionViewportWidthText, value)}
               />
               <NumberField
-                label="设计高度"
+                label={t("projectSettings.designHeight")}
                 value={distributionViewportHeightText}
                 min={STAGE_HEIGHT_RANGE.min}
                 max={STAGE_HEIGHT_RANGE.max}

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SetInstr, VariableRegistry } from "@vibegal/engine";
 import type { GraphEdge, ProjectGraph } from "../../lib/types";
+import { resolveCatalogMessage, StudioI18nProvider } from "../../lib/i18n";
 import { EdgeEffectsEditor, defaultEffect, describeEdgeEffects } from "./EdgeEffectsEditor";
 import { normalizeBranchEdge } from "./BranchRules";
 
@@ -49,6 +50,24 @@ describe("EdgeEffectsEditor", () => {
     expect(html).toContain("disabled");
     expect(html).toContain("先在「故事状态」里建一个状态");
   });
+
+  it("renders English actions while preserving story-state names", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(EdgeEffectsEditor, {
+        effects: [{ t: "set", key: "affection", expr: "affection + 3" }],
+        registry,
+        onChange: () => {},
+      }),
+    ));
+
+    expect(html).toContain("After taking this exit");
+    expect(html).toContain("Add another");
+    expect(html).toContain("Increase");
+    expect(html).toContain("好感度");
+    expect(html).not.toContain("走这条之后");
+  });
 });
 
 describe("defaultEffect", () => {
@@ -81,6 +100,17 @@ describe("describeEdgeEffects", () => {
   it("is empty when there is nothing attached", () => {
     expect(describeEdgeEffects(undefined, registry)).toBe("");
     expect(describeEdgeEffects([], registry)).toBe("");
+  });
+
+  it("localizes summaries without translating creator-authored labels", () => {
+    expect(describeEdgeEffects(
+      [
+        { t: "set", key: "affection", expr: "affection + 3" },
+        { t: "set", key: "has_key", value: true },
+      ],
+      registry,
+      (key, params) => resolveCatalogMessage("en", key, params),
+    )).toBe("Increase 好感度 by 3; Mark 拿到钥匙 as happened");
   });
 });
 

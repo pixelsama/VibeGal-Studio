@@ -15,6 +15,11 @@ import { BottomSheet } from "../common/BottomSheet";
 import { Field, NumberInput, Switch } from "../common/Form";
 import type { Manifest } from "../../lib/types";
 import type { VariableRegistry } from "@vibegal/engine";
+import {
+  translateZhCN,
+  useStudioI18n,
+  type StudioTranslator,
+} from "../../lib/i18n";
 
 export type ScenarioSelectionKind =
   | "empty"
@@ -112,6 +117,7 @@ export function ScenarioNodeLayout({
   onToggleInspectorPane: () => void;
   resizeHandle?: ReactNode;
 }) {
+  const { t } = useStudioI18n();
   const rightWidth = inspectorCollapsed ? "0px" : inspectorPaneWidth ? `${inspectorPaneWidth}px` : "minmax(360px, 42%)";
   return (
     <div
@@ -134,7 +140,7 @@ export function ScenarioNodeLayout({
         }}
       >
         <div data-region="node-preview" style={previewRegionStyle}>{preview}</div>
-        <BottomSheet title="节点摘要" expandedHeight="48%">
+        <BottomSheet title={t("script.scenario.nodeSummary")} expandedHeight="48%">
           <div data-region="scenario-inspector" style={inspectorRegionStyle}>{inspector}</div>
         </BottomSheet>
       </section>
@@ -142,16 +148,18 @@ export function ScenarioNodeLayout({
         <button
           type="button"
           className="gs-inspector-rail"
-          aria-label="切换属性面板"
+          aria-label={t("script.scenario.toggleInspector")}
           aria-controls={inspectorPaneId}
           aria-expanded={!inspectorCollapsed}
-          title={inspectorCollapsed ? "显示属性面板" : "收起属性面板"}
+          title={inspectorCollapsed
+            ? t("script.scenario.showInspector")
+            : t("script.scenario.hideInspector")}
           onClick={onToggleInspectorPane}
           style={railButtonStyle}
         >
           {inspectorCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
         </button>
-        <span style={railLabelStyle}>属性</span>
+        <span style={railLabelStyle}>{t("script.scenario.properties")}</span>
       </div>
       {resizeHandle}
     </div>
@@ -169,11 +177,12 @@ export function ScenarioInlineControls({
   variables?: VariableRegistry;
   onChange: (instruction: Instruction) => void;
 }) {
+  const { t } = useStudioI18n();
   return (
-    <div style={inlinePanelStyle} aria-label="当前行可视化控件">
-      <span style={inlineTitleStyle}>{inlineInstructionTitle(instruction)}</span>
+    <div style={inlinePanelStyle} aria-label={t("script.scenario.inlineControls")}>
+      <span style={inlineTitleStyle}>{inlineInstructionTitle(instruction, t)}</span>
       <div style={inlineFieldsStyle}>
-        {inlineInstructionFields(instruction, manifest, variables, onChange)}
+        {inlineInstructionFields(instruction, manifest, variables, onChange, t)}
       </div>
     </div>
   );
@@ -184,73 +193,74 @@ function inlineInstructionFields(
   manifest: Manifest,
   variables: VariableRegistry | undefined,
   onChange: (instruction: Instruction) => void,
+  t: StudioTranslator,
 ): ReactNode {
   switch (instruction.t) {
     case "say":
       return <>
-        <CompactResourcePicker label="角色" manifest={manifest} kind="character" value={instruction.who} onChange={(who) => onChange({ ...instruction, who })} />
-        <CompactResourcePicker label="表情" manifest={manifest} kind="expression" characterId={instruction.who} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
-        <CompactResourcePicker label="本句语音" manifest={manifest} kind="voice" value={instruction.voice ?? ""} onChange={(voice) => onChange(withOptionalVoice(instruction, voice))} />
-        <CompactNumber label="停顿" value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />
+        <CompactResourcePicker label={t("script.scenario.field.character")} manifest={manifest} kind="character" value={instruction.who} onChange={(who) => onChange({ ...instruction, who })} />
+        <CompactResourcePicker label={t("script.scenario.field.expression")} manifest={manifest} kind="expression" characterId={instruction.who} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
+        <CompactResourcePicker label={t("script.scenario.field.lineVoice")} manifest={manifest} kind="voice" value={instruction.voice ?? ""} onChange={(voice) => onChange(withOptionalVoice(instruction, voice))} />
+        <CompactNumber label={t("script.scenario.field.pause")} value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />
       </>;
     case "narrate":
-      return <CompactNumber label="停顿" value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />;
+      return <CompactNumber label={t("script.scenario.field.pause")} value={instruction.ms ?? 0} onChange={(ms) => onChange({ ...instruction, ms })} />;
     case "bg":
       return <>
-        <CompactResourcePicker label="背景" manifest={manifest} kind="background" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
-        <CompactSelect label="转场" value={instruction.trans ?? "fade"} options={["fade", "cut", "dissolve"]} onChange={(trans) => onChange({ ...instruction, trans: trans as typeof instruction.trans })} />
-        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.bg.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+        <CompactResourcePicker label={t("script.scenario.field.background")} manifest={manifest} kind="background" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactSelect label={t("script.scenario.field.transition")} value={instruction.trans ?? "fade"} options={["fade", "cut", "dissolve"]} onChange={(trans) => onChange({ ...instruction, trans: trans as typeof instruction.trans })} />
+        <CompactNumber label={t("script.scenario.field.duration")} value={instruction.ms ?? INSTRUCTION_DEFAULTS.bg.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
       </>;
     case "char":
       return <>
-        <CompactResourcePicker label="角色" manifest={manifest} kind="character" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
-        <CompactResourcePicker label="表情" manifest={manifest} kind="expression" characterId={instruction.id} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
-        <CompactSelect label="位置" value={instruction.pos ?? "center"} options={["left", "center", "right"]} onChange={(pos) => onChange({ ...instruction, pos })} />
-        <CompactNumber label="缩放" value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale} min={0.1} max={4} step={0.1} integer={false} onChange={(scale) => onChange({ ...instruction, scale })} />
-        <CompactSwitch label="翻转" checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip} onChange={(flip) => onChange({ ...instruction, flip })} />
-        <CompactNumber label="表情过渡" value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs} onChange={(exprMs) => onChange({ ...instruction, exprMs })} />
-        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
-        <CompactSwitch label="清场" checked={instruction.clear ?? false} onChange={(clear) => onChange({ ...instruction, clear })} />
-        <CompactSwitch label="退场" checked={instruction.remove ?? false} onChange={(remove) => onChange({ ...instruction, remove })} />
+        <CompactResourcePicker label={t("script.scenario.field.character")} manifest={manifest} kind="character" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactResourcePicker label={t("script.scenario.field.expression")} manifest={manifest} kind="expression" characterId={instruction.id} value={instruction.expr ?? "default"} onChange={(expr) => onChange({ ...instruction, expr })} />
+        <CompactSelect label={t("script.scenario.field.position")} value={instruction.pos ?? "center"} options={["left", "center", "right"]} onChange={(pos) => onChange({ ...instruction, pos })} />
+        <CompactNumber label={t("script.scenario.field.scale")} value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale} min={0.1} max={4} step={0.1} integer={false} onChange={(scale) => onChange({ ...instruction, scale })} />
+        <CompactSwitch label={t("script.scenario.field.flip")} checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip} onChange={(flip) => onChange({ ...instruction, flip })} />
+        <CompactNumber label={t("script.scenario.field.expressionTransition")} value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs} onChange={(exprMs) => onChange({ ...instruction, exprMs })} />
+        <CompactNumber label={t("script.scenario.field.duration")} value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+        <CompactSwitch label={t("script.scenario.field.clear")} checked={instruction.clear ?? false} onChange={(clear) => onChange({ ...instruction, clear })} />
+        <CompactSwitch label={t("script.scenario.field.remove")} checked={instruction.remove ?? false} onChange={(remove) => onChange({ ...instruction, remove })} />
       </>;
     case "bgm":
       return <>
         <CompactResourcePicker label="BGM" manifest={manifest} kind="bgm" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
-        <CompactNumber label="淡入" value={instruction.fade ?? INSTRUCTION_DEFAULTS.bgm.fade} onChange={(fade) => onChange({ ...instruction, fade })} />
-        <CompactSwitch label="循环" checked={instruction.loop ?? true} onChange={(loop) => onChange({ ...instruction, loop })} />
+        <CompactNumber label={t("script.scenario.field.fadeIn")} value={instruction.fade ?? INSTRUCTION_DEFAULTS.bgm.fade} onChange={(fade) => onChange({ ...instruction, fade })} />
+        <CompactSwitch label={t("script.scenario.field.loop")} checked={instruction.loop ?? true} onChange={(loop) => onChange({ ...instruction, loop })} />
       </>;
     case "sfx":
     case "voice":
-      return <CompactResourcePicker label={instruction.t === "sfx" ? "音效" : "语音"} manifest={manifest} kind={instruction.t} value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />;
+      return <CompactResourcePicker label={instruction.t === "sfx" ? t("script.scenario.field.soundEffect") : t("script.scenario.field.voice")} manifest={manifest} kind={instruction.t} value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />;
     case "showCg":
       return <CompactResourcePicker label="CG" manifest={manifest} kind="cg" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />;
     case "playVideo":
       return <>
-        <CompactResourcePicker label="视频" manifest={manifest} kind="video" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
-        <CompactSwitch label="可跳过" checked={instruction.skippable ?? true} onChange={(skippable) => onChange({ ...instruction, skippable })} />
+        <CompactResourcePicker label={t("script.scenario.field.video")} manifest={manifest} kind="video" value={instruction.id} onChange={(id) => onChange({ ...instruction, id })} />
+        <CompactSwitch label={t("script.scenario.field.skippable")} checked={instruction.skippable ?? true} onChange={(skippable) => onChange({ ...instruction, skippable })} />
       </>;
     case "wait":
-      return <CompactNumber label="等待毫秒" value={instruction.ms} onChange={(ms) => onChange({ ...instruction, ms })} />;
+      return <CompactNumber label={t("script.scenario.field.waitMs")} value={instruction.ms} onChange={(ms) => onChange({ ...instruction, ms })} />;
     case "effect":
       return <>
-        <CompactSelect label="效果" value={instruction.type} options={["shake", "flash", "blur"]} onChange={(type) => onChange({ ...instruction, type: type as typeof instruction.type })} />
-        <CompactNumber label="强度" value={instruction.intensity ?? INSTRUCTION_DEFAULTS.effect.intensity} onChange={(intensity) => onChange({ ...instruction, intensity })} />
-        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.effect.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+        <CompactSelect label={t("script.scenario.field.effect")} value={instruction.type} options={["shake", "flash", "blur"]} onChange={(type) => onChange({ ...instruction, type: type as typeof instruction.type })} />
+        <CompactNumber label={t("script.scenario.field.intensity")} value={instruction.intensity ?? INSTRUCTION_DEFAULTS.effect.intensity} onChange={(intensity) => onChange({ ...instruction, intensity })} />
+        <CompactNumber label={t("script.scenario.field.duration")} value={instruction.ms ?? INSTRUCTION_DEFAULTS.effect.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
       </>;
     case "transition":
       return <>
-        <CompactSelect label="转场" value={instruction.type} options={["fade_in", "fade_out", "white_in", "white_out", "black"]} onChange={(type) => onChange({ ...instruction, type: type as typeof instruction.type })} />
-        <CompactNumber label="时长" value={instruction.ms ?? INSTRUCTION_DEFAULTS.transition.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
+        <CompactSelect label={t("script.scenario.field.transition")} value={instruction.type} options={["fade_in", "fade_out", "white_in", "white_out", "black"]} onChange={(type) => onChange({ ...instruction, type: type as typeof instruction.type })} />
+        <CompactNumber label={t("script.scenario.field.duration")} value={instruction.ms ?? INSTRUCTION_DEFAULTS.transition.ms} onChange={(ms) => onChange({ ...instruction, ms })} />
       </>;
     case "set":
       return <StateChangeEditor instruction={instruction} variables={variables} onChange={onChange} />;
     case "inputName":
       return <>
-        <CompactTextStatePicker label="保存为" manifest={manifest} variables={variables} value={instruction.key} onChange={(key) => onChange({ ...instruction, key })} />
-        <CompactNumber label="最多字符" value={instruction.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength} min={1} max={100} onChange={(maxLength) => onChange({ ...instruction, maxLength })} />
+        <CompactTextStatePicker label={t("script.scenario.field.saveAs")} manifest={manifest} variables={variables} value={instruction.key} onChange={(key) => onChange({ ...instruction, key })} />
+        <CompactNumber label={t("script.scenario.field.maxCharacters")} value={instruction.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength} min={1} max={100} onChange={(maxLength) => onChange({ ...instruction, maxLength })} />
       </>;
     default:
-      return <span style={mutedTextStyle}>更多参数可在属性面板中编辑。</span>;
+      return <span style={mutedTextStyle}>{t("script.scenario.moreInInspector")}</span>;
   }
 }
 
@@ -325,8 +335,30 @@ function CompactSwitch({ label, checked, onChange }: { label: string; checked: b
   return <label style={inlineSwitchStyle}><span>{label}</span><Switch aria-label={label} checked={checked} onChange={onChange} /></label>;
 }
 
-function inlineInstructionTitle(instruction: Instruction): string {
-  return ({ say: "台词", narrate: "旁白", bg: "背景", char: "角色", bgm: "背景音乐", sfx: "音效", voice: "语音", showCg: "CG", playVideo: "视频", wait: "等待", effect: "画面效果", transition: "转场", set: "改变故事状态", inputName: "玩家命名" } as Record<string, string>)[instruction.t] ?? instruction.t;
+function inlineInstructionTitle(
+  instruction: Instruction,
+  t: StudioTranslator = translateZhCN,
+): string {
+  const key = ({
+    say: "script.scenario.instruction.say",
+    narrate: "script.scenario.instruction.narrate",
+    bg: "script.scenario.instruction.bg",
+    char: "script.scenario.instruction.char",
+    bgm: "script.scenario.instruction.bgm",
+    sfx: "script.scenario.instruction.sfx",
+    voice: "script.scenario.instruction.voice",
+    showCg: "script.scenario.instruction.showCg",
+    playVideo: "script.scenario.instruction.playVideo",
+    wait: "script.scenario.instruction.wait",
+    effect: "script.scenario.instruction.effect",
+    transition: "script.scenario.instruction.transition",
+    set: "script.scenario.instruction.set",
+    inputName: "script.scenario.instruction.inputName",
+    pause: "script.scenario.instruction.pause",
+    unlock: "script.scenario.instruction.unlock",
+    completeEnding: "script.scenario.instruction.completeEnding",
+  } as const)[instruction.t];
+  return key ? t(key) : instruction.t;
 }
 
 export function ScenarioInspector({
@@ -342,6 +374,7 @@ export function ScenarioInspector({
   onReplaceInstruction: (instruction: Instruction) => void;
   variables?: VariableRegistry;
 }) {
+  const { t } = useStudioI18n();
   const instruction = selection.instruction;
 
   if (!instruction) {
@@ -353,12 +386,15 @@ export function ScenarioInspector({
           <div style={issueListStyle}>
             {diagnostics.map((diagnostic) => (
               <IssueText key={`${diagnostic.line}-${diagnostic.message}`}>
-                第 {diagnostic.line} 行：{diagnostic.message}
+                {t("script.scenario.diagnosticLine", {
+                  line: diagnostic.line,
+                  detail: diagnostic.message,
+                })}
               </IssueText>
             ))}
           </div>
         ) : (
-          <div style={mutedTextStyle}>选择一行剧本后可在这里编辑命令参数。</div>
+          <div style={mutedTextStyle}>{t("script.scenario.selectLineHint")}</div>
         )}
       </InspectorPanel>
     );
@@ -367,23 +403,23 @@ export function ScenarioInspector({
   switch (instruction.t) {
     case "say":
       return (
-        <InspectorPanel title="台词">
+        <InspectorPanel title={t("script.scenario.instruction.say")}>
           <ResourcePicker
-            label="角色"
+            label={t("script.scenario.field.character")}
             manifest={manifest}
             kind="character"
             value={instruction.who}
             onChange={(who) => onReplaceInstruction({ ...instruction, who })}
           />
           <ExpressiveTextField
-            label="当前行文本"
+            label={t("script.scenario.currentLineText")}
             value={instruction.text}
             manifest={manifest}
             variables={variables}
             onChange={(text) => onReplaceInstruction({ ...instruction, text })}
           />
           <ResourcePicker
-            label="表情"
+            label={t("script.scenario.field.expression")}
             manifest={manifest}
             kind="expression"
             characterId={instruction.who}
@@ -391,60 +427,60 @@ export function ScenarioInspector({
             onChange={(expr) => onReplaceInstruction({ ...instruction, expr })}
           />
           <ResourcePicker
-            label="本句语音"
+            label={t("script.scenario.field.lineVoice")}
             manifest={manifest}
             kind="voice"
             value={instruction.voice ?? ""}
             onChange={(voice) => onReplaceInstruction(withOptionalVoice(instruction, voice))}
           />
           <OptionalMillisecondsField
-            label="自动播放停顿"
+            label={t("script.scenario.autoPause")}
             value={instruction.ms}
             fallback={0}
-            hint="0 表示跟随作品的全局自动播放停顿。"
+            hint={t("script.scenario.autoPauseHint")}
             onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
           />
-          <div style={mutedTextStyle}>这里编辑的内容会同步回左侧当前行；立绘登场与位置变化请使用角色命令。</div>
+          <div style={mutedTextStyle}>{t("script.scenario.sayHint")}</div>
         </InspectorPanel>
       );
     case "narrate":
       return (
-        <InspectorPanel title="旁白">
+        <InspectorPanel title={t("script.scenario.instruction.narrate")}>
           <ExpressiveTextField
-            label="当前行文本"
+            label={t("script.scenario.currentLineText")}
             value={instruction.text}
             manifest={manifest}
             variables={variables}
             onChange={(text) => onReplaceInstruction({ ...instruction, text })}
           />
           <OptionalMillisecondsField
-            label="自动播放停顿"
+            label={t("script.scenario.autoPause")}
             value={instruction.ms}
             fallback={0}
-            hint="0 表示跟随作品的全局自动播放停顿。"
+            hint={t("script.scenario.autoPauseHint")}
             onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
           />
-          <div style={mutedTextStyle}>这里编辑的内容会同步回左侧当前行。</div>
+          <div style={mutedTextStyle}>{t("script.scenario.narrateHint")}</div>
         </InspectorPanel>
       );
     case "bg":
       return (
-        <InspectorPanel title="背景">
+        <InspectorPanel title={t("script.scenario.instruction.bg")}>
           <ResourcePicker
-            label="背景"
+            label={t("script.scenario.field.background")}
             manifest={manifest}
             kind="background"
             value={instruction.id}
             onChange={(id) => onReplaceInstruction({ ...instruction, id })}
           />
           <EnumField
-            label="转场"
+            label={t("script.scenario.field.transition")}
             value={instruction.trans ?? "fade"}
             options={["fade", "cut", "dissolve"]}
             onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "dissolve" })}
           />
           <NumberField
-            label="转场时长（毫秒）"
+            label={t("script.scenario.transitionDurationMs")}
             value={instruction.ms ?? INSTRUCTION_DEFAULTS.bg.ms}
             min={0}
             integer
@@ -454,16 +490,16 @@ export function ScenarioInspector({
       );
     case "char":
       return (
-        <InspectorPanel title="角色">
+        <InspectorPanel title={t("script.scenario.instruction.char")}>
           <ResourcePicker
-            label="角色"
+            label={t("script.scenario.field.character")}
             manifest={manifest}
             kind="character"
             value={instruction.id}
             onChange={(id) => onReplaceInstruction({ ...instruction, id })}
           />
           <ResourcePicker
-            label="表情"
+            label={t("script.scenario.field.expression")}
             manifest={manifest}
             kind="expression"
             characterId={instruction.id}
@@ -471,17 +507,17 @@ export function ScenarioInspector({
             onChange={(expr) => onReplaceInstruction({ ...instruction, expr })}
           />
           <TextField
-            label="位置槽"
+            label={t("script.scenario.positionSlot")}
             value={instruction.pos ?? "center"}
             onChange={(pos) => onReplaceInstruction({ ...instruction, pos })}
           />
           <TextField
-            label="移动起点槽（可选）"
+            label={t("script.scenario.moveFromSlot")}
             value={instruction.moveFrom ?? ""}
             onChange={(moveFrom) => onReplaceInstruction(withOptionalMoveFrom(instruction, moveFrom))}
           />
           <NumberField
-            label="缩放"
+            label={t("script.scenario.field.scale")}
             value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale}
             min={0.1}
             max={4}
@@ -489,37 +525,37 @@ export function ScenarioInspector({
             onChange={(scale) => onReplaceInstruction({ ...instruction, scale })}
           />
           <BooleanField
-            label="水平翻转"
+            label={t("script.scenario.horizontalFlip")}
             checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip}
             onChange={(flip) => onReplaceInstruction({ ...instruction, flip })}
           />
           <NumberField
-            label="表情过渡（毫秒）"
+            label={t("script.scenario.expressionTransitionMs")}
             value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs}
             min={0}
             integer
             onChange={(exprMs) => onReplaceInstruction({ ...instruction, exprMs })}
           />
           <EnumField
-            label="转场"
+            label={t("script.scenario.field.transition")}
             value={instruction.trans ?? "fade"}
             options={["fade", "cut", "slide"]}
             onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
           />
           <NumberField
-            label="转场时长（毫秒）"
+            label={t("script.scenario.transitionDurationMs")}
             value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms}
             min={0}
             integer
             onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
           />
           <BooleanField
-            label="登场前清空其他角色"
+            label={t("script.scenario.clearCharacters")}
             checked={instruction.clear ?? INSTRUCTION_DEFAULTS.char.clear}
             onChange={(clear) => onReplaceInstruction({ ...instruction, clear })}
           />
           <BooleanField
-            label="让角色退场"
+            label={t("script.scenario.removeCharacter")}
             checked={instruction.remove ?? INSTRUCTION_DEFAULTS.char.remove}
             onChange={(remove) => onReplaceInstruction({ ...instruction, remove })}
           />
@@ -527,7 +563,7 @@ export function ScenarioInspector({
       );
     case "set":
       return (
-        <InspectorPanel title="改变故事状态">
+        <InspectorPanel title={t("script.scenario.instruction.set")}>
           <StateChangeEditor
             instruction={instruction}
             variables={variables}
@@ -537,38 +573,38 @@ export function ScenarioInspector({
       );
     case "inputName":
       return (
-        <InspectorPanel title="玩家命名">
+        <InspectorPanel title={t("script.scenario.instruction.inputName")}>
           <TextStateField
-            label="把名字保存为"
+            label={t("script.scenario.saveNameAs")}
             manifest={manifest}
             variables={variables}
             value={instruction.key}
             onChange={(key) => onReplaceInstruction({ ...instruction, key })}
           />
           <TextField
-            label="向玩家提问"
+            label={t("script.scenario.askPlayer")}
             value={instruction.prompt}
             onChange={(prompt) => onReplaceInstruction({ ...instruction, prompt })}
           />
           <OptionalTextField
-            label="默认名字（可选）"
+            label={t("script.scenario.defaultName")}
             value={instruction.default}
             onChange={(nextDefault) => onReplaceInstruction(withOptionalDefaultName(instruction, nextDefault))}
           />
           <NumberField
-            label="名字最多字符"
+            label={t("script.scenario.nameMaxCharacters")}
             value={instruction.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength}
             min={1}
             max={100}
             integer
             onChange={(maxLength) => onReplaceInstruction({ ...instruction, maxLength })}
           />
-          <div style={mutedTextStyle}>玩家填写后，名字会自动写入所选故事状态，后续台词可以直接插入它。</div>
+          <div style={mutedTextStyle}>{t("script.scenario.inputNameHint")}</div>
         </InspectorPanel>
       );
     case "bgm":
       return (
-        <InspectorPanel title="背景音乐">
+        <InspectorPanel title={t("script.scenario.instruction.bgm")}>
           <ResourcePicker
             label="BGM"
             manifest={manifest}
@@ -577,14 +613,14 @@ export function ScenarioInspector({
             onChange={(id) => onReplaceInstruction({ ...instruction, id })}
           />
           <NumberField
-            label="淡入时长（毫秒）"
+            label={t("script.scenario.fadeDurationMs")}
             value={instruction.fade ?? INSTRUCTION_DEFAULTS.bgm.fade}
             min={0}
             integer
             onChange={(fade) => onReplaceInstruction({ ...instruction, fade })}
           />
           <BooleanField
-            label="循环播放"
+            label={t("script.scenario.loopPlayback")}
             checked={instruction.loop ?? INSTRUCTION_DEFAULTS.bgm.loop}
             onChange={(loop) => onReplaceInstruction({ ...instruction, loop })}
           />
@@ -592,9 +628,9 @@ export function ScenarioInspector({
       );
     case "sfx":
       return (
-        <InspectorPanel title="音效">
+        <InspectorPanel title={t("script.scenario.instruction.sfx")}>
           <ResourcePicker
-            label="音效"
+            label={t("script.scenario.field.soundEffect")}
             manifest={manifest}
             kind="sfx"
             value={instruction.id}
@@ -604,9 +640,9 @@ export function ScenarioInspector({
       );
     case "voice":
       return (
-        <InspectorPanel title="语音">
+        <InspectorPanel title={t("script.scenario.instruction.voice")}>
           <ResourcePicker
-            label="语音"
+            label={t("script.scenario.field.voice")}
             manifest={manifest}
             kind="voice"
             value={instruction.id}
@@ -616,9 +652,9 @@ export function ScenarioInspector({
       );
     case "wait":
       return (
-        <InspectorPanel title="等待">
+        <InspectorPanel title={t("script.scenario.instruction.wait")}>
           <NumberField
-            label="毫秒"
+            label={t("script.scenario.milliseconds")}
             value={instruction.ms}
             min={0}
             onChange={(ms) => onReplaceInstruction({ ...instruction, ms: Math.round(ms) })}
@@ -627,15 +663,15 @@ export function ScenarioInspector({
       );
     case "effect":
       return (
-        <InspectorPanel title="画面效果">
+        <InspectorPanel title={t("script.scenario.instruction.effect")}>
           <EnumField
-            label="类型"
+            label={t("script.scenario.type")}
             value={instruction.type}
             options={["shake", "flash", "blur"]}
             onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
           />
           <NumberField
-            label="效果强度"
+            label={t("script.scenario.effectIntensity")}
             value={instruction.intensity ?? INSTRUCTION_DEFAULTS.effect.intensity}
             min={0}
             max={20}
@@ -643,7 +679,7 @@ export function ScenarioInspector({
             onChange={(intensity) => onReplaceInstruction({ ...instruction, intensity })}
           />
           <NumberField
-            label="持续时长（毫秒）"
+            label={t("script.scenario.effectDurationMs")}
             value={instruction.ms ?? INSTRUCTION_DEFAULTS.effect.ms}
             min={0}
             integer
@@ -653,22 +689,22 @@ export function ScenarioInspector({
       );
     case "transition":
       return (
-        <InspectorPanel title="转场">
+        <InspectorPanel title={t("script.scenario.instruction.transition")}>
           <EnumField
-            label="类型"
+            label={t("script.scenario.type")}
             value={instruction.type}
             options={["fade_in", "fade_out", "white_in", "white_out", "black"]}
             optionLabels={{
-              fade_in: "淡入",
-              fade_out: "淡出",
-              white_in: "白场淡入",
-              white_out: "白场淡出",
-              black: "黑场",
+              fade_in: t("script.scenario.transition.fadeIn"),
+              fade_out: t("script.scenario.transition.fadeOut"),
+              white_in: t("script.scenario.transition.whiteIn"),
+              white_out: t("script.scenario.transition.whiteOut"),
+              black: t("script.scenario.transition.black"),
             }}
             onChange={(type) => onReplaceInstruction({ ...instruction, type: type as typeof instruction.type })}
           />
           <NumberField
-            label="转场时长（毫秒）"
+            label={t("script.scenario.transitionDurationMs")}
             value={instruction.ms ?? INSTRUCTION_DEFAULTS.transition.ms}
             min={0}
             integer
@@ -678,21 +714,21 @@ export function ScenarioInspector({
       );
     case "pause":
       return (
-        <InspectorPanel title="停顿">
-          <div style={mutedTextStyle}>等待玩家点击后继续。空行会自动产生停顿，一般无需手动插入 @pause。</div>
+        <InspectorPanel title={t("script.scenario.instruction.pause")}>
+          <div style={mutedTextStyle}>{t("script.scenario.pauseHint")}</div>
         </InspectorPanel>
       );
     case "unlock":
       return (
-        <InspectorPanel title="解锁">
+        <InspectorPanel title={t("script.scenario.instruction.unlock")}>
           <EnumField
-            label="类型"
+            label={t("script.scenario.type")}
             value={instruction.kind}
             options={["cg", "music", "replay", "endings"]}
             onChange={(kind) => onReplaceInstruction({ ...instruction, kind: kind as typeof instruction.kind })}
           />
           <TextField
-            label="解锁 ID"
+            label={t("script.scenario.unlockId")}
             value={instruction.id}
             onChange={(id) => onReplaceInstruction({ ...instruction, id })}
           />
@@ -712,19 +748,19 @@ export function ScenarioInspector({
       );
     case "playVideo":
       return (
-        <InspectorPanel title="视频">
+        <InspectorPanel title={t("script.scenario.instruction.playVideo")}>
           <ResourcePicker
-            label="视频"
+            label={t("script.scenario.field.video")}
             manifest={manifest}
             kind="video"
             value={instruction.id}
             onChange={(id) => onReplaceInstruction({ ...instruction, id })}
           />
           <EnumField
-            label="可跳过"
+            label={t("script.scenario.field.skippable")}
             value={instruction.skippable == null ? "default" : String(instruction.skippable)}
             options={["default", "true", "false"]}
-            optionLabels={{ default: "默认", true: "是", false: "否" }}
+            optionLabels={{ default: t("script.scenario.default"), true: t("script.scenario.yes"), false: t("script.scenario.no") }}
             onChange={(value) => onReplaceInstruction({
               ...instruction,
               skippable: value === "default" ? undefined : value === "true",
@@ -734,16 +770,16 @@ export function ScenarioInspector({
       );
     case "completeEnding":
       return (
-        <InspectorPanel title="正式结局结算">
-          <TextField label="结局 ID" value={instruction.endingId} onChange={(endingId) => onReplaceInstruction({ ...instruction, endingId })} />
-          <div style={mutedTextStyle}>结算会解锁结局，并在当前 playthrough 首次达成时增加周目计数。</div>
+        <InspectorPanel title={t("script.scenario.instruction.completeEnding")}>
+          <TextField label={t("script.scenario.endingId")} value={instruction.endingId} onChange={(endingId) => onReplaceInstruction({ ...instruction, endingId })} />
+          <div style={mutedTextStyle}>{t("script.scenario.endingHint")}</div>
         </InspectorPanel>
       );
     default:
       // 当前 switch 已覆盖全部指令类型；保留兜底以防未来新增指令类型时没有表单。
       return (
         <InspectorPanel title={(instruction as Instruction).t}>
-          <div style={mutedTextStyle}>该命令可直接在剧本文本中编辑。</div>
+          <div style={mutedTextStyle}>{t("script.scenario.directEditHint")}</div>
         </InspectorPanel>
       );
   }
@@ -775,13 +811,18 @@ function ExpressiveTextField({
   variables?: VariableRegistry;
   onChange: (value: string) => void;
 }) {
+  const { t } = useStudioI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedState, setSelectedState] = useState(textStateOptions(variables)[0]?.[0] ?? "");
   const [pauseMs, setPauseMs] = useState(500);
   const [color, setColor] = useState("#FFD166");
   const [ruby, setRuby] = useState("");
 
-  const insert = (before: string, after = "", fallback = "文字") => {
+  const insert = (
+    before: string,
+    after = "",
+    fallback = t("script.scenario.textPlaceholder"),
+  ) => {
     const input = inputRef.current;
     const start = input?.selectionStart ?? value.length;
     const end = input?.selectionEnd ?? start;
@@ -807,39 +848,52 @@ function ExpressiveTextField({
         <span style={fieldLabelStyle}>{label}</span>
         <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
       </label>
-      <div style={expressiveToolbarStyle} aria-label="文本表达工具">
+      <div style={expressiveToolbarStyle} aria-label={t("script.scenario.expressiveTools")}>
         <label style={toolFieldStyle}>
-          <span>故事状态</span>
-          <select aria-label="要插入的故事状态" value={currentState} disabled={states.length === 0} onChange={(event) => setSelectedState(event.target.value)} style={toolInputStyle}>
-            {states.length === 0 && <option value="">还没有文本故事状态</option>}
+          <span>{t("script.scenario.storyState")}</span>
+          <select
+            aria-label={t("script.scenario.insertState")}
+            value={currentState}
+            disabled={states.length === 0}
+            onChange={(event) => setSelectedState(event.target.value)}
+            style={toolInputStyle}
+          >
+            {states.length === 0 && <option value="">{t("script.scenario.noTextState")}</option>}
             {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
           </select>
         </label>
-        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>插入</button>
+        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insert")}</button>
         <label style={toolFieldStyle}>
-          <span>行内停顿</span>
-          <NumberInput aria-label="行内停顿毫秒" value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
+          <span>{t("script.scenario.inlinePause")}</span>
+          <NumberInput aria-label={t("script.scenario.inlinePauseMs")} value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
         </label>
-        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>插入</button>
-        <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>加粗</button>
+        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insert")}</button>
+        <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>{t("script.scenario.bold")}</button>
         <label style={toolFieldStyle}>
-          <span>文字颜色</span>
-          <select aria-label="文字颜色" value={color} onChange={(event) => setColor(event.target.value)} style={toolInputStyle}>
-            <option value="#FFD166">暖黄色</option>
-            <option value="#EF476F">强调红</option>
-            <option value="#06D6A0">清新绿</option>
-            <option value="#118AB2">深海蓝</option>
+          <span>{t("script.scenario.textColor")}</span>
+          <select aria-label={t("script.scenario.textColor")} value={color} onChange={(event) => setColor(event.target.value)} style={toolInputStyle}>
+            <option value="#FFD166">{t("script.scenario.color.warmYellow")}</option>
+            <option value="#EF476F">{t("script.scenario.color.emphasisRed")}</option>
+            <option value="#06D6A0">{t("script.scenario.color.freshGreen")}</option>
+            <option value="#118AB2">{t("script.scenario.color.deepBlue")}</option>
             {themeColors.map(([id, resolved]) => <option key={id} value={id}>{id} · {resolved}</option>)}
           </select>
         </label>
-        <button type="button" onClick={() => insert(`[color=${color}]`, "[/color]")} style={toolButtonStyle}>变色</button>
+        <button type="button" onClick={() => insert(`[color=${color}]`, "[/color]")} style={toolButtonStyle}>{t("script.scenario.colorize")}</button>
         <label style={toolFieldStyle}>
-          <span>注音</span>
-          <input aria-label="注音读音" type="text" value={ruby} placeholder="读音" onChange={(event) => setRuby(event.target.value)} style={toolInputStyle} />
+          <span>{t("script.scenario.ruby")}</span>
+          <input
+            aria-label={t("script.scenario.rubyReading")}
+            type="text"
+            value={ruby}
+            placeholder={t("script.scenario.readingPlaceholder")}
+            onChange={(event) => setRuby(event.target.value)}
+            style={toolInputStyle}
+          />
         </label>
-        <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>加注音</button>
+        <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>{t("script.scenario.addRuby")}</button>
       </div>
-      <div style={mutedTextStyle}>先选中文字再点加粗、变色或加注音；没有选择时会插入一段可直接替换的示例文字。</div>
+      <div style={mutedTextStyle}>{t("script.scenario.expressiveHint")}</div>
     </div>
   );
 }
@@ -963,8 +1017,9 @@ function OptionalMillisecondsField({
   hint: string;
   onChange: (value: number) => void;
 }) {
+  const { t } = useStudioI18n();
   return (
-    <Field label={`${label}（毫秒）`} hint={hint}>
+    <Field label={t("script.scenario.millisecondsSuffix", { label })} hint={hint}>
       {({ id, describedBy, invalid }) => (
         <NumberInput
           id={id}
@@ -981,6 +1036,7 @@ function OptionalMillisecondsField({
 }
 
 function BooleanField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  const { t } = useStudioI18n();
   return (
     <Field label={label}>
       {({ id, describedBy }) => (
@@ -988,7 +1044,7 @@ function BooleanField({ label, checked, onChange }: { label: string; checked: bo
           id={id}
           describedBy={describedBy}
           checked={checked}
-          label={checked ? "是" : "否"}
+          label={checked ? t("script.scenario.yes") : t("script.scenario.no")}
           onChange={onChange}
         />
       )}

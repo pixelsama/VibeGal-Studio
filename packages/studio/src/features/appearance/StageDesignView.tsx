@@ -20,6 +20,7 @@ import type { StageResolution } from "../../lib/projectMeta";
 import type { FixtureScene } from "../../export/snapshotScenes";
 import { SceneFixtureView } from "../preview/SceneFixtureView";
 import { clampStageFrameZoom } from "../preview/StageFrame";
+import { useStudioI18n } from "../../lib/i18n";
 import { mergeTokenOverrides } from "./appearanceTokens";
 import {
   clientPointToStage,
@@ -74,6 +75,7 @@ function toClientRect(rect: { left: number; top: number; width: number; height: 
 }
 
 export function StageDesignView({ project, renderer, scene, stage, skinId, onPersistGeometry, onSelectionChange }: StageDesignViewProps) {
+  const { t } = useStudioI18n();
   const layoutSupported = supportsLayoutParts(renderer.capabilities);
   const overlayActive = layoutSupported && skinId !== null;
 
@@ -257,12 +259,12 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
       />
       <div
         style={zoomControlsStyle}
-        aria-label="画布缩放"
+        aria-label={t("appearance.canvas.zoom")}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <button
           type="button"
-          aria-label="缩小画布"
+          aria-label={t("appearance.canvas.zoomOut")}
           style={zoomButtonStyle}
           disabled={zoom <= 0.5}
           onClick={() => setZoom((current) => clampStageFrameZoom(current - 0.25))}
@@ -271,7 +273,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
         </button>
         <button
           type="button"
-          aria-label="复位画布缩放"
+          aria-label={t("appearance.canvas.resetZoom")}
           style={zoomValueStyle}
           disabled={zoom === 1}
           onClick={() => setZoom(1)}
@@ -280,7 +282,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
         </button>
         <button
           type="button"
-          aria-label="放大画布"
+          aria-label={t("appearance.canvas.zoomIn")}
           style={zoomButtonStyle}
           disabled={zoom >= 2}
           onClick={() => setZoom((current) => clampStageFrameZoom(current + 0.25))}
@@ -290,7 +292,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
       </div>
       {!layoutSupported && (
         <div style={hintBarStyle} role="status">
-          此界面风格未声明可拖拽部件（缺少布局编辑能力）
+          {t("appearance.canvas.layoutUnsupported")}
         </div>
       )}
       {overlayActive && (
@@ -307,7 +309,7 @@ export function StageDesignView({ project, renderer, scene, stage, skinId, onPer
             outline: "none",
           }}
           tabIndex={0}
-          aria-label="舞台布局编辑层"
+          aria-label={t("appearance.canvas.layoutLayer")}
           onPointerDown={handleOverlayPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag(true)}

@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Manifest } from "../../lib/types";
+import { useStudioI18n } from "../../lib/i18n";
 
 export interface ResourceOption {
   value: string;
@@ -79,8 +80,13 @@ export function ResourcePicker({
   placeholder,
   ...source
 }: ResourcePickerProps) {
+  const { t } = useStudioI18n();
   const options = resolveOptions(source);
-  const fieldLabel = label ?? ("kind" in source ? source.kind : "资源");
+  const fieldLabel = label ?? ("kind" in source
+    ? source.kind === "expression"
+      ? t("assets.resource.expression")
+      : source.kind
+    : t("assets.resource.generic"));
   const hasCurrentValue = value.length > 0;
   const currentExists = options.some((option) => option.value === value);
   const selectValue = hasCurrentValue && !currentExists ? MISSING_OPTION_VALUE : value;
@@ -99,9 +105,9 @@ export function ResourcePicker({
           }}
           style={selectStyle}
         >
-          <option value="">{placeholder ?? `选择${fieldLabel}`}</option>
+          <option value="">{placeholder ?? t("assets.resource.choose", { label: fieldLabel ?? "" })}</option>
           {hasCurrentValue && !currentExists && (
-            <option value={MISSING_OPTION_VALUE}>{`缺失：${value}`}</option>
+            <option value={MISSING_OPTION_VALUE}>{t("assets.resource.missing", { value: value ?? "" })}</option>
           )}
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -113,7 +119,7 @@ export function ResourcePicker({
           type="text"
           value={value}
           disabled={disabled}
-          placeholder={`${fieldLabel} id`}
+          placeholder={t("assets.resource.idPlaceholder", { label: fieldLabel ?? "" })}
           onChange={(event) => onChange(event.target.value)}
           style={inputStyle}
         />

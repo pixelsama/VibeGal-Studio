@@ -14,6 +14,7 @@ import { evaluateGraphConditionResult, type VariableRegistry } from "@vibegal/en
 import type { GraphEdge, ProjectGraph } from "../../lib/types";
 import { IconButton } from "../common/Button";
 import { SegmentedControl, SentenceRow, TextInput } from "../common/Form";
+import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import { ConditionEditor } from "./ConditionEditor";
 import { EdgeEffectsEditor } from "./EdgeEffectsEditor";
 import { StateTrial } from "./StateTrial";
@@ -46,13 +47,18 @@ export function BranchRules({
   trialValues,
   onTrialChange,
 }: BranchRulesProps) {
+  const { t } = useStudioI18n();
   const [dragging, setDragging] = useState<string | null>(null);
 
   if (edges.length === 0) {
-    return <p className="gs-branch__single">这个节点是终点，播放完就结束。</p>;
+    return <p className="gs-branch__single">{t("script.branch.terminal")}</p>;
   }
   if (edges.length === 1) {
-    return <p className="gs-branch__single">播放完直接走到「{targetTitle(graph, edges[0].to)}」。</p>;
+    return (
+      <p className="gs-branch__single">
+        {t("script.branch.singleExit", { title: targetTitle(graph, edges[0].to, t) })}
+      </p>
+    );
   }
 
   const mode: BranchMode = edges.every((edge) => edge.mode === "auto") ? "auto" : "choice";
@@ -68,22 +74,22 @@ export function BranchRules({
     onChange(mode === "auto" ? orderDefaultAutoEdgeLast(next) : next);
   };
 
-  const outcomes = mode === "auto" ? evaluateBranchOutcomes(edges, trialValues) : null;
+  const outcomes = mode === "auto" ? evaluateBranchOutcomes(edges, trialValues, t) : null;
 
   return (
     <div className="gs-branch">
       <SegmentedControl<BranchMode>
-        aria-label="离开这个节点的方式"
+        aria-label={t("script.branch.modeLabel")}
         value={mode}
         disabled={disabled}
         options={[
-          { value: "choice", label: "让玩家选择" },
-          { value: "auto", label: "按故事状态自动分流" },
+          { value: "choice", label: t("script.branch.mode.choice") },
+          { value: "auto", label: t("script.branch.mode.auto") },
         ]}
         onChange={applyMode}
       />
 
-      {mode === "auto" && <p className="gs-branch__rule-hint">从上往下，第一条满足的生效。</p>}
+      {mode === "auto" && <p className="gs-branch__rule-hint">{t("script.branch.orderHint")}</p>}
 
       <ol className="gs-branch__list">
         {edges.map((edge, index) => {
@@ -106,20 +112,26 @@ export function BranchRules({
             >
               <div className="gs-branch__row-head">
                 {mode === "auto" && !isFallback && <span className="gs-branch__index">{index + 1}</span>}
-                {isFallback && <span className="gs-branch__index gs-branch__index--fallback">否则</span>}
-                <span className="gs-branch__target">走到「{targetTitle(graph, edge.to)}」</span>
+                {isFallback && (
+                  <span className="gs-branch__index gs-branch__index--fallback">
+                    {t("script.branch.fallback")}
+                  </span>
+                )}
+                <span className="gs-branch__target">
+                  {t("script.branch.target", { title: targetTitle(graph, edge.to, t) })}
+                </span>
                 {!disabled && !isFallback && (
                   <span className="gs-branch__reorder">
                     <GripVertical size={14} aria-hidden="true" />
                     <IconButton
-                      aria-label={`上移 ${edge.id}`}
+                      aria-label={t("script.branch.moveUp", { id: edge.id })}
                       disabled={index === 0}
                       onClick={() => onChange(orderAfterMove(edges, index, -1, mode))}
                     >
                       <ChevronUp size={14} aria-hidden="true" />
                     </IconButton>
                     <IconButton
-                      aria-label={`下移 ${edge.id}`}
+                      aria-label={t("script.branch.moveDown", { id: edge.id })}
                       disabled={index === edges.length - 1}
                       onClick={() => onChange(orderAfterMove(edges, index, 1, mode))}
                     >
@@ -130,11 +142,13 @@ export function BranchRules({
               </div>
 
               {mode === "choice" ? (
-                <SentenceRow lead="选项文字">
+                <SentenceRow lead={t("script.branch.choiceText")}>
                   <TextInput
-                    aria-label={`${targetTitle(graph, edge.to)} 的选项文字`}
+                    aria-label={t("script.branch.choiceTextFor", {
+                      title: targetTitle(graph, edge.to, t),
+                    })}
                     disabled={disabled}
-                    value={edge.label ?? targetTitle(graph, edge.to)}
+                    value={edge.label ?? targetTitle(graph, edge.to, t)}
                     onChange={(label) => updateEdge(edge.id, { mode: "choice", label, condition: null })}
                   />
                 </SentenceRow>
@@ -160,7 +174,7 @@ export function BranchRules({
                   {outcome.problem}
                 </p>
               )}
-              {outcome?.winner && <p className="gs-branch__winner">按当前试算值，会走这一条。</p>}
+              {outcome?.winner && <p className="gs-branch__winner">{t("script.branch.winner")}</p>}
             </li>
           );
         })}
@@ -169,7 +183,7 @@ export function BranchRules({
       {mode === "auto" && !edges.some((edge) => !edge.condition?.trim()) && !disabled && (
         <p className="gs-branch__problem">
           <TriangleAlert size={14} aria-hidden="true" />
-          没有兜底分支：所有条件都不满足时，玩家会卡住。把其中一条的条件清空即可作为「否则」。
+          {t("script.branch.noFallback")}
         </p>
       )}
 
@@ -203,6 +217,7 @@ export interface BranchOutcome {
 export function evaluateBranchOutcomes(
   edges: GraphEdge[],
   values: Record<string, string | number | boolean | null>,
+  t: StudioTranslator = translateZhCN,
 ): BranchOutcome[] {
   let decided = false;
   let unreachableFrom: number | null = null;
@@ -211,11 +226,14 @@ export function evaluateBranchOutcomes(
     const result = evaluateGraphConditionResult(edge.condition ?? null, values);
 
     if (!result.ok) {
-      return { winner: false, problem: `这条判断无法计算：${result.message}` };
+      return {
+        winner: false,
+        problem: t("script.branch.evaluationFailed", { detail: result.message }),
+      };
     }
 
     const problem = unreachableFrom != null
-      ? `这条永远走不到：第 ${unreachableFrom + 1} 条不带条件，已经把所有情况都接走了。把它往上移，或给第 ${unreachableFrom + 1} 条补上条件。`
+      ? t("script.branch.unreachable", { number: unreachableFrom + 1 })
       : null;
 
     if (unreachableFrom == null && alwaysTrue(edge.condition)) unreachableFrom = index;
@@ -275,9 +293,21 @@ export function normalizeBranchEdge(
     ...normalizeEdge(edge),
     from,
     mode,
-    label: mode === "choice" ? edge.label?.trim() || targetTitle(graph, edge.to) || `选项 ${index + 1}` : null,
+    label: mode === "choice"
+      ? edge.label?.trim()
+        || persistedTargetTitle(graph, edge.to)
+        || `选项 ${index + 1}`
+      : null,
     condition: mode === "auto" ? edge.condition ?? null : null,
   };
+}
+
+function persistedTargetTitle(
+  graph: ProjectGraph,
+  nodeId: string,
+): string {
+  return graph.nodes.find((node) => node.id === nodeId)?.title
+    || nodeId;
 }
 
 export function normalizeEdge(edge: GraphEdge): GraphEdge {
@@ -289,6 +319,12 @@ export function normalizeEdge(edge: GraphEdge): GraphEdge {
   };
 }
 
-export function targetTitle(graph: ProjectGraph, nodeId: string): string {
-  return graph.nodes.find((node) => node.id === nodeId)?.title || nodeId || "未选择";
+export function targetTitle(
+  graph: ProjectGraph,
+  nodeId: string,
+  t: StudioTranslator = translateZhCN,
+): string {
+  return graph.nodes.find((node) => node.id === nodeId)?.title
+    || nodeId
+    || t("script.branch.unselected");
 }

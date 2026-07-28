@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createInitialState } from "@vibegal/engine";
 import { isRuntimeStateEmpty, RuntimeStateInspector } from "./RuntimeStateInspector";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 describe("RuntimeStateInspector", () => {
   it("renders current runtime state details for debug preview", () => {
@@ -92,6 +93,30 @@ describe("RuntimeStateInspector", () => {
     expect(html).toMatch(/<details[^>]*><summary>技术详情<\/summary>[\s\S]*system\.playthroughCount/);
     expect(html).toMatch(/<details[^>]*><summary>技术详情<\/summary>[\s\S]*system\.lastEndingId/);
     expect(html).not.toContain("<details open");
+  });
+
+  it("renders English runtime labels while preserving creator and runtime values", () => {
+    const state = {
+      ...createInitialState(),
+      vars: { affection: 3, "system.playthroughCount": 2 },
+      background: "school",
+    };
+    const registry = { version: 1 as const, variables: {
+      affection: { label: "好感度", type: "number" as const, default: 0, nullable: false, scope: "run" as const },
+    } };
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <RuntimeStateInspector state={state} currentNodeLabel="序章 (prologue)" registry={registry} />
+      </StudioI18nProvider>,
+    );
+
+    for (const text of ["Runtime state", "Current node", "Background", "Story state", "Current playthrough", "System state", "Completed playthroughs"]) {
+      expect(html).toContain(text);
+    }
+    expect(html).toContain("序章 (prologue)");
+    expect(html).toContain("好感度");
+    expect(html).toContain("school");
+    expect(html).not.toContain("运行状态");
   });
 
   it("keeps variable rows shrinkable inside a narrow runtime sidebar", () => {

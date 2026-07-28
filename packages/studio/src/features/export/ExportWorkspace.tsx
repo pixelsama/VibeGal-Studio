@@ -6,6 +6,7 @@
  * 构建/冒烟状态保存在模块级 buildStore，切换工作台不丢失。
  */
 import type { CSSProperties } from "react";
+import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import {
   desktopBuildPreflight,
   pickDirectory,
@@ -69,6 +70,7 @@ export function ExportWorkspace({
   /** 可注入的预检加载器（测试用） */
   loadPreflight?: () => Promise<DesktopBuildPreflight>;
 }) {
+  const { t } = useStudioI18n();
   const {
     target,
     runtime,
@@ -172,29 +174,35 @@ export function ExportWorkspace({
     <div style={pageStyle}>
       <section style={sectionStyle}>
         <div style={headerRowStyle}>
-          <h2 style={sectionTitleStyle}>导出游戏</h2>
+          <h2 style={sectionTitleStyle}>{t("export.title")}</h2>
           {statusText && <span style={statusStyle}>{statusText}</span>}
         </div>
 
-        <PreflightPanel report={preflight} loading={preflightLoading} target={target} onRefresh={() => void refreshPreflight()} />
+        <PreflightPanel
+          report={preflight}
+          loading={preflightLoading}
+          target={target}
+          onRefresh={() => void refreshPreflight()}
+          t={t}
+        />
 
         <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>导出目标</span>
+          <span style={fieldLabelStyle}>{t("export.target")}</span>
           <div style={runtimeRowStyle}>
             <TargetCard
               active={target === "web"}
               disabled={building}
-              name="Web 网页版"
-              badge="可部署"
-              description="生成静态网站，可上传到任意静态托管服务或自己的服务器。"
+              name={t("export.target.web")}
+              badge={t("export.target.webBadge")}
+              description={t("export.target.webDescription")}
               onClick={() => handleTargetChange("web")}
             />
             <TargetCard
               active={target === "desktop"}
               disabled={building}
-              name="桌面版"
-              badge="可运行"
-              description="生成 Windows、macOS 或 Linux 可直接运行的桌面游戏目录。"
+              name={t("export.target.desktop")}
+              badge={t("export.target.desktopBadge")}
+              description={t("export.target.desktopDescription")}
               onClick={() => handleTargetChange("desktop")}
             />
           </div>
@@ -202,7 +210,7 @@ export function ExportWorkspace({
 
         {target === "desktop" && (
           <div style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>运行时</span>
+            <span style={fieldLabelStyle}>{t("export.runtime")}</span>
             <div style={runtimeRowStyle}>
               {RUNTIME_OPTIONS.map((option) => {
                 const active = runtime === option.id;
@@ -220,11 +228,11 @@ export function ExportWorkspace({
                   >
                     <span style={runtimeCardHeaderStyle}>
                       <span style={{ ...runtimeCardNameStyle, color: active ? "var(--text-bright)" : "var(--text-primary)" }}>
-                        {option.name}
+                        {t(option.nameKey)}
                       </span>
-                      <span style={runtimeBadgeStyle}>{option.badge}</span>
+                      <span style={runtimeBadgeStyle}>{t(option.badgeKey)}</span>
                     </span>
-                    <span style={runtimeCardDescStyle}>{option.description}</span>
+                    <span style={runtimeCardDescStyle}>{t(option.descriptionKey)}</span>
                   </button>
                 );
               })}
@@ -233,13 +241,13 @@ export function ExportWorkspace({
         )}
 
         <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>界面风格</span>
+          <span style={fieldLabelStyle}>{t("export.renderer")}</span>
           <select
             value={effectiveRendererId}
             disabled={building || project.rendererIds.length === 0}
             onChange={(event) => handleRendererChange(event.target.value)}
             style={selectStyle}
-            aria-label="界面风格"
+            aria-label={t("export.renderer")}
           >
             {project.rendererIds.map((id) => (
               <option key={id} value={id}>{id}</option>
@@ -248,7 +256,7 @@ export function ExportWorkspace({
         </div>
 
         <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>输出目录</span>
+          <span style={fieldLabelStyle}>{t("export.outDir")}</span>
           <div style={outDirRowStyle}>
             <input
               type="text"
@@ -256,36 +264,36 @@ export function ExportWorkspace({
               disabled={building}
               onChange={(event) => handleOutDirChange(event.target.value)}
               style={{ ...textInputStyle, flex: 1 }}
-              aria-label="输出目录"
+              aria-label={t("export.outDir")}
             />
             <button type="button" onClick={() => void handleBrowse()} disabled={building} style={secondaryButtonStyle}>
-              浏览…
+              {t("export.browse")}
             </button>
             {customOutDir.trim() && (
               <button type="button" onClick={() => handleOutDirChange("")} disabled={building} style={secondaryButtonStyle}>
-                重置为默认
+                {t("export.resetDefault")}
               </button>
             )}
           </div>
           {outDirError ? (
             <span style={errorTextStyle}>{outDirError}</span>
           ) : (
-            <span style={hintTextStyle}>产物是可直接运行的 portable 目录，默认输出到项目 dist/ 下（不会触发热重载）。</span>
+            <span style={hintTextStyle}>{t("export.outDirHint")}</span>
           )}
         </div>
 
         <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>高级选项</span>
+          <span style={fieldLabelStyle}>{t("export.advanced")}</span>
           <CheckboxField
-            label="将警告视为错误"
-            description="存在警告级问题时阻止构建；项目错误始终会阻止构建。"
+            label={t("export.strict")}
+            description={t("export.strictDescription")}
             checked={strict}
             disabled={building}
             onChange={handleStrictChange}
           />
           <CheckboxField
-            label="仍然允许警告"
-            description="即使启用了上一项，存在警告时也继续产出构建结果。"
+            label={t("export.allowWarnings")}
+            description={t("export.allowWarningsDescription")}
             checked={allowWarnings}
             disabled={building}
             onChange={handleAllowWarningsChange}
@@ -294,13 +302,14 @@ export function ExportWorkspace({
 
         {errorCount > 0 && (
           <div style={warnBannerStyle} role="status">
-            当前项目有 {errorCount} 个错误{warnCount > 0 ? `、${warnCount} 个警告` : ""}。
-            项目错误会阻止构建；警告是否阻止构建由上方选项决定。
+            {warnCount > 0
+              ? t("export.projectErrorsWarnings", { errors: errorCount, warnings: warnCount })
+              : t("export.projectErrors", { errors: errorCount })}
           </div>
         )}
         {hasUnsavedChanges && (
           <div style={infoBannerStyle} role="status">
-            其他工作台有未保存的草稿。构建只读取磁盘文件，草稿内容不会包含在产物中。
+            {t("export.unsaved")}
           </div>
         )}
 
@@ -315,24 +324,28 @@ export function ExportWorkspace({
               cursor: buildDisabled ? "default" : "pointer",
             }}
           >
-            {building ? "构建中…" : target === "web" ? "构建 Web 游戏" : "构建桌面游戏"}
+            {building
+              ? t("export.building")
+              : target === "web"
+                ? t("export.buildWeb")
+                : t("export.buildDesktop")}
           </button>
           {building && (
             <button type="button" onClick={handleCancel} style={secondaryButtonStyle}>
-              取消构建
+              {t("export.cancelBuild")}
             </button>
           )}
           {!building && blockReason && <span style={errorTextStyle}>{blockReason}</span>}
           {building && buildState.target === "desktop" && runtime === "electron" && (
-            <span style={hintTextStyle}>首次 Electron 构建需要下载运行时，可能较慢。</span>
+            <span style={hintTextStyle}>{t("export.electronFirstBuild")}</span>
           )}
         </div>
 
-        {building && <BuildProgressSteps state={buildState} target={buildState.target ?? target} />}
+        {building && <BuildProgressSteps state={buildState} target={buildState.target ?? target} t={t} />}
 
         {buildState.phase === "cancelled" && (
           <div style={infoBannerStyle} role="status" data-testid="build-cancelled-panel">
-            构建已取消。调整选项后可重新发起构建。
+            {t("export.cancelled")}
           </div>
         )}
 
@@ -341,18 +354,21 @@ export function ExportWorkspace({
             result={buildState.result}
             state={buildState}
             runtimeName={buildState.result.target === "web"
-              ? "Web 网页版"
-              : RUNTIME_OPTIONS.find((o) => o.id === buildState.result?.runtime)?.name ?? buildState.result.runtime ?? "桌面版"}
+              ? t("export.target.web")
+              : RUNTIME_OPTIONS.find((o) => o.id === buildState.result?.runtime)
+                ? t(RUNTIME_OPTIONS.find((o) => o.id === buildState.result?.runtime)!.nameKey)
+                : buildState.result.runtime ?? t("export.target.desktop")}
             copied={copied}
             actionError={actionError}
             onCopyPath={(text) => void handleCopyPath(text)}
             onReveal={(path) => void handleReveal(path)}
             onRunGame={(executable) => void handleRunGame(executable)}
             onSmoke={handleSmoke}
+            t={t}
           />
         )}
         {buildState.phase === "failure" && buildState.failure && (
-          <BuildFailurePanel failure={buildState.failure} />
+          <BuildFailurePanel failure={buildState.failure} t={t} />
         )}
       </section>
     </div>
@@ -368,25 +384,32 @@ export function PreflightPanel({
   loading,
   target,
   onRefresh,
+  t,
 }: {
   report: DesktopBuildPreflight | null;
   loading: boolean;
   target: ExportTarget;
   onRefresh: () => void;
+  t?: StudioTranslator;
 }) {
+  const translate = t ?? translateZhCN;
   return (
     <div style={preflightPanelStyle} data-testid="preflight-panel">
       <div style={preflightHeaderStyle}>
-        <span style={fieldLabelStyle}>构建环境</span>
+        <span style={fieldLabelStyle}>{translate("export.preflight.title")}</span>
         <button type="button" onClick={onRefresh} disabled={loading} style={secondaryButtonStyle}>
-          {loading ? "检查中…" : "重新检查"}
+          {loading ? translate("export.preflight.checking") : translate("export.preflight.recheck")}
         </button>
       </div>
-      {!report && <span style={hintTextStyle}>{loading ? "正在检查构建环境…" : "尚未检查"}</span>}
-      {report && !report.cliAvailable && (
-        <PreflightRow ok={false} label="vibegal-cli" detail="找不到随应用分发的 vibegal-cli" />
+      {!report && (
+        <span style={hintTextStyle}>
+          {loading ? translate("export.preflight.checkingDetail") : translate("export.preflight.notChecked")}
+        </span>
       )}
-      {report?.error && <PreflightRow ok={false} label="环境检查" detail={report.error} />}
+      {report && !report.cliAvailable && (
+        <PreflightRow ok={false} label="vibegal-cli" detail={translate("export.preflight.cliMissing")} />
+      )}
+      {report?.error && <PreflightRow ok={false} label={translate("export.preflight.environment")} detail={report.error} />}
       {report?.cliAvailable && !report.error && (
         <>
           <PreflightRow
@@ -394,43 +417,49 @@ export function PreflightPanel({
             label="Node.js"
             detail={
               report.node?.available
-                ? `${report.node.version ?? "已安装"}${report.node.source === "env" ? "（VIBEGAL_NODE）" : ""}`
+                ? report.node.source === "env"
+                  ? translate("export.preflight.envNode", { version: report.node.version ?? translate("export.preflight.installed") })
+                  : report.node.version ?? translate("export.preflight.installed")
                 : target === "web"
-                  ? "未找到——Web 构建需要安装 Node.js 或配置 VIBEGAL_NODE"
-                  : "未找到——桌面构建需要安装 Node.js 或配置 VIBEGAL_NODE"
+                  ? translate("export.preflight.nodeRequiredWeb")
+                  : translate("export.preflight.nodeRequiredDesktop")
             }
           />
           {target === "desktop" && (
             <PreflightRow
               ok={report.electron?.cached ?? false}
               okIsInfo
-              label="Electron 运行时"
+              label={translate("export.preflight.electron")}
               detail={
                 report.electron?.overridePath
-                  ? `使用 VIBEGAL_ELECTRON_DIST 指定的运行时（${report.electron.version}）`
+                  ? translate("export.preflight.electronOverride", { version: report.electron.version })
                   : report.electron?.cached
-                    ? `已缓存（${report.electron.version}）`
-                    : "未缓存，首次 Electron 构建将自动下载（约 100MB）"
+                    ? translate("export.preflight.electronCached", { version: report.electron.version })
+                    : translate("export.preflight.electronDownload")
               }
             />
           )}
           {target === "desktop" && (
             <PreflightRow
               ok={report.tauriPlayer?.available ?? false}
-              label="Tauri 轻量 Player"
-              detail={report.tauriPlayer?.available ? "已随应用分发" : "未找到——轻量模式不可用"}
+              label={translate("export.preflight.tauriPlayer")}
+              detail={report.tauriPlayer?.available
+                ? translate("export.preflight.tauriAvailable")
+                : translate("export.preflight.tauriMissing")}
             />
           )}
           <PreflightRow
             ok={target === "web"
               ? report.exporter?.webWorker ?? false
               : (report.exporter?.webWorker && report.exporter?.desktopWorker) ?? false}
-            label="打包组件"
+            label={translate("export.preflight.packager")}
             detail={target === "web"
-              ? report.exporter?.webWorker ? "Web 打包组件就绪" : "Web 打包组件缺失，请重新安装 VibeGal-Studio"
+              ? report.exporter?.webWorker
+                ? translate("export.preflight.webReady")
+                : translate("export.preflight.webMissing")
               : report.exporter?.webWorker && report.exporter?.desktopWorker
-                ? "Web / 桌面打包组件就绪"
-                : "打包组件缺失，请重新安装 VibeGal-Studio"}
+                ? translate("export.preflight.desktopReady")
+                : translate("export.preflight.desktopMissing")}
           />
         </>
       )}
@@ -454,7 +483,15 @@ function PreflightRow({ ok, label, detail, okIsInfo }: { ok: boolean; label: str
 // 构建进度步骤
 // ──────────────────────────────────────────────
 
-export function BuildProgressSteps({ state, target = state.target ?? "desktop" }: { state: DesktopBuildState; target?: ExportTarget }) {
+export function BuildProgressSteps({
+  state,
+  target = state.target ?? "desktop",
+  t = translateZhCN,
+}: {
+  state: DesktopBuildState;
+  target?: ExportTarget;
+  t?: StudioTranslator;
+}) {
   const steps = target === "web" ? WEB_BUILD_STEPS : DESKTOP_BUILD_STEPS;
   return (
     <div style={stepsPanelStyle} data-testid="build-progress-steps">
@@ -466,7 +503,7 @@ export function BuildProgressSteps({ state, target = state.target ?? "desktop" }
               {status === "done" ? "✓" : status === "active" ? "…" : "·"}
             </span>
             <span style={{ ...stepLabelStyle, color: status === "pending" ? "var(--text-muted)" : "var(--text-primary)" }}>
-              {buildStepLabel(step)}
+              {buildStepLabel(step, t)}
             </span>
             {status === "active" && state.progress && (
               <span style={hintTextStyle}>
@@ -495,6 +532,7 @@ function BuildSuccessPanel({
   onReveal,
   onRunGame,
   onSmoke,
+  t,
 }: {
   result: DesktopBuildResult;
   state: DesktopBuildState;
@@ -505,22 +543,23 @@ function BuildSuccessPanel({
   onReveal: (path: string) => void;
   onRunGame: (executable: string) => void;
   onSmoke: () => void;
+  t: StudioTranslator;
 }) {
   const smoke = state.smoke;
   return (
     <div style={successPanelStyle} data-testid="build-success-panel">
       <div style={resultHeaderStyle}>
         <span style={successIconStyle}>✓</span>
-        <span style={resultTitleStyle}>构建成功（{runtimeName}）</span>
+        <span style={resultTitleStyle}>{t("export.success", { runtime: runtimeName })}</span>
       </div>
 
       <div style={buildRowStyle}>
         <button type="button" onClick={() => onReveal(result.outDir)} style={secondaryButtonStyle}>
-          打开输出目录
+          {t("export.openOutDir")}
         </button>
         {result.executable && (
           <button type="button" onClick={() => onRunGame(result.executable!)} style={secondaryButtonStyle}>
-            运行游戏
+            {t("export.runGame")}
           </button>
         )}
         <button
@@ -529,10 +568,14 @@ function BuildSuccessPanel({
           disabled={smoke.phase === "running"}
           style={secondaryButtonStyle}
         >
-          {smoke.phase === "running" ? "检查中…" : result.target === "web" ? "上线前检查" : "冒烟检查"}
+          {smoke.phase === "running"
+            ? t("export.checking")
+            : result.target === "web"
+              ? t("export.prepublishCheck")
+              : t("export.smokeCheck")}
         </button>
         <button type="button" onClick={() => onCopyPath(result.outDir)} style={secondaryButtonStyle}>
-          {copied ? "已复制" : "复制路径"}
+          {copied ? t("export.copied") : t("export.copyPath")}
         </button>
       </div>
       {actionError && <span style={errorTextStyle}>{actionError}</span>}
@@ -540,40 +583,44 @@ function BuildSuccessPanel({
       {smoke.phase === "running" && (
         <span style={hintTextStyle}>
           {result.target === "web"
-            ? "正在启动无头浏览器检查加载、推进、存档与媒体资源，最长约 30 秒…"
-            : "正在真实启动游戏窗口做行为检查，最长约 30 秒…"}
+            ? t("export.smokeRunningWeb")
+            : t("export.smokeRunningDesktop")}
         </span>
       )}
       {smoke.phase === "passed" && (
         <div style={smokePassStyle} data-testid="smoke-passed">
-          <span style={successIconStyle}>✓ 冒烟通过</span>
+          <span style={successIconStyle}>✓ {t("export.smokePassed")}</span>
           <div style={smokeChecksStyle}>
             {smoke.checks.map((check) => (
               <span key={check} style={smokeCheckItemStyle}>
-                <span style={successIconStyle}>✓</span> {smokeCheckLabel(check)}
+                <span style={successIconStyle}>✓</span> {smokeCheckLabel(check, t)}
               </span>
             ))}
           </div>
         </div>
       )}
       {smoke.phase === "failed" && (
-        <span style={errorTextStyle} data-testid="smoke-failed">冒烟未通过：{smoke.message}</span>
+        <span style={errorTextStyle} data-testid="smoke-failed">
+          {t("export.smokeFailed", { detail: smoke.message ?? "" })}
+        </span>
       )}
 
       <dl style={resultListStyle}>
-        <dt style={resultTermStyle}>产物目录</dt>
+        <dt style={resultTermStyle}>{t("export.result.outDir")}</dt>
         <dd style={resultDescStyle}>
           <code style={codeStyle}>{result.outDir}</code>
         </dd>
         {result.executable && (
           <>
-            <dt style={resultTermStyle}>可执行文件</dt>
+            <dt style={resultTermStyle}>{t("export.result.executable")}</dt>
             <dd style={resultDescStyle}><code style={codeStyle}>{result.executable}</code></dd>
           </>
         )}
         {result.artifacts.length > 0 && (
           <>
-            <dt style={resultTermStyle}>{result.target === "web" ? "部署清单" : "产物清单"}</dt>
+            <dt style={resultTermStyle}>
+              {result.target === "web" ? t("export.result.deployList") : t("export.result.artifactList")}
+            </dt>
             <dd style={resultDescStyle}>
               <ul style={artifactListStyle}>
                 {result.artifacts.map((artifact) => (
@@ -586,16 +633,18 @@ function BuildSuccessPanel({
       </dl>
       <span style={hintTextStyle}>
         {result.target === "web"
-          ? "产物可上传到静态托管服务；上线前建议完成冒烟检查。"
-          : "产物可直接运行；压缩该目录即可分发。签名、公证与安装器属于后续发布环节。"}
+          ? t("export.result.webHint")
+          : t("export.result.desktopHint")}
       </span>
-      {result.warnings.length > 0 && <IssueGroups issues={result.warnings} title={`警告（${result.warnings.length}）`} />}
+      {result.warnings.length > 0 && (
+        <IssueGroups issues={result.warnings} title={t("export.warnings", { count: result.warnings.length })} t={t} />
+      )}
     </div>
   );
 }
 
-function BuildFailurePanel({ failure }: { failure: DesktopBuildFailure }) {
-  const presentation = buildFailurePresentation(failure);
+function BuildFailurePanel({ failure, t }: { failure: DesktopBuildFailure; t: StudioTranslator }) {
+  const presentation = buildFailurePresentation(failure, t);
   const cliError = failure.cliError;
   const location = cliError?.file
     ? `${cliError.file}${cliError.line != null ? `:${cliError.line}` : ""}${cliError.column != null ? `:${cliError.column}` : ""}`
@@ -610,29 +659,29 @@ function BuildFailurePanel({ failure }: { failure: DesktopBuildFailure }) {
       {presentation.hint && <p style={hintTextStyle}>{presentation.hint}</p>}
       {(cliError?.step || location) && (
         <p style={hintTextStyle}>
-          {cliError?.step ? `阶段：${cliError.step}` : ""}
+          {cliError?.step ? t("export.failure.stage", { stage: cliError.step }) : ""}
           {cliError?.step && location ? " · " : ""}
-          {location ? `位置：${location}` : ""}
+          {location ? t("export.failure.location", { location }) : ""}
         </p>
       )}
       {cliError?.issues && cliError.issues.length > 0 && (
-        <IssueGroups issues={cliError.issues} title={`问题（${cliError.issues.length}）`} />
+        <IssueGroups issues={cliError.issues} title={t("export.issues", { count: cliError.issues.length })} t={t} />
       )}
       {cliError?.diagnostics && cliError.diagnostics.length > 0 && (
-        <DiagnosticList diagnostics={cliError.diagnostics} />
+        <DiagnosticList diagnostics={cliError.diagnostics} t={t} />
       )}
     </div>
   );
 }
 
-function IssueGroups({ issues, title }: { issues: ProjectIssue[]; title: string }) {
+function IssueGroups({ issues, title, t }: { issues: ProjectIssue[]; title: string; t: StudioTranslator }) {
   return (
     <div style={issueGroupsStyle}>
       <span style={fieldLabelStyle}>{title}</span>
       {groupIssuesBySource(issues).map(([source, group]) => (
         <div key={source} style={issueGroupStyle}>
           <span style={issueGroupTitleStyle}>
-            {exportIssueSourceLabel(source)}（{group.length}）
+            {exportIssueSourceLabel(source, t)}（{group.length}）
           </span>
           <ul style={issueListStyle}>
             {group.map((issue, index) => (
@@ -653,10 +702,10 @@ function IssueGroups({ issues, title }: { issues: ProjectIssue[]; title: string 
   );
 }
 
-function DiagnosticList({ diagnostics }: { diagnostics: DesktopBuildDiagnostic[] }) {
+function DiagnosticList({ diagnostics, t }: { diagnostics: DesktopBuildDiagnostic[]; t: StudioTranslator }) {
   return (
     <div style={issueGroupsStyle}>
-      <span style={fieldLabelStyle}>诊断（{diagnostics.length}）</span>
+      <span style={fieldLabelStyle}>{t("export.diagnostics", { count: diagnostics.length })}</span>
       <ul style={issueListStyle}>
         {diagnostics.map((diagnostic, index) => (
           <li key={`${diagnostic.code ?? "diag"}-${index}`} style={issueItemStyle}>

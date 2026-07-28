@@ -16,6 +16,7 @@ import type { AssetEntry } from "../../lib/types";
 import { baseName, previewKind, resolveAssetUrl } from "./assetPreview";
 import { AssetAudioPreview } from "./AssetAudioPreview";
 import { AssetImagePreview } from "./AssetImagePreview";
+import { useStudioI18n } from "../../lib/i18n";
 
 interface AssetCardProps {
   entry: AssetEntry;
@@ -43,6 +44,7 @@ export function AssetCard({
   onRegisterOrphan,
   readOnly = false,
 }: AssetCardProps) {
+  const { t } = useStudioI18n();
   const kind = previewKind(entry.relPath);
   const url = kind === "audio" || kind === "video" ? resolveAssetUrl(projectPath, entry.relPath) : "";
   const name = baseName(entry.relPath);
@@ -73,17 +75,17 @@ export function AssetCard({
             <FileText size={28} />
           </span>
         )}
-        {isOrphan && <span style={orphanBadgeStyle}>未登记</span>}
+        {isOrphan && <span style={orphanBadgeStyle}>{t("assets.orphanBadge")}</span>}
       </div>
       <div style={metaStyle}>
         <span style={nameStyle} title={entry.relPath}>{name}</span>
         <span style={refStyle}>
           {isOrphan ? (
-            "剧本无法引用"
+            t("assets.unreferenceable")
           ) : (
             <>
-              登记 {refCount} / 剧本 {usageCount}
-              {unusedInStory && " · 未使用"}
+              {t("assets.references", { registered: refCount, used: usageCount })}
+              {unusedInStory && ` · ${t("assets.unused")}`}
             </>
           )}
         </span>
@@ -92,7 +94,7 @@ export function AssetCard({
         <div style={actionsStyle}>
           {isOrphan && onRegisterOrphan && (
             <button type="button" className="gs-btn gs-btn--sm gs-btn--secondary" onClick={() => onRegisterOrphan(entry)}>
-              登记
+              {t("assets.register")}
             </button>
           )}
           <button
@@ -100,9 +102,9 @@ export function AssetCard({
             className="gs-btn gs-btn--sm gs-btn--secondary"
             style={{ color: "var(--status-error-text)" }}
             onClick={() => onDelete(entry.relPath, entry.revision)}
-            aria-label={`删除 ${name}`}
+            aria-label={t("assets.deleteNamed", { name })}
           >
-            删除
+            {t("assets.delete")}
           </button>
         </div>
       )}
@@ -124,6 +126,7 @@ export function DanglingCard({
   readOnly?: boolean;
   onRemoveRef: (source: string) => void;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div style={{ ...cardStyle, borderColor: "var(--border-error)", borderStyle: "dashed" }}>
       <div style={{ ...previewStyle, background: "var(--bg-error-soft)" }}>
@@ -133,7 +136,7 @@ export function DanglingCard({
       </div>
       <div style={metaStyle}>
         <span style={nameStyle} title={path}>{id}</span>
-        <span style={{ ...refStyle, color: "var(--status-error-text)" }}>文件缺失</span>
+        <span style={{ ...refStyle, color: "var(--status-error-text)" }}>{t("assets.missing")}</span>
       </div>
       <div style={actionsStyle}>
         <span style={danglingSourceStyle} title={source}>{source}</span>
@@ -144,7 +147,7 @@ export function DanglingCard({
             style={{ color: "var(--status-error-text)" }}
             onClick={() => onRemoveRef(source)}
           >
-            移除引用
+            {t("assets.removeReference")}
           </button>
         )}
       </div>

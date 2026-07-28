@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FileRevision } from "../../lib/types";
 import { readAssetThumbnailDataUrl } from "../../lib/tauri";
+import { useStudioI18n } from "../../lib/i18n";
 
 interface AssetImagePreviewProps {
   projectPath: string;
@@ -70,6 +71,7 @@ export function AssetImagePreview({
   style,
   placeholderStyle,
 }: AssetImagePreviewProps) {
+  const { t } = useStudioI18n();
   const [preview, setPreview] = useState<PreviewState>({ status: "loading" });
   const maxSize = 384;
   const cacheKey = assetThumbnailCacheKey(projectPath, relPath, revision, maxSize, generation);
@@ -97,7 +99,9 @@ export function AssetImagePreview({
     return <img src={preview.dataUrl} alt={alt} style={style} draggable={false} />;
   }
 
-  const text = preview.status === "failed" ? "预览不可用" : "加载中";
+  const text = preview.status === "failed"
+    ? t("assets.preview.unavailable")
+    : t("assets.preview.loading");
   const title = preview.status === "failed" ? preview.message : relPath;
   return <span style={placeholderStyle} title={title}>{text}</span>;
 }

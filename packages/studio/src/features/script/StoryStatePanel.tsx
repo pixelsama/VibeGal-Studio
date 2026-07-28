@@ -21,9 +21,49 @@ import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { Button, IconButton } from "../common/Button";
 import { Field, NumberInput, SegmentedControl, Select, Slider, Switch, TextInput } from "../common/Form";
 import { analyzeGraphVariables, type VariableEntry } from "./variableAnalysis";
-import { KIND_HINT, KIND_LABEL, SCOPE_LABEL, bandLabelForValue, variableLabel } from "./storyState";
+import { bandLabelForValue, variableLabel } from "./storyState";
+import {
+  translateZhCN,
+  useStudioI18n,
+  type StudioTranslator,
+} from "../../lib/i18n";
 
 const KIND_ORDER: VariableKind[] = ["flag", "meter", "state", "counter", "text"];
+
+const KIND_MESSAGE_KEY = {
+  flag: "script.state.kind.flag",
+  meter: "script.state.kind.meter",
+  state: "script.state.kind.state",
+  counter: "script.state.kind.counter",
+  text: "script.state.kind.text",
+} as const;
+
+const KIND_HINT_MESSAGE_KEY = {
+  flag: "script.state.kindHint.flag",
+  meter: "script.state.kindHint.meter",
+  state: "script.state.kindHint.state",
+  counter: "script.state.kindHint.counter",
+  text: "script.state.kindHint.text",
+} as const;
+
+function kindLabel(kind: VariableKind, t: StudioTranslator): string {
+  return t(KIND_MESSAGE_KEY[kind]);
+}
+
+function kindHint(kind: VariableKind, t: StudioTranslator): string {
+  return t(KIND_HINT_MESSAGE_KEY[kind]);
+}
+
+function scopeLabel(
+  scope: "run" | "global",
+  t: StudioTranslator,
+): string {
+  return t(
+    scope === "global"
+      ? "script.state.scope.global"
+      : "script.state.scope.run",
+  );
+}
 
 export interface StoryStatePanelProps {
   registry: VariableRegistry;
@@ -47,6 +87,7 @@ export function StoryStatePanel({
   onSelectNode,
   onSelectEdge,
 }: StoryStatePanelProps) {
+  const { t } = useStudioI18n();
   const analysis = useMemo(() => analyzeGraphVariables(graph, nodes, registry), [graph, nodes, registry]);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -82,8 +123,8 @@ export function StoryStatePanel({
           <Search size={14} aria-hidden="true" />
           <input
             className="gs-input"
-            aria-label="搜索故事状态"
-            placeholder="搜索"
+            aria-label={t("script.state.searchLabel")}
+            placeholder={t("script.state.searchPlaceholder")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -91,7 +132,7 @@ export function StoryStatePanel({
         {onChange && (
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus size={14} aria-hidden="true" />
-            新建
+            {t("script.state.new")}
           </Button>
         )}
       </div>
@@ -99,6 +140,7 @@ export function StoryStatePanel({
       {creating && onChange && (
         <NewStateForm
           existingNames={new Set(Object.keys(registry.variables))}
+          t={t}
           onCancel={() => setCreating(false)}
           onCreate={(name, declaration) => {
             onChange({ ...registry, variables: { ...registry.variables, [name]: declaration } });
@@ -109,8 +151,7 @@ export function StoryStatePanel({
 
       {declared.length === 0 && undeclared.length === 0 && (
         <p className="gs-story-state__empty">
-          还没有故事状态。玩家的选择本身已经可以直接用在分流条件里；
-          只有需要累积的东西（好感度、次数）才要在这里登记。
+          {t("script.state.empty")}
         </p>
       )}
 
@@ -128,18 +169,19 @@ export function StoryStatePanel({
           onRemove={() => remove(name)}
           onSelectNode={onSelectNode}
           onSelectEdge={onSelectEdge}
+          t={t}
         />
       ))}
 
       {undeclared.length > 0 && (
         <div className="gs-story-state__undeclared">
-          <h4>剧本里用到、但还没登记的状态</h4>
+          <h4>{t("script.state.undeclared")}</h4>
           {undeclared.map((entry) => (
             <div key={entry.name} className="gs-story-state__undeclared-row">
               <span>{entry.name}</span>
               {onChange && (
                 <Button onClick={() => onChange(registerInferredVariable(registry, entry.name, entry.types))}>
-                  登记
+                  {t("script.state.register")}
                 </Button>
               )}
             </div>
@@ -164,6 +206,7 @@ export function StateCard({
   onRemove,
   onSelectNode,
   onSelectEdge,
+  t = translateZhCN,
 }: {
   name: string;
   declaration: VariableDeclaration;
@@ -176,6 +219,7 @@ export function StateCard({
   onRemove: () => void;
   onSelectNode?: (nodeId: string) => void;
   onSelectEdge?: (edgeId: string) => void;
+  t?: StudioTranslator;
 }) {
   const writes = usage?.writes.length ?? 0;
   const reads = usage?.reads.length ?? 0;
@@ -187,15 +231,15 @@ export function StateCard({
         <div>
           <div className="gs-state-card__title">{title}</div>
           <div className="gs-state-card__meta">
-            {KIND_LABEL[kind]} · {SCOPE_LABEL[declaration.scope ?? "run"]}
+            {kindLabel(kind, t)} · {scopeLabel(declaration.scope ?? "run", t)}
           </div>
         </div>
         {editable && onRename && (
-          <RenameButton name={name} label={title} onRename={onRename} />
+          <RenameButton name={name} label={title} onRename={onRename} t={t} />
         )}
       </header>
 
-      <Field label="显示名称" hint="故事状态在条件和分流里显示的名字">
+      <Field label={t("script.state.displayName")} hint={t("script.state.displayNameHint")}>
         {({ id }) => (
           <TextInput
             id={id}
@@ -206,61 +250,65 @@ export function StateCard({
         )}
       </Field>
 
-      <InitialValueField declaration={declaration} kind={kind} editable={editable} onChange={onChange} />
+      <InitialValueField declaration={declaration} kind={kind} editable={editable} onChange={onChange} t={t} />
 
       {(kind === "meter" || kind === "counter") && (
-        <RangeFields declaration={declaration} editable={editable} onChange={onChange} />
+        <RangeFields declaration={declaration} editable={editable} onChange={onChange} t={t} />
       )}
       {kind === "state" && (
-        <OptionsField declaration={declaration} editable={editable} onChange={onChange} />
+        <OptionsField declaration={declaration} editable={editable} onChange={onChange} t={t} />
       )}
 
       {/* 详细用量由 StoryStateView 的「在故事里」承担；卡片只给一句概览。 */}
       <div className="gs-state-card__usage">
-        <span>{describeUsage(writes, reads, declaration.displayOnly)}</span>
+        <span>{describeUsage(writes, reads, declaration.displayOnly, t)}</span>
         <div className="gs-state-card__usage-actions">
           {usage?.writes[0]?.nodeId && onSelectNode && (
-            <Button onClick={() => onSelectNode(usage.writes[0]!.nodeId!)}>看第一处改动</Button>
+            <Button onClick={() => onSelectNode(usage.writes[0]!.nodeId!)}>{t("script.state.usage.firstWrite")}</Button>
           )}
           {usage?.reads[0]?.edgeId && onSelectEdge && (
-            <Button onClick={() => onSelectEdge(usage.reads[0]!.edgeId!)}>看第一处判断</Button>
+            <Button onClick={() => onSelectEdge(usage.reads[0]!.edgeId!)}>{t("script.state.usage.firstRead")}</Button>
           )}
         </div>
       </div>
 
       <details className="gs-state-card__details">
-        <summary>技术详情</summary>
+        <summary>{t("script.state.technical")}</summary>
         <div className="gs-state-card__details-body">
-          <div>内部标识：<code>{name}</code></div>
-          <div>数据类型：{declaration.type}</div>
-          <Field label="存储方式" hint="跨周目保存的状态不会被读档回滚">
+          <div>{t("script.state.internalId")}<code>{name}</code></div>
+          <div>{t("script.state.dataType")}{declaration.type}</div>
+          <Field label={t("script.state.storage")} hint={t("script.state.storageHint")}>
             {({ id }) => (
               <Select
                 id={id}
                 disabled={!editable}
                 value={declaration.scope ?? "run"}
                 options={[
-                  { value: "run", label: SCOPE_LABEL.run },
-                  { value: "global", label: SCOPE_LABEL.global },
+                  { value: "run", label: scopeLabel("run", t) },
+                  { value: "global", label: scopeLabel("global", t) },
                 ]}
                 onChange={(value) => onChange({ ...declaration, scope: value as "run" | "global" })}
               />
             )}
           </Field>
           <Switch
-            aria-label={`${title} 仅用于界面显示`}
+            aria-label={t("script.state.displayOnlyAria", { title })}
             disabled={!editable}
             checked={declaration.displayOnly ?? false}
-            label="仅用于界面显示（不参与分流判断）"
+            label={t("script.state.displayOnly")}
             onChange={(checked) => onChange({ ...declaration, displayOnly: checked || undefined })}
           />
           {editable && (
             <Button
               variant="danger"
-              title={writes + reads > 0 ? `仍有 ${writes + reads} 处引用，删除后会留下未登记状态` : "没有任何引用"}
+              title={writes + reads > 0
+                ? t("script.state.referencesRemain", { count: writes + reads })
+                : t("script.state.noReferences")}
               onClick={onRemove}
             >
-              删除{writes + reads > 0 ? `（还有 ${writes + reads} 处引用）` : ""}
+              {writes + reads > 0
+                ? t("script.state.deleteWithReferences", { count: writes + reads })
+                : t("script.state.delete")}
             </Button>
           )}
         </div>
@@ -269,16 +317,29 @@ export function StateCard({
   );
 }
 
-function RenameButton({ name, label, onRename }: { name: string; label: string; onRename: (from: string, to: string) => void }) {
+function RenameButton({
+  name,
+  label,
+  onRename,
+  t = translateZhCN,
+}: {
+  name: string;
+  label: string;
+  onRename: (from: string, to: string) => void;
+  t?: StudioTranslator;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   if (draft == null) {
-    return <Button onClick={() => setDraft(name)} title="同时改写所有引用">改标识</Button>;
+    return <Button onClick={() => setDraft(name)} title={t("script.state.renameHint")}>{t("script.state.renameId")}</Button>;
   }
   const invalid = !/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(draft)
     || /^(?:system|chose|seen)\./.test(draft);
   return (
     <div className="gs-state-card__rename">
-      <Field label={`${label} 的内部标识`} error={invalid ? "只能用字母、数字和下划线，且不能以 system./chose./seen. 开头" : undefined}>
+      <Field
+        label={t("script.state.internalIdFor", { label })}
+        error={invalid ? t("script.state.invalidId") : undefined}
+      >
         {({ id, invalid: isInvalid }) => (
           <TextInput id={id} invalid={isInvalid} value={draft} onChange={setDraft} />
         )}
@@ -288,9 +349,9 @@ function RenameButton({ name, label, onRename }: { name: string; label: string; 
         disabled={invalid || draft === name}
         onClick={() => { onRename(name, draft); setDraft(null); }}
       >
-        改名并更新所有引用
+        {t("script.state.renameAll")}
       </Button>
-      <Button onClick={() => setDraft(null)}>取消</Button>
+      <Button onClick={() => setDraft(null)}>{t("script.state.cancel")}</Button>
     </div>
   );
 }
@@ -300,21 +361,25 @@ function InitialValueField({
   kind,
   editable,
   onChange,
+  t = translateZhCN,
 }: {
   declaration: VariableDeclaration;
   kind: VariableKind;
   editable: boolean;
   onChange: (declaration: VariableDeclaration) => void;
+  t?: StudioTranslator;
 }) {
   if (kind === "flag") {
     return (
-      <Field label="开局时">
+      <Field label={t("script.state.initial.flag")}>
         {() => (
           <Switch
-            aria-label="开局时"
+            aria-label={t("script.state.initial.flag")}
             disabled={!editable}
             checked={declaration.default === true}
-            label={declaration.default === true ? "已经发生" : "还没发生"}
+            label={declaration.default === true
+              ? t("script.state.initial.happened")
+              : t("script.state.initial.notHappened")}
             onChange={(checked) => onChange({ ...declaration, default: checked })}
           />
         )}
@@ -324,14 +389,14 @@ function InitialValueField({
   if (kind === "state") {
     const options = declaration.options ?? [];
     return (
-      <Field label="开局状态">
+      <Field label={t("script.state.initial.state")}>
         {({ id }) => (
           <Select
             id={id}
             disabled={!editable || options.length === 0}
             value={typeof declaration.default === "string" ? declaration.default : ""}
             options={options.map((option) => ({ value: option.id, label: option.label }))}
-            placeholder={options.length === 0 ? "先在下方添加可选状态" : undefined}
+            placeholder={options.length === 0 ? t("script.state.initial.addOptionsFirst") : undefined}
             onChange={(value) => onChange({ ...declaration, default: value })}
           />
         )}
@@ -342,11 +407,14 @@ function InitialValueField({
     const value = typeof declaration.default === "number" ? declaration.default : 0;
     const bounded = declaration.min != null && declaration.max != null;
     return (
-      <Field label="初始值" hint={bounded ? undefined : "没有设定范围，可以是任意数值"}>
+      <Field
+        label={t("script.state.initial.number")}
+        hint={bounded ? undefined : t("script.state.initial.unbounded")}
+      >
         {({ id }) => bounded ? (
           <Slider
             id={id}
-            aria-label="初始值"
+            aria-label={t("script.state.initial.number")}
             disabled={!editable}
             value={value}
             min={declaration.min!}
@@ -359,13 +427,19 @@ function InitialValueField({
             onChange={(next) => onChange({ ...declaration, default: next })}
           />
         ) : (
-          <NumberInput id={id} aria-label="初始值" disabled={!editable} value={value} onChange={(next) => onChange({ ...declaration, default: next })} />
+          <NumberInput
+            id={id}
+            aria-label={t("script.state.initial.number")}
+            disabled={!editable}
+            value={value}
+            onChange={(next) => onChange({ ...declaration, default: next })}
+          />
         )}
       </Field>
     );
   }
   return (
-    <Field label="初始文本">
+    <Field label={t("script.state.initial.text")}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -382,25 +456,31 @@ function RangeFields({
   declaration,
   editable,
   onChange,
+  t = translateZhCN,
 }: {
   declaration: VariableDeclaration;
   editable: boolean;
   onChange: (declaration: VariableDeclaration) => void;
+  t?: StudioTranslator;
 }) {
   const bounded = declaration.min != null || declaration.max != null;
   return (
     <Field
-      label="取值范围"
-      hint={bounded ? "写入时会自动限制在范围内" : "不限制。设定范围后，超出的写入会被自动收进范围"}
-      error={declaration.min != null && declaration.max != null && declaration.min > declaration.max ? "上限不能小于下限" : undefined}
+      label={t("script.state.range")}
+      hint={bounded
+        ? t("script.state.range.boundedHint")
+        : t("script.state.range.unboundedHint")}
+      error={declaration.min != null && declaration.max != null && declaration.min > declaration.max
+        ? t("script.state.range.invalid")
+        : undefined}
     >
       {() => (
         <div className="gs-range-fields">
           <Switch
-            aria-label="限制取值范围"
+            aria-label={t("script.state.range.limitAria")}
             disabled={!editable}
             checked={bounded}
-            label="限制范围"
+            label={t("script.state.range.limit")}
             onChange={(checked) => onChange(checked
               ? { ...declaration, min: 0, max: 100 }
               : { ...declaration, min: undefined, max: undefined, bands: undefined })}
@@ -408,14 +488,14 @@ function RangeFields({
           {bounded && (
             <>
               <NumberInput
-                aria-label="下限"
+                aria-label={t("script.state.range.minimum")}
                 disabled={!editable}
                 value={declaration.min ?? 0}
                 onChange={(value) => onChange({ ...declaration, min: value })}
               />
-              <span className="gs-sentence__word">到</span>
+              <span className="gs-sentence__word">{t("script.state.range.to")}</span>
               <NumberInput
-                aria-label="上限"
+                aria-label={t("script.state.range.maximum")}
                 disabled={!editable}
                 value={declaration.max ?? 100}
                 onChange={(value) => onChange({ ...declaration, max: value })}
@@ -432,10 +512,12 @@ function OptionsField({
   declaration,
   editable,
   onChange,
+  t = translateZhCN,
 }: {
   declaration: VariableDeclaration;
   editable: boolean;
   onChange: (declaration: VariableDeclaration) => void;
+  t?: StudioTranslator;
 }) {
   const options = declaration.options ?? [];
   const setOptions = (next: NonNullable<VariableDeclaration["options"]>) => onChange({
@@ -445,20 +527,20 @@ function OptionsField({
     default: next.some((option) => option.id === declaration.default) ? declaration.default : next[0]?.id ?? "",
   });
   return (
-    <Field label="可选状态" hint="条件里从这些状态里选，不用手打，也就不会打错">
+    <Field label={t("script.state.options")} hint={t("script.state.optionsHint")}>
       {() => (
         <div className="gs-options-field">
           {options.map((option, index) => (
             <div key={option.id} className="gs-options-field__row">
               <TextInput
-                aria-label={`第 ${index + 1} 个状态的名称`}
+                aria-label={t("script.state.optionName", { number: index + 1 })}
                 disabled={!editable}
                 value={option.label}
                 onChange={(label) => setOptions(options.map((item, at) => at === index ? { ...item, label } : item))}
               />
               {editable && (
                 <IconButton
-                  aria-label={`删除状态 ${option.label}`}
+                  aria-label={t("script.state.optionDelete", { label: option.label })}
                   onClick={() => setOptions(options.filter((_, at) => at !== index))}
                 >
                   ×
@@ -467,8 +549,14 @@ function OptionsField({
             </div>
           ))}
           {editable && (
-            <Button onClick={() => setOptions([...options, { id: nextOptionId(options), label: `状态 ${options.length + 1}` }])}>
-              添加状态
+            <Button onClick={() => setOptions([
+              ...options,
+              {
+                id: nextOptionId(options),
+                label: `状态 ${options.length + 1}`,
+              },
+            ])}>
+              {t("script.state.optionAdd")}
             </Button>
           )}
         </div>
@@ -489,10 +577,12 @@ export function NewStateForm({
   existingNames,
   onCreate,
   onCancel,
+  t = translateZhCN,
 }: {
   existingNames: Set<string>;
   onCreate: (name: string, declaration: VariableDeclaration) => void;
   onCancel: () => void;
+  t?: StudioTranslator;
 }) {
   const [kind, setKind] = useState<VariableKind>("flag");
   const [label, setLabel] = useState("");
@@ -507,28 +597,43 @@ export function NewStateForm({
         onCreate(name, declarationForKind(kind, label.trim()));
       }}
     >
-      <Field label="这个状态用来记什么？" hint={KIND_HINT[kind]}>
+      <Field label={t("script.state.newPurpose")} hint={kindHint(kind, t)}>
         {() => (
           <SegmentedControl<VariableKind>
-            aria-label="用途"
+            aria-label={t("script.state.newPurposeAria")}
             value={kind}
-            options={KIND_ORDER.map((item) => ({ value: item, label: KIND_LABEL[item] }))}
+            options={KIND_ORDER.map((item) => ({ value: item, label: kindLabel(item, t) }))}
             onChange={setKind}
           />
         )}
       </Field>
-      <Field label="叫什么名字？" hint={label.trim() ? `内部标识会是 ${name}` : "比如「拿到钥匙」「雪的好感度」"}>
-        {({ id }) => <TextInput id={id} value={label} onChange={setLabel} placeholder="拿到钥匙" />}
+      <Field
+        label={t("script.state.newName")}
+        hint={label.trim()
+          ? t("script.state.newInternalId", { name })
+          : t("script.state.newNameExamples")}
+      >
+        {({ id }) => (
+          <TextInput
+            id={id}
+            value={label}
+            onChange={setLabel}
+            placeholder={t("script.state.newNamePlaceholder")}
+          />
+        )}
       </Field>
       <div className="gs-state-new__actions">
-        <Button variant="primary" type="submit" disabled={!label.trim()}>创建</Button>
-        <Button onClick={onCancel}>取消</Button>
+        <Button variant="primary" type="submit" disabled={!label.trim()}>{t("script.state.create")}</Button>
+        <Button onClick={onCancel}>{t("script.state.cancel")}</Button>
       </div>
     </form>
   );
 }
 
-export function declarationForKind(kind: VariableKind, label: string): VariableDeclaration {
+export function declarationForKind(
+  kind: VariableKind,
+  label: string,
+): VariableDeclaration {
   const type = variableTypeForKind(kind);
   const base = { kind, label, type, nullable: false, scope: "run" as const };
   if (kind === "flag") return { ...base, type: "boolean", default: false };
@@ -548,7 +653,12 @@ export function declarationForKind(kind: VariableKind, label: string): VariableD
   }
   if (kind === "counter") return { ...base, type: "number", default: 0, min: 0 };
   if (kind === "state") {
-    return { ...base, type: "string", default: "state_1", options: [{ id: "state_1", label: "状态 1" }] };
+    return {
+      ...base,
+      type: "string",
+      default: "state_1",
+      options: [{ id: "state_1", label: "状态 1" }],
+    };
   }
   return { ...base, type: "string", default: "" };
 }
@@ -586,12 +696,24 @@ export function registerInferredVariable(registry: VariableRegistry, name: strin
   };
 }
 
-function describeUsage(writes: number, reads: number, displayOnly?: boolean): string {
-  if (writes === 0 && reads === 0) return "剧本里还没有用到它";
+function describeUsage(
+  writes: number,
+  reads: number,
+  displayOnly?: boolean,
+  t: StudioTranslator = translateZhCN,
+): string {
+  if (writes === 0 && reads === 0) {
+    return t("script.state.usage.unused");
+  }
   const parts: string[] = [];
-  parts.push(writes === 0 ? "没有任何地方改变它" : `被 ${writes} 处改变`);
-  if (reads > 0) parts.push(`被 ${reads} 处判断用到`);
-  else if (!displayOnly) parts.push("还没有任何分流用到它");
+  parts.push(writes === 0
+    ? t("script.state.usage.noWrites")
+    : t("script.state.usage.writes", { count: writes }));
+  if (reads > 0) {
+    parts.push(t("script.state.usage.reads", { count: reads }));
+  } else if (!displayOnly) {
+    parts.push(t("script.state.usage.noReads"));
+  }
   return parts.join(" · ");
 }
 

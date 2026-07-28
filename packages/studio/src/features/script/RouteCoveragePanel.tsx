@@ -10,11 +10,12 @@ import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import type { VariableRegistry } from "@vibegal/engine";
 import { analyzeEndingRouteMatrix, collectUnregisteredTerminals } from "./routeAnalysis";
 import { buildRouteCoverage } from "./variableAnalysis";
+import { useStudioI18n, type StudioMessageKey } from "../../lib/i18n";
 
-const REACHABILITY_LABEL: Record<string, string> = {
-  reachable: "能走到",
-  unreachable: "走不到",
-  unknown: "不确定",
+const REACHABILITY_MESSAGE_KEY: Record<string, StudioMessageKey> = {
+  reachable: "script.coverage.reachable",
+  unreachable: "script.coverage.unreachable",
+  unknown: "script.coverage.unknown",
 };
 
 export interface RouteCoveragePanelProps {
@@ -26,6 +27,7 @@ export interface RouteCoveragePanelProps {
 }
 
 export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onSelectNode }: RouteCoveragePanelProps) {
+  const { t } = useStudioI18n();
   const coverage = useMemo(() => buildRouteCoverage(graph), [graph]);
   const endingMatrix = useMemo(
     () => manifest ? analyzeEndingRouteMatrix({ graph, nodes: nodeEntries, manifest, variables: registry }) : null,
@@ -39,17 +41,17 @@ export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onS
   return (
     <div className="gs-coverage">
       <div className="gs-coverage__stats">
-        <Stat label="节点总数" value={coverage.totalNodes} />
-        <Stat label="能走到" value={coverage.reachableNodes} />
-        <Stat label="终点" value={coverage.endingNodes} />
-        <Stat label="孤立节点" value={coverage.orphanNodes} />
+        <Stat label={t("script.coverage.totalNodes")} value={coverage.totalNodes} />
+        <Stat label={t("script.coverage.reachable")} value={coverage.reachableNodes} />
+        <Stat label={t("script.coverage.endingNodes")} value={coverage.endingNodes} />
+        <Stat label={t("script.coverage.orphanNodes")} value={coverage.orphanNodes} />
       </div>
 
       {endingMatrix && endingMatrix.rows.length > 0 && (
         <section className="gs-coverage__block">
-          <h4>每个结局能不能走到</h4>
+          <h4>{t("script.coverage.endingReachability")}</h4>
           <div className="gs-coverage__matrix" style={{ gridTemplateColumns: `minmax(110px, 1fr) repeat(${endingMatrix.columns.length}, minmax(72px, auto))` }}>
-            <strong>结局</strong>
+            <strong>{t("script.coverage.ending")}</strong>
             {endingMatrix.columns.map((column) => <strong key={column.id}>{column.title}</strong>)}
             {endingMatrix.rows.flatMap((row) => [
               <span key={`${row.endingId}:title`}>{row.title}</span>,
@@ -57,9 +59,11 @@ export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onS
                 <span
                   key={`${row.endingId}:${endingMatrix.columns[index].id}`}
                   className={`gs-coverage__cell gs-coverage__cell--${cell.reachability}`}
-                  title={cell.witness ? `路径：${cell.witness.join(" → ")}` : cell.reason}
+                  title={cell.witness ? t("script.coverage.path", { path: cell.witness.join(" → ") }) : cell.reason}
                 >
-                  {REACHABILITY_LABEL[cell.reachability] ?? cell.reachability}
+                  {REACHABILITY_MESSAGE_KEY[cell.reachability]
+                    ? t(REACHABILITY_MESSAGE_KEY[cell.reachability])
+                    : cell.reachability}
                 </span>
               )),
             ])}
@@ -69,11 +73,11 @@ export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onS
 
       {unregisteredTerminals.length > 0 && (
         <section className="gs-coverage__block">
-          <h4>走得到、但还没登记成结局的终点</h4>
+          <h4>{t("script.coverage.unregisteredTerminals")}</h4>
           {unregisteredTerminals.map((terminal) => (
             <button key={terminal.nodeId} type="button" className="gs-state-usage__row" onClick={() => onSelectNode(terminal.nodeId)}>
               <span>{terminal.title}</span>
-              <span className="gs-state-usage__hint">去看看</span>
+              <span className="gs-state-usage__hint">{t("script.coverage.inspect")}</span>
             </button>
           ))}
         </section>

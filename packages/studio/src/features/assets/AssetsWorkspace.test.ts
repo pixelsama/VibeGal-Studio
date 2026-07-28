@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://${path}`,
@@ -629,6 +630,34 @@ describe("asset workspace feedback", () => {
 });
 
 describe("read-only asset UI", () => {
+  it("renders the primary asset surface in English while preserving asset ids", () => {
+    const project: ProjectData = {
+      path: "/project",
+      meta: { name: "T", activeRendererId: "default", createdAt: "0" },
+      content: { manifest: base, meta: {} },
+      rendererIds: ["default"],
+    };
+
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(AssetsWorkspace, {
+        project,
+        refreshKey: 0,
+        sidebarCollapsed: false,
+        onSidebarCollapsedChange: () => {},
+        onSaved: () => {},
+      }),
+    ));
+
+    expect(html).toContain('aria-label="Assets"');
+    expect(html).toContain("Overview");
+    expect(html).toContain("Backgrounds");
+    expect(html).toContain("Import assets");
+    expect(html).toContain("Search by id or filename");
+    expect(html).not.toContain("还没有资源");
+  });
+
   it("keeps asset categories visible inside the expanded collapsible sidebar", () => {
     const project: ProjectData = {
       path: "/project",
@@ -771,6 +800,39 @@ describe("read-only asset UI", () => {
 });
 
 describe("character sprite import UI", () => {
+  it("renders the character editor in English while preserving creator-authored names and paths", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(CharacterEditor, {
+        projectPath: "/project",
+        manifest: {
+          characters: {
+            snow: {
+              name: "雪",
+              color: "#ffffff",
+              sprites: {
+                "微笑": "assets/characters/snow_smile.png",
+              },
+            },
+          },
+          backgrounds: {},
+          audio: { bgm: {}, sfx: {}, voice: {} },
+        },
+        onChange: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Characters");
+    expect(html).toContain("Basic information");
+    expect(html).toContain("Expression assets");
+    expect(html).toContain("Choose image");
+    expect(html).toContain("雪");
+    expect(html).toContain("微笑");
+    expect(html).toContain("assets/characters/snow_smile.png");
+    expect(html).not.toContain("基本信息");
+  });
+
   it("offers one primary action when there are no characters", () => {
     const html = renderToStaticMarkup(createElement(CharacterEditor, {
       projectPath: "/project",

@@ -469,14 +469,22 @@ describe("renderer trust and project support commands", () => {
 
   it("updates the theme without dropping persisted renderer trust", async () => {
     invokeMock
-      .mockResolvedValueOnce({ theme: "system", rendererTrust: { renderer: "hash" } })
+      .mockResolvedValueOnce({
+        theme: "system",
+        studioLanguage: "en",
+        rendererTrust: { renderer: "hash" },
+      })
       .mockResolvedValueOnce(undefined);
 
     await saveThemeSetting("dark");
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, "load_app_settings");
     expect(invokeMock).toHaveBeenNthCalledWith(2, "save_app_settings", {
-      settings: { theme: "dark", rendererTrust: { renderer: "hash" } },
+      settings: {
+        theme: "dark",
+        studioLanguage: "en",
+        rendererTrust: { renderer: "hash" },
+      },
     });
   });
 

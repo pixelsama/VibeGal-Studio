@@ -13,6 +13,7 @@
  */
 import type { ReactNode } from "react";
 import { useId } from "react";
+import { useStudioI18n } from "../../lib/i18n";
 
 function classes(...parts: (string | false | undefined | null)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -130,6 +131,7 @@ export interface SelectProps extends ControlBase {
 }
 
 export function Select({ value, options, onChange, placeholder, describedBy, invalid, ...rest }: SelectProps) {
+  const { t } = useStudioI18n();
   const groups = new Map<string, SelectOption[]>();
   for (const option of options) {
     const key = option.group ?? "";
@@ -148,7 +150,7 @@ export function Select({ value, options, onChange, placeholder, describedBy, inv
       onChange={(event) => onChange(event.target.value)}
     >
       {placeholder != null && <option value="">{placeholder}</option>}
-      {missing && <option value={value}>{value}（已失效）</option>}
+      {missing && <option value={value}>{t("form.invalidOption", { value })}</option>}
       {[...groups].map(([group, items]) => group === ""
         ? items.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)
         : (
@@ -272,6 +274,7 @@ export interface StepperProps extends ControlBase {
 
 /** 增减步进器。让「好感度 +3」不必写成表达式。 */
 export function Stepper({ value, onChange, step = 1, min, max, prefix, disabled, describedBy, ...rest }: StepperProps) {
+  const { t } = useStudioI18n();
   const clamp = (next: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, next));
   const label = rest["aria-label"];
   return (
@@ -279,7 +282,9 @@ export function Stepper({ value, onChange, step = 1, min, max, prefix, disabled,
       <button
         type="button"
         className="gs-btn gs-btn--ghost gs-stepper__button"
-        aria-label={label ? `${label} 减少` : "减少"}
+        aria-label={label
+          ? t("form.decrease", { label })
+          : t("form.decreaseDefault")}
         disabled={disabled || (min != null && value <= min)}
         onClick={() => onChange(clamp(value - step))}
       >
@@ -304,7 +309,9 @@ export function Stepper({ value, onChange, step = 1, min, max, prefix, disabled,
       <button
         type="button"
         className="gs-btn gs-btn--ghost gs-stepper__button"
-        aria-label={label ? `${label} 增加` : "增加"}
+        aria-label={label
+          ? t("form.increase", { label })
+          : t("form.increaseDefault")}
         disabled={disabled || (max != null && value >= max)}
         onClick={() => onChange(clamp(value + step))}
       >

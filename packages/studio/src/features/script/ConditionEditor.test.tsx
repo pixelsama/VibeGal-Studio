@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Manifest, VariableRegistry } from "@vibegal/engine";
 import type { ProjectGraph } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 import { ConditionEditor, describeCondition } from "./ConditionEditor";
 import { collectStateSources } from "./storyState";
 
@@ -113,6 +114,27 @@ describe("ConditionEditor", () => {
     }));
     expect(html).not.toContain("添加条件");
     expect(html).not.toContain("删除第 1 个条件");
+  });
+
+  it("renders English controls while preserving creator-authored labels", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(ConditionEditor, {
+        source: "affection_yuki >= 60 && has_key",
+        sources,
+        onChange: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Match all");
+    expect(html).toContain("If");
+    expect(html).toContain("and");
+    expect(html).toContain("At least");
+    expect(html).toContain("Add condition");
+    expect(html).toContain("雪 · 好感度");
+    expect(html).toContain("喜欢");
+    expect(html).not.toContain("全部满足");
   });
 });
 

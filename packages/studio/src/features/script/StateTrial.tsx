@@ -9,6 +9,7 @@ import { RotateCcw } from "lucide-react";
 import { variableKind } from "@vibegal/engine";
 import { Button } from "../common/Button";
 import { NumberInput, Select, SentenceRow, Switch, TextInput } from "../common/Form";
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import { bandLabelForValue, type StateSource } from "./storyState";
 
 export interface StateTrialProps {
@@ -20,6 +21,7 @@ export interface StateTrialProps {
 }
 
 export function StateTrial({ sources, values, onChange, only }: StateTrialProps) {
+  const { t } = useStudioI18n();
   const visible = sources.filter((source) => {
     if (source.name === "system.lastEndingId") return false;
     return only ? only.includes(source.name) : true;
@@ -30,16 +32,21 @@ export function StateTrial({ sources, values, onChange, only }: StateTrialProps)
 
   return (
     <details className="gs-trial">
-      <summary>试算：假设现在的故事状态是……</summary>
+      <summary>{t("script.trial.summary")}</summary>
       <div className="gs-trial__body">
         {visible.map((source) => (
           <SentenceRow key={source.name} lead={source.label}>
-            <TrialControl source={source} value={values[source.name]} onChange={(value) => set(source.name, value)} />
+            <TrialControl
+              source={source}
+              value={values[source.name]}
+              t={t}
+              onChange={(value) => set(source.name, value)}
+            />
           </SentenceRow>
         ))}
         <Button onClick={() => onChange({})}>
           <RotateCcw size={14} aria-hidden="true" />
-          恢复初始值
+          {t("script.trial.reset")}
         </Button>
       </div>
     </details>
@@ -49,20 +56,29 @@ export function StateTrial({ sources, values, onChange, only }: StateTrialProps)
 function TrialControl({
   source,
   value,
+  t,
   onChange,
 }: {
   source: StateSource;
   value: string | number | boolean | null | undefined;
+  t: StudioTranslator;
   onChange: (value: string | number | boolean | null) => void;
 }) {
-  const label = `试算 ${source.label}`;
+  const label = t("script.trial.valueLabel", { label: source.label });
   const declaration = source.declaration;
   const kind = declaration ? variableKind(declaration) : source.kind;
 
   // 旗标与剧情经历都是是/否，用开关而不是要求手打 true。
   if (kind === "flag" || source.kind === "chose" || source.kind === "seen") {
     const on = value === true;
-    return <Switch aria-label={label} checked={on} label={on ? "是" : "否"} onChange={onChange} />;
+    return (
+      <Switch
+        aria-label={label}
+        checked={on}
+        label={on ? t("script.trial.yes") : t("script.trial.no")}
+        onChange={onChange}
+      />
+    );
   }
 
   if (kind === "state" && declaration?.options?.length) {
@@ -88,7 +104,11 @@ function TrialControl({
           max={declaration?.max}
           onChange={onChange}
         />
-        {band && <span className="gs-sentence__word">（{band}）</span>}
+        {band && (
+          <span className="gs-sentence__word">
+            {t("script.trial.band", { band })}
+          </span>
+        )}
       </>
     );
   }

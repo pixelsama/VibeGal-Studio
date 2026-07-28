@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Manifest, ProjectGraph } from "../../lib/types";
 import { commitConditionDraft, moveEdge, moveEdgeById, NodeInspector, orderDefaultAutoEdgeLast } from "./NodeInspector";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 const graph: ProjectGraph = {
   version: 1,
@@ -73,6 +74,29 @@ describe("NodeInspector graph exits", () => {
     expect(html).not.toContain("节点播放完后");
     // 出口在图上编辑，词汇不再暴露 auto/choice 这类实现术语。
     expect(html).not.toContain("自动判断");
+  });
+
+  it("renders product chrome in English while preserving creator-authored titles", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(NodeInspector, {
+        graph,
+        selectedNodeId: "start",
+        onEnter: () => {},
+        onRename: () => {},
+        onUpdateOutgoingEdges: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Properties");
+    expect(html).toContain("Leaving this node");
+    expect(html).toContain("Chapter");
+    expect(html).toContain("Open editor");
+    expect(html).toContain("序章");
+    expect(html).toContain("开始");
+    expect(html).toContain("去左边");
+    expect(html).not.toContain("属性面板");
   });
 
   it("reorders outgoing edges without changing their identity", () => {

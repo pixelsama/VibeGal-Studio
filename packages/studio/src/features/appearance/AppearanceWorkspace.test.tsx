@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RendererProps } from "@vibegal/engine";
+import { StudioI18nProvider } from "../../lib/i18n";
 import { EMPTY_MANIFEST, type ProjectData } from "../../lib/types";
 import { AppearanceWorkspace } from "./AppearanceWorkspace";
 
@@ -86,6 +87,67 @@ describe("AppearanceWorkspace", () => {
     rendererMock.trustRequired = false;
     rendererMock.capabilities = ["layout-parts-v1"];
     rendererMock.appearance = undefined;
+  });
+
+  it("renders built-in appearance controls in English while preserving renderer-declared labels and asset paths", () => {
+    rendererMock.appearance = {
+      defaults: {
+        ...Object.fromEntries(
+          ["dialogueBox.bgColor", "dialogueBox.borderColor", "dialogueBox.textColor", "nameBox.bgColor", "nameBox.textColor", "choiceButton.bgColor", "choiceButton.textColor", "choiceButton.hoverColor", "choiceButton.hoverTextColor", "hud.bgColor", "hud.textColor", "titleScreen.bgColor", "titleScreen.titleColor", "titleScreen.buttonBgColor", "titleScreen.buttonTextColor", "titleScreen.buttonHoverColor"]
+            .map((key) => [key, "#ffffff"]),
+        ),
+      },
+      groups: [{
+        id: "caption",
+        label: "字幕框",
+        parts: ["dialogueBox"],
+        controls: [{ key: "caption.opacity", label: "字幕不透明度", kind: "number" }],
+      }],
+    };
+    const project = makeProject({
+      default: {
+        name: "默认外观",
+        assets: { frame: "assets/ui/雪框.png" },
+        tokens: { "caption.opacity": 0.7 },
+      },
+    });
+
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <AppearanceWorkspace project={project} rendererId="default" onSaved={() => {}} />
+      </StudioI18nProvider>,
+    );
+
+    expect(html).toContain("Edit appearance");
+    expect(html).toContain('aria-label="Theme presets"');
+    expect(html).toContain("Soft glow");
+    expect(html).toContain("Reset all to defaults");
+    expect(html).toContain("Skin images (1)");
+    expect(html).toContain("字幕框");
+    expect(html).toContain("字幕不透明度");
+    expect(html).toContain("assets/ui/雪框.png");
+    expect(html).not.toContain("主题预设");
+  });
+
+  it("localizes built-in token labels and single-scene canvas controls", () => {
+    const project = makeProject({ default: { assets: {}, tokens: { "dialogueBox.x": 120 } } });
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <AppearanceWorkspace
+          project={project}
+          rendererId="default"
+          onSaved={() => {}}
+          initialViewMode="single"
+        />
+      </StudioI18nProvider>,
+    );
+
+    expect(html).toContain('aria-label="Dialogue box"');
+    expect(html).toContain("Advanced adjustments");
+    expect(html).toContain("Restore default");
+    expect(html).toContain('aria-label="Canvas zoom"');
+    expect(html).toContain('aria-label="Stage layout editing layer"');
+    expect(html).not.toContain("高级调整");
   });
 
   it("空态：项目无 uiSkins 时显示「启用外观编辑」，右侧宫格渲染全场景标题", () => {

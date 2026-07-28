@@ -18,6 +18,27 @@ VibeGal 的数据契约和源码需要稳定，创作者看到的语言则应直
 | **CG 鉴赏** | 玩家查看已解锁 CG 的菜单 | CG Gallery | `gallery-cg`、`unlock.cg` |
 | **清理预览** | 真正写盘前展示将移除哪些登记、保留哪些文件 | Cleanup dry-run | cleanup proposal |
 
+## 中英产品词汇
+
+Studio 的中文和英文界面使用同一组创作者概念。英文翻译同样不得把内部类型名或序列化字段暴露成产品名称。
+
+| 中文 | English | 稳定内部名称示例 |
+|---|---|---|
+| 界面风格 | Interface style | `RendererManifest`、`rendererId`、`renderers/` |
+| 外观 | Appearance | `uiSkins`、appearance token |
+| 故事状态 | Story state | `variables.json`、`VariableRegistry` |
+| 分流 | Route | `GraphEdge`、`edgeId` |
+| 出口效果 | Exit effects | `edge.effects` |
+| 属性面板 | Inspector | `NodeInspector`、`ScenarioInspector` |
+| 资源登记表 | Asset registry | `content/manifest.json`、`ManifestSchema` |
+| CG 鉴赏 | CG gallery | `gallery-cg`、`unlock.cg` |
+| 清理预览 | Cleanup preview | cleanup proposal |
+| 预览 | Preview | workspace id `render` |
+| 脚本 | Script | workspace id `script` |
+| 资产 | Assets | workspace id `assets` |
+| 项目 | Project | workspace id `project` |
+| 导出 | Export | workspace id `export` |
+
 ## 转场显示名
 
 转场类型在表单和玩家可见说明中使用中文，项目文件与 Scenario DSL 继续使用稳定值。

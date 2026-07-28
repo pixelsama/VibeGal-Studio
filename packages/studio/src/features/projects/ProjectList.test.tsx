@@ -13,6 +13,7 @@ import {
   resolveProjectDirectory,
 } from "./ProjectList";
 import type { ProjectData, ProjectListItem } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 import {
   RECENT_PROJECTS_STORAGE_KEY,
   WORKSPACE_DIR_STORAGE_KEY,
@@ -38,6 +39,20 @@ afterEach(() => {
 });
 
 describe("ProjectList entry page", () => {
+  it("renders primary project actions in English", () => {
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <ProjectList onOpen={() => {}} />
+      </StudioI18nProvider>,
+    );
+
+    expect(html).toContain("Open project…");
+    expect(html).toContain("New project");
+    expect(html).toContain("Browse workspace…");
+    expect(html).toContain("Recent projects");
+    expect(html).not.toContain("打开项目…");
+  });
+
   it("offers exactly one set of open/create/browse actions", () => {
     const html = renderToStaticMarkup(<ProjectList onOpen={() => {}} />);
 

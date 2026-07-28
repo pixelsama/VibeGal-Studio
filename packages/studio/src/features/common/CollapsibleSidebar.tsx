@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useStudioI18n } from "../../lib/i18n";
 
 interface CollapsibleSidebarProps {
   title: string;
@@ -18,6 +19,10 @@ export function CollapsibleSidebar({
   collapsedLabel,
   children,
 }: CollapsibleSidebarProps) {
+  const { t } = useStudioI18n();
+  const toggleLabel = collapsed
+    ? t("common.expand", { title })
+    : t("common.collapse", { title });
   return (
     <aside
       style={{
@@ -30,9 +35,9 @@ export function CollapsibleSidebar({
         {!collapsed && <div style={titleStyle}>{title}</div>}
         <button
           type="button"
-          aria-label={collapsed ? `展开${title}` : `收起${title}`}
+          aria-label={toggleLabel}
           aria-expanded={!collapsed}
-          title={collapsed ? `展开${title}` : `收起${title}`}
+          title={toggleLabel}
           onClick={() => onCollapsedChange(!collapsed)}
           style={toggleButtonStyle}
         >

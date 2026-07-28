@@ -1,4 +1,27 @@
+import { useStudioI18n, type StudioMessageKey } from "../../lib/i18n";
 import { APPEARANCE_PRESETS, type AppearancePreset } from "./appearanceTokens";
+
+const PRESET_MESSAGE_KEYS: Record<
+  AppearancePreset["id"],
+  { name: StudioMessageKey; description: StudioMessageKey }
+> = {
+  "soft-glow": {
+    name: "appearance.preset.softGlow.name",
+    description: "appearance.preset.softGlow.description",
+  },
+  nightfall: {
+    name: "appearance.preset.nightfall.name",
+    description: "appearance.preset.nightfall.description",
+  },
+  paper: {
+    name: "appearance.preset.paper.name",
+    description: "appearance.preset.paper.description",
+  },
+  neon: {
+    name: "appearance.preset.neon.name",
+    description: "appearance.preset.neon.description",
+  },
+};
 
 export function AppearancePresetPicker({
   disabled,
@@ -11,15 +34,17 @@ export function AppearancePresetPicker({
   onApply: (preset: AppearancePreset) => void;
   onResetAll: () => void;
 }) {
+  const { t } = useStudioI18n();
+
   return (
-    <section aria-label="主题预设" style={sectionStyle}>
+    <section aria-label={t("appearance.presets.title")} style={sectionStyle}>
       <div style={headerStyle}>
         <div>
-          <h2 style={titleStyle}>主题预设</h2>
-          <p style={descriptionStyle}>先选择整体气质，再在下方微调当前部件。</p>
+          <h2 style={titleStyle}>{t("appearance.presets.title")}</h2>
+          <p style={descriptionStyle}>{t("appearance.presets.description")}</p>
         </div>
         <button type="button" style={resetStyle} disabled={disabled || !canResetAll} onClick={onResetAll}>
-          恢复全部默认
+          {t("appearance.presets.resetAll")}
         </button>
       </div>
       <div style={gridStyle}>
@@ -37,8 +62,8 @@ export function AppearancePresetPicker({
               <span style={{ ...swatchStyle, background: preset.tokens["choiceButton.hoverColor"] }} />
               <span style={{ ...swatchStyle, background: preset.tokens["titleScreen.titleColor"] }} />
             </span>
-            <strong style={nameStyle}>{preset.name}</strong>
-            <span style={copyStyle}>{preset.description}</span>
+            <strong style={nameStyle}>{t(PRESET_MESSAGE_KEYS[preset.id].name)}</strong>
+            <span style={copyStyle}>{t(PRESET_MESSAGE_KEYS[preset.id].description)}</span>
           </button>
         ))}
       </div>

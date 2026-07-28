@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DesktopBuildPreflight, DesktopRuntime } from "../../lib/tauri";
 import type { ProjectData } from "../../lib/types";
+import { useStudioI18n } from "../../lib/i18n";
 import { loadExportPrefs, saveExportPrefs, type ExportPrefs, type ExportTarget } from "../../lib/exportPrefs";
 import { useDesktopBuildState } from "./buildStore";
 import {
@@ -17,6 +18,7 @@ interface UseExportWorkspaceStateOptions {
 }
 
 export function useExportWorkspaceState({ project, loadPreflight }: UseExportWorkspaceStateOptions) {
+  const { t } = useStudioI18n();
   const initialPrefs = useMemo(() => loadExportPrefs(project.path), [project.path]);
   const [target, setTarget] = useState<ExportTarget>(initialPrefs.target);
   const [runtime, setRuntime] = useState<DesktopRuntime>(initialPrefs.runtime);
@@ -112,16 +114,16 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
       ? defaultWebOutDir(project.path)
       : defaultDesktopOutDir(project.path, runtime);
   const effectiveRendererId = rendererId || project.meta.activeRendererId || project.rendererIds[0] || "";
-  const outDirError = validateDesktopOutDir(project.path, effectiveOutDir);
-  const blockReason = preflightBlockReason(preflight, target, runtime);
+  const outDirError = validateDesktopOutDir(project.path, effectiveOutDir, t);
+  const blockReason = preflightBlockReason(preflight, target, runtime, t);
   const statusText = building
-    ? `构建中…已用 ${formatElapsedSeconds(buildState.startedAt ?? now, now)} 秒`
+    ? t("export.status.building", { seconds: formatElapsedSeconds(buildState.startedAt ?? now, now) })
     : buildState.phase === "success"
-      ? "上一次构建成功"
+      ? t("export.status.success")
       : buildState.phase === "failure"
-        ? "上一次构建失败"
+        ? t("export.status.failure")
         : buildState.phase === "cancelled"
-          ? "上一次构建已取消"
+          ? t("export.status.cancelled")
           : null;
 
   return {

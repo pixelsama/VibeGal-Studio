@@ -1,4 +1,5 @@
 import { resolveAsset, type Manifest, type RuntimeEffect } from "@vibegal/engine";
+import { useStudioI18n } from "../../lib/i18n";
 
 export type RuntimeMediaState =
   | { type: "cg"; id: string; src: string; label: string }
@@ -39,6 +40,7 @@ export function RuntimeMediaOverlay({ media, onClose, onSkip }: {
   onClose: () => void;
   onSkip: () => void;
 }) {
+  const { t } = useStudioI18n();
   if (!media) return null;
 
   return (
@@ -46,8 +48,8 @@ export function RuntimeMediaOverlay({ media, onClose, onSkip }: {
       {media.type === "cg" ? (
         <>
           <img src={media.src} alt={media.label} style={mediaStyle} />
-          <button type="button" onClick={onClose} style={actionStyle} aria-label="关闭 CG">
-            关闭 CG
+          <button type="button" onClick={onClose} style={actionStyle} aria-label={t("preview.media.closeCg")}>
+            {t("preview.media.closeCg")}
           </button>
         </>
       ) : (
@@ -64,8 +66,8 @@ export function RuntimeMediaOverlay({ media, onClose, onSkip }: {
             onLoadedData={(event) => { event.currentTarget.dataset.vibegalVideoLoaded = "true"; }}
           />
           {media.skippable && (
-            <button type="button" onClick={onSkip} style={actionStyle} aria-label="跳过视频">
-              跳过视频
+            <button type="button" onClick={onSkip} style={actionStyle} aria-label={t("preview.media.skipVideo")}>
+              {t("preview.media.skipVideo")}
             </button>
           )}
         </>

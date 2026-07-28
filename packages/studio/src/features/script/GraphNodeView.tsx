@@ -1,5 +1,6 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { NODE_TYPE, type GraphNodeStatus } from "./graphMapping";
+import { useStudioI18n, type StudioMessageKey } from "../../lib/i18n";
 
 export interface GraphCanvasNodeData extends Record<string, unknown> {
   title: string;
@@ -17,17 +18,18 @@ export interface GraphCanvasNodeData extends Record<string, unknown> {
 type GraphNodeViewNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
 
 /** 状态 → 颜色 / 文案。颜色语义对齐 plan：红=缺文件/重复，绿=正常/终点，黄=分支/孤立/警告，蓝=入口。 */
-const STATUS_STYLE: Record<GraphNodeStatus, { dot: string; text: string; border: string; label: string }> = {
-  duplicate: { dot: "var(--status-error)", text: "var(--status-error-text)", border: "var(--status-error)", label: "ID 重复" },
-  "missing-file": { dot: "var(--status-error)", text: "var(--status-error-text)", border: "var(--status-warn)", label: "文件缺失" },
-  entry: { dot: "var(--accent)", text: "var(--accent-bright)", border: "var(--accent)", label: "起点" },
-  orphan: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", label: "未连接" },
-  ending: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border-ok)", label: "终点" },
-  branch: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", label: "分支" },
-  normal: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border)", label: "已有内容" },
+const STATUS_STYLE: Record<GraphNodeStatus, { dot: string; text: string; border: string; labelKey: StudioMessageKey }> = {
+  duplicate: { dot: "var(--status-error)", text: "var(--status-error-text)", border: "var(--status-error)", labelKey: "script.graphNode.status.duplicate" },
+  "missing-file": { dot: "var(--status-error)", text: "var(--status-error-text)", border: "var(--status-warn)", labelKey: "script.graphNode.status.missingFile" },
+  entry: { dot: "var(--accent)", text: "var(--accent-bright)", border: "var(--accent)", labelKey: "script.graphNode.status.entry" },
+  orphan: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", labelKey: "script.graphNode.status.orphan" },
+  ending: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border-ok)", labelKey: "script.graphNode.status.ending" },
+  branch: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", labelKey: "script.graphNode.status.branch" },
+  normal: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border)", labelKey: "script.graphNode.status.normal" },
 };
 
 export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) {
+  const { t } = useStudioI18n();
   const status = STATUS_STYLE[data.status];
   const accent = selected ? "var(--accent-bright)" : status.border;
 
@@ -46,7 +48,7 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
       <Handle type="source" position={Position.Right} style={connectionHandleStyle} />
 
       <div style={headerStyle}>
-        {data.isEntry && <span style={entryBadgeStyle}>起</span>}
+        {data.isEntry && <span style={entryBadgeStyle}>{t("script.graphNode.entryBadge")}</span>}
         <span style={titleStyle}>{data.title}</span>
       </div>
       {data.summary && data.summary.length > 0 && (
@@ -57,7 +59,7 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
       )}
       <div style={statusRowStyle}>
         <span style={{ ...statusDotStyle, background: status.dot }} />
-        <span style={{ color: status.text }}>{status.label}</span>
+        <span style={{ color: status.text }}>{t(status.labelKey)}</span>
       </div>
     </div>
   );

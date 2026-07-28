@@ -5,23 +5,29 @@
  * 做资产类型切换，避免双层顶部 Tab。
  */
 import type { AssetKind } from "../../lib/types";
+import { useStudioI18n, type StudioMessageKey, type StudioTranslator } from "../../lib/i18n";
 
 /** 边栏可选的分类项。"overview" = 总览（不过滤），其余对应 AssetKind。 */
 export type AssetSection = "overview" | AssetKind;
 
-export const SECTIONS: { id: AssetSection; label: string }[] = [
-  { id: "overview", label: "总览" },
-  { id: "background", label: "背景" },
-  { id: "character", label: "角色" },
-  { id: "bgm", label: "BGM" },
-  { id: "sfx", label: "音效" },
-  { id: "voice", label: "语音" },
-  { id: "cg", label: "CG" },
-  { id: "video", label: "视频" },
-  { id: "font", label: "字体" },
-  { id: "ui", label: "外观资源" },
-  { id: "animation", label: "动画图集" },
+export const SECTIONS: { id: AssetSection; labelKey: StudioMessageKey }[] = [
+  { id: "overview", labelKey: "assets.section.overview" },
+  { id: "background", labelKey: "assets.section.background" },
+  { id: "character", labelKey: "assets.section.character" },
+  { id: "bgm", labelKey: "assets.section.bgm" },
+  { id: "sfx", labelKey: "assets.section.sfx" },
+  { id: "voice", labelKey: "assets.section.voice" },
+  { id: "cg", labelKey: "assets.section.cg" },
+  { id: "video", labelKey: "assets.section.video" },
+  { id: "font", labelKey: "assets.section.font" },
+  { id: "ui", labelKey: "assets.section.ui" },
+  { id: "animation", labelKey: "assets.section.animation" },
 ];
+
+export function assetSectionLabel(section: AssetSection, t: StudioTranslator): string {
+  const definition = SECTIONS.find((candidate) => candidate.id === section);
+  return definition ? t(definition.labelKey) : t("assets.section.unknown");
+}
 
 interface AssetsSidebarProps {
   active: AssetSection;
@@ -29,8 +35,9 @@ interface AssetsSidebarProps {
 }
 
 export function AssetsSidebar({ active, onSelect }: AssetsSidebarProps) {
+  const { t } = useStudioI18n();
   return (
-    <nav style={sidebarStyle} aria-label="资产分类">
+    <nav style={sidebarStyle} aria-label={t("assets.categories")}>
       {SECTIONS.map((section, index) => {
         const isActive = section.id === active;
         const showDivider = index === 1 || index === 3 || index === 6;
@@ -47,7 +54,7 @@ export function AssetsSidebar({ active, onSelect }: AssetsSidebarProps) {
               }}
               aria-current={isActive ? "page" : undefined}
             >
-              {section.label}
+              {t(section.labelKey)}
             </button>
           </div>
         );

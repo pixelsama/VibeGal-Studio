@@ -7,7 +7,9 @@
  * - 其余分类：显示「导入<分类名>」
  */
 import type { AssetSection } from "./AssetsSidebar";
+import { assetSectionLabel } from "./AssetsSidebar";
 import { Button } from "../common/Button";
+import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 
 interface AssetsToolbarProps {
   section: AssetSection;
@@ -20,6 +22,7 @@ interface AssetsToolbarProps {
   onRegisterOrphans?: () => void;
   onDeleteOrphans?: () => void;
   disabled?: boolean;
+  t?: StudioTranslator;
 }
 
 export function AssetsToolbar({
@@ -33,13 +36,14 @@ export function AssetsToolbar({
   onRegisterOrphans,
   onDeleteOrphans,
   disabled = false,
+  t = translateZhCN,
 }: AssetsToolbarProps) {
   const importLabel =
     section === "character" || section === "unknown"
       ? null
       : section === "overview"
-        ? "导入资产"
-        : `导入${sectionLabel(section)}`;
+        ? t("assets.import")
+        : t("assets.importSection", { section: assetSectionLabel(section, t) });
 
   return (
     <div style={toolbarStyle}>
@@ -47,11 +51,11 @@ export function AssetsToolbar({
         type="text"
         value={search}
         onChange={(e) => onSearch(e.target.value)}
-        placeholder="搜索 id 或文件名…"
-        aria-label="搜索资产"
+        placeholder={t("assets.searchPlaceholder")}
+        aria-label={t("assets.searchLabel")}
         style={searchInputStyle}
       />
-      <span style={countStyle}>{count} 项</span>
+      <span style={countStyle}>{t("assets.count", { count })}</span>
       <div style={{ flex: 1 }} />
       {importLabel && (
         <Button
@@ -59,51 +63,26 @@ export function AssetsToolbar({
           style={actionButtonStyle}
           onClick={onImport}
           disabled={disabled}
-          title={disabled ? "资源登记表结构异常，修复后才能导入资产" : undefined}
+          title={disabled ? t("assets.importDisabled") : undefined}
         >
           {importLabel}
         </Button>
       )}
       {orphanCount > 0 && onRegisterOrphans && (
         <Button style={actionButtonStyle} onClick={onRegisterOrphans} disabled={disabled}>
-          {`登记 ${orphanCount} 个孤儿`}
+          {t("assets.registerOrphans", { count: orphanCount })}
         </Button>
       )}
       {danglingCount > 0 && (
-        <span style={warningCountStyle}>{`${danglingCount} 个文件缺失登记待清理`}</span>
+        <span style={warningCountStyle}>{t("assets.danglingCount", { count: danglingCount })}</span>
       )}
       {orphanCount > 0 && onDeleteOrphans && (
         <Button variant="danger" style={actionButtonStyle} onClick={onDeleteOrphans} disabled={disabled}>
-          {`删除 ${orphanCount} 个孤儿`}
+          {t("assets.deleteOrphans", { count: orphanCount })}
         </Button>
       )}
     </div>
   );
-}
-
-function sectionLabel(section: AssetSection): string {
-  switch (section) {
-    case "background":
-      return "背景";
-    case "bgm":
-      return "BGM";
-    case "sfx":
-      return "音效";
-    case "voice":
-      return "语音";
-    case "cg":
-      return "CG";
-    case "video":
-      return "视频";
-    case "font":
-      return "字体";
-    case "ui":
-      return "外观资源";
-    case "animation":
-      return "动画图集";
-    default:
-      return "资源";
-  }
 }
 
 const toolbarStyle: React.CSSProperties = {

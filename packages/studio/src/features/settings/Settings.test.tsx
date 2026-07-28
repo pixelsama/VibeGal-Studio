@@ -1,13 +1,33 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, isValidElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { AppearanceSection, CommandLineToolSection, Settings } from "./Settings";
+import { AppearanceSection, CommandLineToolSection, LanguageSection, Settings } from "./Settings";
 import type { AppSettings } from "../../lib/theme";
+import { StudioI18nProvider } from "../../lib/i18n";
 import type { CliToolStatus } from "../../lib/tauri";
 
 const noop = () => {};
 
 describe("Settings", () => {
+  it("renders the settings product surface in English", () => {
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <Settings
+          settings={{ theme: "dark", studioLanguage: "en" } as AppSettings}
+          onUpdate={noop}
+          onBack={noop}
+          canGoBack
+        />
+      </StudioI18nProvider>,
+    );
+
+    expect(html).toContain("Settings");
+    expect(html).toContain("Appearance");
+    expect(html).toContain("Interface language");
+    expect(html).toContain("Command-line tool");
+    expect(html).not.toContain("选择编辑器界面的配色主题");
+  });
+
   it("显示主题选项，并标注当前选中项", () => {
     const html = renderToStaticMarkup(
       <Settings
@@ -70,6 +90,21 @@ describe("Settings", () => {
     expect(systemButton).not.toBeNull();
     systemButton?.props.onClick?.();
     expect(onUpdate).toHaveBeenCalledWith({ theme: "system" });
+  });
+
+  it("界面语言只更新应用设置，不接触项目数据", () => {
+    const onUpdate = vi.fn();
+    const tree = resolveFunctionComponents(
+      <LanguageSection
+        settings={{ theme: "dark", studioLanguage: "system" } as AppSettings}
+        onUpdate={onUpdate}
+      />,
+    );
+    const englishButton = findButtonByText(tree, "English");
+
+    expect(englishButton).not.toBeNull();
+    englishButton?.props.onClick?.();
+    expect(onUpdate).toHaveBeenCalledWith({ studioLanguage: "en" });
   });
 
   it("canGoBack 为 false 时返回按钮禁用", () => {

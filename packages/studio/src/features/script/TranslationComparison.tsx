@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { LocaleTable, ProjectData } from "../../lib/types";
 import { Button } from "../common/Button";
+import { useStudioI18n } from "../../lib/i18n";
 import {
   buildTranslationReport,
   collectTranslationRows,
@@ -15,6 +16,7 @@ interface TranslationComparisonProps {
 }
 
 export function TranslationComparison({ project, onAssignKey, onSaveLocale }: TranslationComparisonProps) {
+  const { t } = useStudioI18n();
   const localeConfig = readLocaleConfig(project.content.meta);
   const rows = useMemo(
     () => collectTranslationRows(project.graph ?? { version: 1, entryNodeId: "", chapters: [], nodes: [], edges: [] }, project.nodes),
@@ -52,8 +54,8 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
   if (!localeConfig || targetLocales.length === 0) {
     return (
       <div style={emptyStyle}>
-        <h3 style={titleStyle}>翻译对照</h3>
-        <p>先在项目设置中登记默认语言和至少一种目标语言，再回到这里开始翻译。</p>
+        <h3 style={titleStyle}>{t("script.translation.title")}</h3>
+        <p>{t("script.translation.setupHint")}</p>
       </div>
     );
   }
@@ -68,14 +70,14 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
   };
 
   return (
-    <section style={containerStyle} aria-label="翻译对照">
+    <section style={containerStyle} aria-label={t("script.translation.title")}>
       <header style={headerStyle}>
         <div>
-          <h3 style={titleStyle}>翻译对照</h3>
-          <p style={subtitleStyle}>左侧保持默认原文；右侧只保存目标语言译文。翻译 key 必须由你显式生成。</p>
+          <h3 style={titleStyle}>{t("script.translation.title")}</h3>
+          <p style={subtitleStyle}>{t("script.translation.description")}</p>
         </div>
         <label style={localeFieldStyle}>
-          <span>目标语言</span>
+          <span>{t("script.translation.targetLocale")}</span>
           <select value={currentTarget} onChange={(event) => chooseLocale(event.target.value)} style={selectStyle}>
             {targetLocales.map((locale) => <option key={locale} value={locale}>{locale}</option>)}
           </select>
@@ -83,24 +85,26 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
         <Button
           variant="primary"
           onClick={() => {
-            setStatus("保存中…");
+            setStatus(t("script.translation.saving"));
             void onSaveLocale(currentTarget, targetTable)
               .then(() => {
                 observedIdentityRef.current = localeTableIdentity(targetTable);
                 dirtyRef.current = false;
-                setStatus("译文已保存");
+                setStatus(t("script.translation.saved"));
               })
-              .catch((error) => setStatus(`保存失败：${error instanceof Error ? error.message : String(error)}`));
+              .catch((error) => setStatus(t("script.translation.saveFailed", {
+                detail: error instanceof Error ? error.message : String(error),
+              })));
           }}
         >
-          保存 {currentTarget}
+          {t("script.translation.saveLocale", { locale: currentTarget })}
         </Button>
       </header>
       <div style={summaryStyle}>
-        <span>未分配 key：{report.missingKeys}</span>
-        <span>缺少译文：{report.missingTranslations}</span>
-        <span>孤立译文：{report.orphanKeys.length}</span>
-        <span>默认文本漂移：{report.defaultTextDrift}</span>
+        <span>{t("script.translation.missingKeys", { count: report.missingKeys })}</span>
+        <span>{t("script.translation.missingTranslations", { count: report.missingTranslations })}</span>
+        <span>{t("script.translation.orphanTranslations", { count: report.orphanKeys.length })}</span>
+        <span>{t("script.translation.defaultTextDrift", { count: report.defaultTextDrift })}</span>
         {status && <strong>{status}</strong>}
       </div>
       <div style={listStyle}>
@@ -117,22 +121,27 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
                   <Button
                     onClick={() => {
                       const generated = generateTranslationKey(row, usedKeys);
-                      setStatus("正在写入翻译 key…");
+                      setStatus(t("script.translation.writingKey"));
                       void onAssignKey(row, generated)
-                        .then(() => setStatus(`已生成 ${generated}`))
-                        .catch((error) => setStatus(`生成失败：${error instanceof Error ? error.message : String(error)}`));
+                        .then(() => setStatus(t("script.translation.keyGenerated", { key: generated })))
+                        .catch((error) => setStatus(t("script.translation.keyFailed", {
+                          detail: error instanceof Error ? error.message : String(error),
+                        })));
                     }}
                   >
-                    生成稳定 key
+                    {t("script.translation.generateKey")}
                   </Button>
                 )}
               </div>
               <div style={translationStyle}>
                 {key ? (
                   <textarea
-                    aria-label={`${row.nodeTitle} 的 ${currentTarget} 译文`}
+                    aria-label={t("script.translation.textareaLabel", {
+                      title: row.nodeTitle,
+                      locale: currentTarget,
+                    })}
                     value={targetTable[key] ?? ""}
-                    placeholder="输入译文；留空时运行时回退到默认语言或原文"
+                    placeholder={t("script.translation.placeholder")}
                     onChange={(event) => {
                       dirtyRef.current = true;
                       setDraft((current) => ({ ...current, [key]: event.target.value }));
@@ -140,13 +149,13 @@ export function TranslationComparison({ project, onAssignKey, onSaveLocale }: Tr
                     style={textareaStyle}
                   />
                 ) : (
-                  <div style={disabledTranslationStyle}>生成 key 后即可填写译文</div>
+                  <div style={disabledTranslationStyle}>{t("script.translation.generateFirst")}</div>
                 )}
               </div>
             </article>
           );
         })}
-        {rows.length === 0 && <div style={emptyStyle}>当前脚本还没有台词或旁白。</div>}
+        {rows.length === 0 && <div style={emptyStyle}>{t("script.translation.empty")}</div>}
       </div>
     </section>
   );

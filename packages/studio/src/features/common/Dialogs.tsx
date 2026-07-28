@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button } from "./Button";
+import { useStudioI18n } from "../../lib/i18n";
 
 type DialogGlobalKeyAction = "close" | "none";
 type DialogTabTrapTarget = { type: "container" } | { type: "focusable"; index: number } | { type: "none" };
@@ -43,19 +44,22 @@ interface ConfirmDialogProps {
 
 export function ConfirmDialog({
   message,
-  confirmLabel = "确定",
-  cancelLabel = "取消",
+  confirmLabel,
+  cancelLabel,
   danger = false,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const { t } = useStudioI18n();
+  const resolvedConfirmLabel = confirmLabel ?? t("common.confirm");
+  const resolvedCancelLabel = cancelLabel ?? t("common.cancel");
   return (
     <Overlay onClose={onClose}>
       <DialogSurface role="alertdialog" onClose={onClose}>
         <div style={dialogMessageStyle}>{message}</div>
         <div style={dialogActionsStyle}>
           <Button variant="secondary" onClick={onClose}>
-            {cancelLabel}
+            {resolvedCancelLabel}
           </Button>
           <Button
             variant={danger ? "danger" : "primary"}
@@ -66,7 +70,7 @@ export function ConfirmDialog({
               onClose();
             }}
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </Button>
         </div>
       </DialogSurface>
@@ -97,12 +101,15 @@ export function PromptDialog({
   title,
   label,
   initialValue = "",
-  confirmLabel = "确定",
-  cancelLabel = "取消",
+  confirmLabel,
+  cancelLabel,
   allowUnchanged = false,
   onConfirm,
   onClose,
 }: PromptDialogProps) {
+  const { t } = useStudioI18n();
+  const resolvedConfirmLabel = confirmLabel ?? t("common.confirm");
+  const resolvedCancelLabel = cancelLabel ?? t("common.cancel");
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -134,7 +141,7 @@ export function PromptDialog({
         />
         <div style={dialogActionsStyle}>
           <Button variant="secondary" onClick={onClose}>
-            {cancelLabel}
+            {resolvedCancelLabel}
           </Button>
           <Button
             variant="primary"
@@ -144,7 +151,7 @@ export function PromptDialog({
               onClose();
             }}
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </Button>
         </div>
       </DialogSurface>
@@ -163,7 +170,9 @@ interface AlertDialogProps {
   onClose: () => void;
 }
 
-export function AlertDialog({ message, title, confirmLabel = "知道了", danger = false, onClose }: AlertDialogProps) {
+export function AlertDialog({ message, title, confirmLabel, danger = false, onClose }: AlertDialogProps) {
+  const { t } = useStudioI18n();
+  const resolvedConfirmLabel = confirmLabel ?? t("common.acknowledge");
   return (
     <Overlay onClose={onClose}>
       <DialogSurface role="alertdialog" onClose={onClose}>
@@ -173,7 +182,7 @@ export function AlertDialog({ message, title, confirmLabel = "知道了", danger
         </div>
         <div style={dialogActionsStyle}>
           <Button variant="primary" autoFocus data-dialog-initial-focus="true" onClick={onClose}>
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </Button>
         </div>
       </DialogSurface>

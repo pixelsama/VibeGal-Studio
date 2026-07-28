@@ -6,6 +6,7 @@
  * 便于单测；组件只负责渲染与事件接线。
  */
 import { useMemo, useState } from "react";
+import { useStudioI18n } from "../../lib/i18n";
 
 export interface CommandItem {
   id: string;
@@ -39,6 +40,7 @@ export function clampActiveIndex(index: number, count: number): number {
 }
 
 export function CommandPalette({ items, onClose }: { items: CommandItem[]; onClose: () => void }) {
+  const { t } = useStudioI18n();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const filtered = useMemo(() => filterCommandItems(items, query), [items, query]);
@@ -57,12 +59,18 @@ export function CommandPalette({ items, onClose }: { items: CommandItem[]; onClo
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-label="命令面板" className="gs-anim-pop" style={panelStyle}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("commandPalette.title")}
+        className="gs-anim-pop"
+        style={panelStyle}
+      >
         <input
           autoFocus
           value={query}
-          placeholder="搜索节点或工作台…"
-          aria-label="搜索命令"
+          placeholder={t("commandPalette.placeholder")}
+          aria-label={t("commandPalette.searchLabel")}
           style={inputStyle}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -85,8 +93,8 @@ export function CommandPalette({ items, onClose }: { items: CommandItem[]; onClo
             }
           }}
         />
-        <div role="listbox" aria-label="命令列表" style={listStyle}>
-          {filtered.length === 0 && <div style={emptyStyle}>无匹配结果</div>}
+        <div role="listbox" aria-label={t("commandPalette.listLabel")} style={listStyle}>
+          {filtered.length === 0 && <div style={emptyStyle}>{t("commandPalette.noMatches")}</div>}
           {filtered.map((item, index) => (
             <button
               key={item.id}

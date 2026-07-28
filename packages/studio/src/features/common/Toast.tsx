@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import { useStudioI18n } from "../../lib/i18n";
 
 export type ToastKind = "success" | "error" | "info";
 
@@ -24,6 +25,7 @@ interface ToastProps {
 }
 
 export function Toast({ toast, onClose }: ToastProps) {
+  const { t } = useStudioI18n();
   useEffect(() => {
     if (!toast) return;
     const delay = toast.autoDismissMs ?? (toast.kind === "error" ? false : 4200);
@@ -53,7 +55,7 @@ export function Toast({ toast, onClose }: ToastProps) {
         <div style={{ ...messageStyle, color: tone.text }}>{toast.message}</div>
         {toast.detail && <div style={detailStyle}>{toast.detail}</div>}
       </div>
-      <button type="button" aria-label="关闭消息" onClick={onClose} className="gs-chip-btn" style={closeLayoutStyle}>
+      <button type="button" aria-label={t("common.closeMessage")} onClick={onClose} className="gs-chip-btn" style={closeLayoutStyle}>
         <X size={13} />
       </button>
     </div>

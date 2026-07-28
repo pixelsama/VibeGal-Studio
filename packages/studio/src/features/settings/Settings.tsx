@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { AppSettings, ThemeMode } from "../../lib/theme";
+import {
+  translateZhCN,
+  useStudioI18n,
+  type StudioLanguagePreference,
+  type StudioTranslator,
+} from "../../lib/i18n";
 import { getDesktopPlatform } from "../../lib/platform";
 import { Button, IconButton } from "../common/Button";
 import {
@@ -25,6 +31,7 @@ export function Settings({
   onBack,
   canGoBack = false,
 }: SettingsProps) {
+  const { t } = useStudioI18n();
   const [cliStatus, setCliStatus] = useState<CliToolStatus | null>(null);
   const [cliBusy, setCliBusy] = useState(false);
   const [cliError, setCliError] = useState<string | null>(null);
@@ -53,13 +60,13 @@ export function Settings({
     try {
       const next = await installCliTool();
       setCliStatus(next);
-      setCliMessage(`已安装到 ${next.linkPath}`);
+      setCliMessage(t("settings.cli.installedAt", { path: next.linkPath }));
     } catch (error) {
       setCliError(error instanceof Error ? error.message : String(error));
     } finally {
       setCliBusy(false);
     }
-  }, []);
+  }, [t]);
 
   const uninstallCli = useCallback(async () => {
     setCliBusy(true);
@@ -68,13 +75,13 @@ export function Settings({
     try {
       const next = await uninstallCliTool();
       setCliStatus(next);
-      setCliMessage("已卸载命令行工具");
+      setCliMessage(t("settings.cli.uninstalled"));
     } catch (error) {
       setCliError(error instanceof Error ? error.message : String(error));
     } finally {
       setCliBusy(false);
     }
-  }, []);
+  }, [t]);
 
   const copyCliPath = useCallback(async () => {
     const path = cliStatus?.cliPath;
@@ -83,15 +90,16 @@ export function Settings({
     setCliMessage(null);
     try {
       await navigator.clipboard.writeText(path);
-      setCliMessage("已复制 CLI 路径；把它所在目录加入 PATH 后即可在终端使用");
+      setCliMessage(t("settings.cli.pathCopied"));
     } catch {
-      setCliError("复制失败，请手动复制下方「随应用提供」的路径");
+      setCliError(t("settings.cli.copyFailed"));
     }
-  }, [cliStatus]);
+  }, [cliStatus, t]);
 
   const content = (
     <div className="gs-settings-grid" style={contentStyle}>
-      <AppearanceSection settings={settings} onUpdate={onUpdate} />
+      <AppearanceSection settings={settings} onUpdate={onUpdate} t={t} />
+      <LanguageSection settings={settings} onUpdate={onUpdate} t={t} />
 
       <CommandLineToolSection
         status={cliStatus}
@@ -102,6 +110,7 @@ export function Settings({
         onInstall={() => void installCli()}
         onUninstall={() => void uninstallCli()}
         onCopyPath={() => void copyCliPath()}
+        t={t}
       />
     </div>
   );
@@ -115,12 +124,12 @@ export function Settings({
       {/* 顶部导航条（自定义拖拽区） */}
       <header data-tauri-drag-region style={headerStyle}>
         <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
-          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title="后退" aria-label="后退">
+          <IconButton onClick={onBack ?? noop} disabled={!canGoBack || !onBack} size={26} title={t("nav.back")} aria-label={t("nav.back")}>
             <ChevronLeft size={16} />
           </IconButton>
         </div>
         <div data-tauri-drag-region style={titleGroupStyle}>
-          <span style={titleStyle}>设置</span>
+          <span style={titleStyle}>{t("settings.title")}</span>
         </div>
         <div style={{ marginLeft: "auto" }} />
       </header>
@@ -133,30 +142,72 @@ export function Settings({
 export function AppearanceSection({
   settings,
   onUpdate,
+  t = translateZhCN,
 }: {
   settings: AppSettings;
   onUpdate: (next: Partial<AppSettings>) => void | Promise<void>;
+  t?: StudioTranslator;
 }) {
   return (
     <section className="gs-settings-card" style={sectionStyle}>
-      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>外观</h2>
-      <p className="gs-settings-card__desc" style={sectionDescStyle}>选择编辑器界面的配色主题。游戏的界面风格不受影响。</p>
+      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>{t("settings.appearance.title")}</h2>
+      <p className="gs-settings-card__desc" style={sectionDescStyle}>{t("settings.appearance.description")}</p>
       <div style={themeCardRowStyle}>
         <ThemeCard
           mode="system"
+          t={t}
           active={settings.theme === "system"}
           onSelect={() => void onUpdate({ theme: "system" })}
         />
         <ThemeCard
           mode="dark"
+          t={t}
           active={settings.theme === "dark"}
           onSelect={() => void onUpdate({ theme: "dark" })}
         />
         <ThemeCard
           mode="light"
+          t={t}
           active={settings.theme === "light"}
           onSelect={() => void onUpdate({ theme: "light" })}
         />
+      </div>
+    </section>
+  );
+}
+
+export function LanguageSection({
+  settings,
+  onUpdate,
+  t = translateZhCN,
+}: {
+  settings: AppSettings;
+  onUpdate: (next: Partial<AppSettings>) => void | Promise<void>;
+  t?: StudioTranslator;
+}) {
+  const preference = settings.studioLanguage ?? "system";
+  const choices: StudioLanguagePreference[] = ["system", "zh-CN", "en"];
+  const labels = {
+    system: t("settings.language.system"),
+    "zh-CN": t("settings.language.zhCN"),
+    en: t("settings.language.en"),
+  } satisfies Record<StudioLanguagePreference, string>;
+
+  return (
+    <section className="gs-settings-card" style={sectionStyle}>
+      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>{t("settings.language.title")}</h2>
+      <p className="gs-settings-card__desc" style={sectionDescStyle}>{t("settings.language.description")}</p>
+      <div style={languageRowStyle}>
+        {choices.map((choice) => (
+          <Button
+            key={choice}
+            variant={preference === choice ? "primary" : "secondary"}
+            aria-pressed={preference === choice}
+            onClick={() => void onUpdate({ studioLanguage: choice })}
+          >
+            {labels[choice]}
+          </Button>
+        ))}
       </div>
     </section>
   );
@@ -171,6 +222,7 @@ export function CommandLineToolSection({
   onInstall,
   onUninstall,
   onCopyPath,
+  t = translateZhCN,
 }: {
   status: CliToolStatus | null;
   busy: boolean;
@@ -180,72 +232,73 @@ export function CommandLineToolSection({
   onInstall: () => void;
   onUninstall: () => void;
   onCopyPath?: () => void;
+  t?: StudioTranslator;
 }) {
   // 平台没有可安装的命令链接路径（Windows）：降级为手动引导
   const manualOnly = status != null && status.linkPath === "";
   const statusText = status
     ? status.installed
-      ? `已安装到 ${status.linkPath}`
+      ? t("settings.cli.installedAt", { path: status.linkPath })
       : manualOnly
         ? status.cliAvailable
-          ? "已随应用提供（未注册到 PATH）"
-          : "未找到随附的 vibegal-cli"
+          ? t("settings.cli.bundledManual")
+          : t("settings.cli.bundledMissing")
         : status.linkOccupied
-          ? `目标路径已被占用：${status.linkPath}`
-          : "未安装命令链接"
-    : "正在检查 vibegal-cli";
+          ? t("settings.cli.pathOccupied", { path: status.linkPath })
+          : t("settings.cli.linkMissing")
+    : t("settings.cli.checking");
   const detailText = status
     ? status.installed
-      ? `命令已注册到全局命令目录，可在终端和外部 Agent 中直接运行 ${status.command}。`
+      ? t("settings.cli.installedDetail", { command: status.command })
       : manualOnly
-        ? "当前平台暂不支持一键注册全局命令。可将下方的 CLI 路径加入 PATH，即可在终端和外部 Agent 中使用。"
+        ? t("settings.cli.manualDetail")
         : status.linkOccupied
-          ? "VibeGal-Studio 不会覆盖非自己管理的同名命令。"
-          : `将创建全局命令链接：${status.linkPath}`
-    : "VibeGal-Studio 会显式创建命令链接，不会静默修改 shell 配置。";
+          ? t("settings.cli.occupiedDetail")
+          : t("settings.cli.createLinkDetail", { path: status.linkPath })
+    : t("settings.cli.defaultDetail");
   const installDisabled =
     busy || !status?.cliAvailable || Boolean(status.installed) || Boolean(status?.linkOccupied);
 
   return (
     <section className="gs-settings-card" style={sectionStyle}>
-      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>命令行工具</h2>
-      <p className="gs-settings-card__desc" style={sectionDescStyle}>安装后可在终端使用 vibegal-cli validate 校验项目。</p>
+      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>{t("settings.cli.title")}</h2>
+      <p className="gs-settings-card__desc" style={sectionDescStyle}>{t("settings.cli.description")}</p>
       <div style={cliPanelStyle}>
         <div style={cliStatusRowStyle}>
           <div>
             <div style={cliCommandStyle}>vibegal-cli</div>
-            <div style={cliStatusTextStyle}>{busy ? "正在处理..." : statusText}</div>
+            <div style={cliStatusTextStyle}>{busy ? t("settings.cli.processing") : statusText}</div>
           </div>
           <span style={{
             ...cliBadgeStyle,
             background: status?.installed ? "var(--bg-accent-soft)" : "var(--bg-inset)",
             color: status?.installed ? "var(--accent-bright)" : "var(--text-muted)",
           }}>
-            {status ? (status.installed ? "已安装" : manualOnly ? "手动使用" : "未安装") : "检查中"}
+            {status ? (status.installed ? t("settings.cli.installed") : manualOnly ? t("settings.cli.manual") : t("settings.cli.notInstalled")) : t("settings.cli.checkingShort")}
           </span>
         </div>
         <p style={cliDetailStyle}>{detailText}</p>
-        {status?.cliPath && <p style={cliPathStyle}>随应用提供：{status.cliPath}</p>}
+        {status?.cliPath && <p style={cliPathStyle}>{t("settings.cli.bundledAt", { path: status.cliPath })}</p>}
         {status?.issue && <p role="alert" style={cliIssueStyle}>{status.issue}</p>}
         {error && <p role="alert" style={cliIssueStyle}>{error}</p>}
         {message && <p role="status" style={cliMessageStyle}>{message}</p>}
         <div style={cliActionRowStyle}>
           {manualOnly ? (
             <Button variant="primary" onClick={onCopyPath} disabled={busy || !status.cliAvailable}>
-              复制 CLI 路径
+              {t("settings.cli.copyPath")}
             </Button>
           ) : (
             <>
               <Button variant="primary" onClick={onInstall} disabled={installDisabled}>
-                {status?.installed ? "已安装" : "安装 vibegal-cli"}
+                {status?.installed ? t("settings.cli.installed") : t("settings.cli.install")}
               </Button>
               <Button variant="secondary" onClick={onUninstall} disabled={busy || !status?.installed}>
-                卸载
+                {t("settings.cli.uninstall")}
               </Button>
             </>
           )}
           <Button variant="secondary" onClick={onRefresh} disabled={busy}>
-            重新检查
+            {t("settings.cli.recheck")}
           </Button>
         </div>
       </div>
@@ -258,12 +311,14 @@ function ThemeCard({
   mode,
   active,
   onSelect,
+  t,
 }: {
   mode: ThemeMode;
   active: boolean;
   onSelect: () => void;
+  t: StudioTranslator;
 }) {
-  const label = mode === "system" ? "跟随系统" : mode === "dark" ? "深色" : "浅色";
+  const label = mode === "system" ? t("settings.theme.system") : mode === "dark" ? t("settings.theme.dark") : t("settings.theme.light");
   const previewMode = mode === "system" ? "dark" : mode;
   return (
     <button
@@ -286,7 +341,7 @@ function ThemeCard({
       </div>
       <div style={themeCardMetaStyle}>
         <span style={themeCardLabelStyle}>{label}</span>
-        {active && <span style={activeTagStyle}>当前</span>}
+        {active && <span style={activeTagStyle}>{t("settings.current")}</span>}
       </div>
     </button>
   );
@@ -349,6 +404,12 @@ const sectionStyle: React.CSSProperties = {
 const sectionTitleStyle: React.CSSProperties = {};
 
 const sectionDescStyle: React.CSSProperties = {};
+
+const languageRowStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+};
 
 const themeCardRowStyle: React.CSSProperties = {
   display: "grid",

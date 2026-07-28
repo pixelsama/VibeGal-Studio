@@ -57,6 +57,19 @@ const TRANSITION_LABELS = {
   black: "黑场",
 };
 
+const TRANSITION_MESSAGE_KEYS = {
+  fade_in: "script.scenario.transition.fadeIn",
+  fade_out: "script.scenario.transition.fadeOut",
+  white_in: "script.scenario.transition.whiteIn",
+  white_out: "script.scenario.transition.whiteOut",
+  black: "script.scenario.transition.black",
+};
+
+const STUDIO_MESSAGES_PATH =
+  "packages/studio/src/lib/i18n.tsx";
+const STUDIO_ZH_CN_MESSAGES_EXPORT =
+  "STUDIO_ZH_CN_MESSAGES";
+
 function normalizedPath(filePath) {
   return filePath.split(path.sep).join("/");
 }
@@ -199,14 +212,30 @@ function stringArrayFromExpression(expression) {
     .map((element) => element.text);
 }
 
-function stringMapFromExpression(expression) {
+function translationKeyFromExpression(expression) {
+  if (!expression || !ts.isCallExpression(expression)) return null;
+  if (expression.expression.getText() !== "t") return null;
+  const key = expression.arguments[0];
+  return key && ts.isStringLiteralLike(key) ? key.text : null;
+}
+
+function transitionLabelFromExpression(expression, option) {
+  const value = nodeText(expression);
+  if (value != null) return value;
+  return translationKeyFromExpression(expression) === TRANSITION_MESSAGE_KEYS[option]
+    ? TRANSITION_LABELS[option]
+    : null;
+}
+
+function transitionLabelMapFromExpression(expression) {
   if (!expression || !ts.isObjectLiteralExpression(expression)) return new Map();
   const map = new Map();
   for (const property of expression.properties) {
     if (!ts.isPropertyAssignment(property)) continue;
     const key = propertyNameText(property.name);
-    const value = nodeText(property.initializer);
-    if (key && value != null) map.set(key, { value, node: property.initializer });
+    if (!key || !(key in TRANSITION_LABELS)) continue;
+    const value = transitionLabelFromExpression(property.initializer, key);
+    if (value != null) map.set(key, { value, node: property.initializer });
   }
   return map;
 }
@@ -222,7 +251,7 @@ function checkTransitionLabels(sourceFile, relativePath, errors) {
       const relevant = options.filter((option) => option in TRANSITION_LABELS);
       if (relevant.length > 0) {
         const labelsAttribute = jsxAttribute(node, "optionLabels");
-        const labels = stringMapFromExpression(expressionFromJsxAttribute(labelsAttribute));
+        const labels = transitionLabelMapFromExpression(expressionFromJsxAttribute(labelsAttribute));
         for (const option of relevant) {
           const entry = labels.get(option);
           if (!entry || entry.value !== TRANSITION_LABELS[option]) {
@@ -240,8 +269,70 @@ function checkTransitionLabels(sourceFile, relativePath, errors) {
   visit(sourceFile);
 }
 
+function studioZhCNMessagesFromSource(source) {
+  const relativePath = normalizedPath(source.path);
+  if (relativePath !== STUDIO_MESSAGES_PATH) return null;
+
+  const sourceFile = ts.createSourceFile(
+    relativePath,
+    source.text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        !ts.isIdentifier(declaration.name)
+        || declaration.name.text !== STUDIO_ZH_CN_MESSAGES_EXPORT
+      ) {
+        continue;
+      }
+
+      const initializer = declaration.initializer;
+      const catalog = initializer && ts.isAsExpression(initializer)
+        ? initializer.expression
+        : initializer;
+      if (!catalog || !ts.isObjectLiteralExpression(catalog)) return null;
+
+      const messages = new Map();
+      for (const property of catalog.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const key = propertyNameText(property.name);
+        const value = nodeText(property.initializer);
+        if (key && value != null) messages.set(key, value);
+      }
+      return messages;
+    }
+  }
+
+  return null;
+}
+
+function checkTransitionCatalog(sources, errors) {
+  const messages = sources
+    .map(studioZhCNMessagesFromSource)
+    .find((catalog) => catalog != null);
+  if (!messages) return;
+
+  for (const [option, key] of Object.entries(TRANSITION_MESSAGE_KEYS)) {
+    const actual = messages.get(key);
+    const expected = TRANSITION_LABELS[option];
+    if (actual !== expected) {
+      errors.push({
+        path: STUDIO_MESSAGES_PATH,
+        line: 1,
+        message: `Studio 中文消息 ${key} 必须保持为「${expected}」`,
+      });
+    }
+  }
+}
+
 export function checkVocabularySources(sources) {
   const errors = [];
+  checkTransitionCatalog(sources, errors);
   for (const source of sources) {
     const relativePath = normalizedPath(source.path);
     if (!isSourceFile(relativePath)) continue;

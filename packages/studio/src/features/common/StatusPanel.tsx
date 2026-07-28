@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Check, X } from "lucide-react";
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 
 /** 通用问题项。nodeId/edgeId 仅供图结构问题定位使用。 */
 export interface StatusIssue {
@@ -67,14 +68,15 @@ export function StatusPanel({
   issueExtra,
   sourceLabel,
 }: StatusPanelProps) {
+  const { t } = useStudioI18n();
   const [dialogOpen, setDialogOpen] = useState(false);
   const errors = issues.filter((issue) => issue.severity === "error");
   const hasIssues = issues.length > 0;
   const hasErrors = errors.length > 0;
   const label = loading
-    ? "正在检查完整项目"
+    ? t("status.checking")
     : error
-      ? "完整项目检查失败，点击重试"
+      ? t("status.checkFailedRetry")
       : hasIssues
       ? notOkLabel(issues.length)
       : okLabel;
@@ -108,6 +110,7 @@ export function StatusPanel({
           isIssueClickable={isIssueClickable}
           issueExtra={issueExtra}
           sourceLabel={sourceLabel}
+          t={t}
           onClose={() => setDialogOpen(false)}
         />
       )}
@@ -127,6 +130,7 @@ export interface StatusDialogProps {
   isIssueClickable?: (issue: StatusIssue) => boolean;
   issueExtra?: (issue: StatusIssue) => ReactNode;
   sourceLabel?: (source: string) => string;
+  t?: StudioTranslator;
   onClose: () => void;
 }
 
@@ -136,13 +140,14 @@ export interface StatusDialogProps {
  */
 function groupBySource(
   issues: StatusIssue[],
-  sourceLabel?: (source: string) => string,
+  sourceLabel: ((source: string) => string) | undefined,
+  t: StudioTranslator,
 ): { title: string; issues: StatusIssue[] }[] {
   const order: string[] = [];
   const buckets = new Map<string, StatusIssue[]>();
   for (const issue of issues) {
-    const rawSource = issue.source ?? "其他";
-    const key = sourceLabel ? sourceLabel(issue.source ?? "其他") : rawSource;
+    const rawSource = issue.source ?? t("status.other");
+    const key = sourceLabel ? sourceLabel(issue.source ?? t("status.other")) : rawSource;
     if (!buckets.has(key)) {
       order.push(key);
       buckets.set(key, []);
@@ -171,11 +176,14 @@ export function StatusDialog({
   isIssueClickable,
   issueExtra,
   sourceLabel,
+  t: suppliedT,
   onClose,
 }: StatusDialogProps) {
+  const { t: contextT } = useStudioI18n();
+  const t = suppliedT ?? contextT;
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warn");
-  const groups = issues.length > 0 ? groupBySource(issues, sourceLabel) : [];
+  const groups = issues.length > 0 ? groupBySource(issues, sourceLabel, t) : [];
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -199,24 +207,29 @@ export function StatusDialog({
             <div style={dialogTitleStyle}>{dialogTitle}</div>
             <div style={dialogMetaStyle}>
               {loading
-                ? "正在读取节点正文并检查完整项目…"
+                ? t("status.reading")
                 : error
-                  ? "完整检查失败；关闭后再次打开即可重试。"
+                  ? t("status.failedCloseRetry")
                   : issues.length > 0
-                  ? `${errors.length} error / ${warnings.length} warn`
+                  ? t("status.summary", { errors: errors.length, warnings: warnings.length })
                   : emptyDescription ?? okLabel}
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label={`关闭 ${dialogTitle}`} className="gs-chip-btn">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t("status.close", { title: dialogTitle })}
+            className="gs-chip-btn"
+          >
             <X size={14} />
           </button>
         </div>
         <div style={dialogContentStyle}>
           {loading ? (
-            <div role="status" style={loadingStyle}>正在检查完整项目…</div>
+            <div role="status" style={loadingStyle}>{t("status.checkingProgress")}</div>
           ) : error ? (
             <div role="alert" style={{ ...loadingStyle, color: "var(--status-error-text)" }}>
-              完整项目检查失败。关闭后再次打开问题面板即可重试。
+              {t("status.checkFailed")}
             </div>
           ) : issues.length === 0 ? (
             <div style={{ ...okStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>

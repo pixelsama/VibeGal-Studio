@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { filterVisibleCanvasElements, GraphCanvas } from "./GraphCanvas";
 import type { ProjectGraph } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
@@ -117,6 +118,25 @@ describe("GraphCanvas", () => {
     const html = renderToStaticMarkup(<GraphCanvas {...baseProps} />);
 
     expect(html).toContain('data-color-mode="light"');
+  });
+
+  it("renders graph controls in English without translating project content", () => {
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <GraphCanvas
+          {...baseProps}
+          canUndo
+          canRedo
+          onUndo={noop}
+          onRedo={noop}
+        />
+      </StudioI18nProvider>,
+    );
+
+    expect(html).toContain('data-control-title="Locate entry node"');
+    expect(html).toContain('data-control-title="Undo graph edit (Ctrl+Z)"');
+    expect(html).toContain('data-control-title="Redo graph edit (Ctrl+Shift+Z)"');
+    expect(html).not.toContain('data-control-title="定位入口节点"');
   });
 
   it("filters visible elements after full-graph status mapping", () => {

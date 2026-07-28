@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Manifest, VariableRegistry } from "@vibegal/engine";
 import type { ProjectGraph } from "../../lib/types";
+import { resolveCatalogMessage } from "../../lib/i18n";
 import {
   bandThreshold,
   collectStateSources,
@@ -76,6 +77,22 @@ describe("collectStateSources", () => {
 
   it("includes system state so conditions can gate on playthrough count", () => {
     expect(byName.get("system.playthroughCount")?.label).toBe("通关次数");
+  });
+
+  it("localizes synthetic sources without changing creator-authored titles", () => {
+    const english = collectStateSources({
+      registry,
+      graph,
+      manifest,
+      t: (key, params) => resolveCatalogMessage("en", key, params),
+    });
+    const englishByName = new Map(english.map((source) => [source.name, source]));
+
+    expect(englishByName.get("chose.rooftop__stay")?.label)
+      .toBe("Chose “陪她留下” at “天台·夜”");
+    expect(englishByName.get("chose.rooftop__stay")?.group).toBe("Story experience");
+    expect(englishByName.get("system.playthroughCount")?.label).toBe("Completed playthroughs");
+    expect(englishByName.get("affection_yuki")?.label).toBe("雪 · 好感度");
   });
 });
 

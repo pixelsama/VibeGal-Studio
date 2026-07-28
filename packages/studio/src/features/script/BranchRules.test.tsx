@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphEdge, ProjectGraph } from "../../lib/types";
-import { BranchRules, evaluateBranchOutcomes, moveEdge, moveEdgeById, orderDefaultAutoEdgeLast } from "./BranchRules";
+import { StudioI18nProvider } from "../../lib/i18n";
+import { BranchRules, evaluateBranchOutcomes, moveEdge, moveEdgeById, normalizeBranchEdge, orderDefaultAutoEdgeLast } from "./BranchRules";
 import { collectStateSources, stateSourceDefaults } from "./storyState";
 
 const registry: VariableRegistry = {
@@ -79,6 +80,47 @@ describe("BranchRules", () => {
     // 兜底行不可拖拽，也没有上下移动按钮。
     expect(html).not.toContain('aria-label="上移 start__normal"');
     expect(html).toContain('aria-label="下移 start__confess"');
+  });
+
+  it("renders English branch controls while preserving node titles", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(BranchRules, {
+        graph,
+        nodeId: "start",
+        edges: autoEdges,
+        sources,
+        onChange: () => {},
+        trialValues: defaults,
+        onTrialChange: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Branch by story state");
+    expect(html).toContain("The first matching rule from top to bottom is used.");
+    expect(html).toContain("Otherwise");
+    expect(html).toContain("Go to “雪·告白”");
+    expect(html).toContain("Add condition");
+    expect(html).not.toContain("按故事状态自动分流");
+  });
+
+  it("keeps generated choice labels independent from the Studio locale", () => {
+    const untitledGraph: ProjectGraph = {
+      ...graph,
+      nodes: [],
+    };
+    const edge: GraphEdge = {
+      id: "start__missing",
+      from: "start",
+      to: "",
+      mode: "auto",
+      label: null,
+      condition: null,
+    };
+
+    expect(normalizeBranchEdge(untitledGraph, "start", edge, 0, "choice").label)
+      .toBe("选项 1");
   });
 });
 

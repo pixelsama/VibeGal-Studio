@@ -1,11 +1,11 @@
 import type { NovelState, VariableRegistry } from "@vibegal/engine";
 import { NumberInput, Select, Switch, TextInput } from "../common/Form";
 import { bandLabelForValue } from "../script/storyState";
+import { useStudioI18n, type StudioMessageKey, type StudioTranslator } from "../../lib/i18n";
 
-/** 只读命名空间在检视器里的中文名。 */
-const SYSTEM_TITLE: Record<string, string> = {
-  "system.playthroughCount": "通关次数",
-  "system.lastEndingId": "上次达成的结局",
+const SYSTEM_TITLE_KEY: Record<string, StudioMessageKey> = {
+  "system.playthroughCount": "preview.runtime.system.playthroughCount",
+  "system.lastEndingId": "preview.runtime.system.lastEnding",
 };
 const EXPERIENCE_TITLE: Record<string, string> = {};
 
@@ -35,17 +35,18 @@ export function isRuntimeStateEmpty(state: NovelState): boolean {
 }
 
 export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right", onVariableChange, onResetVariables, registry }: RuntimeStateInspectorProps) {
+  const { t } = useStudioI18n();
   const dockedBottom = dock === "bottom";
   const frameStyle = dockedBottom ? bottomDockPanelStyle : panelStyle;
-  const title = dockedBottom ? null : <div style={titleStyle}>运行状态</div>;
+  const title = dockedBottom ? null : <div style={titleStyle}>{t("preview.runtime.title")}</div>;
 
   if (isRuntimeStateEmpty(state)) {
     return (
       <aside style={frameStyle}>
         {title}
         <div style={contentStyle}>
-          {currentNodeLabel != null && <Field label="当前节点" value={currentNodeLabel} />}
-          <div style={emptyHintStyle}>预览运行后，这里会显示背景、角色、音频与变量状态。</div>
+          {currentNodeLabel != null && <Field label={t("preview.runtime.currentNode")} value={currentNodeLabel} />}
+          <div style={emptyHintStyle}>{t("preview.runtime.emptyHint")}</div>
         </div>
       </aside>
     );
@@ -55,21 +56,21 @@ export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right",
     <aside style={frameStyle}>
       {title}
       <div style={contentStyle}>
-        <Field label="当前节点" value={currentNodeLabel ?? "当前预览"} />
-        <Field label="背景" value={state.background ?? "无"} />
-        <Field label="说话人" value={state.speaker?.name ?? "无"} />
-        <Field label="选项" value={state.choice ? `${state.choice.choices.length} 个选项` : "无"} />
-        <Field label="背景音乐" value={state.audio.bgm?.id ?? "无"} />
-        <Field label="语音" value={state.audio.voice?.id ?? "无"} />
+        <Field label={t("preview.runtime.currentNode")} value={currentNodeLabel ?? t("preview.runtime.currentPreview")} />
+        <Field label={t("preview.runtime.background")} value={state.background ?? t("preview.runtime.none")} />
+        <Field label={t("preview.runtime.speaker")} value={state.speaker?.name ?? t("preview.runtime.none")} />
+        <Field label={t("preview.runtime.choice")} value={state.choice ? t("preview.runtime.choiceCount", { count: state.choice.choices.length }) : t("preview.runtime.none")} />
+        <Field label={t("preview.runtime.bgm")} value={state.audio.bgm?.id ?? t("preview.runtime.none")} />
+        <Field label={t("preview.runtime.voice")} value={state.audio.voice?.id ?? t("preview.runtime.none")} />
         <Field
-          label="角色立绘"
-          value={state.sprites.length > 0 ? state.sprites.map((sprite) => `${sprite.id}:${sprite.expr}@${sprite.pos}`).join(", ") : "无"}
+          label={t("preview.runtime.sprites")}
+          value={state.sprites.length > 0 ? state.sprites.map((sprite) => `${sprite.id}:${sprite.expr}@${sprite.pos}`).join(", ") : t("preview.runtime.none")}
         />
-        <div style={{ ...fieldStyle, minWidth: 0 }}><div style={labelStyle}>变量</div>
+        <div style={{ ...fieldStyle, minWidth: 0 }}><div style={labelStyle}>{t("preview.runtime.variables")}</div>
           {(["run", "global", "legacy", "system"] as const).map((group) => {
             const entries = Object.entries(state.vars).filter(([name]) => variableGroup(name, registry) === group);
             if (entries.length === 0) return null;
-            return <section key={group} style={{ minWidth: 0 }}><strong>{groupLabel(group)}</strong>
+            return <section key={group} style={{ minWidth: 0 }}><strong>{groupLabel(group, t)}</strong>
               {entries.map(([name, value]) => <RuntimeVariableRow
                 key={name}
                 name={name}
@@ -77,22 +78,22 @@ export function RuntimeStateInspector({ state, currentNodeLabel, dock = "right",
                 declaration={registry?.variables[name]}
                 editable={Boolean(onVariableChange) && group !== "system"}
                 onChange={(next) => onVariableChange?.(name, next)}
+                t={t}
               />)}
             </section>;
           })}
-          {onResetVariables && <button type="button" onClick={onResetVariables}>重置变量</button>}
+          {onResetVariables && <button type="button" onClick={onResetVariables}>{t("preview.runtime.resetVariables")}</button>}
         </div>
       </div>
     </aside>
   );
 }
 
-function groupLabel(group: "run" | "global" | "legacy" | "experience" | "system") {
-  return group === "run" ? "本轮状态"
-    : group === "global" ? "跨周目状态"
-      : group === "legacy" ? "未登记的状态"
-        : group === "experience" ? "剧情经历"
-          : "系统状态";
+function groupLabel(
+  group: "run" | "global" | "legacy" | "experience" | "system",
+  t: StudioTranslator,
+) {
+  return t(`preview.runtime.group.${group}` as StudioMessageKey);
 }
 
 function RuntimeVariableRow({
@@ -101,14 +102,17 @@ function RuntimeVariableRow({
   declaration,
   editable,
   onChange,
+  t,
 }: {
   name: string;
   value: string | number | boolean | null;
   declaration?: VariableRegistry["variables"][string];
   editable: boolean;
   onChange: (value: string | number | boolean | null) => void;
+  t: StudioTranslator;
 }) {
-  const title = EXPERIENCE_TITLE[name] ?? SYSTEM_TITLE[name] ?? declaration?.label ?? name;
+  const systemTitleKey = SYSTEM_TITLE_KEY[name];
+  const title = EXPERIENCE_TITLE[name] ?? (systemTitleKey ? t(systemTitleKey) : undefined) ?? declaration?.label ?? name;
   const band = declaration && typeof value === "number" ? bandLabelForValue(declaration, value) : undefined;
 
   return (
@@ -116,10 +120,12 @@ function RuntimeVariableRow({
       <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
         {title}
         <details>
-          <summary>技术详情</summary>
+          <summary>{t("preview.runtime.technical")}</summary>
           <small style={{ display: "block", overflowWrap: "anywhere" }}>
             {name} · {declaration?.type ?? (value === null ? "null" : typeof value)}
-            {declaration ? ` · 初始 ${String(declaration.default)}` : " · 运行时提供"}
+            {declaration
+              ? t("preview.runtime.initialValue", { value: String(declaration.default) })
+              : t("preview.runtime.provided")}
           </small>
         </details>
       </span>
@@ -131,6 +137,7 @@ function RuntimeVariableRow({
         declaration={declaration}
         editable={editable}
         onChange={onChange}
+        t={t}
       />
     </label>
   );
@@ -145,6 +152,7 @@ function RuntimeVariableControl({
   declaration,
   editable,
   onChange,
+  t,
 }: {
   name: string;
   title: string;
@@ -153,13 +161,14 @@ function RuntimeVariableControl({
   declaration?: VariableRegistry["variables"][string];
   editable: boolean;
   onChange: (value: string | number | boolean | null) => void;
+  t: StudioTranslator;
 }) {
   // 剧情经历是决策日志的派生值，改它没有意义，只读显示。
   if (name.startsWith("chose.") || name.startsWith("seen.")) {
-    return <span style={valueStyle}>{value === true ? "是" : "否"}</span>;
+    return <span style={valueStyle}>{value === true ? t("common.yes") : t("common.no")}</span>;
   }
   if (typeof value === "boolean") {
-    return <Switch aria-label={title} disabled={!editable} checked={value} label={value ? "是" : "否"} onChange={onChange} />;
+    return <Switch aria-label={title} disabled={!editable} checked={value} label={value ? t("common.yes") : t("common.no")} onChange={onChange} />;
   }
   if (declaration?.options?.length && typeof value === "string") {
     return (
@@ -183,7 +192,7 @@ function RuntimeVariableControl({
           max={declaration?.max}
           onChange={onChange}
         />
-        {band && <small>（{band}）</small>}
+        {band && <small>{t("preview.runtime.valueWithBand", { band })}</small>}
       </span>
     );
   }

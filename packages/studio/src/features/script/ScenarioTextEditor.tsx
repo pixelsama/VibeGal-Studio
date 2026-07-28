@@ -3,6 +3,7 @@ import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption, ScenarioParameterOption } from "./scenarioCommands";
 import { highlightScenarioLine, type ScenarioTokenKind } from "./scenarioHighlight";
+import { useStudioI18n } from "../../lib/i18n";
 
 /** 剧本编辑区的行高/内边距常量：gutter、高亮层、命令菜单定位共用同一份度量。 */
 export const SCENARIO_LINE_HEIGHT = 24;
@@ -75,6 +76,7 @@ export function ScenarioTextEditor({
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onScroll: (scrollTop: number) => void;
 }) {
+  const { t } = useStudioI18n();
   const scenario = mode === "scenario";
   const showStarterGuide = scenario && text.trim() === "";
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
@@ -86,9 +88,15 @@ export function ScenarioTextEditor({
     <div style={scenarioTextWrapStyle}>
       {showStarterGuide && (
         <div style={starterGuideStyle} data-region="scenario-starter-guide">
-          <div style={starterGuideTitleStyle}>空节点：直接输入，或从模板开始</div>
+          <div style={starterGuideTitleStyle}>{t("script.editor.starter.title")}</div>
           <div style={starterGuideListStyle}>
-            {SCENARIO_STARTER_TEMPLATES.map((template) => (
+            {SCENARIO_STARTER_TEMPLATES.map((template, index) => {
+              const labels = [
+                [t("script.editor.starter.narration"), t("script.editor.starter.narrationDetail")],
+                [t("script.editor.starter.dialogue"), t("script.editor.starter.dialogueDetail")],
+                [t("script.editor.starter.scene"), t("script.editor.starter.sceneDetail")],
+              ] as const;
+              return (
               <button
                 key={template.label}
                 type="button"
@@ -96,10 +104,11 @@ export function ScenarioTextEditor({
                 onClick={() => onInsertTemplate(template.text)}
                 style={starterGuideButtonStyle}
               >
-                <span style={starterGuideLabelStyle}>{template.label}</span>
-                <span style={starterGuideDetailStyle}>{template.detail}</span>
+                <span style={starterGuideLabelStyle}>{labels[index]?.[0] ?? template.label}</span>
+                <span style={starterGuideDetailStyle}>{labels[index]?.[1] ?? template.detail}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -136,15 +145,15 @@ export function ScenarioTextEditor({
                     <div
                       style={pauseMarkerStyle}
                       data-pause-marker={lineNumber}
-                      title="空行 = 一次停顿"
+                      title={t("script.editor.pauseMarker")}
                     />
                   )}
                   {instructionIndex != null && (
                     <button
                       type="button"
                       draggable
-                      aria-label={`拖动第 ${instructionIndex + 1} 条指令`}
-                      title="拖动调整指令顺序；Alt+↑/↓ 也可移动"
+                      aria-label={t("script.editor.dragInstruction", { number: instructionIndex + 1 })}
+                      title={t("script.editor.dragHint")}
                       onDragStart={handleDragStart}
                       onDragOver={(event) => {
                         event.preventDefault();
@@ -168,8 +177,8 @@ export function ScenarioTextEditor({
                         <>
                           <button
                             type="button"
-                            aria-label="上移当前指令"
-                            title="上移当前指令"
+                            aria-label={t("script.editor.moveUp")}
+                            title={t("script.editor.moveUp")}
                             disabled={!canMoveUp}
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => onMoveInstruction(instructionIndex, instructionIndex - 1)}
@@ -179,8 +188,8 @@ export function ScenarioTextEditor({
                           </button>
                           <button
                             type="button"
-                            aria-label="下移当前指令"
-                            title="下移当前指令"
+                            aria-label={t("script.editor.moveDown")}
+                            title={t("script.editor.moveDown")}
                             disabled={!canMoveDown}
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => onMoveInstruction(instructionIndex, instructionIndex + 1)}
@@ -192,8 +201,8 @@ export function ScenarioTextEditor({
                       )}
                       <button
                         type="button"
-                        aria-label="插入当前行命令"
-                        title="插入当前行命令"
+                        aria-label={t("script.editor.insertCommand")}
+                        title={t("script.editor.insertCommand")}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={onToggleLineCommandMenu}
                         style={gutterPlusStyle}
@@ -213,7 +222,7 @@ export function ScenarioTextEditor({
       {commandMenuVisible && (
         <div
           role="menu"
-          aria-label="剧本命令"
+          aria-label={t("script.editor.commandMenu")}
           style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
         >
           {visibleCommands.map((command) => (
@@ -234,7 +243,7 @@ export function ScenarioTextEditor({
       {parameterMenuVisible && (
         <div
           role="listbox"
-          aria-label="剧本参数补全"
+          aria-label={t("script.editor.parameterCompletion")}
           style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
         >
           {visibleParameters.map((option, index) => (
@@ -289,7 +298,7 @@ export function ScenarioTextEditor({
       <textarea
         ref={textareaRef}
         value={text}
-        aria-label={scenario ? "剧本文本" : "节点 JSON"}
+        aria-label={scenario ? t("script.editor.scenarioText") : t("script.editor.nodeJson")}
         wrap={scenario ? "off" : "soft"}
         onChange={(event) => {
           if (scenario) onScenarioTextChange(event.currentTarget);

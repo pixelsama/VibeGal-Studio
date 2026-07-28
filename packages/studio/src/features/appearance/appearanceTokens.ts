@@ -10,6 +10,7 @@
  * 见 spec 第 4 节，改协议时渲染器与该镜像同步更新。
  */
 import type { FileRevision, Manifest } from "../../lib/types";
+import { translateZhCN, type StudioMessageKey, type StudioTranslator } from "../../lib/i18n";
 import { DEFAULT_UI_TOKENS } from "../../../src-tauri/resources/default-renderer/useUiTokens";
 
 // ──────────────────────────────────────────────
@@ -334,16 +335,17 @@ export function tokenGroupsFromRendererAppearance(groups: readonly RendererAppea
 export function tokenGroupsForRendererPart(
   groups: TokenGroupDef[],
   part: string | null,
+  t: StudioTranslator = translateZhCN,
 ): TokenGroupDef[] {
   if (part === null) return groups;
   if (groups.some((group) => group.rendererDeclared)) {
     const matching = groups.filter((group) => group.parts?.includes(part));
     if (matching.length > 0) return matching;
-    return tokenGroupsForPart(part);
+    return localizeAppearanceTokenGroups(tokenGroupsForPart(part), t);
   }
   const matching = groups.filter((group) => group.id === part || group.fields.some((field) => field.key.startsWith(`${part}.`)));
   if (matching.length > 0) return matching;
-  return tokenGroupsForPart(part);
+  return localizeAppearanceTokenGroups(tokenGroupsForPart(part), t);
 }
 
 export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
@@ -457,6 +459,66 @@ export const APPEARANCE_TOKEN_GROUPS: TokenGroupDef[] = [
   },
 ];
 
+const TOKEN_GROUP_MESSAGE_KEY: Record<string, StudioMessageKey> = {
+  dialogueBox: "appearance.tokens.group.dialogueBox",
+  nameBox: "appearance.tokens.group.nameBox",
+  choiceBox: "appearance.tokens.group.choiceBox",
+  choiceButton: "appearance.tokens.group.choiceButton",
+  hud: "appearance.tokens.group.hud",
+  menuWindow: "appearance.tokens.group.menuWindow",
+  titleScreen: "appearance.tokens.group.titleScreen",
+  titleScreenButton: "appearance.tokens.group.titleScreenButton",
+  stage: "appearance.tokens.group.stage",
+};
+
+const TOKEN_FIELD_MESSAGE_KEY: Record<string, StudioMessageKey> = {
+  x: "appearance.tokens.label.x",
+  y: "appearance.tokens.label.y",
+  width: "appearance.tokens.label.width",
+  height: "appearance.tokens.label.height",
+  bgColor: "appearance.tokens.label.backgroundColor",
+  bgOpacity: "appearance.tokens.label.opacity",
+  radius: "appearance.tokens.label.radius",
+  padding: "appearance.tokens.label.padding",
+  borderColor: "appearance.tokens.label.borderColor",
+  textColor: "appearance.tokens.label.textColor",
+  fontSize: "appearance.tokens.label.fontSize",
+  fontFamily: "appearance.tokens.label.fontFamily",
+  lineHeight: "appearance.tokens.label.lineHeight",
+  visible: "appearance.tokens.label.visible",
+  hoverColor: "appearance.tokens.label.hoverColor",
+  hoverTextColor: "appearance.tokens.label.hoverTextColor",
+  titleColor: "appearance.tokens.label.titleColor",
+  titleFontSize: "appearance.tokens.label.titleFontSize",
+  titleFontFamily: "appearance.tokens.label.titleFontFamily",
+};
+
+export function localizeAppearanceTokenGroups(
+  groups: TokenGroupDef[],
+  t: StudioTranslator = translateZhCN,
+): TokenGroupDef[] {
+  return groups.map((group) => ({
+    ...group,
+    title: group.rendererDeclared
+      ? group.title
+      : group.id in TOKEN_GROUP_MESSAGE_KEY
+        ? t(TOKEN_GROUP_MESSAGE_KEY[group.id])
+        : t("appearance.tokens.group.geometry", { part: group.id }),
+    fields: group.fields.map((field) => {
+      if (group.rendererDeclared) return field;
+      if (field.key === "choiceBox.height") {
+        return { ...field, label: t("appearance.tokens.label.heightLimit") };
+      }
+      if (field.key === "stage.fontFamily") {
+        return { ...field, label: t("appearance.tokens.label.globalFont") };
+      }
+      const suffix = field.key.split(".").at(-1) ?? "";
+      const key = TOKEN_FIELD_MESSAGE_KEY[suffix];
+      return key ? { ...field, label: t(key) } : field;
+    }),
+  }));
+}
+
 // ──────────────────────────────────────────────
 // 选中部件 → 属性分组过滤（inspector 模式）
 // ──────────────────────────────────────────────
@@ -568,6 +630,40 @@ const NULL_DEFAULT_HINTS: Record<string, string> = {
   "titleScreen.bgColor": "内置暗色玻璃",
   "titleScreen.bgOpacity": "仅配背景色生效",
 };
+
+const NULL_DEFAULT_HINT_MESSAGE_KEY: Record<string, StudioMessageKey> = {
+  "dialogueBox.bgColor": "appearance.tokens.hint.frostedWhite",
+  "dialogueBox.bgOpacity": "appearance.tokens.hint.backgroundOnly",
+  "dialogueBox.borderColor": "appearance.tokens.hint.hairlineWhite",
+  "nameBox.width": "appearance.tokens.hint.autoContent",
+  "nameBox.height": "appearance.tokens.hint.autoContent",
+  "nameBox.bgColor": "appearance.tokens.hint.speakerColor",
+  "choiceBox.height": "appearance.tokens.hint.autoStageHeight",
+  "hud.x": "appearance.tokens.hint.topRight",
+  "hud.y": "appearance.tokens.hint.top",
+  "titleScreen.bgColor": "appearance.tokens.hint.darkGlass",
+  "titleScreen.bgOpacity": "appearance.tokens.hint.backgroundOnly",
+};
+
+export function localizedTokenDefaultPlaceholder(
+  key: string,
+  rendererDefaults: RendererAppearanceDefaults | undefined,
+  t: StudioTranslator = translateZhCN,
+): string {
+  const value = rendererDefaults?.[key] ?? TOKEN_DEFAULT_VALUES[key];
+  if (rendererDefaults !== undefined && value === undefined) {
+    return t("appearance.tokens.default");
+  }
+  const hintKey = rendererDefaults === undefined
+    ? NULL_DEFAULT_HINT_MESSAGE_KEY[key]
+    : undefined;
+  if (hintKey) {
+    return t("appearance.tokens.defaultValue", { value: t(hintKey) });
+  }
+  return value === undefined
+    ? t("appearance.tokens.default")
+    : t("appearance.tokens.defaultValue", { value: String(value) });
+}
 
 export function tokenDefaultValue(
   key: string,

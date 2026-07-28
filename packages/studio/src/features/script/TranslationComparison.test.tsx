@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProjectData } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 import { TranslationComparison } from "./TranslationComparison";
 
 const project: ProjectData = {
@@ -41,5 +42,27 @@ describe("TranslationComparison", () => {
     expect(html).toContain("Good morning.");
     expect(html).toContain("未分配 key：1");
     expect(html).toContain("生成稳定 key");
+  });
+
+  it("renders English chrome while preserving project content and locale tags", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(TranslationComparison, {
+        project,
+        onAssignKey: async () => {},
+        onSaveLocale: async () => {},
+      }),
+    ));
+
+    expect(html).toContain('aria-label="Translation comparison"');
+    expect(html).toContain("Target language");
+    expect(html).toContain("Unassigned keys: 1");
+    expect(html).toContain("Generate stable key");
+    expect(html).toContain("第一章 / 开场 / hello");
+    expect(html).toContain("早上好。");
+    expect(html).toContain("Good morning.");
+    expect(html).toContain(">en<");
+    expect(html).not.toContain("未分配 key");
   });
 });

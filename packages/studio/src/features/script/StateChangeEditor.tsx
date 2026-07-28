@@ -10,6 +10,7 @@
  */
 import { variableKind, type SetInstr, type VariableDeclaration, type VariableRegistry } from "@vibegal/engine";
 import { NumberInput, SegmentedControl, Select, SentenceRow, SentenceWord, Switch, TextInput } from "../common/Form";
+import { useStudioI18n } from "../../lib/i18n";
 import { variableLabel } from "./storyState";
 
 export type StateChangeMode = "increase" | "decrease" | "assign";
@@ -21,6 +22,7 @@ export interface StateChangeEditorProps {
 }
 
 export function StateChangeEditor({ instruction, variables, onChange }: StateChangeEditorProps) {
+  const { t } = useStudioI18n();
   const declaration = variables?.variables[instruction.key];
   const kind = declaration ? variableKind(declaration) : undefined;
   const mode = readMode(instruction);
@@ -29,64 +31,75 @@ export function StateChangeEditor({ instruction, variables, onChange }: StateCha
 
   return (
     <div className="gs-state-change">
-      <SentenceRow lead="把">
+      <SentenceRow lead={t("script.stateChange.lead")}>
         {names.length > 0 ? (
           <Select
-            aria-label="要改变的故事状态"
+            aria-label={t("script.stateChange.target")}
             value={instruction.key}
             options={names.map(([name, item]) => ({ value: name, label: variableLabel(name, item) }))}
             onChange={(key) => onChange(resetForVariable(instruction, key, variables?.variables[key]))}
           />
         ) : (
-          <TextInput aria-label="要改变的故事状态" value={instruction.key} onChange={(key) => onChange({ ...instruction, key })} />
+          <TextInput
+            aria-label={t("script.stateChange.target")}
+            value={instruction.key}
+            onChange={(key) => onChange({ ...instruction, key })}
+          />
         )}
       </SentenceRow>
 
       {kind === "meter" || kind === "counter" ? (
         <SentenceRow>
           <SegmentedControl<StateChangeMode>
-            aria-label="怎么改"
+            aria-label={t("script.stateChange.modeLabel")}
             value={mode}
             options={[
-              { value: "increase", label: "增加" },
-              { value: "decrease", label: "减少" },
-              { value: "assign", label: "设为" },
+              { value: "increase", label: t("script.stateChange.increase") },
+              { value: "decrease", label: t("script.stateChange.decrease") },
+              { value: "assign", label: t("script.stateChange.assign") },
             ]}
             onChange={(next) => onChange(writeMode(instruction, next, readAmount(instruction)))}
           />
           <NumberInput
-            aria-label="改变多少"
+            aria-label={t("script.stateChange.amount")}
             value={readAmount(instruction)}
             min={mode === "assign" ? declaration?.min : 0}
             max={mode === "assign" ? declaration?.max : undefined}
             onChange={(amount) => onChange(writeMode(instruction, mode, amount))}
           />
           {mode !== "assign" && declaration?.max != null && (
-            <SentenceWord>（不会超出 {declaration.min ?? 0}–{declaration.max}）</SentenceWord>
+            <SentenceWord>
+              {t("script.stateChange.rangeHint", {
+                minimum: declaration.min ?? 0,
+                maximum: declaration.max,
+              })}
+            </SentenceWord>
           )}
         </SentenceRow>
       ) : kind === "flag" ? (
-        <SentenceRow lead="标记为">
+        <SentenceRow lead={t("script.stateChange.markAs")}>
           <Switch
-            aria-label="标记为"
+            aria-label={t("script.stateChange.markAs")}
             checked={instruction.value === true}
-            label={instruction.value === true ? "已发生" : "还没发生"}
+            label={instruction.value === true
+              ? t("script.stateChange.happened")
+              : t("script.stateChange.notHappened")}
             onChange={(checked) => onChange({ t: "set", key: instruction.key, id: instruction.id, value: checked })}
           />
         </SentenceRow>
       ) : kind === "state" && declaration?.options?.length ? (
-        <SentenceRow lead="设为">
+        <SentenceRow lead={t("script.stateChange.assign")}>
           <Select
-            aria-label="设为哪个状态"
+            aria-label={t("script.stateChange.assignState")}
             value={typeof instruction.value === "string" ? instruction.value : ""}
             options={declaration.options.map((option) => ({ value: option.id, label: option.label }))}
             onChange={(value) => onChange({ t: "set", key: instruction.key, id: instruction.id, value })}
           />
         </SentenceRow>
       ) : (
-        <SentenceRow lead="设为">
+        <SentenceRow lead={t("script.stateChange.assign")}>
           <TextInput
-            aria-label="设为什么"
+            aria-label={t("script.stateChange.assignValue")}
             value={typeof instruction.value === "string" ? instruction.value : ""}
             onChange={(value) => onChange({ t: "set", key: instruction.key, id: instruction.id, value })}
           />
@@ -96,9 +109,9 @@ export function StateChangeEditor({ instruction, variables, onChange }: StateCha
       {/* 手写表达式仍然保留，但降级成高级入口，不再是并列的「赋值方式」之一。 */}
       {(kind === "meter" || kind === "counter") && (
         <details className="gs-state-change__advanced">
-          <summary>用表达式计算</summary>
+          <summary>{t("script.stateChange.expression")}</summary>
           <TextInput
-            aria-label="赋值表达式"
+            aria-label={t("script.stateChange.expressionLabel")}
             value={instruction.expr ?? ""}
             onChange={(expr) => onChange({ t: "set", key: instruction.key, id: instruction.id, expr: expr || "0" })}
           />

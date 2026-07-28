@@ -17,6 +17,7 @@ import {
   type VariableRegistry,
 } from "@vibegal/engine";
 import type { ProjectGraph } from "../../lib/types";
+import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 
 // ── 词汇表 ─────────────────────────────────────────────────────────────
 // 用途名一律是作者会说的词；实现术语（boolean/number/string）只出现在技术详情里。
@@ -42,9 +43,26 @@ export const SCOPE_LABEL: Record<"run" | "global", string> = {
   global: "跨周目保存",
 };
 
-/** 只读命名空间在界面上的分组名。 */
+/** 只读命名空间在界面上的 zh-CN 兼容分组名。 */
 export const EXPERIENCE_GROUP = "剧情经历";
 export const SYSTEM_GROUP = "系统状态";
+
+const KIND_MESSAGE_KEY = {
+  flag: "script.state.kind.flag",
+  meter: "script.state.kind.meter",
+  state: "script.state.kind.state",
+  counter: "script.state.kind.counter",
+  text: "script.state.kind.text",
+} as const;
+
+const OPERATOR_MESSAGE_KEY = {
+  happened: "script.condition.operator.happened",
+  notHappened: "script.condition.operator.notHappened",
+  atLeast: "script.condition.operator.atLeast",
+  atMost: "script.condition.operator.atMost",
+  is: "script.condition.operator.is",
+  isNot: "script.condition.operator.isNot",
+} as const;
 
 // ── 可引用的故事状态 ───────────────────────────────────────────────────
 
@@ -87,7 +105,9 @@ export function collectStateSources(input: {
   registry?: VariableRegistry;
   graph?: ProjectGraph;
   manifest?: Manifest;
+  t?: StudioTranslator;
 }): StateSource[] {
+  const t = input.t ?? translateZhCN;
   const sources: StateSource[] = [];
 
   for (const [name, declaration] of Object.entries(input.registry?.variables ?? {})) {
@@ -96,7 +116,7 @@ export function collectStateSources(input: {
       name,
       label: variableLabel(name, declaration, input.manifest),
       kind,
-      group: KIND_LABEL[kind],
+      group: t(KIND_MESSAGE_KEY[kind]),
       readonly: false,
       declaration,
     });
@@ -109,25 +129,38 @@ export function collectStateSources(input: {
     const option = edge.label?.trim() || nodeTitle.get(edge.to) || edge.to;
     sources.push({
       name: `chose.${edge.id}`,
-      label: `在「${from}」选了「${option}」`,
+      label: t("script.condition.source.chose", { from, option }),
       kind: "chose",
-      group: EXPERIENCE_GROUP,
+      group: t("script.condition.sourceGroup.experience"),
       readonly: true,
     });
   }
   for (const node of input.graph?.nodes ?? []) {
     sources.push({
       name: `seen.${node.id}`,
-      label: `到过「${node.title || node.id}」`,
+      label: t("script.condition.source.seen", { title: node.title || node.id }),
       kind: "seen",
-      group: EXPERIENCE_GROUP,
+      group: t("script.condition.sourceGroup.experience"),
       readonly: true,
     });
   }
 
+  const systemGroup = t("script.condition.sourceGroup.system");
   sources.push(
-    { name: "system.playthroughCount", label: "通关次数", kind: "system", group: SYSTEM_GROUP, readonly: true },
-    { name: "system.lastEndingId", label: "上次达成的结局", kind: "system", group: SYSTEM_GROUP, readonly: true },
+    {
+      name: "system.playthroughCount",
+      label: t("script.condition.source.playthroughCount"),
+      kind: "system",
+      group: systemGroup,
+      readonly: true,
+    },
+    {
+      name: "system.lastEndingId",
+      label: t("script.condition.source.lastEnding"),
+      kind: "system",
+      group: systemGroup,
+      readonly: true,
+    },
   );
 
   return sources;
@@ -285,6 +318,13 @@ export const OPERATOR_LABEL: Record<ClauseOperator, string> = {
   isNot: "不是",
 };
 
+export function operatorLabel(
+  operator: ClauseOperator,
+  t: StudioTranslator = translateZhCN,
+): string {
+  return t(OPERATOR_MESSAGE_KEY[operator]);
+}
+
 /** 新建子句时的默认形态，保证一插入就是合法条件。 */
 export function defaultClause(source: StateSource | undefined): ConditionClause {
   const operator = operatorsForSource(source)[0];
@@ -323,6 +363,7 @@ export function describeVariableIssue(
   name: string,
   registry?: VariableRegistry,
   manifest?: Manifest,
+  t: StudioTranslator = translateZhCN,
 ): { code: string; message: string; fix?: string; severity: "error" | "warn" } {
   const declaration = registry?.variables[name];
   const label = variableLabel(name, declaration, manifest);
@@ -332,24 +373,24 @@ export function describeVariableIssue(
       return {
         code: issue.code,
         severity: "error",
-        message: `分流用到了「${label}」，但整个故事里没有任何地方改变它。`,
-        fix: "这条分支永远走不到。在某个节点里加一处改动，或者改用玩家的选择来判断。",
+        message: t("script.stateIssue.readBeforeWrite", { label }),
+        fix: t("script.stateIssue.readBeforeWriteFix"),
       };
     case "write_without_read":
       return {
         code: issue.code,
         severity: "warn",
-        message: `「${label}」会被改变，但没有任何分流用到它。`,
+        message: t("script.stateIssue.writeWithoutRead", { label }),
         fix: declaration?.displayOnly
           ? undefined
-          : "如果它只是给界面显示用的，可以在它的技术详情里打开「仅用于界面显示」，这条提示就不再出现。",
+          : t("script.stateIssue.writeWithoutReadFix"),
       };
     case "type_conflict":
       return {
         code: issue.code,
         severity: "warn",
-        message: `「${label}」在不同地方被写成了不一样的东西（有时是文字，有时是数字）。`,
-        fix: "统一成一种，否则分流判断的结果会不稳定。",
+        message: t("script.stateIssue.typeConflict", { label }),
+        fix: t("script.stateIssue.typeConflictFix"),
       };
     default:
       return { code: issue.code, severity: issue.severity, message: issue.message };

@@ -32,6 +32,7 @@ import { SceneFixtureView, fixtureScenesForPreview, setFixtureUiHintGlobal } fro
 import type { FixtureScene } from "../../export/snapshotScenes";
 import {
   applyAppearancePreset,
+  localizeAppearanceTokenGroups,
   mergeTokenOverrides,
   readSkinTokens,
   rendererSupportsAppearancePresets,
@@ -49,6 +50,7 @@ import { AppearancePresetPicker } from "./AppearancePresetPicker";
 import { TokenEditorPanel } from "./TokenEditorPanel";
 import { SkinAssetsSection } from "./SkinAssetsSection";
 import { StageDesignView } from "./StageDesignView";
+import { useStudioI18n } from "../../lib/i18n";
 
 type AppearanceViewMode = "grid" | "single";
 
@@ -64,6 +66,7 @@ interface AppearanceWorkspaceProps {
 const PERSIST_DEBOUNCE_MS = 300;
 
 export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewMode = "grid" }: AppearanceWorkspaceProps) {
+  const { t } = useStudioI18n();
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
   const [draft, setDraft] = useState<Manifest | null>(null);
@@ -108,8 +111,11 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
     [displayManifest],
   );
   const appearanceGroups = useMemo(
-    () => tokenGroupsFromRendererAppearance(renderer?.appearance?.groups),
-    [renderer?.appearance?.groups],
+    () => localizeAppearanceTokenGroups(
+      tokenGroupsFromRendererAppearance(renderer?.appearance?.groups),
+      t,
+    ),
+    [renderer?.appearance?.groups, t],
   );
   const rendererDefaults = renderer?.appearance?.defaults as RendererAppearanceDefaults | undefined;
   const presetsSupported = rendererDefaults !== undefined && rendererSupportsAppearancePresets(rendererDefaults);
@@ -152,11 +158,13 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
     } catch (error) {
       notify({
         kind: "error",
-        message: "保存资源登记表失败",
-        detail: `${error instanceof Error ? error.message : String(error)}。改动仍保留在面板里。`,
+        message: t("appearance.saveFailed"),
+        detail: t("appearance.saveFailedDetail", {
+          detail: error instanceof Error ? error.message : String(error),
+        }),
       });
     }
-  }, [mutationQueue, project.path, onSaved]);
+  }, [mutationQueue, project.path, onSaved, t]);
 
   const schedulePersist = useCallback(
     (next: Manifest) => {
@@ -283,14 +291,14 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
     return (
-      <CenteredMessage mono>{`界面风格加载失败（${rendererId}）：\n\n${detail}\n\n外观面板需要一个可加载的界面风格来预览参数效果。`}</CenteredMessage>
+      <CenteredMessage mono>{t("appearance.rendererLoadError", { rendererId, detail })}</CenteredMessage>
     );
   }
   if (!renderer) {
     return (
       <div style={loadingShellStyle}>
         <div className="gs-skeleton" style={loadingStageStyle} />
-        <div style={loadingHintStyle}>加载界面风格中…</div>
+        <div style={loadingHintStyle}>{t("appearance.loadingRenderer")}</div>
       </div>
     );
   }
@@ -302,42 +310,42 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
         {conflict && (
           <div style={conflictBannerStyle} role="alert">
             <span style={conflictTextStyle}>
-              资源登记表已在磁盘上被修改（版本冲突），最近的外观改动未保存。重新加载后可继续编辑。
+              {t("appearance.conflict")}
             </span>
-            <Button variant="primary" onClick={handleReloadAfterConflict}>重新加载</Button>
+            <Button variant="primary" onClick={handleReloadAfterConflict}>{t("appearance.reload")}</Button>
           </div>
         )}
         {manifestInvalid ? (
           <div style={conflictBannerStyle} role="alert">
-            <span style={conflictTextStyle}>资源登记表结构异常（可能是旧格式），外观编辑已禁用。详见右下角问题面板。</span>
+            <span style={conflictTextStyle}>{t("appearance.invalidManifest")}</span>
           </div>
         ) : skinId === null ? (
           <EmptyState
             icon={Palette}
-            title="尚未启用外观编辑"
-            description={"启用后会在资源登记表中创建「默认外观」，\n之后即可用左侧属性与舞台拖拽调整外观；不改动任何其他文件。"}
-            action={<Button variant="primary" onClick={handleEnableAppearance}>启用外观编辑</Button>}
+            title={t("appearance.empty.title")}
+            description={t("appearance.empty.description")}
+            action={<Button variant="primary" onClick={handleEnableAppearance}>{t("appearance.enable")}</Button>}
           />
         ) : (
           <>
             <div style={skinHeaderStyle}>
               {/* Spec 19 §4.5：把外观依附于界面风格的层级关系说破 */}
-              <div style={hierarchyNoteStyle}>调整当前界面风格（{rendererId}）暴露的外观参数</div>
+              <div style={hierarchyNoteStyle}>{t("appearance.hierarchy", { rendererId })}</div>
               {/* Spec 19 §3：「编辑皮肤：<id>」→「编辑外观」，单 skin 后 skin id 无展示价值 */}
-              <div style={skinTitleStyle}>编辑外观</div>
+              <div style={skinTitleStyle}>{t("appearance.title")}</div>
             </div>
             {selectedPart !== null && viewMode === "single" && (
               <div style={selectionBarStyle} data-selected-part={selectedPart}>
                 <span style={selectionLabelStyle}>
-                  已选中部件：<span style={selectionPartStyle}>{selectedPart}</span>
+                  {t("appearance.selectedPart")}<span style={selectionPartStyle}>{selectedPart}</span>
                 </span>
                 <button
                   type="button"
                   style={selectionClearStyle}
-                  title="取消选中，显示全部属性"
+                  title={t("appearance.clearSelection")}
                   onClick={() => setSelectedPart(null)}
                 >
-                  全部属性
+                  {t("appearance.allProperties")}
                 </button>
               </div>
             )}
@@ -355,7 +363,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
               fontFamilies={fontFamilies}
               disabled={readOnly}
               groups={selectedPart !== null && viewMode === "single"
-                ? tokenGroupsForRendererPart(appearanceGroups, selectedPart)
+                ? tokenGroupsForRendererPart(appearanceGroups, selectedPart, t)
                 : appearanceGroups}
               onEdit={handleEditToken}
             />
@@ -373,18 +381,18 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
             className={viewMode === "grid" ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={showGrid}
           >
-            宫格
+            {t("appearance.grid")}
           </button>
           <button
             type="button"
             className={viewMode === "single" ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={showSingle}
           >
-            单场景
+            {t("appearance.single")}
           </button>
           {viewMode === "single" && activeScene && (
             <select
-              aria-label="场景"
+              aria-label={t("appearance.scene")}
               style={sceneSelectStyle}
               value={activeScene.id}
               onChange={(event) => selectScene(event.target.value)}
@@ -410,7 +418,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
                       type="button"
                       className="gs-scene-card"
                       data-scene-id={scene.id}
-                      title={`在单场景中设计「${scene.title}」`}
+                      title={t("appearance.designScene", { title: scene.title })}
                       onClick={() => openSceneInDesign(scene)}
                     >
                       <div style={{ ...gridStageBoxStyle, aspectRatio: `${stage.width} / ${stage.height}` }}>

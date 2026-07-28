@@ -6,6 +6,7 @@ import { parseGraphCondition } from "./graphCondition";
 import type { VariableRegistry } from "@vibegal/engine";
 import { BranchRules, moveEdge, moveEdgeById, normalizeEdge, orderDefaultAutoEdgeLast } from "./BranchRules";
 import { collectStateSources, stateSourceDefaults } from "./storyState";
+import { useStudioI18n } from "../../lib/i18n";
 
 // 排序模型迁到 BranchRules，这里重新导出以保持既有调用方与测试的入口不变。
 export { moveEdge, moveEdgeById, orderDefaultAutoEdgeLast };
@@ -60,14 +61,15 @@ export function NodeInspector({
   onUnregisterEnding,
   onInsertEndingCompletion,
 }: NodeInspectorProps) {
+  const { t } = useStudioI18n();
   const node = findNode(graph, selectedNodeId);
   const [title, setTitle] = useState(node?.title ?? "");
   const [trialValues, setTrialValues] = useState<Record<string, string | number | boolean | null>>({});
 
   // 剧情经历与系统状态也要进试算环境，否则引用它们的条件会被误报成「未知变量」。
   const sources = useMemo(
-    () => collectStateSources({ registry: variables, graph, manifest }),
-    [variables, graph, manifest],
+    () => collectStateSources({ registry: variables, graph, manifest, t }),
+    [variables, graph, manifest, t],
   );
   const defaults = useMemo(() => stateSourceDefaults(sources), [sources]);
 
@@ -78,8 +80,8 @@ export function NodeInspector({
   if (!node) {
     return (
       <div style={panelStyle}>
-        <div style={panelTitleStyle}>属性面板</div>
-        <div style={emptyStyle}>选择一个节点查看属性</div>
+        <div style={panelTitleStyle}>{t("script.nodeInspector.title")}</div>
+        <div style={emptyStyle}>{t("script.nodeInspector.selectHint")}</div>
       </div>
     );
   }
@@ -93,11 +95,11 @@ export function NodeInspector({
 
   return (
     <div style={panelStyle}>
-      <div style={panelTitleStyle}>属性面板</div>
+      <div style={panelTitleStyle}>{t("script.nodeInspector.title")}</div>
       <div style={contentStyle}>
         <section style={sectionStyle}>
           <label style={titleFieldStyle}>
-            <span style={fieldLabelStyle}>标题</span>
+            <span style={fieldLabelStyle}>{t("script.node.title")}</span>
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
@@ -116,19 +118,19 @@ export function NodeInspector({
           </label>
           <div style={{ ...statusTextStyle(hasContent), display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}>
             {hasContent ? <Check size={14} /> : <TriangleAlert size={14} />}
-            {hasContent ? "已有内容" : "文件缺失"}
+            {hasContent ? t("script.nodeInspector.hasContent") : t("script.nodeInspector.missingFile")}
           </div>
         </section>
 
         <section style={sectionStyle}>
           <Field label="ID" value={node.id} mono />
-          <Field label="文件" value={node.file} mono />
-          <Field label="入口" value={isEntry ? "是" : "否"} />
-          <Field label="位置" value={`x ${node.position.x} / y ${node.position.y}`} mono />
-          <Field label="连接" value={`入 ${incoming} / 出 ${outgoing}`} mono />
+          <Field label={t("script.nodeInspector.file")} value={node.file} mono />
+          <Field label={t("script.nodeInspector.entry")} value={isEntry ? t("common.yes") : t("common.no")} />
+          <Field label={t("script.nodeInspector.position")} value={`x ${node.position.x} / y ${node.position.y}`} mono />
+          <Field label={t("script.nodeInspector.connections")} value={t("script.nodeInspector.connectionCounts", { incoming, outgoing })} mono />
           {graph.chapters.length > 0 && (
             <label style={titleFieldStyle}>
-              <span style={fieldLabelStyle}>所属章节</span>
+              <span style={fieldLabelStyle}>{t("script.nodeInspector.chapter")}</span>
               <select
                 value={node.chapterId}
                 onChange={(event) => onSetChapter?.(node.id, event.target.value)}
@@ -142,7 +144,7 @@ export function NodeInspector({
         </section>
 
         <section style={sectionStyle}>
-          <div style={fieldLabelStyle}>离开这个节点</div>
+          <div style={fieldLabelStyle}>{t("script.nodeInspector.exits")}</div>
           <BranchRules
             graph={graph}
             nodeId={node.id}
@@ -157,23 +159,23 @@ export function NodeInspector({
         </section>
 
         <section style={sectionStyle}>
-          <Field label="结构角色" value={outgoing === 0 ? "图终点" : "流程节点（仍有出口）"} />
-          <Field label="正式结局" value={linkedEndings.length ? linkedEndings.map(([id]) => id).join(", ") : "未登记"} />
+          <Field label={t("script.nodeInspector.structuralRole")} value={outgoing === 0 ? t("script.nodeInspector.graphEnding") : t("script.nodeInspector.flowNode")} />
+          <Field label={t("script.nodeInspector.officialEnding")} value={linkedEndings.length ? linkedEndings.map(([id]) => id).join(", ") : t("script.nodeInspector.unregistered")} />
           {linkedEndings.map(([id, ending]) => <div key={id} style={endingRowStyle}>
             <span>{id} · {ending.title}</span>
-            <button type="button" onClick={() => onEditEnding?.(id)}>编辑</button>
-            <button type="button" onClick={() => onInsertEndingCompletion?.(node.id, id)}>插入结算</button>
-            <button type="button" onClick={() => onUnregisterEnding?.(id)}>取消登记</button>
+            <button type="button" onClick={() => onEditEnding?.(id)}>{t("script.nodeInspector.editEnding")}</button>
+            <button type="button" onClick={() => onInsertEndingCompletion?.(node.id, id)}>{t("script.nodeInspector.insertCompletion")}</button>
+            <button type="button" onClick={() => onUnregisterEnding?.(id)}>{t("script.nodeInspector.unregisterEnding")}</button>
           </div>)}
-          <button type="button" onClick={() => onRegisterEnding?.(node.id)}>登记新结局…</button>
+          <button type="button" onClick={() => onRegisterEnding?.(node.id)}>{t("script.nodeInspector.registerEnding")}</button>
         </section>
 
         <button type="button" onClick={() => onEnter(node.id)} style={actionButtonStyle}>
-          进入编辑
+          {t("script.nodeInspector.enterEdit")}
         </button>
         {!isEntry && onSetEntry && (
           <button type="button" onClick={() => onSetEntry(node.id)} disabled={saving} style={secondaryButtonStyle}>
-            设为入口节点
+            {t("script.nodeInspector.setEntry")}
           </button>
         )}
       </div>

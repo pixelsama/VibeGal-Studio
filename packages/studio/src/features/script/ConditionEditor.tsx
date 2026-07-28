@@ -13,11 +13,12 @@ import { Plus, X } from "lucide-react";
 import type { VariableDeclaration } from "@vibegal/engine";
 import { Button, IconButton } from "../common/Button";
 import { NumberInput, SegmentedControl, Select, SentenceRow, SentenceWord, Switch, TextInput } from "../common/Form";
+import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import {
-  OPERATOR_LABEL,
   bandThreshold,
   defaultClause,
   formatConditionSentence,
+  operatorLabel,
   operatorsForSource,
   parseConditionSentence,
   type ClauseOperator,
@@ -37,6 +38,7 @@ export interface ConditionEditorProps {
 }
 
 export function ConditionEditor({ source, sources, onChange, disabled, onEditExpression }: ConditionEditorProps) {
+  const { t } = useStudioI18n();
   const sentence = useMemo(() => parseConditionSentence(source), [source]);
   const byName = useMemo(() => new Map(sources.map((item) => [item.name, item])), [sources]);
 
@@ -45,8 +47,8 @@ export function ConditionEditor({ source, sources, onChange, disabled, onEditExp
       <div className="gs-condition gs-condition--raw">
         <code className="gs-condition__raw-source">{source}</code>
         <div className="gs-condition__raw-hint">
-          这条判断用了表达式写法，改成简单句子会丢失含义，所以保持原样。
-          {onEditExpression && <Button onClick={onEditExpression}>编辑表达式</Button>}
+          {t("script.condition.rawHint")}
+          {onEditExpression && <Button onClick={onEditExpression}>{t("script.condition.editExpression")}</Button>}
         </div>
       </div>
     );
@@ -60,12 +62,20 @@ export function ConditionEditor({ source, sources, onChange, disabled, onEditExp
     <div className="gs-condition">
       {current.clauses.length > 1 && (
         <SegmentedControl<"all" | "any">
-          aria-label="条件组合方式"
+          aria-label={t("script.condition.joinLabel")}
           value={current.join}
           disabled={disabled}
           options={[
-            { value: "all", label: "全部满足", title: "所有条件都成立时才走这条" },
-            { value: "any", label: "任一满足", title: "任意一个条件成立就走这条" },
+            {
+              value: "all",
+              label: t("script.condition.join.all"),
+              title: t("script.condition.join.allHint"),
+            },
+            {
+              value: "any",
+              label: t("script.condition.join.any"),
+              title: t("script.condition.join.anyHint"),
+            },
           ]}
           onChange={(join) => apply({ ...current, join })}
         />
@@ -80,6 +90,7 @@ export function ConditionEditor({ source, sources, onChange, disabled, onEditExp
           sources={sources}
           source={byName.get(clause.source)}
           disabled={disabled}
+          t={t}
           onChange={(next) => apply({ ...current, clauses: current.clauses.map((item, at) => at === index ? next : item) })}
           onRemove={() => apply({ ...current, clauses: current.clauses.filter((_, at) => at !== index) })}
         />
@@ -91,12 +102,12 @@ export function ConditionEditor({ source, sources, onChange, disabled, onEditExp
           disabled={writable.length === 0}
         >
           <Plus size={14} aria-hidden="true" />
-          添加条件
+          {t("script.condition.add")}
         </Button>
       )}
 
       {current.clauses.length === 0 && (
-        <p className="gs-condition__empty">没有条件：前面的分支都不成立时，走这一条。</p>
+        <p className="gs-condition__empty">{t("script.condition.fallbackDescription")}</p>
       )}
     </div>
   );
@@ -109,6 +120,7 @@ function ClauseRow({
   sources,
   source,
   disabled,
+  t,
   onChange,
   onRemove,
 }: {
@@ -118,23 +130,28 @@ function ClauseRow({
   sources: StateSource[];
   source?: StateSource;
   disabled?: boolean;
+  t: StudioTranslator;
   onChange: (clause: ConditionClause) => void;
   onRemove: () => void;
 }) {
   const operators = operatorsForSource(source);
-  const lead = index === 0 ? "如果" : join === "all" ? "并且" : "或者";
+  const lead = index === 0
+    ? t("script.condition.lead.if")
+    : join === "all"
+      ? t("script.condition.lead.and")
+      : t("script.condition.lead.or");
 
   return (
     <SentenceRow
       lead={lead}
       trailing={!disabled && (
-        <IconButton aria-label={`删除第 ${index + 1} 个条件`} onClick={onRemove}>
+        <IconButton aria-label={t("script.condition.remove", { number: index + 1 })} onClick={onRemove}>
           <X size={14} aria-hidden="true" />
         </IconButton>
       )}
     >
       <Select
-        aria-label={`第 ${index + 1} 个条件的判断对象`}
+        aria-label={t("script.condition.sourceLabel", { number: index + 1 })}
         disabled={disabled}
         value={clause.source}
         options={sources.map((item) => ({ value: item.name, label: item.label, group: item.group }))}
@@ -145,16 +162,16 @@ function ClauseRow({
       />
       {operators.length > 1 ? (
         <Select
-          aria-label={`第 ${index + 1} 个条件的判断方式`}
+          aria-label={t("script.condition.operatorLabel", { number: index + 1 })}
           disabled={disabled}
           value={clause.operator}
-          options={operators.map((operator) => ({ value: operator, label: OPERATOR_LABEL[operator] }))}
+          options={operators.map((operator) => ({ value: operator, label: operatorLabel(operator, t) }))}
           onChange={(operator) => onChange({ ...clause, operator: operator as ClauseOperator })}
         />
       ) : (
-        <SentenceWord>{OPERATOR_LABEL[clause.operator]}</SentenceWord>
+        <SentenceWord>{operatorLabel(clause.operator, t)}</SentenceWord>
       )}
-      <ClauseValue clause={clause} index={index} source={source} disabled={disabled} onChange={onChange} />
+      <ClauseValue clause={clause} index={index} source={source} disabled={disabled} t={t} onChange={onChange} />
     </SentenceRow>
   );
 }
@@ -165,15 +182,17 @@ function ClauseValue({
   index,
   source,
   disabled,
+  t,
   onChange,
 }: {
   clause: ConditionClause;
   index: number;
   source?: StateSource;
   disabled?: boolean;
+  t: StudioTranslator;
   onChange: (clause: ConditionClause) => void;
 }) {
-  const label = `第 ${index + 1} 个条件的值`;
+  const label = t("script.condition.valueLabel", { number: index + 1 });
   // 已发生 / 还没发生 本身就说完了，没有第二个操作数。
   if (clause.operator === "happened" || clause.operator === "notHappened") return null;
 
@@ -198,7 +217,9 @@ function ClauseValue({
           aria-label={label}
           disabled={disabled}
           checked={clause.value === true}
-          label={clause.value === true ? "是" : "否"}
+          label={clause.value === true
+            ? t("script.condition.boolean.yes")
+            : t("script.condition.boolean.no")}
           onChange={(checked) => onChange({ ...clause, value: checked })}
         />
       );
@@ -224,14 +245,14 @@ function ClauseValue({
           aria-label={label}
           disabled={disabled}
           value={matching?.id ?? ""}
-          placeholder={matching ? undefined : `${numeric}（自定义）`}
+          placeholder={matching ? undefined : t("script.condition.customValue", { value: numeric })}
           options={bands.map((band) => ({ value: band.id, label: band.label }))}
           onChange={(bandId) => onChange({ ...clause, value: bandThreshold(declaration, bandId) })}
         />
         <details className="gs-condition__exact">
-          <summary>精确数值</summary>
+          <summary>{t("script.condition.exactValue")}</summary>
           <NumberInput
-            aria-label={`${label}（精确）`}
+            aria-label={t("script.condition.exactValueLabel", { label })}
             disabled={disabled}
             value={numeric}
             min={declaration?.min}
@@ -256,18 +277,30 @@ function ClauseValue({
 }
 
 /** 供分流规则表复用：把条件渲染成一行只读文字。 */
-export function describeCondition(source: string, sources: StateSource[]): string {
+export function describeCondition(
+  source: string,
+  sources: StateSource[],
+  t: StudioTranslator = translateZhCN,
+): string {
   const sentence = parseConditionSentence(source);
-  if (!sentence) return source.trim() || "否则";
-  if (sentence.clauses.length === 0) return "否则";
+  if (!sentence) return source.trim() || t("script.condition.fallback");
+  if (sentence.clauses.length === 0) return t("script.condition.fallback");
   const byName = new Map(sources.map((item) => [item.name, item]));
-  const joiner = sentence.join === "all" ? " 并且 " : " 或者 ";
-  return sentence.clauses.map((clause) => describeClause(clause, byName.get(clause.source))).join(joiner);
+  const joiner = sentence.join === "all"
+    ? t("script.condition.joinSummary.all")
+    : t("script.condition.joinSummary.any");
+  return sentence.clauses
+    .map((clause) => describeClause(clause, byName.get(clause.source), t))
+    .join(joiner);
 }
 
-function describeClause(clause: ConditionClause, source?: StateSource): string {
+function describeClause(
+  clause: ConditionClause,
+  source: StateSource | undefined,
+  t: StudioTranslator,
+): string {
   const name = source?.label ?? clause.source;
-  const operator = OPERATOR_LABEL[clause.operator];
+  const operator = operatorLabel(clause.operator, t);
   if (clause.operator === "happened" || clause.operator === "notHappened") return `${name} ${operator}`;
   const declaration: VariableDeclaration | undefined = source?.declaration;
   if (clause.operator === "atLeast" || clause.operator === "atMost") {

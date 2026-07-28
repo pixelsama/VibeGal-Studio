@@ -1,6 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Button } from "../common/Button";
 import type { NodeEditorMode } from "./nodeEditorModel";
+import {
+  translateZhCN,
+  type StudioTranslator,
+} from "../../lib/i18n";
 
 export function NodeEditorToolbar({
   title,
@@ -17,6 +21,7 @@ export function NodeEditorToolbar({
   onOpenExternalDiff,
   onSaveDraftCopy,
   onSave,
+  t = translateZhCN,
 }: {
   title: string;
   file: string;
@@ -32,6 +37,7 @@ export function NodeEditorToolbar({
   onOpenExternalDiff: () => void;
   onSaveDraftCopy: () => void;
   onSave: () => void;
+  t?: StudioTranslator;
 }) {
   return (
     <div style={toolbarStyle}>
@@ -40,33 +46,33 @@ export function NodeEditorToolbar({
         <div style={metaStyle}>{file}</div>
       </div>
       <div style={toolbarSpacerStyle} />
-      <Button onClick={() => onModeToggle("scenario")} disabled={saving} style={modeButtonStyle}>剧本</Button>
-      <Button onClick={() => onModeToggle("json")} disabled={saving} style={modeButtonStyle}>JSON</Button>
-      {dirty && <StatusText tone="warn">未保存</StatusText>}
-      {diagnosticsCount > 0 && <StatusText tone="error">剧本有 {diagnosticsCount} 个问题</StatusText>}
+      <Button onClick={() => onModeToggle("scenario")} disabled={saving} style={modeButtonStyle}>{t("script.editor.mode.scenario")}</Button>
+      <Button onClick={() => onModeToggle("json")} disabled={saving} style={modeButtonStyle}>{t("script.editor.mode.json")}</Button>
+      {dirty && <StatusText tone="warn">{t("script.editor.unsaved")}</StatusText>}
+      {diagnosticsCount > 0 && <StatusText tone="error">{t("script.editor.problems", { count: diagnosticsCount })}</StatusText>}
       {hasExternalUpdate && !writeConflict && (
         <Button onClick={onOpenExternalDiff} disabled={saving} style={warnButtonStyle}>
-          外部已更新，查看差异
+          {t("script.editor.externalUpdated")}
         </Button>
       )}
       {writeConflict && (
         <>
           <Button onClick={onOpenExternalDiff} disabled={saving} style={warnButtonStyle}>
-            冲突：查看差异
+            {t("script.editor.conflictDiff")}
           </Button>
           <Button onClick={onSaveDraftCopy} disabled={saving} style={warnButtonStyle}>
-            另存为副本
+            {t("script.editor.saveCopy")}
           </Button>
         </>
       )}
       {status && (
-        <StatusText tone={status.includes("失败") || status.includes("问题") ? "error" : "ok"}>
+        <StatusText tone={/失败|问题|failed?|problem/i.test(status) ? "error" : "ok"}>
           {status}
         </StatusText>
       )}
       {draftCopyPath && <span style={statusTextStyle}>{draftCopyPath}</span>}
       <Button variant="primary" onClick={onSave} disabled={saving || !canSave} style={saveButtonStyle}>
-        {saving ? "保存中…" : "保存"}
+        {saving ? t("script.editor.saving") : t("script.editor.save")}
       </Button>
     </div>
   );

@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
 import { ProjectList, type ProjectOpenOptions } from "./features/projects/ProjectList";
 import { Settings } from "./features/settings/Settings";
-import { ErrorBoundary } from "./features/common/ErrorBoundary";
+import { LocalizedErrorBoundary } from "./features/common/ErrorBoundary";
 import { Workspace } from "./Workspace";
 import type { ProjectData } from "./lib/types";
-import { useAppSettings } from "./lib/theme";
+import { useAppSettings, type UseAppSettingsResult } from "./lib/theme";
+import { StudioI18nProvider, useStudioI18n } from "./lib/i18n";
 import {
   canGoBack,
   canGoForward,
@@ -18,10 +19,20 @@ import {
 } from "./lib/navigation";
 
 export default function App() {
+  const appSettings = useAppSettings();
+  return (
+    <StudioI18nProvider preference={appSettings.settings.studioLanguage ?? "system"}>
+      <AppContent appSettings={appSettings} />
+    </StudioI18nProvider>
+  );
+}
+
+function AppContent({ appSettings }: { appSettings: UseAppSettingsResult }) {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [blankProjectGuidePath, setBlankProjectGuidePath] = useState<string | null>(null);
   const [navigation, setNavigation] = useState(createNavigationState);
-  const { settings, loading, updateSettings } = useAppSettings();
+  const { settings, loading, updateSettings } = appSettings;
+  const { t } = useStudioI18n();
   const location = currentLocation(navigation);
   const backEnabled = canGoBack(navigation);
   const forwardEnabled = canGoForward(navigation);
@@ -58,7 +69,7 @@ export default function App() {
   }, [navigate]);
 
   if (loading) {
-    return <div role="status" aria-label="正在加载设置" style={bootstrapStyle} />;
+    return <div role="status" aria-label={t("app.loadingSettings")} style={bootstrapStyle} />;
   }
 
   // 设置页：独立全屏，可从项目列表或工作台进入
@@ -88,7 +99,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary title="工作区渲染出错">
+    <LocalizedErrorBoundary title={t("app.workspaceError")}>
       <Workspace
         project={project}
         blankProjectGuideActive={blankProjectGuidePath === project.path}
@@ -103,7 +114,7 @@ export default function App() {
         onProjectChanged={handleProjectChanged}
         onOpenSettings={openSettings}
       />
-    </ErrorBoundary>
+    </LocalizedErrorBoundary>
   );
 }
 

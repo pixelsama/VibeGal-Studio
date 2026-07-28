@@ -356,6 +356,7 @@ export async function renameVariable(
 
 export interface AppSettings {
   theme: "system" | "dark" | "light";
+  studioLanguage: "system" | "zh-CN" | "en";
   rendererTrust?: Record<string, string>;
 }
 

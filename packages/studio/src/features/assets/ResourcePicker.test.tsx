@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { StudioI18nProvider } from "../../lib/i18n";
 import type { Manifest } from "../../lib/types";
 import { ResourcePicker, buildResourcePickerOptions } from "./ResourcePicker";
 
@@ -57,6 +58,24 @@ describe("buildResourcePickerOptions", () => {
 });
 
 describe("ResourcePicker", () => {
+  it("localizes picker chrome while preserving project resource values", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(ResourcePicker, {
+        manifest,
+        kind: "background",
+        value: "幽灵背景",
+        onChange: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Choose background");
+    expect(html).toContain("Missing: 幽灵背景");
+    expect(html).toContain("background id");
+    expect(html).not.toContain("缺失：");
+  });
+
   it("keeps the current missing value visible instead of clearing it", () => {
     const html = renderToStaticMarkup(createElement(ResourcePicker, {
       manifest,

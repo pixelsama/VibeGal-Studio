@@ -9,6 +9,7 @@ import {
   takePendingGraphPositionUpdates,
 } from "./ScriptWorkspace";
 import type { FileRevision, ProjectData, ProjectGraph } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
@@ -66,6 +67,33 @@ const project: ProjectData = {
 };
 
 describe("ScriptWorkspace sidebar", () => {
+  it("renders the primary script workspace surface in English while preserving creator content", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(ScriptWorkspace, {
+        project,
+        rendererId: "default",
+        refreshKey: 0,
+        outlineCollapsed: false,
+        onOutlineCollapsedChange: () => {},
+        location: { view: "graph" },
+        onOpenGraph: () => {},
+        onOpenNode: () => {},
+        onReplaceWithGraph: () => {},
+        onSaved: () => {},
+      }),
+    ));
+
+    expect(html).toContain('aria-label="Story structure"');
+    expect(html).toContain("Story flow");
+    expect(html).toContain("Story state");
+    expect(html).toContain("Translation comparison");
+    expect(html).toContain("New node");
+    expect(html).toContain("序章");
+    expect(html).not.toContain("剧情流程");
+  });
+
   it("keeps the story structure visible inside the expanded collapsible sidebar in graph view", () => {
     const html = renderToStaticMarkup(createElement(ScriptWorkspace, {
       project,

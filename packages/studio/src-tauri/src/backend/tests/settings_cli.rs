@@ -6,16 +6,19 @@ use super::support::*;
 fn app_settings_defaults_to_system() {
     let s = AppSettings::default();
     assert_eq!(s.theme, ThemeMode::System);
+    assert_eq!(s.studio_language, StudioLanguage::System);
 }
 
 #[test]
 fn app_settings_serde_roundtrip_preserves_theme() {
     let s = AppSettings {
         theme: ThemeMode::Light,
+        studio_language: StudioLanguage::En,
         renderer_trust: Default::default(),
     };
     let json = serde_json::to_string(&s).unwrap();
     assert!(json.contains(r#""theme":"light""#));
+    assert!(json.contains(r#""studioLanguage":"en""#));
     // 反序列化回来应一致
     let back: AppSettings = serde_json::from_str(&json).unwrap();
     assert_eq!(back, s);
@@ -25,6 +28,7 @@ fn app_settings_serde_roundtrip_preserves_theme() {
 fn app_settings_serde_roundtrip_preserves_system_theme() {
     let s = AppSettings {
         theme: ThemeMode::System,
+        studio_language: StudioLanguage::System,
         renderer_trust: Default::default(),
     };
     let json = serde_json::to_string(&s).unwrap();
@@ -37,6 +41,7 @@ fn app_settings_serde_roundtrip_preserves_system_theme() {
 fn app_settings_serde_roundtrip_preserves_renderer_trust() {
     let s = AppSettings {
         theme: ThemeMode::Dark,
+        studio_language: StudioLanguage::ZhCn,
         renderer_trust: [("/project".to_string(), "abc123".to_string())]
             .into_iter()
             .collect(),
@@ -50,15 +55,24 @@ fn app_settings_serde_roundtrip_preserves_renderer_trust() {
 
 #[test]
 fn app_settings_deserialize_missing_theme_uses_default() {
-    // 旧版/部分设置文件缺 theme 字段时应回退到默认 system
+    // 旧版/部分设置文件缺 theme 与 studioLanguage 字段时应回退到默认 system
     let back: AppSettings = serde_json::from_str("{}").unwrap();
     assert_eq!(back.theme, ThemeMode::System);
+    assert_eq!(back.studio_language, StudioLanguage::System);
 }
 
 #[test]
 fn app_settings_deserialize_unknown_theme_uses_default() {
     let back: AppSettings = serde_json::from_str(r#"{"theme":"solarized"}"#).unwrap();
     assert_eq!(back.theme, ThemeMode::System);
+}
+
+#[test]
+fn app_settings_deserialize_unknown_language_uses_default() {
+    let back: AppSettings =
+        serde_json::from_str(r#"{"theme":"dark","studioLanguage":"fr"}"#).unwrap();
+    assert_eq!(back.theme, ThemeMode::Dark);
+    assert_eq!(back.studio_language, StudioLanguage::System);
 }
 
 // symlink 安装流程只在 Unix 上可用（Windows 走"手动加入 PATH"降级），相关用例仅 Unix 运行。

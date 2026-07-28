@@ -10,6 +10,7 @@ import {
   ScenarioNodeLayout,
 } from "./scenarioEditor";
 import type { Manifest } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 const manifest: Manifest = {
   characters: {
@@ -218,6 +219,30 @@ describe("ScenarioInspector", () => {
       selection,
       { t: "inputName", id: "ask_name", key: "playerName", prompt: "你的名字？", maxLength: 20 } as Instruction,
     )).toBe('@inputName playerName "你的名字？"');
+  });
+
+  it("renders inspector controls in English while preserving project content and IDs", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        StudioI18nProvider,
+        { preference: "en" },
+        createElement(ScenarioInspector, {
+          selection: getScenarioSelection("akari(voice=akari_001): 早上好。", 0),
+          manifest,
+          variables,
+          diagnostics: [],
+          onReplaceInstruction: () => {},
+        }),
+      ),
+    );
+
+    expect(html).toContain("Dialogue");
+    expect(html).toContain("Current line text");
+    expect(html).toContain("Voice for this line");
+    expect(html).toContain("Expressive text tools");
+    expect(html).toContain("akari_001");
+    expect(html).toContain("早上好。");
+    expect(html).not.toContain("当前行文本");
   });
 
   it("renders a remove-only character instruction without materializing missing fields", () => {

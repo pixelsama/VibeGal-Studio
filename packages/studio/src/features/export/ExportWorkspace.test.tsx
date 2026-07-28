@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DesktopBuildFailure, DesktopBuildPreflight, DesktopBuildResult } from "../../lib/tauri";
 import type { ProjectData, ProjectIssue } from "../../lib/types";
 import { EXPORT_PREFS_STORAGE_KEY } from "../../lib/exportPrefs";
+import { StudioI18nProvider } from "../../lib/i18n";
 import { startDesktopBuild, startDesktopSmoke, startWebBuild, type DesktopBuildState } from "./buildStore";
 import {
   buildFailurePresentation,
@@ -163,6 +164,23 @@ describe("formatElapsedSeconds", () => {
 });
 
 describe("ExportWorkspace 渲染", () => {
+  it("英文界面渲染导出主表面且保留项目路径", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        StudioI18nProvider,
+        { preference: "en" },
+        createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
+      ),
+    );
+
+    expect(html).toContain("Export game");
+    expect(html).toContain("Export target");
+    expect(html).toContain("Build desktop game");
+    expect(html).toContain("Build environment");
+    expect(html).toContain("/project/dist/desktop-electron");
+    expect(html).not.toContain("导出游戏");
+  });
+
   it("默认渲染：运行时卡片、界面风格、默认输出目录与构建按钮", () => {
     const html = renderToStaticMarkup(
       createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),

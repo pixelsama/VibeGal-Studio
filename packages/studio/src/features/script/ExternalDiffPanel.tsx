@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Button } from "../common/Button";
 import { summarizeDiff, type DiffRow } from "./externalDiff";
+import { useStudioI18n } from "../../lib/i18n";
 
 /**
  * 外部更新/写入冲突的确认面板：先展示"当前草稿 vs 外部版本"的行级 diff，
@@ -23,28 +24,29 @@ export function ExternalDiffPanel({
   onSaveDraftCopy: () => void;
   onDismiss: () => void;
 }) {
+  const { t } = useStudioI18n();
   const summary = rows ? summarizeDiff(rows) : null;
   return (
     <div data-region="external-diff-panel" style={panelStyle}>
       <div style={headerStyle}>
         <div style={titleStyle}>
-          {writeConflict ? "保存冲突：文件已被外部修改" : "文件已被外部更新"}
+          {writeConflict ? t("script.externalDiff.conflictTitle") : t("script.externalDiff.updateTitle")}
         </div>
         <div style={summaryStyle}>
           {loading
-            ? "正在获取外部版本…"
+            ? t("script.externalDiff.fetching")
             : summary && (summary.added > 0 || summary.removed > 0)
-              ? `+${summary.added} 行新增 / -${summary.removed} 行删除（相对当前草稿）`
-              : "文本内容一致，仅文件版本变化"}
+              ? t("script.externalDiff.summary", { added: summary.added, removed: summary.removed })
+              : t("script.externalDiff.revisionOnly")}
         </div>
       </div>
       {loading ? (
-        <div style={placeholderStyle}>正在获取外部版本，稍后这里会显示差异…</div>
+        <div style={placeholderStyle}>{t("script.externalDiff.fetchingHint")}</div>
       ) : (
         <>
           <div style={legendStyle}>
-            <span style={removedLegendStyle}>- 当前草稿</span>
-            <span style={addedLegendStyle}>+ 外部版本</span>
+            <span style={removedLegendStyle}>{t("script.externalDiff.localDraft")}</span>
+            <span style={addedLegendStyle}>{t("script.externalDiff.externalVersion")}</span>
           </div>
           <div data-region="external-diff-body" style={bodyStyle}>
             {(rows ?? []).map((row, index) => (
@@ -58,15 +60,15 @@ export function ExternalDiffPanel({
       )}
       <div style={actionsStyle}>
         <Button variant="primary" onClick={onLoadExternal} disabled={saving || loading}>
-          载入外部版本
+          {t("script.externalDiff.loadExternal")}
         </Button>
         {writeConflict && (
           <Button onClick={onSaveDraftCopy} disabled={saving}>
-            另存为副本
+            {t("script.externalDiff.saveDraftCopy")}
           </Button>
         )}
         <Button onClick={onDismiss} disabled={saving}>
-          继续编辑
+          {t("script.externalDiff.keepEditing")}
         </Button>
       </div>
     </div>

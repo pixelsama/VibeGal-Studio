@@ -9,6 +9,7 @@ import {
   reconcileGraphHistory,
 } from "./graphHistory";
 import { takePendingGraphPositionUpdates } from "./scriptWorkspaceOperations";
+import { useStudioI18n } from "../../lib/i18n";
 
 const EMPTY_GRAPH = {
   version: 1,
@@ -26,6 +27,7 @@ interface UseScriptGraphStateOptions {
 }
 
 export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: UseScriptGraphStateOptions) {
+  const { t } = useStudioI18n();
   const incomingGraph = useMemo(() => project.graph ?? EMPTY_GRAPH, [project.graph]);
   const incomingRevisionToken = useMemo(() => makeGraphRevisionToken(project.graphRevision), [project.graphRevision]);
   const graphReport = useMemo(() => project.graphReport ?? { graphIssues: [] }, [project.graphReport]);
@@ -58,17 +60,19 @@ export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: U
         await graphMutationQueue.enqueue((expectedRevision) => (
           saveGraph(project.path, next, expectedRevision)
         ));
-        setGraphStatus("图结构已保存");
+        setGraphStatus(t("script.graph.saved"));
         onSaved();
         return true;
       } catch (error) {
-        setGraphStatus(`保存图结构失败: ${error instanceof Error ? error.message : String(error)}`);
+        setGraphStatus(t("script.graph.saveFailed", {
+          detail: error instanceof Error ? error.message : String(error),
+        }));
         return false;
       } finally {
         setSavingGraph(false);
       }
     },
-    [graphMutationQueue, onSaved, project.path],
+    [graphMutationQueue, onSaved, project.path, t],
   );
 
   const persistGraphPositions = useCallback(
@@ -80,17 +84,19 @@ export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: U
         await graphMutationQueue.enqueue((expectedRevision) => (
           saveGraphPositions(project.path, updates, expectedRevision)
         ));
-        setGraphStatus("节点位置已保存");
+        setGraphStatus(t("script.graph.positionsSaved"));
         onSaved();
         return true;
       } catch (error) {
-        setGraphStatus(`保存节点位置失败: ${error instanceof Error ? error.message : String(error)}`);
+        setGraphStatus(t("script.graph.positionsSaveFailed", {
+          detail: error instanceof Error ? error.message : String(error),
+        }));
         return false;
       } finally {
         setSavingGraph(false);
       }
     },
-    [graphMutationQueue, onSaved, project.path],
+    [graphMutationQueue, onSaved, project.path, t],
   );
 
   useEffect(() => {

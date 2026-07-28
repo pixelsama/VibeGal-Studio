@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createInitialState, type RendererProps } from "@vibegal/engine";
 import type { GraphNode, ProjectData } from "../../lib/types";
 import { NodePreviewPanel } from "./NodePreviewPanel";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 vi.mock("./useNodePreview", () => ({
   useNodePreview: () => {
@@ -84,5 +85,30 @@ describe("NodePreviewPanel", () => {
     expect(html).toContain('role="switch"');
     expect(html).toContain("从节点开始");
     expect(html).not.toContain(">Runtime</span>");
+  });
+
+  it("renders English controls while keeping the creator-authored node title", () => {
+    const html = renderToStaticMarkup(
+      <StudioI18nProvider preference="en">
+        <NodePreviewPanel
+          project={project}
+          rendererId="default"
+          node={node}
+          nodeData={[]}
+          previewStartIndex={null}
+          currentLineStartIndex={null}
+          followCursor={false}
+          followCursorAvailable
+          onFollowCursorChange={() => {}}
+          onPreviewStartChange={() => {}}
+        />
+      </StudioI18nProvider>,
+    );
+
+    expect(html).toContain(">Runtime state</span>");
+    expect(html).toContain('aria-label="Follow cursor"');
+    expect(html).toContain("Start of node");
+    expect(html).toContain("开始 (start)");
+    expect(html).not.toContain(">运行状态</span>");
   });
 });

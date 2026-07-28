@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SetInstr, VariableRegistry } from "@vibegal/engine";
+import { StudioI18nProvider } from "../../lib/i18n";
 import { StateChangeEditor, readAmount, readMode, writeMode } from "./StateChangeEditor";
 
 const variables: VariableRegistry = {
@@ -51,6 +52,25 @@ describe("StateChangeEditor", () => {
     const html = render({ t: "set", key: "route", value: "yuki" });
     expect(html).toContain("共通线");
     expect(html).toContain("雪线");
+  });
+
+  it("renders English controls while preserving story-state labels", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(StateChangeEditor, {
+        instruction: { t: "set", key: "affection", expr: "affection + 3" },
+        variables,
+        onChange: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Increase");
+    expect(html).toContain("Decrease");
+    expect(html).toContain("Set to");
+    expect(html).toContain("Calculate with an expression");
+    expect(html).toContain("好感度");
+    expect(html).not.toContain(">增加<");
   });
 });
 

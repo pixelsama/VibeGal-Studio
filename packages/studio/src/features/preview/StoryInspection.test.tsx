@@ -5,6 +5,7 @@ import { createInitialState, type Manifest, type StateWriteEvent, type VariableR
 import type { ProjectGraph } from "../../lib/types";
 import { StoryInspection, describeChange, describeNextBranch } from "./StoryInspection";
 import { collectStateSources } from "../script/storyState";
+import { resolveCatalogMessage, StudioI18nProvider } from "../../lib/i18n";
 
 const registry: VariableRegistry = {
   version: 1,
@@ -99,6 +100,32 @@ describe("StoryInspection", () => {
     expect(render({ onReplayWithCurrentValues: () => {} })).toContain("带着现在这些值重新试演");
   });
 
+  it("renders English explanations while preserving story-authored labels", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(StoryInspection, {
+        state,
+        graph,
+        registry,
+        manifest,
+        stateWrites: writes,
+        currentNodeId: "rooftop",
+        onClose: () => {},
+        onOpenNode: () => {},
+        onSelectEdge: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Story inspection");
+    expect(html).toContain("Current location");
+    expect(html).toContain("Increased by 10 at “雨夜交谈”");
+    expect(html).toContain("好感度 At least 喜欢");
+    expect(html).toContain("The story will enter “雪线结局”");
+    expect(html).toContain("天台告白");
+    expect(html).not.toContain("剧情检查");
+  });
+
   it("says so plainly when nothing has changed yet", () => {
     expect(render({ stateWrites: [] })).toContain("还没有任何故事状态被改变过");
   });
@@ -152,6 +179,15 @@ describe("describeChange", () => {
   it("uses 已发生 wording for flags", () => {
     expect(describeChange({ variable: "a", from: false, to: true, nodeId: "n", instructionIndex: 0, decisionIndex: 0 }))
       .toBe("被标记为已发生");
+  });
+
+  it("supports English pure-helper output", () => {
+    const t = (key: Parameters<typeof resolveCatalogMessage>[1], params?: Parameters<typeof resolveCatalogMessage>[2]) =>
+      resolveCatalogMessage("en", key, params);
+    expect(describeChange(
+      { variable: "a", from: 55, to: 65, nodeId: "n", instructionIndex: 0, decisionIndex: 0 },
+      t,
+    )).toBe("Increased by 10");
   });
 
   it("falls back to 被设为 for text", () => {

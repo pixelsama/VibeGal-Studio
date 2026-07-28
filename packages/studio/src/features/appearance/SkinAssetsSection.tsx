@@ -11,6 +11,7 @@
  * 缩略图复用资产页的 convertFileSrc 机制（assetPreview.resolveAssetUrl，
  * 相对 content 根解析）。
  */
+import { useStudioI18n } from "../../lib/i18n";
 import { previewKind, resolveAssetUrl } from "../assets/assetPreview";
 
 interface SkinAssetsSectionProps {
@@ -20,15 +21,18 @@ interface SkinAssetsSectionProps {
 }
 
 export function SkinAssetsSection({ projectPath, assets }: SkinAssetsSectionProps) {
+  const { t } = useStudioI18n();
   const entries = Object.entries(assets);
   return (
-    <details style={sectionStyle} aria-label="贴图">
+    <details style={sectionStyle} aria-label={t("appearance.assets.title")}>
       <summary style={summaryStyle}>
-        贴图{entries.length > 0 ? `（${entries.length}）` : ""}
+        {entries.length > 0
+          ? t("appearance.assets.count", { count: entries.length })
+          : t("appearance.assets.title")}
       </summary>
       {entries.length === 0 ? (
         <p style={emptyStyle}>
-          当前外观没有贴图槽。需要界面贴图时，先到「资产」页导入外观资源。
+          {t("appearance.assets.empty")}
         </p>
       ) : (
         <ul style={listStyle}>
@@ -37,7 +41,7 @@ export function SkinAssetsSection({ projectPath, assets }: SkinAssetsSectionProp
               {previewKind(path) === "image" ? (
                 <img src={resolveAssetUrl(projectPath, path)} alt={slot} style={thumbStyle} />
               ) : (
-                <span style={thumbPlaceholderStyle} aria-hidden="true">文件</span>
+                <span style={thumbPlaceholderStyle} aria-hidden="true">{t("appearance.assets.file")}</span>
               )}
               <span style={slotNameStyle} title={slot}>{slot}</span>
               <code style={pathStyle} title={path}>{path}</code>

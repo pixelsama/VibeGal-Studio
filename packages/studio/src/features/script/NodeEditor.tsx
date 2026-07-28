@@ -72,6 +72,7 @@ import {
   saveProjectDraft,
   type DraftStorage,
 } from "../../lib/draftRecovery";
+import { useStudioI18n } from "../../lib/i18n";
 
 export {
   conflictDraftCopyPath,
@@ -222,6 +223,7 @@ export function NodeEditor({
   onSaved,
   onDirtyChange,
 }: NodeEditorProps) {
+  const { t } = useStudioI18n();
   const incomingJsonText = useMemo(() => serializeNodeData(nodeData), [nodeData]);
   const incomingScenarioText = useMemo(() => scenarioTextFromNodeData(nodeData), [nodeData]);
   const incomingInstructions = useMemo(() => instructionsFromNodeData(nodeData), [nodeData]);
@@ -268,7 +270,7 @@ export function NodeEditor({
   const [dirty, setDirty] = useState(restoredDraft !== null);
   const [draftBaseVersion, setDraftBaseVersion] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState(restoredDraft ? "已恢复本次会话中未保存的草稿。" : "");
+  const [status, setStatus] = useState(restoredDraft ? t("script.editor.restoredDraft") : "");
   const [pendingExternalText, setPendingExternalText] = useState<string | null>(null);
   const [hasExternalUpdate, setHasExternalUpdate] = useState(false);
   const [writeConflict, setWriteConflict] = useState(false);
@@ -514,8 +516,11 @@ export function NodeEditor({
     if (!focusRequest?.jsonPath) return;
     const index = instructionIndexFromJsonPath(focusRequest.jsonPath);
     if (index == null) return;
-    setStatus(`节点问题位置：第 ${index + 1} 条指令（${focusRequest.jsonPath}）`);
-  }, [focusRequest]);
+    setStatus(t("script.editor.issueLocation", {
+      number: index + 1,
+      path: focusRequest.jsonPath,
+    }));
+  }, [focusRequest, t]);
 
   const applyScenarioText = (nextText: string, options: { programmatic?: boolean; skipHistory?: boolean } = {}) => {
     if (!options.skipHistory) {
@@ -592,14 +597,19 @@ export function NodeEditor({
   const buildPayload = (): { ok: true; payload: string; nextInstructions: Instruction[] } | { ok: false; message: string } => {
     if (mode === "scenario") {
       const parsed = parseScenarioText(text);
-      if (!parsed.ok) return { ok: false, message: `剧本文本有 ${parsed.diagnostics.length} 个问题，修正后才能保存。` };
+      if (!parsed.ok) {
+        return {
+          ok: false,
+          message: t("script.editor.scenarioProblems", { count: parsed.diagnostics.length }),
+        };
+      }
       const reconciled = mergePendingAssignedIdentities(
         reconcileScenarioInstructionIdentities(lastValidInstructionsRef.current, parsed.instructions),
       );
       return { ok: true, payload: JSON.stringify(reconciled, null, 2), nextInstructions: reconciled };
     }
     const parsed = parseJsonInstructionText(text);
-    if (!parsed.ok) return { ok: false, message: `JSON 无法保存：${parsed.error}` };
+    if (!parsed.ok) return { ok: false, message: t("script.editor.jsonSaveFailed", { detail: parsed.error }) };
     const reconciled = mergePendingAssignedIdentities(parsed.instructions);
     return { ok: true, payload: JSON.stringify(reconciled, null, 2), nextInstructions: reconciled };
   };
@@ -625,7 +635,7 @@ export function NodeEditor({
           setDiagnostics([]);
           replaceText(mode === "json" ? saved.serializedText : formatScenarioText(saved.instructions));
           setDirty(false);
-          setStatus("已保存 ✓");
+          setStatus(t("script.editor.saved"));
         } else {
           const merged = mergeAssignedInstructionIdentities(
             saved.instructions,
@@ -650,7 +660,7 @@ export function NodeEditor({
               assigned: saved.assigned,
             });
           }
-          setStatus("已保存；保存期间的新改动仍未保存。");
+          setStatus(t("script.editor.savedWithDraft"));
         }
         setPendingExternalText(null);
         setHasExternalUpdate(false);
@@ -658,7 +668,7 @@ export function NodeEditor({
         setDraftCopyPath(null);
         setExternalDiffOpen(false);
       }
-      if (!dirty) setStatus("已保存 ✓");
+      if (!dirty) setStatus(t("script.editor.saved"));
       onSaved();
     } catch (error) {
       const preserved = nodeEditorKeepsDraftOnWriteConflict({ text, instructions }, error);
@@ -668,9 +678,9 @@ export function NodeEditor({
           replaceInstructions(preserved.draft.instructions);
         }
         setWriteConflict(true);
-        setStatus("保存失败: 文件已被外部修改，当前草稿已保留。");
+        setStatus(t("script.editor.externalConflict"));
       } else {
-        setStatus(`保存失败: ${error instanceof Error ? error.message : String(error)}`);
+        setStatus(t("script.editor.saveFailed", { detail: error instanceof Error ? error.message : String(error) }));
       }
     } finally {
       setSaving(false);
@@ -682,7 +692,7 @@ export function NodeEditor({
   const handleLoadExternal = () => {
     if (saving) return;
     if (writeConflict && pendingExternalText == null && incomingJsonText === loadedTextRef.current) {
-      setStatus("正在载入外部版本…");
+      setStatus(t("script.editor.loadingExternal"));
       void onSaved();
       return;
     }
@@ -703,7 +713,7 @@ export function NodeEditor({
     setWriteConflict(false);
     setDraftCopyPath(null);
     setExternalDiffOpen(false);
-    setStatus("已载入外部更新。");
+    setStatus(t("script.editor.loadedExternal"));
   };
 
   const handleSaveDraftCopy = async () => {
@@ -718,10 +728,10 @@ export function NodeEditor({
       const copyPath = conflictDraftCopyPath(node.file, Date.now());
       await saveFile(project.path, `content/${copyPath}`, built.payload);
       setDraftCopyPath(copyPath);
-      setStatus(`草稿副本已保存: ${copyPath}`);
+      setStatus(t("script.editor.draftCopySaved", { path: copyPath }));
       onSaved();
     } catch (error) {
-      setStatus(`另存为副本失败: ${error instanceof Error ? error.message : String(error)}`);
+      setStatus(t("script.editor.draftCopyFailed", { detail: error instanceof Error ? error.message : String(error) }));
     } finally {
       setSaving(false);
     }
@@ -874,7 +884,7 @@ export function NodeEditor({
       ? mergePendingAssignedIdentities(parsed.instructions)
       : lastValidInstructionsRef.current;
     if (mode === "json" && !parsed.ok) {
-      setStatus(`切换失败：${parsed.error}`);
+      setStatus(t("script.editor.modeSwitchFailed", { detail: parsed.error }));
       return;
     }
     draftVersionRef.current += 1;
@@ -952,6 +962,7 @@ export function NodeEditor({
         onOpenExternalDiff={() => setExternalDiffOpen(true)}
         onSaveDraftCopy={handleSaveDraftCopy}
         onSave={handleSave}
+        t={t}
       />
       {externalDiffOpen && (hasExternalUpdate || writeConflict) && (
         <ExternalDiffPanel
@@ -1028,10 +1039,10 @@ export function NodeEditor({
     />
   ) : (
     <div style={jsonInspectorStyle}>
-      <div style={titleStyle}>JSON 高级模式</div>
-      <div style={helperTextStyle}>返回剧本模式后可使用属性面板编辑当前行。</div>
+      <div style={titleStyle}>{t("script.editor.jsonAdvanced")}</div>
+      <div style={helperTextStyle}>{t("script.editor.jsonHint")}</div>
       <div style={helperTextStyle}>
-        {JSON_IDENTITY_GUIDANCE}
+        {t("script.editor.identityGuidance")}
       </div>
       {nodeIssues.length > 0 && (
         <div style={issueListStyle}>
@@ -1058,7 +1069,7 @@ export function NodeEditor({
       resizeHandle={!inspectorPaneLayout.collapsed && (
         <div
           role="separator"
-          aria-label="调整属性面板宽度"
+          aria-label={t("script.editor.resizeInspector")}
           aria-orientation="vertical"
           className="gs-resize-handle"
           onPointerDown={handleInspectorResizeStart}

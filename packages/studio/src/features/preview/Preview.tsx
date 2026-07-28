@@ -22,6 +22,7 @@ import { StateTrial } from "../script/StateTrial";
 import { StoryInspection } from "./StoryInspection";
 import { Button } from "../common/Button";
 import { collectStateSources, stateSourceDefaults } from "../script/storyState";
+import { useStudioI18n } from "../../lib/i18n";
 
 type PreviewMode = "story" | "fixtures";
 
@@ -41,13 +42,15 @@ interface Props {
 }
 
 export function Preview(props: Props) {
+  const { t } = useStudioI18n();
   if (props.loadingContent && !props.project.nodes) {
-    return <Centered>正在按需加载剧情内容…</Centered>;
+    return <Centered>{t("preview.loadingContent")}</Centered>;
   }
   return <LoadedPreview {...props} />;
 }
 
 function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOpenNode, onSelectEdge }: Props) {
+  const { t } = useStudioI18n();
   const player = useProjectPlayer(project);
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
@@ -62,8 +65,13 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
   // 「注入值 / 模拟变量」，作者在一边调好的值到另一边就消失。
   const [debugVariables, setDebugVariables] = useState<Record<string, string | number | boolean | null>>({});
   const trialSources = useMemo(
-    () => collectStateSources({ registry: project.content.variables, graph: project.graph ?? undefined, manifest: project.content.manifest }),
-    [project.content.variables, project.graph, project.content.manifest],
+    () => collectStateSources({
+      registry: project.content.variables,
+      graph: project.graph ?? undefined,
+      manifest: project.content.manifest,
+      t,
+    }),
+    [project.content.variables, project.graph, project.content.manifest, t],
   );
   const trialDefaults = useMemo(() => stateSourceDefaults(trialSources), [trialSources]);
   const activeFixtureScene = fixtureScenes.find((scene) => scene.id === fixtureSceneId) ?? fixtureScenes[0] ?? null;
@@ -90,21 +98,21 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
   };
 
   if (player.error) {
-    return <Centered mono>{`引擎错误：\n\n${player.error}`}</Centered>;
+    return <Centered mono>{t("preview.engineError", { detail: player.error })}</Centered>;
   }
   if (trustRequired) {
     return <RendererTrustPrompt projectPath={project.path} onTrust={trustRenderer} />;
   }
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
-    return <Centered mono>{`界面风格加载失败（${rendererId}）：\n\n${detail}\n\n请确认项目 renderers/${rendererId}/index.tsx 存在，且界面风格源码没有未支持的 import。`}</Centered>;
+    return <Centered mono>{t("preview.rendererLoadError", { rendererId, detail })}</Centered>;
   }
   if (!renderer) {
     // 渲染层加载期间用 16:9 骨架舞台占位，比一行字更接近真实布局
     return (
       <div style={loadingShellStyle}>
         <div className="gs-skeleton" style={loadingStageStyle} />
-        <div style={loadingHintStyle}>加载界面风格中…</div>
+        <div style={loadingHintStyle}>{t("preview.loadingRenderer")}</div>
       </div>
     );
   }
@@ -120,18 +128,18 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
             className={fixtureMode ? "gs-tab" : "gs-tab gs-tab--active"}
             onClick={showStoryMode}
           >
-            剧情播放
+            {t("preview.storyMode")}
           </button>
           <button
             type="button"
             className={fixtureMode ? "gs-tab gs-tab--active" : "gs-tab"}
             onClick={showFixtureMode}
           >
-            场景快照
+            {t("preview.fixtureMode")}
           </button>
           {fixtureMode && (
             <select
-              aria-label="场景"
+              aria-label={t("preview.scene")}
               style={sceneSelectStyle}
               value={activeFixtureScene.id}
               onChange={(event) => selectFixtureScene(event.target.value)}
@@ -143,41 +151,41 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
           )}
           {!fixtureMode && (
             <>
-              <select aria-label="调试起点" style={sceneSelectStyle} value={debugNodeId} onChange={(event) => { setDebugNodeId(event.target.value); setDebugInstructionId(""); }}>
+              <select aria-label={t("preview.debugStart")} style={sceneSelectStyle} value={debugNodeId} onChange={(event) => { setDebugNodeId(event.target.value); setDebugInstructionId(""); }}>
                 {project.graph?.nodes.map((node) => <option key={node.id} value={node.id}>{node.title}</option>)}
               </select>
-              <select aria-label="调试指令" style={sceneSelectStyle} value={debugInstructionId} onChange={(event) => setDebugInstructionId(event.target.value)}>
-                <option value="">节点开头</option>
+              <select aria-label={t("preview.debugInstruction")} style={sceneSelectStyle} value={debugInstructionId} onChange={(event) => setDebugInstructionId(event.target.value)}>
+                <option value="">{t("preview.nodeStart")}</option>
                 {stableInstructions.map((instruction) => <option key={instruction.id} value={instruction.id}>{instruction.id}</option>)}
               </select>
               <Button
                 onClick={() => setTrialOpen((open) => !open)}
                 aria-expanded={trialOpen}
               >
-                假设前情
+                {t("preview.assumeContext")}
               </Button>
               <Button
                 variant="primary"
                 onClick={() => debugNodeId && player.startDebugSession(debugNodeId, { ...trialDefaults, ...debugVariables }, debugInstructionId || undefined)}
               >
-                从这里试演
+                {t("preview.rehearseHere")}
               </Button>
             </>
           )}
           <div style={{ flex: 1 }} />
           {!fixtureMode && (
-            <div style={playbackControlsStyle} role="group" aria-label="播放控制">
-              <Button onClick={player.restart} title="重新开始剧情">
+            <div style={playbackControlsStyle} role="group" aria-label={t("preview.controls")}>
+              <Button onClick={player.restart} title={t("preview.restartTitle")}>
                 <RotateCcw size={14} />
-                重新开始
+                {t("preview.restart")}
               </Button>
-              <Button onClick={() => player.seekBy(-1)} title="后退一个剧情指令">
+              <Button onClick={() => player.seekBy(-1)} title={t("preview.previousTitle")}>
                 <StepBack size={14} />
-                上一句
+                {t("preview.previous")}
               </Button>
-              <Button onClick={player.stepOnce} title="推进一个剧情指令">
+              <Button onClick={player.stepOnce} title={t("preview.nextTitle")}>
                 <StepForward size={14} />
-                下一句
+                {t("preview.next")}
               </Button>
               <Button
                 aria-pressed={player.state.flags.isAutoPlay}
@@ -185,7 +193,7 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
                 onClick={player.toggleAuto}
               >
                 <Play size={14} />
-                自动
+                {t("preview.auto")}
               </Button>
               <Button
                 aria-pressed={player.state.flags.skipMode === "all"}
@@ -193,18 +201,18 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
                 onClick={() => player.setSkipMode(nextStudioFastForwardMode(player.state.flags.skipMode))}
               >
                 <FastForward size={14} />
-                快进
+                {t("preview.fastForward")}
               </Button>
             </div>
           )}
           <Button onClick={() => setInspecting((open) => !open)} aria-expanded={inspecting}>
-            剧情检查
+            {t("preview.inspect")}
           </Button>
         </div>
         {!fixtureMode && trialOpen && (
           <div className="gs-trial-pane">
             <StateTrial sources={trialSources} values={{ ...trialDefaults, ...debugVariables }} onChange={setDebugVariables} />
-            <p className="gs-trial-pane__note">只影响这次试演，不会改动你的故事。</p>
+            <p className="gs-trial-pane__note">{t("preview.trialNote")}</p>
           </div>
         )}
         <div style={stageMountStyle}>

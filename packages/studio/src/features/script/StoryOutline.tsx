@@ -5,6 +5,7 @@ import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
 import type { ChapterScope } from "./chapterEditing";
 import { searchProject } from "./projectSearch";
 import { fixedListWindow } from "../common/virtualWindow";
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 
 interface StoryOutlineProps {
   graph: ProjectGraph;
@@ -43,6 +44,7 @@ export function StoryOutline({
   onMoveChapter,
   onDeleteChapter,
 }: StoryOutlineProps) {
+  const { t } = useStudioI18n();
   const [query, setQuery] = useState("");
   const [listViewport, setListViewport] = useState({ scrollTop: 0, height: 480 });
   const nodeListRef = useRef<HTMLDivElement | null>(null);
@@ -100,10 +102,16 @@ export function StoryOutline({
     <div style={panelStyle}>
       <div style={headingStyle}>
         <div>
-          <div style={titleStyle}>故事结构</div>
-          <div style={hintStyle}>按章节聚焦流程画布</div>
+          <div style={titleStyle}>{t("script.sidebar.story")}</div>
+          <div style={hintStyle}>{t("script.outline.hint")}</div>
         </div>
-        <button type="button" aria-label="新建章节" title="新建章节" style={iconButtonStyle} onClick={onCreateChapter}>
+        <button
+          type="button"
+          aria-label={t("script.outline.createChapter")}
+          title={t("script.outline.createChapter")}
+          style={iconButtonStyle}
+          onClick={onCreateChapter}
+        >
           <Plus size={15} />
         </button>
       </div>
@@ -112,8 +120,8 @@ export function StoryOutline({
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索节点、台词、分支或资源"
-          aria-label="搜索故事"
+          placeholder={t("script.outline.searchPlaceholder")}
+          aria-label={t("script.outline.searchLabel")}
           style={searchInputStyle}
         />
       </div>
@@ -121,7 +129,7 @@ export function StoryOutline({
       {!searching && <div style={chapterListStyle}>
         <ScopeButton
           active={scope.kind === "all"}
-          title="全局视图"
+          title={t("script.globalView")}
           count={graph.nodes.length}
           onClick={() => onScopeChange({ kind: "all" })}
         />
@@ -134,17 +142,17 @@ export function StoryOutline({
               onClick={() => onScopeChange({ kind: "chapter", chapterId: chapter.id })}
             />
             <div style={chapterActionsStyle}>
-              <SmallAction label={`上移章节 ${chapter.title}`} disabled={index === 0} onClick={() => onMoveChapter(chapter.id, -1)}>
+              <SmallAction label={t("script.outline.moveUp", { title: chapter.title })} disabled={index === 0} onClick={() => onMoveChapter(chapter.id, -1)}>
                 <ChevronUp size={12} />
               </SmallAction>
-              <SmallAction label={`下移章节 ${chapter.title}`} disabled={index === chapters.length - 1} onClick={() => onMoveChapter(chapter.id, 1)}>
+              <SmallAction label={t("script.outline.moveDown", { title: chapter.title })} disabled={index === chapters.length - 1} onClick={() => onMoveChapter(chapter.id, 1)}>
                 <ChevronDown size={12} />
               </SmallAction>
-              <SmallAction label={`重命名章节 ${chapter.title}`} onClick={() => onRenameChapter(chapter.id)}>
+              <SmallAction label={t("script.outline.rename", { title: chapter.title })} onClick={() => onRenameChapter(chapter.id)}>
                 <Pencil size={12} />
               </SmallAction>
               <SmallAction
-                label={`删除章节 ${chapter.title}`}
+                label={t("script.outline.delete", { title: chapter.title })}
                 disabled={chapters.length === 1 || graph.nodes.some((node) => node.chapterId === chapter.id)}
                 danger
                 onClick={() => onDeleteChapter(chapter.id)}
@@ -157,11 +165,15 @@ export function StoryOutline({
       </div>}
 
       <div style={nodeSectionStyle}>
-        <div style={nodeHeadingStyle}>{searching ? `搜索结果 · ${searchResults.length}` : `${scopeLabel(graph, scope)} · 节点`}</div>
+        <div style={nodeHeadingStyle}>
+          {searching
+            ? t("script.outline.searchResults", { count: searchResults.length })
+            : t("script.outline.scopeNodes", { scope: scopeLabel(graph, scope, t) })}
+        </div>
         <div
           ref={nodeListRef}
           role="listbox"
-          aria-label={searching ? "故事搜索结果" : "章节节点"}
+          aria-label={searching ? t("script.outline.searchResultsLabel") : t("script.outline.chapterNodes")}
           aria-setsize={listItems.length}
           style={nodeListStyle}
           onScroll={handleListScroll}
@@ -169,12 +181,12 @@ export function StoryOutline({
           <div aria-hidden="true" style={{ height: listWindow.paddingTop, flexShrink: 0 }} />
           {searching ? (
             loadingNodeEntries ? (
-              <div role="status" style={emptyStyle}>正在读取全部节点内容…</div>
+              <div role="status" style={emptyStyle}>{t("script.outline.loading")}</div>
             ) : nodeEntriesError ? (
               <div role="alert" style={{ ...emptyStyle, color: "var(--status-error-text)" }}>
-                {`搜索节点内容失败：${nodeEntriesError}`}
+                {t("script.outline.searchFailed", { detail: nodeEntriesError })}
               </div>
-            ) : searchResults.length === 0 ? <div style={emptyStyle}>没有匹配的结果</div> : windowedItems.map((item, visibleIndex) => {
+            ) : searchResults.length === 0 ? <div style={emptyStyle}>{t("script.outline.noResults")}</div> : windowedItems.map((item, visibleIndex) => {
               const result = item as (typeof searchResults)[number];
               const index = listWindow.start + visibleIndex;
               return (
@@ -197,10 +209,10 @@ export function StoryOutline({
             })
           ) : visibleNodes.length === 0 ? (
             <div style={emptyStyle}>
-              <span>这个章节还没有节点。节点用来承载剧情内容。</span>
+              <span>{t("script.outline.empty")}</span>
               <button type="button" className="gs-btn gs-btn--primary" onClick={onCreateNode} style={emptyActionStyle}>
                 <Plus size={14} />
-                新建节点
+                {t("script.createNode")}
               </button>
             </div>
           ) : windowedItems.map((item, visibleIndex) => {
@@ -225,7 +237,7 @@ export function StoryOutline({
               }}
             >
               <span style={nodeTitleStyle}>{node.title}</span>
-              {node.id === graph.entryNodeId && <span style={badgeStyle}>起点</span>}
+              {node.id === graph.entryNodeId && <span style={badgeStyle}>{t("script.outline.entry")}</span>}
             </button>
             );
           })}
@@ -271,9 +283,13 @@ function SmallAction({ label, disabled, danger, onClick, children }: {
   );
 }
 
-function scopeLabel(graph: ProjectGraph, scope: ChapterScope): string {
-  if (scope.kind === "all") return "全局视图";
-  return graph.chapters.find((chapter) => chapter.id === scope.chapterId)?.title ?? "章节";
+function scopeLabel(
+  graph: ProjectGraph,
+  scope: ChapterScope,
+  t: StudioTranslator,
+): string {
+  if (scope.kind === "all") return t("script.globalView");
+  return graph.chapters.find((chapter) => chapter.id === scope.chapterId)?.title ?? t("script.chapter");
 }
 
 const panelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 };

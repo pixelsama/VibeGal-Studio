@@ -25,6 +25,7 @@ import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { flowPositionFromClientPoint, flowPositionFromViewportCenter } from "./canvasMenu";
 import { EmptyState } from "../common/EmptyState";
 import { Button } from "../common/Button";
+import { useStudioI18n } from "../../lib/i18n";
 
 interface GraphCanvasProps {
   graph: ProjectGraph;
@@ -109,6 +110,7 @@ export function GraphCanvas({
   onManageEnding,
   onAutoLayout,
 }: GraphCanvasProps) {
+  const { t } = useStudioI18n();
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<GraphCanvasFlowNode, Edge> | null>(null);
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
@@ -216,18 +218,18 @@ export function GraphCanvas({
     if (onCreateNodeAt) {
       items.push({
         key: "create",
-        label: "在此新建节点",
+        label: t("script.canvas.createHere"),
         onSelect: () => onCreateNodeAt({ x: Math.round(canvasPos.x), y: Math.round(canvasPos.y) }),
       });
     }
     if (onAutoLayout) {
       items.push({
         key: "auto-layout",
-        label: "自动排布",
+        label: t("script.canvas.autoLayout"),
         onSelect: () => onAutoLayout(),
       });
     }
-    items.push({ key: "fit", label: "重置视图", onSelect: () => flowInstance.fitView({ duration: 250 }) });
+    items.push({ key: "fit", label: t("script.canvas.fitView"), onSelect: () => flowInstance.fitView({ duration: 250 }) });
 
     setMenu({ anchor: { x: clientX, y: clientY }, items });
   };
@@ -239,27 +241,27 @@ export function GraphCanvas({
     const clientY = event.clientY;
 
     const items: ContextMenuItem[] = [
-      { key: "enter", label: "进入编辑", onSelect: () => onEnter(node.id) },
+      { key: "enter", label: t("script.nodeInspector.enterEdit"), onSelect: () => onEnter(node.id) },
     ];
     if (onRenameNode) {
-      items.push({ key: "rename", label: "重命名", onSelect: () => onRenameNode(node.id) });
+      items.push({ key: "rename", label: t("script.canvas.rename"), onSelect: () => onRenameNode(node.id) });
     }
     if (onDuplicateNode) {
-      items.push({ key: "duplicate", label: "复制节点", onSelect: () => onDuplicateNode(node.id) });
+      items.push({ key: "duplicate", label: t("script.canvas.duplicate"), onSelect: () => onDuplicateNode(node.id) });
     }
     if (onCreateSuccessor) {
-      items.push({ key: "successor", label: "创建后续节点", onSelect: () => onCreateSuccessor(node.id) });
+      items.push({ key: "successor", label: t("script.canvas.createSuccessor"), onSelect: () => onCreateSuccessor(node.id) });
     }
     if (onSetEntry && node.id !== graph.entryNodeId) {
-      items.push({ key: "set-entry", label: "设为入口节点", onSelect: () => onSetEntry(node.id) });
+      items.push({ key: "set-entry", label: t("script.nodeInspector.setEntry"), onSelect: () => onSetEntry(node.id) });
     }
     if (onManageEnding) {
       const registered = Object.values(manifest?.unlocks?.endings ?? {}).some((ending) => ending.nodeId === node.id);
-      items.push({ key: "ending", label: registered ? "管理关联结局…" : "登记为结局…", onSelect: () => onManageEnding(node.id) });
+      items.push({ key: "ending", label: registered ? t("script.canvas.manageEnding") : t("script.canvas.registerEnding"), onSelect: () => onManageEnding(node.id) });
     }
     items.push({
       key: "delete",
-      label: "删除节点",
+      label: t("script.canvas.deleteNode"),
       danger: true,
       dividerBefore: true,
       onSelect: () => onDeleteNodes([node.id]),
@@ -296,13 +298,13 @@ export function GraphCanvas({
         <div style={emptyOverlayStyle}>
           <EmptyState
             icon={Workflow}
-            title="画布还是空的"
-            description="右键画布空白处新建节点，双击节点进入编辑"
+            title={t("script.canvas.emptyTitle")}
+            description={t("script.canvas.emptyDescription")}
             action={
               onCreateNodeAt ? (
                 <div style={{ pointerEvents: "auto" }}>
                   <Button variant="primary" disabled={!flowInstance} onClick={handleCreateAtCenter}>
-                    新建第一个节点
+                    {t("script.canvas.createFirst")}
                   </Button>
                 </div>
               ) : undefined
@@ -356,8 +358,8 @@ export function GraphCanvas({
             type="button"
             onClick={() => onUndo?.()}
             disabled={!canUndo}
-            title="撤销图编辑（Ctrl+Z）"
-            aria-label="撤销图编辑（Ctrl+Z）"
+            title={t("script.canvas.undo")}
+            aria-label={t("script.canvas.undo")}
           >
             <Undo2 size={14} />
           </ControlButton>
@@ -365,8 +367,8 @@ export function GraphCanvas({
             type="button"
             onClick={() => onRedo?.()}
             disabled={!canRedo}
-            title="重做图编辑（Ctrl+Shift+Z）"
-            aria-label="重做图编辑（Ctrl+Shift+Z）"
+            title={t("script.canvas.redo")}
+            aria-label={t("script.canvas.redo")}
           >
             <Redo2 size={14} />
           </ControlButton>
@@ -374,8 +376,8 @@ export function GraphCanvas({
             <ControlButton
               type="button"
               onClick={handleLocateEntry}
-              title="定位入口节点"
-              aria-label="定位入口节点"
+              title={t("script.canvas.locateEntry")}
+              aria-label={t("script.canvas.locateEntry")}
             >
               <span style={entryLocatorIconStyle}>⌂</span>
             </ControlButton>

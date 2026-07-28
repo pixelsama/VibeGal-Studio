@@ -6,6 +6,7 @@
  */
 import { Children, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
+import { useStudioI18n } from "../../lib/i18n";
 
 interface AssetGridProps {
   children: ReactNode;
@@ -49,6 +50,7 @@ export function assetGridWindow(
 }
 
 export function AssetGrid({ children, emptyHint }: AssetGridProps) {
+  const { t } = useStudioI18n();
   const items = useMemo(() => Children.toArray(children), [children]);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ width: 900, height: 640, scrollTop: 0 });
@@ -84,7 +86,7 @@ export function AssetGrid({ children, emptyHint }: AssetGridProps) {
     <div
       ref={shellRef}
       role="grid"
-      aria-label="资产列表"
+      aria-label={t("assets.list")}
       aria-rowcount={Math.ceil(items.length / window.columns)}
       aria-colcount={window.columns}
       style={shellStyle}

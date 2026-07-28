@@ -17,14 +17,16 @@ import type { ProjectGraph } from "../../lib/types";
 import { Button, IconButton } from "../common/Button";
 import { describeCondition } from "../script/ConditionEditor";
 import {
-  OPERATOR_LABEL,
   bandLabelForValue,
   bandThreshold,
   collectStateSources,
+  operatorLabel,
   parseConditionSentence,
   variableLabel,
+  type ClauseOperator,
   type StateSource,
 } from "../script/storyState";
+import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 
 export interface StoryInspectionProps {
   state: NovelState;
@@ -53,37 +55,38 @@ export function StoryInspection({
   onSelectEdge,
   onReplayWithCurrentValues,
 }: StoryInspectionProps) {
-  const sources = collectStateSources({ registry, graph: graph ?? undefined, manifest });
+  const { t } = useStudioI18n();
+  const sources = collectStateSources({ registry, graph: graph ?? undefined, manifest, t });
   const byName = new Map(sources.map((source) => [source.name, source]));
   const nodeTitle = (nodeId?: string | null) =>
-    graph?.nodes.find((node) => node.id === nodeId)?.title || nodeId || "未知节点";
+    graph?.nodes.find((node) => node.id === nodeId)?.title || nodeId || t("preview.inspection.unknownNode");
 
   // 每个状态只保留最近一次改变：作者问的是「现在这个值是哪来的」。
   const latestByVariable = new Map<string, StateWriteEvent>();
   for (const event of stateWrites) latestByVariable.set(event.variable, event);
 
   const changed = [...latestByVariable.values()].reverse();
-  const branch = describeNextBranch(graph, currentNodeId, state.vars, byName);
+  const branch = describeNextBranch(graph, currentNodeId, state.vars, byName, t);
 
   return (
     <aside className="gs-inspection">
       <header className="gs-inspection__head">
-        <span>剧情检查</span>
-        <IconButton aria-label="关闭剧情检查" onClick={onClose}>
+        <span>{t("preview.inspect")}</span>
+        <IconButton aria-label={t("preview.inspection.close")} onClick={onClose}>
           <X size={14} aria-hidden="true" />
         </IconButton>
       </header>
 
       <div className="gs-inspection__body">
         <section className="gs-inspection__block">
-          <h4>现在在</h4>
+          <h4>{t("preview.inspection.location")}</h4>
           <p className="gs-inspection__where">{nodeTitle(currentNodeId)}</p>
         </section>
 
         <section className="gs-inspection__block">
-          <h4>这一路上发生了什么</h4>
+          <h4>{t("preview.inspection.history")}</h4>
           {changed.length === 0 ? (
-            <p className="gs-inspection__quiet">到这里还没有任何故事状态被改变过。</p>
+            <p className="gs-inspection__quiet">{t("preview.inspection.noChanges")}</p>
           ) : changed.map((event) => {
             const source = byName.get(event.variable);
             const declaration = source?.declaration;
@@ -97,7 +100,9 @@ export function StoryInspection({
                     {source?.label ?? variableLabel(event.variable, declaration, manifest)}
                   </span>
                   <span className="gs-inspection__value">
-                    {formatValue(event.to)}{band ? `（${band}）` : ""}
+                    {band
+                      ? t("preview.inspection.valueWithBand", { value: formatValue(event.to, t), band })
+                      : formatValue(event.to, t)}
                   </span>
                 </div>
                 <button
@@ -106,7 +111,10 @@ export function StoryInspection({
                   onClick={() => onOpenNode?.(event.nodeId, event.instructionIndex)}
                   disabled={!onOpenNode}
                 >
-                  在「{nodeTitle(event.nodeId)}」{describeChange(event)}
+                  {t("preview.inspection.changedAt", {
+                    node: nodeTitle(event.nodeId),
+                    change: describeChange(event, t),
+                  })}
                   <ArrowRight size={12} aria-hidden="true" />
                 </button>
               </div>
@@ -115,11 +123,11 @@ export function StoryInspection({
         </section>
 
         <section className="gs-inspection__block">
-          <h4>接下来会走哪条</h4>
-          {branch.kind === "end" && <p className="gs-inspection__quiet">这是终点，播放完就结束。</p>}
-          {branch.kind === "choice" && <p className="gs-inspection__quiet">等玩家做选择。</p>}
+          <h4>{t("preview.inspection.nextBranch")}</h4>
+          {branch.kind === "end" && <p className="gs-inspection__quiet">{t("preview.inspection.end")}</p>}
+          {branch.kind === "choice" && <p className="gs-inspection__quiet">{t("preview.inspection.choice")}</p>}
           {branch.kind === "linear" && (
-            <p className="gs-inspection__quiet">播放完直接走到「{nodeTitle(branch.toNodeId)}」。</p>
+            <p className="gs-inspection__quiet">{t("preview.inspection.linear", { node: nodeTitle(branch.toNodeId) })}</p>
           )}
           {branch.kind === "auto" && (
             <>
@@ -130,11 +138,11 @@ export function StoryInspection({
               ))}
               <p className="gs-inspection__outcome">
                 {branch.winnerNodeId
-                  ? `因此会进入「${nodeTitle(branch.winnerNodeId)}」`
-                  : "目前没有任何分流条件成立，也没有兜底分支——玩家会卡在这里。"}
+                  ? t("preview.inspection.winner", { node: nodeTitle(branch.winnerNodeId) })
+                  : t("preview.inspection.stuck")}
               </p>
               {branch.edgeId && onSelectEdge && (
-                <Button onClick={() => onSelectEdge(branch.edgeId!)}>查看这条分流规则</Button>
+                <Button onClick={() => onSelectEdge(branch.edgeId!)}>{t("preview.inspection.viewBranch")}</Button>
               )}
             </>
           )}
@@ -142,10 +150,10 @@ export function StoryInspection({
 
         <footer className="gs-inspection__foot">
           <p className="gs-inspection__quiet">
-            这里只解释，不改动。要改故事状态，去改变它的那一条指令，或者带着现在的值重新试演。
+            {t("preview.inspection.readonlyHint")}
           </p>
           {onReplayWithCurrentValues && (
-            <Button onClick={onReplayWithCurrentValues}>带着现在这些值重新试演</Button>
+            <Button onClick={onReplayWithCurrentValues}>{t("preview.inspection.replay")}</Button>
           )}
         </footer>
       </div>
@@ -170,6 +178,7 @@ export function describeNextBranch(
   currentNodeId: string | null,
   vars: Record<string, string | number | boolean | null>,
   byName: Map<string, StateSource>,
+  t: StudioTranslator = translateZhCN,
 ): NextBranch {
   const outgoing = (graph?.edges ?? []).filter((edge) => edge.from === currentNodeId);
   if (outgoing.length === 0) return { kind: "end" };
@@ -201,12 +210,12 @@ export function describeNextBranch(
       const single = { join: sentence.join, clauses: [clause] };
       const result = evaluateGraphConditionResult(formatSingle(single, clause, source), vars);
       return {
-        text: describeClauseText(clause, source),
+        text: describeClauseText(clause, source, t),
         satisfied: result.ok && result.value,
       };
     })
     : explained.condition
-      ? [{ text: describeCondition(explained.condition, [...byName.values()]), satisfied: winner != null }]
+      ? [{ text: describeCondition(explained.condition, [...byName.values()], t), satisfied: winner != null }]
       : [];
 
   return { kind: "auto", clauses, winnerNodeId: winner?.toNodeId ?? null, edgeId: explained.id };
@@ -238,10 +247,11 @@ function literal(value: string | number | boolean | undefined, type?: string): s
 
 function describeClauseText(
   clause: { source: string; operator: string; value?: string | number | boolean },
-  source?: StateSource,
+  source: StateSource | undefined,
+  t: StudioTranslator,
 ): string {
   const name = source?.label ?? clause.source;
-  const operator = OPERATOR_LABEL[clause.operator as keyof typeof OPERATOR_LABEL] ?? clause.operator;
+  const operator = operatorLabel(clause.operator as ClauseOperator, t);
   if (clause.operator === "happened" || clause.operator === "notHappened") return `${name} ${operator}`;
   const declaration = source?.declaration;
   if (clause.operator === "atLeast" || clause.operator === "atMost") {
@@ -253,19 +263,33 @@ function describeClauseText(
 }
 
 /** 「增加了 10」比「从 55 变成 65」更接近作者的说法。 */
-export function describeChange(event: StateWriteEvent): string {
+export function describeChange(
+  event: StateWriteEvent,
+  t: StudioTranslator = translateZhCN,
+): string {
   if (typeof event.from === "number" && typeof event.to === "number") {
     const delta = event.to - event.from;
-    if (delta > 0) return `增加了 ${delta}`;
-    if (delta < 0) return `减少了 ${-delta}`;
+    if (delta > 0) return t("preview.inspection.change.increase", { amount: delta });
+    if (delta < 0) return t("preview.inspection.change.decrease", { amount: -delta });
   }
-  if (typeof event.to === "boolean") return event.to ? "被标记为已发生" : "被恢复为未发生";
-  return `被设为 ${formatValue(event.to)}`;
+  if (typeof event.to === "boolean") {
+    return event.to
+      ? t("preview.inspection.change.happened")
+      : t("preview.inspection.change.notHappened");
+  }
+  return t("preview.inspection.change.assign", { value: formatValue(event.to, t) });
 }
 
-function formatValue(value: string | number | boolean | null): string {
-  if (value === null) return "尚无";
-  if (typeof value === "boolean") return value ? "已发生" : "还没发生";
+function formatValue(
+  value: string | number | boolean | null,
+  t: StudioTranslator,
+): string {
+  if (value === null) return t("preview.inspection.value.none");
+  if (typeof value === "boolean") {
+    return value
+      ? t("preview.inspection.value.happened")
+      : t("preview.inspection.value.notHappened");
+  }
   return String(value);
 }
 

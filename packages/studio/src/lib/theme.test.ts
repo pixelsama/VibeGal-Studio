@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  appSettingsPreferencePatch,
   applyTheme,
   createLatestSettingsSaver,
   resolveTheme,
@@ -14,6 +15,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("app settings persistence", () => {
+  it("writes only application preferences and leaves renderer trust to the backend merge", () => {
+    expect(appSettingsPreferencePatch({
+      theme: "light",
+      studioLanguage: "en",
+      rendererTrust: { renderer: "stale-hash" },
+    })).toEqual({
+      theme: "light",
+      studioLanguage: "en",
+    });
+  });
+});
+
 describe("createLatestSettingsSaver", () => {
   it("serializes saves so the last requested settings are the final write", async () => {
     const firstSave = deferred();
@@ -25,8 +39,8 @@ describe("createLatestSettingsSaver", () => {
     });
     const saver = createLatestSettingsSaver(save, () => {});
 
-    const pending = saver.requestSave({ theme: "dark", rendererTrust: { renderer: "hash" } });
-    saver.requestSave({ theme: "light", rendererTrust: { renderer: "hash" } });
+    const pending = saver.requestSave({ theme: "dark", studioLanguage: "system", rendererTrust: { renderer: "hash" } });
+    saver.requestSave({ theme: "light", studioLanguage: "en", rendererTrust: { renderer: "hash" } });
 
     expect(save).toHaveBeenCalledTimes(1);
     firstSave.resolve();
@@ -34,8 +48,8 @@ describe("createLatestSettingsSaver", () => {
 
     expect(save).toHaveBeenCalledTimes(2);
     expect(saved).toEqual([
-      { theme: "dark", rendererTrust: { renderer: "hash" } },
-      { theme: "light", rendererTrust: { renderer: "hash" } },
+      { theme: "dark", studioLanguage: "system", rendererTrust: { renderer: "hash" } },
+      { theme: "light", studioLanguage: "en", rendererTrust: { renderer: "hash" } },
     ]);
 
     secondSave.resolve();

@@ -4,11 +4,12 @@
  * raw token 留在项目里；未覆盖字段显示 renderer 公开默认值。每个已偏离默认的
  * 字段都可以独立恢复，不触碰同 skin 的其它值。
  */
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import {
   APPEARANCE_TOKEN_GROUPS,
   effectiveTokenValue,
   hexColorOrNull,
-  tokenDefaultPlaceholder,
+  localizedTokenDefaultPlaceholder,
   tokenHasOverride,
   tokenVisibleChecked,
   visibleTokenEditValue,
@@ -37,6 +38,8 @@ export function TokenEditorPanel({
   groups = APPEARANCE_TOKEN_GROUPS,
   onEdit,
 }: TokenEditorPanelProps) {
+  const { t } = useStudioI18n();
+
   return (
     <div style={panelStyle}>
       <datalist id={FONT_DATALIST_ID}>
@@ -61,11 +64,12 @@ export function TokenEditorPanel({
                 disabled={disabled}
                 defaults={defaults}
                 onEdit={onEdit}
+                t={t}
               />
             ))}
             {advanced.length > 0 && (
               <details style={advancedStyle}>
-                <summary style={advancedSummaryStyle}>高级调整</summary>
+                <summary style={advancedSummaryStyle}>{t("appearance.tokens.advanced")}</summary>
                 <div style={advancedFieldsStyle}>
                   {advanced.map((field) => (
                     <TokenField
@@ -78,6 +82,7 @@ export function TokenEditorPanel({
                       disabled={disabled}
                       defaults={defaults}
                       onEdit={onEdit}
+                      t={t}
                     />
                   ))}
                 </div>
@@ -99,6 +104,7 @@ function TokenField({
   disabled,
   defaults,
   onEdit,
+  t,
 }: {
   field: TokenFieldDef;
   rawValue: string | number | undefined;
@@ -108,13 +114,22 @@ function TokenField({
   disabled: boolean;
   defaults: RendererAppearanceDefaults | undefined;
   onEdit: (key: string, value: string | number | undefined) => void;
+  t: StudioTranslator;
 }) {
   return (
     <div style={fieldRowStyle}>
       <span style={fieldLabelStyle} title={field.key}>{field.label}</span>
       <div style={fieldControlStyle}>
         {field.kind === "color" && (
-          <ColorField field={field} rawValue={rawValue} effectiveValue={effectiveValue} disabled={disabled} defaults={defaults} onEdit={onEdit} />
+          <ColorField
+            field={field}
+            rawValue={rawValue}
+            effectiveValue={effectiveValue}
+            disabled={disabled}
+            defaults={defaults}
+            onEdit={onEdit}
+            t={t}
+          />
         )}
         {field.kind === "number" && (
           <input
@@ -122,7 +137,7 @@ function TokenField({
             type="number"
             style={inputStyle}
             value={rawValue === undefined ? "" : String(rawValue)}
-            placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+            placeholder={localizedTokenDefaultPlaceholder(field.key, defaults, t)}
             step={field.step}
             min={field.min}
             max={field.max}
@@ -153,7 +168,7 @@ function TokenField({
             type="text"
             style={inputStyle}
             value={rawValue === undefined ? "" : String(rawValue)}
-            placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+            placeholder={localizedTokenDefaultPlaceholder(field.key, defaults, t)}
             list={FONT_DATALIST_ID}
             disabled={disabled}
             onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
@@ -165,7 +180,7 @@ function TokenField({
             type="text"
             style={inputStyle}
             value={rawValue === undefined ? "" : String(rawValue)}
-            placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+            placeholder={localizedTokenDefaultPlaceholder(field.key, defaults, t)}
             disabled={disabled}
             onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
           />
@@ -173,12 +188,12 @@ function TokenField({
         <button
           type="button"
           data-reset-token={field.key}
-          title={`恢复${field.label}默认值`}
+          title={t("appearance.tokens.resetTitle", { label: field.label })}
           style={resetStyle}
           disabled={disabled || !canReset}
           onClick={() => onEdit(field.key, undefined)}
         >
-          恢复默认
+          {t("appearance.tokens.reset")}
         </button>
       </div>
     </div>
@@ -192,6 +207,7 @@ function ColorField({
   disabled,
   defaults,
   onEdit,
+  t,
 }: {
   field: TokenFieldDef;
   rawValue: string | number | undefined;
@@ -199,13 +215,16 @@ function ColorField({
   disabled: boolean;
   defaults: RendererAppearanceDefaults | undefined;
   onEdit: (key: string, value: string | number | undefined) => void;
+  t: StudioTranslator;
 }) {
   const effectiveHex = hexColorOrNull(effectiveValue);
   return (
     <span style={colorRowStyle}>
       <span
-        aria-label={`${field.label}当前颜色`}
-        title={effectiveValue === undefined ? "界面风格未公开这个默认值" : String(effectiveValue)}
+        aria-label={t("appearance.tokens.currentColor", { label: field.label })}
+        title={effectiveValue === undefined
+          ? t("appearance.tokens.defaultUnavailable")
+          : String(effectiveValue)}
         style={{
           ...colorPreviewStyle,
           background: effectiveValue === undefined ? "transparent" : String(effectiveValue),
@@ -213,7 +232,7 @@ function ColorField({
       />
       {effectiveHex && (
         <input
-          aria-label={`${field.label}色板`}
+          aria-label={t("appearance.tokens.colorPicker", { label: field.label })}
           type="color"
           style={colorSwatchStyle}
           value={effectiveHex}
@@ -226,7 +245,7 @@ function ColorField({
         type="text"
         style={{ ...inputStyle, flex: 1 }}
         value={rawValue === undefined ? "" : String(rawValue)}
-        placeholder={tokenDefaultPlaceholder(field.key, defaults)}
+        placeholder={localizedTokenDefaultPlaceholder(field.key, defaults, t)}
         disabled={disabled}
         onChange={(event) => onEdit(field.key, event.target.value === "" ? undefined : event.target.value)}
       />

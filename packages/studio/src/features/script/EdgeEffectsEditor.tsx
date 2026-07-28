@@ -10,6 +10,7 @@
 import { Plus, X } from "lucide-react";
 import { variableKind, type SetInstr, type VariableRegistry } from "@vibegal/engine";
 import { Button, IconButton } from "../common/Button";
+import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import { StateChangeEditor } from "./StateChangeEditor";
 import { variableLabel } from "./storyState";
 
@@ -21,6 +22,7 @@ export interface EdgeEffectsEditorProps {
 }
 
 export function EdgeEffectsEditor({ effects, registry, disabled, onChange }: EdgeEffectsEditorProps) {
+  const { t } = useStudioI18n();
   const list = effects ?? [];
   const names = Object.keys(registry?.variables ?? {});
 
@@ -38,17 +40,19 @@ export function EdgeEffectsEditor({ effects, registry, disabled, onChange }: Edg
       <Button
         onClick={() => onChange([defaultEffect(names[0], registry)])}
         disabled={names.length === 0}
-        title={names.length === 0 ? "先在「故事状态」里建一个状态" : "走这条出口之后改变故事状态"}
+        title={names.length === 0
+          ? t("script.edgeEffects.addHint.empty")
+          : t("script.edgeEffects.addHint.ready")}
       >
         <Plus size={14} aria-hidden="true" />
-        走这条之后…
+        {t("script.edgeEffects.add")}
       </Button>
     );
   }
 
   return (
     <div className="gs-edge-effects">
-      <h5>走这条之后</h5>
+      <h5>{t("script.edgeEffects.title")}</h5>
       {list.map((effect, index) => (
         <div key={index} className="gs-edge-effects__row">
           <StateChangeEditor
@@ -57,7 +61,10 @@ export function EdgeEffectsEditor({ effects, registry, disabled, onChange }: Edg
             onChange={(next) => update(index, next)}
           />
           {!disabled && (
-            <IconButton aria-label={`删除第 ${index + 1} 个状态改变`} onClick={() => remove(index)}>
+            <IconButton
+              aria-label={t("script.edgeEffects.remove", { number: index + 1 })}
+              onClick={() => remove(index)}
+            >
               <X size={14} aria-hidden="true" />
             </IconButton>
           )}
@@ -66,7 +73,7 @@ export function EdgeEffectsEditor({ effects, registry, disabled, onChange }: Edg
       {!disabled && (
         <Button onClick={() => onChange([...list, defaultEffect(names[0], registry)])} disabled={names.length === 0}>
           <Plus size={14} aria-hidden="true" />
-          再加一个
+          {t("script.edgeEffects.addAnother")}
         </Button>
       )}
     </div>
@@ -86,18 +93,39 @@ export function defaultEffect(name: string | undefined, registry?: VariableRegis
 }
 
 /** 一句话概述，用于折叠态与只读展示。 */
-export function describeEdgeEffects(effects: SetInstr[] | undefined, registry?: VariableRegistry): string {
+export function describeEdgeEffects(
+  effects: SetInstr[] | undefined,
+  registry?: VariableRegistry,
+  t: StudioTranslator = translateZhCN,
+): string {
   if (!effects || effects.length === 0) return "";
   return effects.map((effect) => {
     const label = variableLabel(effect.key, registry?.variables[effect.key]);
     if ("expr" in effect && effect.expr != null) {
       const match = new RegExp(`^${escapeRegExp(effect.key)}\\s*([+-])\\s*(\\d+(?:\\.\\d+)?)$`).exec(effect.expr.trim());
-      if (match) return `${label} ${match[1] === "+" ? "增加" : "减少"} ${match[2]}`;
-      return `${label} 由表达式计算`;
+      if (match) {
+        return t(
+          match[1] === "+"
+            ? "script.edgeEffects.summary.increase"
+            : "script.edgeEffects.summary.decrease",
+          { label, amount: match[2] },
+        );
+      }
+      return t("script.edgeEffects.summary.expression", { label });
     }
-    if (typeof effect.value === "boolean") return `${label} ${effect.value ? "标记为已发生" : "恢复为未发生"}`;
-    return `${label} 设为 ${effect.value ?? "尚无"}`;
-  }).join("；");
+    if (typeof effect.value === "boolean") {
+      return t(
+        effect.value
+          ? "script.edgeEffects.summary.happened"
+          : "script.edgeEffects.summary.notHappened",
+        { label },
+      );
+    }
+    return t("script.edgeEffects.summary.assign", {
+      label,
+      value: effect.value ?? t("script.edgeEffects.summary.none"),
+    });
+  }).join(t("script.edgeEffects.summary.separator"));
 }
 
 function escapeRegExp(value: string): string {

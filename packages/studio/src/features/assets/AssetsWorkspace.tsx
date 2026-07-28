@@ -26,7 +26,7 @@ import { EmptyState } from "../common/EmptyState";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 import { isDraftSnapshotCurrent } from "../script/unsavedChanges";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
-import { AssetsSidebar, SECTIONS, type AssetSection } from "./AssetsSidebar";
+import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
 import { planAssetDrop, isRegistrableSection, type RegistrableAssetKind } from "./assetDrop";
 import { useAssetFileDrop } from "./useAssetFileDrop";
 import { AssetsToolbar } from "./AssetsToolbar";
@@ -42,6 +42,8 @@ import {
   createManifestSaveFailureToast,
 } from "./assetManifestOperations";
 import { useAssetManifestDraft } from "./useAssetManifestDraft";
+import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
+import { assetSectionLabel } from "./AssetsSidebar";
 
 interface AssetsWorkspaceProps {
   project: ProjectData;
@@ -68,6 +70,7 @@ export function AssetsWorkspace({
   onSaved,
   onDirtyChange,
 }: AssetsWorkspaceProps) {
+  const { t } = useStudioI18n();
   const [section, setSection] = useState<AssetSection>(initialSection);
   const [search, setSearch] = useState("");
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -166,13 +169,17 @@ export function AssetsWorkspace({
       notify({
         ...failure,
         detail: errors.length > 0
-          ? `${failure.detail}\n\n同时有 ${errors.length} 个资源导入失败：\n${errors.join("\n")}`
+          ? t("assets.importManifestFailed", {
+            detail: failure.detail ?? "",
+            count: errors.length,
+            errors: errors.join("\n"),
+          })
           : failure.detail,
       });
     } else if (errors.length > 0) {
       notify(createImportFailureToast(errors, newPaths.length));
     } else if (newPaths.length > 0) {
-      notify({ kind: "success", message: `已导入 ${newPaths.length} 个资源` });
+      notify({ kind: "success", message: t("assets.importSuccess", { count: newPaths.length }) });
     }
     await onSaved();
   }
@@ -181,7 +188,7 @@ export function AssetsWorkspace({
     if (plan.rejected.length > 0) {
       notify({
         kind: "info",
-        message: `已跳过 ${plan.rejected.length} 个无法识别类型的文件`,
+        message: t("assets.dropSkipped", { count: plan.rejected.length }),
         detail: plan.rejected.join("\n"),
       });
     }
@@ -213,8 +220,8 @@ export function AssetsWorkspace({
   // 角色编辑页不收文件拖放（立绘走 CharacterEditor 内部的导入按钮）
   const assetDragOver = useAssetFileDrop(!readOnly && section !== "character", handleDropPaths);
   const dropHint = isRegistrableSection(section)
-    ? `松开导入到「${SECTIONS.find((s) => s.id === section)?.label ?? section}」`
-    : "松开导入资产（按文件类型自动分类）";
+    ? t("assets.dropSection", { section: assetSectionLabel(section, t) })
+    : t("assets.dropOverview");
 
   async function handleDelete(relPath: string, assetRevision?: FileRevision) {
     if (readOnly) return;
@@ -263,11 +270,10 @@ export function AssetsWorkspace({
   function handleCleanupManifestEntries() {
     if (readOnly || cleanupProposal.removeSources.length === 0) return;
     setConfirm({
-      message: [
-        `将从资源登记表移除 ${cleanupProposal.removeSources.length} 个未使用或悬空条目。`,
-        "不会删除磁盘文件。",
-        ...cleanupProposal.diffPreview.slice(0, 8),
-      ].join("\n"),
+      message: t("assets.cleanupConfirm", {
+        count: cleanupProposal.removeSources.length,
+        preview: cleanupProposal.diffPreview.slice(0, 8).join("\n"),
+      }),
       onConfirm: () => void persistManifestFromWorkspace(applyAssetCleanupProposal(manifest, cleanupProposal)),
     });
   }
@@ -277,7 +283,7 @@ export function AssetsWorkspace({
     const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
     if (candidates.length === 0) return;
     setConfirm({
-      message: `确定删除当前筛选下的 ${candidates.length} 个孤儿资源？`,
+      message: t("assets.deleteOrphansConfirm", { count: candidates.length }),
       onConfirm: async () => {
         for (const entry of candidates) {
           await handleDelete(entry.relPath, entry.revision);
@@ -296,18 +302,18 @@ export function AssetsWorkspace({
   return (
     <div style={rootStyle}>
       <CollapsibleSidebar
-        title="资产"
+        title={t("assets.title")}
         collapsed={sidebarCollapsed}
         onCollapsedChange={onSidebarCollapsedChange}
         expandedWidth={132}
-        collapsedLabel="资产"
+        collapsedLabel={t("assets.title")}
       >
         <AssetsSidebar active={section} onSelect={setSection} />
       </CollapsibleSidebar>
       <div style={mainStyle}>
         {manifestInvalid && (
           <div style={invalidBannerStyle}>
-            资源登记表结构异常（可能是旧格式），资产操作已禁用。详见右下角问题面板。
+            {t("assets.invalidManifest")}
           </div>
         )}
         {section === "character" ? (
@@ -331,6 +337,7 @@ export function AssetsWorkspace({
               onRegisterOrphans={handleRegisterAllOrphans}
               onDeleteOrphans={handleDeleteAllOrphans}
               disabled={readOnly}
+              t={t}
             />
             {isExtendedAssetSection(section) && (
               <ExtendedAssetRegistryEditor
@@ -338,16 +345,20 @@ export function AssetsWorkspace({
                 manifest={manifest}
                 disabled={readOnly}
                 onChange={handleStageManifestDraft}
+                t={t}
               />
             )}
-            <div style={assetCountHelpStyle} role="note" aria-label="资源计数说明">
-              登记：资源登记表中指向该文件的条目数；剧本：故事内容实际使用次数；未使用：已登记但故事内容没有引用。
+            <div style={assetCountHelpStyle} role="note" aria-label={t("assets.countHelpLabel")}>
+              {t("assets.countHelp")}
             </div>
             {cleanupProposal.removeSources.length > 0 && (
               <div style={cleanupBarStyle}>
-                <span>{`全局清理预览：将从资源登记表移除 ${cleanupProposal.removeSources.length} 个未使用或文件缺失条目；${cleanupProposal.unregisteredDiskPaths.length} 个磁盘文件未登记，不会被删除`}</span>
+                <span>{t("assets.cleanupPreview", {
+                  removeCount: cleanupProposal.removeSources.length,
+                  unregisteredCount: cleanupProposal.unregisteredDiskPaths.length,
+                })}</span>
                 <button type="button" style={cleanupButtonStyle} onClick={handleCleanupManifestEntries} disabled={readOnly}>
-                  确认清理登记条目
+                  {t("assets.cleanupAction")}
                 </button>
               </div>
             )}
@@ -356,24 +367,34 @@ export function AssetsWorkspace({
                 search.trim() ? (
                   <EmptyState
                     icon={Inbox}
-                    title="没有匹配的资源"
-                    description="换个关键词，或清除搜索查看全部资源。"
-                    action={<button type="button" className="gs-btn gs-btn--primary" onClick={() => setSearch("")}>清除搜索</button>}
+                    title={t("assets.empty.searchTitle")}
+                    description={t("assets.empty.searchDescription")}
+                    action={(
+                      <button type="button" className="gs-btn gs-btn--primary" onClick={() => setSearch("")}>
+                        {t("assets.clearSearch")}
+                      </button>
+                    )}
                   />
                 ) : (
                   <EmptyState
                     icon={Upload}
-                    title={section === "overview" ? "还没有资源" : `还没有${SECTIONS.find((item) => item.id === section)?.label ?? "资源"}`}
-                    description={section === "overview" ? "导入图片、音频、视频或字体；Studio 会按文件类型自动分类。" : "导入后会复制到项目并加入资源登记表。"}
+                    title={section === "overview"
+                      ? t("assets.empty.overviewTitle")
+                      : t("assets.empty.sectionTitle", { section: assetSectionLabel(section, t) })}
+                    description={section === "overview"
+                      ? t("assets.empty.overviewDescription")
+                      : t("assets.empty.sectionDescription")}
                     action={!readOnly ? (
                       <button type="button" className="gs-btn gs-btn--primary" onClick={() => void handleImport()}>
-                        {section === "overview" ? "导入资产" : `导入${SECTIONS.find((item) => item.id === section)?.label ?? "资产"}`}
+                        {section === "overview"
+                          ? t("assets.import")
+                          : t("assets.importSection", { section: assetSectionLabel(section, t) })}
                       </button>
                     ) : undefined}
                   />
                 )
               ) : (
-                <AssetGrid emptyHint="没有匹配的资源">
+                <AssetGrid emptyHint={t("assets.empty.searchTitle")}>
                   {filteredDisk.map((entry) => (
                     <AssetCard
                       key={entry.relPath}
@@ -412,6 +433,7 @@ export function AssetsWorkspace({
         saving={savingDraft}
         onSave={() => void handleSaveManifestDraft()}
         onDiscard={handleDiscardManifestDraft}
+        t={t}
       />
 
       {/* 文件拖放高亮遮罩（pointer-events: none，不拦截原生拖放事件） */}
@@ -430,7 +452,7 @@ export function AssetsWorkspace({
         <ConfirmDialog
           message={confirm.message}
           danger
-          confirmLabel="删除"
+          confirmLabel={t("assets.delete")}
           onConfirm={confirm.onConfirm}
           onClose={() => setConfirm(null)}
         />
@@ -467,20 +489,28 @@ export interface DraftManifestBannerProps {
   onSave: () => void;
   onDiscard: () => void;
   saving?: boolean;
+  t?: StudioTranslator;
 }
 
-export function DraftManifestBanner({ isDirty, canSave, onSave, onDiscard, saving = false }: DraftManifestBannerProps) {
+export function DraftManifestBanner({
+  isDirty,
+  canSave,
+  onSave,
+  onDiscard,
+  saving = false,
+  t = translateZhCN,
+}: DraftManifestBannerProps) {
   if (!isDirty) return null;
   return (
     <div style={draftBannerStyle}>
-      <div style={draftBannerTextStyle}>有未保存的改动…</div>
+      <div style={draftBannerTextStyle}>{t("assets.draft")}</div>
       <div style={draftBannerActionsStyle}>
         <button type="button" style={draftDiscardBtnStyle} onClick={onDiscard}>
-          放弃改动
+          {t("assets.discard")}
         </button>
         {canSave && (
           <button type="button" style={draftSaveBtnStyle} onClick={onSave} disabled={saving}>
-            {saving ? "保存中…" : "保存改动"}
+            {saving ? t("assets.saving") : t("assets.save")}
           </button>
         )}
       </div>
@@ -493,31 +523,33 @@ function ExtendedAssetRegistryEditor({
   manifest,
   disabled,
   onChange,
+  t,
 }: {
   section: ExtendedAssetSection;
   manifest: Manifest;
   disabled: boolean;
   onChange: (manifest: Manifest) => void;
+  t: StudioTranslator;
 }) {
   if (section === "cg") {
     const entries = Object.entries(manifest.cg ?? {});
     return (
-      <RegistryPanel title="CG 登记" empty={entries.length === 0}>
+      <RegistryPanel title={t("assets.registry.cg")} empty={entries.length === 0} t={t}>
         {entries.map(([id, asset]) => (
           <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `cg.${id}`))} disabled={disabled}>
             <RegistryTextField label="path" value={asset.path} disabled={disabled} onChange={(path) => {
               onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, path } } });
             }} />
-            <RegistryTextField label="名称" value={asset.name ?? ""} disabled={disabled} onChange={(name) => {
+            <RegistryTextField label={t("assets.field.name")} value={asset.name ?? ""} disabled={disabled} onChange={(name) => {
               onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, name: optionalText(name) } } });
             }} />
-            <RegistryTextField label="缩略图" value={asset.thumbnail ?? ""} disabled={disabled} onChange={(thumbnail) => {
+            <RegistryTextField label={t("assets.field.thumbnail")} value={asset.thumbnail ?? ""} disabled={disabled} onChange={(thumbnail) => {
               onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, thumbnail: optionalText(thumbnail) } } });
             }} />
-            <RegistryTextField label="标签" value={(asset.tags ?? []).join(", ")} disabled={disabled} onChange={(tags) => {
+            <RegistryTextField label={t("assets.field.tags")} value={(asset.tags ?? []).join(", ")} disabled={disabled} onChange={(tags) => {
               onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, tags: parseTags(tags) } } });
             }} />
-            <RegistryTextField label="分组" value={asset.group ?? ""} disabled={disabled} onChange={(group) => {
+            <RegistryTextField label={t("assets.field.group")} value={asset.group ?? ""} disabled={disabled} onChange={(group) => {
               onChange({ ...manifest, cg: { ...(manifest.cg ?? {}), [id]: { ...asset, group: optionalText(group) } } });
             }} />
             <RegistryTextField label="unlockId" value={asset.unlockId ?? ""} disabled={disabled} onChange={(unlockId) => {
@@ -532,19 +564,19 @@ function ExtendedAssetRegistryEditor({
   if (section === "video") {
     const entries = Object.entries(manifest.videos ?? {});
     return (
-      <RegistryPanel title="视频登记" empty={entries.length === 0}>
+      <RegistryPanel title={t("assets.registry.video")} empty={entries.length === 0} t={t}>
         {entries.map(([id, asset]) => (
           <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `videos.${id}`))} disabled={disabled}>
             <RegistryTextField label="path" value={asset.path} disabled={disabled} onChange={(path) => {
               onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, path } } });
             }} />
-            <RegistryTextField label="名称" value={asset.name ?? ""} disabled={disabled} onChange={(name) => {
+            <RegistryTextField label={t("assets.field.name")} value={asset.name ?? ""} disabled={disabled} onChange={(name) => {
               onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, name: optionalText(name) } } });
             }} />
             <RegistryTextField label="poster" value={asset.poster ?? ""} disabled={disabled} onChange={(poster) => {
               onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, poster: optionalText(poster) } } });
             }} />
-            <RegistryTextField label="标签" value={(asset.tags ?? []).join(", ")} disabled={disabled} onChange={(tags) => {
+            <RegistryTextField label={t("assets.field.tags")} value={(asset.tags ?? []).join(", ")} disabled={disabled} onChange={(tags) => {
               onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, tags: parseTags(tags) } } });
             }} />
             <label style={registryCheckboxStyle}>
@@ -556,7 +588,7 @@ function ExtendedAssetRegistryEditor({
                   onChange({ ...manifest, videos: { ...(manifest.videos ?? {}), [id]: { ...asset, skippable: event.target.checked } } });
                 }}
               />
-              可跳过
+              {t("assets.field.skippable")}
             </label>
           </RegistryCard>
         ))}
@@ -567,7 +599,7 @@ function ExtendedAssetRegistryEditor({
   if (section === "font") {
     const entries = Object.entries(manifest.fonts ?? {});
     return (
-      <RegistryPanel title="字体登记" empty={entries.length === 0}>
+      <RegistryPanel title={t("assets.registry.font")} empty={entries.length === 0} t={t}>
         {entries.map(([id, font]) => (
           <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `fonts.${id}`))} disabled={disabled}>
             <RegistryTextField label="path" value={font.path} disabled={disabled} onChange={(path) => {
@@ -591,10 +623,10 @@ function ExtendedAssetRegistryEditor({
   if (section === "ui") {
     const entries = Object.entries(manifest.uiSkins ?? {});
     return (
-      <RegistryPanel title="外观资源登记" empty={entries.length === 0}>
+      <RegistryPanel title={t("assets.registry.ui")} empty={entries.length === 0} t={t}>
         {entries.map(([id, skin]) => (
           <RegistryCard key={id} id={id} onDelete={() => onChange(removeUiSkin(manifest, id))} disabled={disabled}>
-            <RegistryTextField label="名称" value={skin.name ?? ""} disabled={disabled} onChange={(name) => {
+            <RegistryTextField label={t("assets.field.name")} value={skin.name ?? ""} disabled={disabled} onChange={(name) => {
               onChange({ ...manifest, uiSkins: { ...(manifest.uiSkins ?? {}), [id]: { ...skin, name: optionalText(name) } } });
             }} />
             {Object.entries(skin.assets ?? {}).map(([assetId, path]) => (
@@ -609,7 +641,7 @@ function ExtendedAssetRegistryEditor({
               }} />
             ))}
             {Object.keys(skin.assets ?? {}).length === 0 && (
-              <div style={registryEmptyTextStyle}>没有外观资源槽；导入或登记外观资源会创建默认槽。</div>
+              <div style={registryEmptyTextStyle}>{t("assets.emptySlots")}</div>
             )}
           </RegistryCard>
         ))}
@@ -619,7 +651,7 @@ function ExtendedAssetRegistryEditor({
 
   const entries = Object.entries(manifest.animationAtlases ?? {});
   return (
-    <RegistryPanel title="动画图集登记" empty={entries.length === 0}>
+    <RegistryPanel title={t("assets.registry.animation")} empty={entries.length === 0} t={t}>
       {entries.map(([id, atlas]) => (
         <RegistryCard key={id} id={id} onDelete={() => onChange(removeManifestEntry(manifest, `animationAtlases.${id}.image`))} disabled={disabled}>
           <RegistryTextField label="image" value={atlas.image} disabled={disabled} onChange={(image) => {
@@ -640,15 +672,29 @@ function ExtendedAssetRegistryEditor({
   );
 }
 
-function RegistryPanel({ title, empty, children }: { title: string; empty: boolean; children: React.ReactNode }) {
+function RegistryPanel({
+  title,
+  empty,
+  children,
+  t,
+}: {
+  title: string;
+  empty: boolean;
+  children: React.ReactNode;
+  t: StudioTranslator;
+}) {
   return (
     <section style={registryPanelStyle} aria-label={title}>
       <div style={registryPanelHeaderStyle}>
         <span style={registryPanelTitleStyle}>{title}</span>
-        <span style={registryPanelHintStyle}>导入或登记后可在这里编辑资源信息，并统一通过底部草稿条保存。</span>
+        <span style={registryPanelHintStyle}>{t("assets.registryHint")}</span>
       </div>
       {empty ? (
-        <EmptyState icon={Inbox} title="暂无条目" description="可先导入该类型资产，或登记当前分类下的孤儿文件。" />
+        <EmptyState
+          icon={Inbox}
+          title={t("assets.registryEmpty")}
+          description={t("assets.registryEmptyDescription")}
+        />
       ) : (
         <div style={registryCardListStyle}>{children}</div>
       )}
@@ -667,6 +713,7 @@ function RegistryCard({
   onDelete: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useStudioI18n();
   return (
     <div style={registryCardStyle}>
       <div style={registryCardHeaderStyle}>
@@ -677,7 +724,7 @@ function RegistryCard({
           disabled={disabled}
           onClick={onDelete}
         >
-          移除登记
+          {t("assets.removeRegistry")}
         </button>
       </div>
       <div style={registryFieldsStyle}>{children}</div>

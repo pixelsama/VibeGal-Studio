@@ -43,6 +43,7 @@ import { getDesktopPlatform } from "./lib/platform";
 import { BlankProjectGuide } from "./features/onboarding/BlankProjectGuide";
 import { clearProjectNodeCache, loadAllProjectNodes, useAllProjectNodes, useNodeDetail } from "./lib/projectNodeData";
 import { clearAssetThumbnailCache } from "./features/assets/AssetImagePreview";
+import { useStudioI18n, type StudioTranslator } from "./lib/i18n";
 import {
   INITIAL_BLANK_PROJECT_ONBOARDING,
   hasImportedBackground,
@@ -75,12 +76,6 @@ interface ProjectChangedPayload {
   projectPath: string;
   rendererChanged: boolean;
 }
-
-/**
- * 界面风格获取路径的文档级引导（Spec 19 §4.2）：选择器 title 与空态共用。
- * 只做文案引导，不引入任何 in-app AI 入口。
- */
-const RENDERER_GUIDANCE_HINT = "新界面风格可由 AI 在 renderers/ 目录下生成，出现后自动可选择";
 
 export function graphFocusTargetFromIssue(
   issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string },
@@ -118,14 +113,31 @@ export function workspaceTitle(project: Pick<ProjectData, "meta" | "content">): 
   return typeof title === "string" && title.trim() !== "" ? title : project.meta.name;
 }
 
-export function workTitleTooltip(project: Pick<ProjectData, "meta" | "content">): string {
+export function workTitleTooltip(
+  project: Pick<ProjectData, "meta" | "content">,
+  t?: StudioTranslator,
+): string {
   const title = workspaceTitle(project);
+  if (t) {
+    return title === project.meta.name
+      ? t("workspace.title.missing", { title })
+      : t("workspace.title.folder", { title, folder: project.meta.name });
+  }
   return title === project.meta.name
     ? `${title}（还没填作品标题，先用项目文件夹名；在「项目」里填写）`
     : `${title}（项目文件夹：${project.meta.name}）`;
 }
 
-export function projectIssueSourceLabel(source: string): string {
+export function projectIssueSourceLabel(source: string, t?: StudioTranslator): string {
+  if (t) {
+    if (source === "graph") return t("workspace.issue.graph");
+    if (source === "node") return t("workspace.issue.node");
+    if (source === "asset") return t("workspace.issue.asset");
+    if (source === "variables") return t("workspace.issue.variables");
+    if (source === "meta") return t("workspace.issue.meta");
+    if (source === "manifest") return t("workspace.issue.manifest");
+    return source;
+  }
   if (source === "graph") return "图结构";
   if (source === "node") return "节点内容";
   if (source === "asset") return "资产";
@@ -159,6 +171,7 @@ export function Workspace({
   onProjectChanged,
   onOpenSettings,
 }: Props) {
+  const { t } = useStudioI18n();
   const [rendererId, setRendererId] = useState(project.meta.activeRendererId);
   const [refreshKey, setRefreshKey] = useState(0);
   const refreshRequestRef = useRef(0);
@@ -412,11 +425,12 @@ export function Workspace({
             nodes: analysisEntries,
             registry: project.content.variables,
             manifest: project.content.manifest,
+            t,
           }),
-          ...collectDanglingExperienceIssues(project.graph, analysisEntries),
+          ...collectDanglingExperienceIssues(project.graph, analysisEntries, t),
         ]
       : backendReport.projectIssues,
-  }), [analysisEntries, backendReport, fullReport, project.graph, project.content.variables, project.content.manifest]);
+  }), [analysisEntries, backendReport, fullReport, project.graph, project.content.variables, project.content.manifest, t]);
 
   const ensureFullAnalysis = useCallback(async () => {
     if (analysisState === "loading" || fullReport) return;
@@ -457,22 +471,22 @@ export function Workspace({
   // 命令面板内容：工作台切换 + 节点跳转，都复用带未保存守卫的导航
   const commandItems = useMemo<CommandItem[]>(() => {
     const workspaceItems: CommandItem[] = [
-      { id: "ws-render", label: "预览工作台", hint: "切换", keywords: "render preview", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "render" }) },
-      { id: "ws-script", label: "脚本工作台", hint: "切换", keywords: "script graph", onSelect: () => navigateWithGuard({ type: "script-graph" }) },
-      { id: "ws-assets", label: "资产工作台", hint: "切换", keywords: "assets", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "assets" }) },
-      { id: "ws-project", label: "项目工作台", hint: "切换", keywords: "project settings", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "project" }) },
-      { id: "ws-appearance", label: "外观工作台", hint: "切换", keywords: "appearance design ui skin", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "appearance" }) },
-      { id: "ws-export", label: "导出工作台", hint: "切换", keywords: "export build desktop electron tauri release", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "export" }) },
+      { id: "ws-render", label: t("workspace.command.render"), hint: t("workspace.switch"), keywords: "render preview", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "render" }) },
+      { id: "ws-script", label: t("workspace.command.script"), hint: t("workspace.switch"), keywords: "script graph", onSelect: () => navigateWithGuard({ type: "script-graph" }) },
+      { id: "ws-assets", label: t("workspace.command.assets"), hint: t("workspace.switch"), keywords: "assets", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "assets" }) },
+      { id: "ws-project", label: t("workspace.command.project"), hint: t("workspace.switch"), keywords: "project settings", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "project" }) },
+      { id: "ws-appearance", label: t("workspace.command.appearance"), hint: t("workspace.switch"), keywords: "appearance design ui skin", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "appearance" }) },
+      { id: "ws-export", label: t("workspace.command.export"), hint: t("workspace.switch"), keywords: "export build desktop electron tauri release", onSelect: () => navigateWithGuard({ type: "workspace", workspace: "export" }) },
     ];
     const nodeItems: CommandItem[] = (project.graph?.nodes ?? []).map((node) => ({
       id: `node-${node.id}`,
-      label: `跳转节点：${node.title || node.id}`,
+      label: t("workspace.command.node", { title: node.title || node.id }),
       hint: node.id,
       keywords: `${node.id} ${node.title}`,
       onSelect: () => navigateWithGuard({ type: "script-node", nodeId: node.id }),
     }));
     return [...workspaceItems, ...nodeItems];
-  }, [project.graph, navigateWithGuard]);
+  }, [project.graph, navigateWithGuard, t]);
 
   // 全局快捷键：Ctrl/Cmd+K 命令面板，? 快捷键帮助。
   // 其他弹窗打开时不响应 ? 以免层叠；面板打开时焦点在其输入框（editable），? 天然不触发。
@@ -507,33 +521,33 @@ export function Workspace({
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
-          <IconButton onClick={() => runWithUnsavedChangesGuard(onBack)} disabled={!canGoBack} title="后退" aria-label="后退">
+          <IconButton onClick={() => runWithUnsavedChangesGuard(onBack)} disabled={!canGoBack} title={t("nav.back")} aria-label={t("nav.back")}>
             <ChevronLeft size={18} />
           </IconButton>
-          <IconButton onClick={() => runWithUnsavedChangesGuard(onForward)} disabled={!canGoForward} title="前进" aria-label="前进">
+          <IconButton onClick={() => runWithUnsavedChangesGuard(onForward)} disabled={!canGoForward} title={t("nav.forward")} aria-label={t("nav.forward")}>
             <ChevronRight size={18} />
           </IconButton>
         </div>
 
         {/* 居中：工作台切换，窗口水平绝对居中 */}
         <div data-tauri-drag-region style={centerGroupStyle}>
-          <TabBtn active={workspace === "render"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "render" })}>预览</TabBtn>
-          <TabBtn active={workspace === "script"} onClick={() => navigateWithGuard({ type: "script-graph" })}>脚本</TabBtn>
-          <TabBtn active={workspace === "assets"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}>资产</TabBtn>
-          <TabBtn active={workspace === "project"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "project" })}>项目</TabBtn>
-          <TabBtn active={workspace === "appearance"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "appearance" })}>外观</TabBtn>
-          <TabBtn active={workspace === "export"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "export" })}>导出</TabBtn>
+          <TabBtn active={workspace === "render"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "render" })}>{t("workspace.render")}</TabBtn>
+          <TabBtn active={workspace === "script"} onClick={() => navigateWithGuard({ type: "script-graph" })}>{t("workspace.script")}</TabBtn>
+          <TabBtn active={workspace === "assets"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}>{t("workspace.assets")}</TabBtn>
+          <TabBtn active={workspace === "project"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "project" })}>{t("workspace.project")}</TabBtn>
+          <TabBtn active={workspace === "appearance"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "appearance" })}>{t("workspace.appearance")}</TabBtn>
+          <TabBtn active={workspace === "export"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "export" })}>{t("workspace.export")}</TabBtn>
         </div>
 
         {/* 右侧：项目名 + 同步指示器 + 界面风格选择器（渲染层唯一切换入口，Spec 19 §4.2） */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
-          <span style={projectNameStyle} title={workTitleTooltip(project)}>{workspaceTitle(project)}</span>
+          <span style={projectNameStyle} title={workTitleTooltip(project, t)}>{workspaceTitle(project)}</span>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
-          <span style={rendererLabelStyle} title={RENDERER_GUIDANCE_HINT}>界面风格</span>
+          <span style={rendererLabelStyle} title={t("workspace.renderer.guidance")}>{t("workspace.renderer.label")}</span>
           {project.rendererIds.length > 0 ? (
             <select
-              aria-label="界面风格"
-              title={RENDERER_GUIDANCE_HINT}
+              aria-label={t("workspace.renderer.label")}
+              title={t("workspace.renderer.guidance")}
               style={rendererSelectStyle}
               value={rendererId}
               onChange={(event) => void handleRendererChange(event.target.value)}
@@ -543,9 +557,9 @@ export function Workspace({
               ))}
             </select>
           ) : (
-            <span style={rendererEmptyStyle}>{`无界面风格 — ${RENDERER_GUIDANCE_HINT}`}</span>
+            <span style={rendererEmptyStyle}>{t("workspace.renderer.empty", { guidance: t("workspace.renderer.guidance") })}</span>
           )}
-          <IconButton onClick={() => runWithUnsavedChangesGuard(onOpenSettings)} title="设置" aria-label="设置">
+          <IconButton onClick={() => runWithUnsavedChangesGuard(onOpenSettings)} title={t("nav.settings")} aria-label={t("nav.settings")}>
             <SettingsIcon size={15} />
           </IconButton>
         </div>
@@ -658,12 +672,12 @@ export function Workspace({
         loading={analysisState === "loading"}
         error={analysisState === "error"}
         onOpen={() => void ensureFullAnalysis()}
-        okLabel="项目正常"
-        notOkLabel={(n) => `项目有 ${n} 个问题`}
+        okLabel={t("workspace.normal")}
+        notOkLabel={(n) => t("workspace.issueCount", { count: n })}
         dialogTitle="Project Issues"
         dialogAriaLabel="Project Issues"
-        emptyDescription="项目正常"
-        sourceLabel={projectIssueSourceLabel}
+        emptyDescription={t("workspace.normal")}
+        sourceLabel={(source) => projectIssueSourceLabel(source, t)}
         issueExtra={(issue) =>
           issue.source === "graph" || issue.source === "node"
             ? issue.nodeId
@@ -681,8 +695,8 @@ export function Workspace({
       {shortcutsHelpOpen && <ShortcutsHelpDialog onClose={() => setShortcutsHelpOpen(false)} />}
       {unsavedNavigation && (
         <ConfirmDialog
-          message="当前工作区有未保存的草稿。离开后草稿会保留，并在本次会话中返回时自动恢复。"
-          confirmLabel="离开并保留草稿"
+          message={t("workspace.unsaved.message")}
+          confirmLabel={t("workspace.unsaved.leave")}
           onConfirm={() => {
             const action = unsavedNavigation.action;
             setHasUnsavedChanges(false);
@@ -713,10 +727,11 @@ function hasClosest(target: EventTarget): target is EventTarget & { closest: (se
 }
 
 function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => void }) {
+  const { t } = useStudioI18n();
   const config = {
-    synced: { label: "已同步", dot: "var(--status-ok)", cursor: "default" },
-    syncing: { label: "同步中...", dot: "var(--status-warn)", cursor: "default" },
-    error: { label: "刷新失败（点击重试）", dot: "var(--status-error)", cursor: "pointer" },
+    synced: { label: t("workspace.sync.synced"), dot: "var(--status-ok)", cursor: "default" },
+    syncing: { label: t("workspace.sync.syncing"), dot: "var(--status-warn)", cursor: "default" },
+    error: { label: t("workspace.sync.error"), dot: "var(--status-error)", cursor: "pointer" },
   }[state];
 
   return (
@@ -729,7 +744,7 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
         cursor: config.cursor,
         color: state === "error" ? "var(--status-error-text)" : "var(--text-secondary)",
       }}
-      title={state === "error" ? "重新打开项目并保留当前工作台" : undefined}
+      title={state === "error" ? t("workspace.sync.retry") : undefined}
     >
       <span
         style={{

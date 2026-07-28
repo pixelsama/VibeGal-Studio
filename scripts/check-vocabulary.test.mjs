@@ -76,6 +76,61 @@ test("requires localized labels when transition enum values are displayed", () =
     }
   `);
   assert.deepEqual(localized, []);
+
+  const localizedWithKeys = check(`
+    export function Fixture() {
+      return <EnumField
+        options={["fade_in", "fade_out", "white_in", "white_out", "black"]}
+        optionLabels={{
+          fade_in: t("script.scenario.transition.fadeIn"),
+          fade_out: t("script.scenario.transition.fadeOut"),
+          white_in: t("script.scenario.transition.whiteIn"),
+          white_out: t("script.scenario.transition.whiteOut"),
+          black: t("script.scenario.transition.black"),
+        }}
+      />;
+    }
+  `);
+  assert.deepEqual(localizedWithKeys, []);
+
+  const wrongKey = check(`
+    export function Fixture() {
+      return <EnumField
+        options={["fade_in"]}
+        optionLabels={{ fade_in: t("script.scenario.transition.fadeOut") }}
+      />;
+    }
+  `);
+  assert.equal(wrongKey.length, 1);
+  assert.match(wrongKey[0].message, /fade_in.*淡入/);
+});
+
+test("requires Studio Chinese transition messages to keep the product vocabulary", () => {
+  const catalog = `
+    export const STUDIO_ZH_CN_MESSAGES = {
+      "script.scenario.transition.fadeIn": "淡入",
+      "script.scenario.transition.fadeOut": "淡出",
+      "script.scenario.transition.whiteIn": "白场淡入",
+      "script.scenario.transition.whiteOut": "白场淡出",
+      "script.scenario.transition.black": "黑场",
+    } as const;
+  `;
+
+  assert.deepEqual(checkVocabularySources([{
+    path: "packages/studio/src/lib/i18n.tsx",
+    text: catalog,
+  }]), []);
+
+  const drifted = checkVocabularySources([{
+    path: "packages/studio/src/lib/i18n.tsx",
+    text: catalog.replace(
+      '"script.scenario.transition.fadeIn": "淡入"',
+      '"script.scenario.transition.fadeIn": "渐入"',
+    ),
+  }]);
+
+  assert.equal(drifted.length, 1);
+  assert.match(drifted[0].message, /fadeIn.*淡入/);
 });
 
 test("does not scan tests or historical documentation as creator UI", () => {

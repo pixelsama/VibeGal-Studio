@@ -12,6 +12,7 @@ import { RendererTrustPrompt } from "../renderers/RendererTrustPrompt";
 import { RuntimeMediaOverlay } from "../preview/RuntimeMediaOverlay";
 import { collectNodeStoryPoints, sliceNodeDataFromIndex } from "./nodePreviewStart";
 import { useNodePreview } from "./useNodePreview";
+import { useStudioI18n } from "../../lib/i18n";
 
 export function NodePreviewPanel({
   project,
@@ -39,6 +40,7 @@ export function NodePreviewPanel({
   /** 手动选择起点；调用方同时关闭跟随光标。 */
   onPreviewStartChange: (index: number | null) => void;
 }) {
+  const { t } = useStudioI18n();
   const storyPoints = useMemo(() => collectNodeStoryPoints(nodeData), [nodeData]);
   const previewData = useMemo(
     () => sliceNodeDataFromIndex(nodeData, previewStartIndex),
@@ -47,22 +49,22 @@ export function NodePreviewPanel({
   const player = useNodePreview(project, node, previewData);
   const { renderer, loadError, loadDiagnostics, trustRequired, trustRenderer } = useRendererComponent(project.path, rendererId);
 
-  if (player.error) return <PreviewMessage mono>{`引擎错误：\n\n${player.error}`}</PreviewMessage>;
+  if (player.error) return <PreviewMessage mono>{t("script.nodePreview.engineError", { detail: player.error })}</PreviewMessage>;
   if (trustRequired) return <RendererTrustPrompt projectPath={project.path} onTrust={trustRenderer} />;
   if (loadError) {
     const detail = loadDiagnostics.length > 0 ? formatRendererDiagnostics(loadDiagnostics) : loadError;
-    return <PreviewMessage mono>{`界面风格加载失败（${rendererId}）：\n\n${detail}`}</PreviewMessage>;
+    return <PreviewMessage mono>{t("script.nodePreview.rendererLoadError", { rendererId, detail })}</PreviewMessage>;
   }
   if (!renderer) {
     // 与 Preview 一致的加载骨架：16:9 舞台占位 + 说明文字
     return (
       <div style={loadingShellStyle}>
         <div className="gs-skeleton" style={loadingStageStyle} />
-        <div style={loadingHintStyle}>加载界面风格中…</div>
+        <div style={loadingHintStyle}>{t("script.nodePreview.loadingRenderer")}</div>
       </div>
     );
   }
-  if (nodeData == null) return <PreviewMessage>节点无内容。保存后会在这里预览。</PreviewMessage>;
+  if (nodeData == null) return <PreviewMessage>{t("script.nodePreview.empty")}</PreviewMessage>;
 
   const startSelectValue = previewStartIndex == null ? "" : String(previewStartIndex);
   const startInStoryPoints = previewStartIndex != null && storyPoints.some((point) => point.index === previewStartIndex);
@@ -75,8 +77,8 @@ export function NodePreviewPanel({
           <Switch
             checked={followCursor}
             disabled={!followCursorAvailable}
-            label="跟随光标"
-            aria-label="跟随光标"
+            label={t("script.nodePreview.followCursor")}
+            aria-label={t("script.nodePreview.followCursor")}
             onChange={onFollowCursorChange}
           />
           <button
@@ -86,31 +88,31 @@ export function NodePreviewPanel({
               if (currentLineStartIndex != null) onPreviewStartChange(currentLineStartIndex);
             }}
             style={previewButtonStyle}
-            title="从光标所在行开始预览"
+            title={t("script.nodePreview.fromCursor")}
           >
             <Play size={12} />
-            从当前行
+            {t("script.nodePreview.currentLine")}
           </button>
           <select
             value={startSelectValue}
             onChange={(event) => onPreviewStartChange(event.target.value === "" ? null : Number(event.target.value))}
             style={previewSelectStyle}
-            aria-label="预览起点"
+            aria-label={t("script.nodePreview.startLabel")}
           >
-            <option value="">从节点开始</option>
+            <option value="">{t("script.nodePreview.nodeStart")}</option>
             {storyPoints.map((point) => (
               <option key={point.id} value={String(point.index)}>{point.label}</option>
             ))}
             {previewStartIndex != null && !startInStoryPoints && (
-              <option value={String(previewStartIndex)}>第 {previewStartIndex + 1} 条指令</option>
+              <option value={String(previewStartIndex)}>{t("script.nodePreview.instruction", { number: previewStartIndex + 1 })}</option>
             )}
           </select>
           <button
             type="button"
             onClick={() => player.seekBy(-1)}
             style={previewButtonStyle}
-            title="上一条指令"
-            aria-label="上一条指令"
+            title={t("script.nodePreview.previous")}
+            aria-label={t("script.nodePreview.previous")}
           >
             <StepBack size={12} />
           </button>
@@ -118,8 +120,8 @@ export function NodePreviewPanel({
             type="button"
             onClick={() => player.stepOnce()}
             style={previewButtonStyle}
-            title="下一条指令"
-            aria-label="下一条指令"
+            title={t("script.nodePreview.next")}
+            aria-label={t("script.nodePreview.next")}
           >
             <StepForward size={12} />
           </button>
@@ -129,7 +131,7 @@ export function NodePreviewPanel({
           <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
         </StageFrame>
       </div>
-      <BottomSheet title="运行状态" expandedHeight="min(300px, 60%)" defaultExpanded={false}>
+      <BottomSheet title={t("script.nodePreview.runtimeState")} expandedHeight="min(300px, 60%)" defaultExpanded={false}>
         <RuntimeStateInspector state={player.state} currentNodeLabel={`${node.title} (${node.id})`} dock="bottom" />
       </BottomSheet>
     </div>

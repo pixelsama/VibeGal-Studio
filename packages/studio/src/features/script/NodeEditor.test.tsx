@@ -19,6 +19,7 @@ import {
 import { isSaveKeyboardShortcut } from "./unsavedChanges";
 import { NodeEditorToolbar } from "./NodeEditorToolbar";
 import type { ProjectData } from "../../lib/types";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://${path}`,
@@ -159,6 +160,43 @@ describe("NodeEditor scenario surface", () => {
     expect(html).not.toContain("节点出口");
     expect(html).not.toContain("连接下一个节点");
     expect(html).not.toContain("添加玩家选择");
+  });
+
+  it("renders editor chrome in English while preserving the creator-authored node", () => {
+    const node = { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 } };
+    const project: ProjectData = {
+      path: "/tmp/vibegal-test",
+      meta: { name: "Test", activeRendererId: "default", createdAt: "2026-01-01T00:00:00.000Z" },
+      content: {
+        manifest: { characters: {}, backgrounds: {}, audio: { bgm: {}, sfx: {}, voice: {} } },
+        meta: { stage: { width: 1280, height: 720 } },
+      },
+      rendererIds: ["default"],
+      graph: { version: 1, entryNodeId: "start", nodes: [node], edges: [] },
+      nodes: [{ relPath: "nodes/start.json", data: [{ t: "narrate", text: "新的故事从这里开始。" }] }],
+      projectReport: { projectIssues: [] },
+    };
+    const html = renderToStaticMarkup(
+      createElement(
+        StudioI18nProvider,
+        { preference: "en" },
+        createElement(NodeEditor, {
+          project,
+          rendererId: "default",
+          node,
+          nodeData: [{ t: "narrate", text: "新的故事从这里开始。" }],
+          onSaved: () => {},
+        }),
+      ),
+    );
+
+    expect(html).toContain('aria-label="Script text"');
+    expect(html).toContain('aria-label="Toggle properties panel"');
+    expect(html).toContain('aria-label="Resize properties panel"');
+    expect(html).toContain("Node summary");
+    expect(html).toContain("开始");
+    expect(html).toContain("新的故事从这里开始。");
+    expect(html).not.toContain("切换属性面板");
   });
 
   it("shows starter templates instead of a blank editor when the node is empty", () => {

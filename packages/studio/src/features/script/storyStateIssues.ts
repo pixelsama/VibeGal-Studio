@@ -8,20 +8,23 @@ import type { Manifest, VariableRegistry } from "@vibegal/engine";
 import type { NodeEntry, ProjectGraph, ProjectIssue } from "../../lib/types";
 import { analyzeGraphVariables } from "./variableAnalysis";
 import { describeVariableIssue } from "./storyState";
+import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 
 export function collectStoryStateIssues(input: {
   graph?: ProjectGraph | null;
   nodes?: NodeEntry[];
   registry?: VariableRegistry;
   manifest?: Manifest;
+  t?: StudioTranslator;
 }): ProjectIssue[] {
   if (!input.graph) return [];
+  const t = input.t ?? translateZhCN;
   const analysis = analyzeGraphVariables(input.graph, input.nodes, input.registry);
   const issues: ProjectIssue[] = [];
 
   for (const entry of analysis.variables) {
     for (const issue of entry.issues) {
-      const described = describeVariableIssue(issue, entry.name, input.registry, input.manifest);
+      const described = describeVariableIssue(issue, entry.name, input.registry, input.manifest, t);
       // 点击后跳到能改它的位置：优先条件所在的边，否则第一处写入。
       const read = entry.reads[0];
       const write = entry.writes[0];
@@ -41,7 +44,7 @@ export function collectStoryStateIssues(input: {
       severity: "error",
       source: "variables",
       code: "invalid_condition",
-      message: `分流条件写错了：${issue.message}`,
+      message: t("script.stateIssue.invalidCondition", { detail: issue.message }),
       nodeId: issue.nodeId,
       edgeId: issue.edgeId,
       file: issue.file,
@@ -59,7 +62,11 @@ export function collectStoryStateIssues(input: {
  * 引用它的条件会静默失效（求值恒为 false，玩家永远走不到那条分支），静态分析
  * 原本看不出来。这里补上这个缺口。
  */
-export function collectDanglingExperienceIssues(graph?: ProjectGraph | null, nodes?: NodeEntry[]): ProjectIssue[] {
+export function collectDanglingExperienceIssues(
+  graph?: ProjectGraph | null,
+  nodes?: NodeEntry[],
+  t: StudioTranslator = translateZhCN,
+): ProjectIssue[] {
   if (!graph) return [];
   const analysis = analyzeGraphVariables(graph, nodes);
   const edgeIds = new Set(graph.edges.map((edge) => edge.id));
@@ -75,8 +82,8 @@ export function collectDanglingExperienceIssues(graph?: ProjectGraph | null, nod
       source: "variables",
       code: "dangling_story_experience",
       message: dangling.kind === "chose"
-        ? `有条分流判断「玩家选过某个选项」，但那个选项已经被删掉了，这条分流永远走不到。`
-        : `有条分流判断「玩家到过某个节点」，但那个节点已经被删掉了，这条分流永远走不到。`,
+        ? t("script.stateIssue.danglingChoice")
+        : t("script.stateIssue.danglingNode"),
       ...(read?.edgeId ? { edgeId: read.edgeId, nodeId: read.nodeId, file: read.file, jsonPath: read.jsonPath } : {}),
     });
   }

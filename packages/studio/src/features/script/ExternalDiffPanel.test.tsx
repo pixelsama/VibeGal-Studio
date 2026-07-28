@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ExternalDiffPanel } from "./ExternalDiffPanel";
 import type { DiffRow } from "./externalDiff";
+import { StudioI18nProvider } from "../../lib/i18n";
 
 const ROWS: DiffRow[] = [
   { type: "same", text: "夜深了。" },
@@ -58,5 +59,28 @@ describe("ExternalDiffPanel", () => {
 
     expect(html).toContain("正在获取外部版本");
     expect(html).not.toContain('data-diff-type=');
+  });
+
+  it("renders English conflict chrome while preserving draft text", () => {
+    const html = renderToStaticMarkup(createElement(
+      StudioI18nProvider,
+      { preference: "en" },
+      createElement(ExternalDiffPanel, {
+        writeConflict: true,
+        loading: false,
+        rows: ROWS,
+        saving: false,
+        onLoadExternal: () => {},
+        onSaveDraftCopy: () => {},
+        onDismiss: () => {},
+      }),
+    ));
+
+    expect(html).toContain("Save conflict: the file changed externally");
+    expect(html).toContain("Load external version");
+    expect(html).toContain("Save draft copy");
+    expect(html).toContain("Keep editing");
+    expect(html).toContain("akari: 新台词");
+    expect(html).not.toContain("保存冲突");
   });
 });

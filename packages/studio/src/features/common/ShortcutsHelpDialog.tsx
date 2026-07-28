@@ -7,34 +7,35 @@
  */
 import { useEffect } from "react";
 import { getDesktopPlatform, type DesktopPlatform } from "../../lib/platform";
+import { useStudioI18n, type StudioMessageKey } from "../../lib/i18n";
 
 export interface ShortcutItem {
   keys: string[];
-  label: string;
+  labelKey: StudioMessageKey;
 }
 
 export interface ShortcutSection {
-  title: string;
+  titleKey: StudioMessageKey;
   items: ShortcutItem[];
 }
 
 export const SHORTCUT_SECTIONS: ShortcutSection[] = [
   {
-    title: "通用",
+    titleKey: "shortcuts.general",
     items: [
-      { keys: ["Ctrl", "S"], label: "保存当前编辑（节点 / 资产草稿 / 项目设置）" },
-      { keys: ["Ctrl", "K"], label: "命令面板：跳转节点、切换工作台" },
-      { keys: ["?"], label: "打开 / 关闭本帮助" },
-      { keys: ["Esc"], label: "关闭弹窗与面板" },
+      { keys: ["Ctrl", "S"], labelKey: "shortcuts.save" },
+      { keys: ["Ctrl", "K"], labelKey: "shortcuts.commandPalette" },
+      { keys: ["?"], labelKey: "shortcuts.toggleHelp" },
+      { keys: ["Esc"], labelKey: "shortcuts.close" },
     ],
   },
   {
-    title: "图编辑（脚本工作台）",
+    titleKey: "shortcuts.graph",
     items: [
-      { keys: ["Ctrl", "Z"], label: "撤销" },
-      { keys: ["Ctrl", "Shift", "Z"], label: "重做（也可用 Ctrl+Y）" },
-      { keys: ["Delete"], label: "删除选中的节点或连线（Backspace 同效）" },
-      { keys: ["右键"], label: "画布空白或节点上打开操作菜单" },
+      { keys: ["Ctrl", "Z"], labelKey: "shortcuts.undo" },
+      { keys: ["Ctrl", "Shift", "Z"], labelKey: "shortcuts.redo" },
+      { keys: ["Delete"], labelKey: "shortcuts.deleteSelection" },
+      { keys: ["ContextMenu"], labelKey: "shortcuts.contextMenu" },
     ],
   },
 ];
@@ -61,6 +62,7 @@ export function isShortcutsHelpToggle(event: HelpToggleKeyEvent): boolean {
 }
 
 export function ShortcutsHelpDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useStudioI18n();
   const platform = getDesktopPlatform();
 
   useEffect(() => {
@@ -81,21 +83,30 @@ export function ShortcutsHelpDialog({ onClose }: { onClose: () => void }) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-label="键盘快捷键" className="gs-anim-pop" style={dialogStyle}>
-        <div style={titleStyle}>键盘快捷键</div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("shortcuts.title")}
+        className="gs-anim-pop"
+        style={dialogStyle}
+      >
+        <div style={titleStyle}>{t("shortcuts.title")}</div>
         {SHORTCUT_SECTIONS.map((section) => (
-          <section key={section.title} style={sectionStyle}>
-            <div style={sectionTitleStyle}>{section.title}</div>
+          <section key={section.titleKey} style={sectionStyle}>
+            <div style={sectionTitleStyle}>{t(section.titleKey)}</div>
             {section.items.map((item) => (
-              <div key={item.label} style={rowStyle}>
-                <span style={labelStyle}>{item.label}</span>
+              <div key={item.labelKey} style={rowStyle}>
+                <span style={labelStyle}>{t(item.labelKey)}</span>
                 <span style={keysStyle}>
-                  {shortcutKeysForPlatform(item.keys, platform).map((key, index) => (
-                    <span key={`${key}-${index}`}>
-                      {index > 0 && <span style={plusStyle}>+</span>}
-                      <kbd className="gs-kbd">{key}</kbd>
-                    </span>
-                  ))}
+                  {shortcutKeysForPlatform(item.keys, platform).map((key, index) => {
+                    const displayKey = key === "ContextMenu" ? t("shortcuts.key.contextMenu") : key;
+                    return (
+                      <span key={`${key}-${index}`}>
+                        {index > 0 && <span style={plusStyle}>+</span>}
+                        <kbd className="gs-kbd">{displayKey}</kbd>
+                      </span>
+                    );
+                  })}
                 </span>
               </div>
             ))}

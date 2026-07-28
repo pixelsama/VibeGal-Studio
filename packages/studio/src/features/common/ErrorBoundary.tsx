@@ -1,9 +1,12 @@
 import { Component, type CSSProperties, type ErrorInfo, type ReactNode } from "react";
+import { useStudioI18n } from "../../lib/i18n";
 
 export interface ErrorBoundaryProps {
   children?: ReactNode;
   /** 降级面板标题，便于定位是哪个区域出错 */
   title?: string;
+  defaultTitle?: string;
+  reloadLabel?: string;
 }
 
 interface ErrorBoundaryState {
@@ -31,14 +34,30 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (!error) return this.props.children;
     return (
       <div role="alert" style={containerStyle}>
-        <div style={titleStyle}>{this.props.title ?? "界面渲染出错"}</div>
+        <div style={titleStyle}>{this.props.title ?? this.props.defaultTitle ?? "界面渲染出错"}</div>
         <p style={messageStyle}>{error.message || String(error)}</p>
         <button type="button" style={buttonStyle} onClick={() => window.location.reload()}>
-          重新加载
+          {this.props.reloadLabel ?? "重新加载"}
         </button>
       </div>
     );
   }
+}
+
+export function LocalizedErrorBoundary({ children, title }: {
+  children?: ReactNode;
+  title?: string;
+}) {
+  const { t } = useStudioI18n();
+  return (
+    <ErrorBoundary
+      title={title}
+      defaultTitle={t("common.renderError")}
+      reloadLabel={t("common.reload")}
+    >
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 const containerStyle: CSSProperties = {

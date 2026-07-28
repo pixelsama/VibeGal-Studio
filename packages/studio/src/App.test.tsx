@@ -4,7 +4,7 @@ import App from "./App";
 
 vi.mock("./lib/theme", () => ({
   useAppSettings: () => ({
-    settings: { theme: "dark" },
+    settings: { theme: "dark", studioLanguage: "zh-CN" },
     loading: true,
     updateSettings: vi.fn(),
   }),

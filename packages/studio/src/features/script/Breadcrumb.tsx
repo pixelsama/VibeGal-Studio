@@ -1,3 +1,5 @@
+import { useStudioI18n } from "../../lib/i18n";
+
 interface BreadcrumbProps {
   view: "graph" | "node";
   selectedNodeTitle: string | null;
@@ -5,19 +7,20 @@ interface BreadcrumbProps {
 }
 
 export function Breadcrumb({ view, selectedNodeTitle, onBackToGraph }: BreadcrumbProps) {
+  const { t } = useStudioI18n();
   return (
     <div style={containerStyle}>
-      <span style={rootLabelStyle}>脚本</span>
+      <span style={rootLabelStyle}>{t("script.breadcrumb.root")}</span>
       <span style={separatorStyle}>/</span>
       {view === "graph" ? (
-        <span style={currentLabelStyle}>流程图</span>
+        <span style={currentLabelStyle}>{t("script.breadcrumb.flowchart")}</span>
       ) : (
         <>
           <button type="button" onClick={onBackToGraph} style={crumbButtonStyle}>
-            流程图
+            {t("script.breadcrumb.flowchart")}
           </button>
           <span style={separatorStyle}>/</span>
-          <span style={currentLabelStyle}>{selectedNodeTitle ?? "节点"}</span>
+          <span style={currentLabelStyle}>{selectedNodeTitle ?? t("script.breadcrumb.node")}</span>
         </>
       )}
     </div>

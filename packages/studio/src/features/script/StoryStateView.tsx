@@ -14,9 +14,22 @@ import { Button } from "../common/Button";
 import { EmptyState } from "../common/EmptyState";
 import { StateCard, NewStateForm, registerInferredVariable } from "./StoryStatePanel";
 import { analyzeGraphVariables, type VariableEntry } from "./variableAnalysis";
-import { KIND_LABEL, SCOPE_LABEL, describeVariableIssue, variableLabel } from "./storyState";
+import { describeVariableIssue, variableLabel } from "./storyState";
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 
 const KIND_ORDER: VariableKind[] = ["flag", "meter", "state", "counter", "text"];
+
+const KIND_MESSAGE_KEY = {
+  flag: "script.state.kind.flag",
+  meter: "script.state.kind.meter",
+  state: "script.state.kind.state",
+  counter: "script.state.kind.counter",
+  text: "script.state.kind.text",
+} as const;
+
+function kindLabel(kind: VariableKind, t: StudioTranslator): string {
+  return t(KIND_MESSAGE_KEY[kind]);
+}
 
 export interface StoryStateViewProps {
   registry?: VariableRegistry;
@@ -40,6 +53,7 @@ export function StoryStateView({
   onOpenNode,
   onSelectEdge,
 }: StoryStateViewProps) {
+  const { t } = useStudioI18n();
   const effectiveRegistry = registry ?? { version: 1 as const, variables: {} };
   const analysis = useMemo(
     () => analyzeGraphVariables(graph, nodes, effectiveRegistry),
@@ -92,8 +106,8 @@ export function StoryStateView({
             <Search size={14} aria-hidden="true" />
             <input
               className="gs-input"
-              aria-label="搜索故事状态"
-              placeholder="搜索"
+              aria-label={t("script.state.searchLabel")}
+              placeholder={t("script.state.searchPlaceholder")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -101,7 +115,7 @@ export function StoryStateView({
           {onChange && (
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={14} aria-hidden="true" />
-              新建状态
+              {t("script.state.newState")}
             </Button>
           )}
         </div>
@@ -112,7 +126,7 @@ export function StoryStateView({
             if (group.length === 0) return null;
             return (
               <section key={kind} className="gs-state-view__group">
-                <h4>{KIND_LABEL[kind]}</h4>
+                <h4>{kindLabel(kind, t)}</h4>
                 {group.map((item) => {
                   const usage = usageByName.get(item.name);
                   const problems = usage?.issues.length ?? 0;
@@ -126,7 +140,14 @@ export function StoryStateView({
                       <span className="gs-state-view__item-name">
                         {variableLabel(item.name, item.declaration, manifest)}
                       </span>
-                      {problems > 0 && <span className="gs-state-view__item-flag" title="有需要处理的问题">⚠</span>}
+                      {problems > 0 && (
+                        <span
+                          className="gs-state-view__item-flag"
+                          title={t("script.stateView.problem")}
+                        >
+                          ⚠
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -136,13 +157,13 @@ export function StoryStateView({
 
           {undeclared.length > 0 && (
             <section className="gs-state-view__group">
-              <h4>剧本里用到、还没登记</h4>
+              <h4>{t("script.stateView.undeclared")}</h4>
               {undeclared.map((entry) => (
                 <div key={entry.name} className="gs-story-state__undeclared-row">
                   <span>{entry.name}</span>
                   {onChange && (
                     <Button onClick={() => onChange(registerInferredVariable(effectiveRegistry, entry.name, entry.types))}>
-                      登记
+                      {t("script.state.register")}
                     </Button>
                   )}
                 </div>
@@ -156,6 +177,7 @@ export function StoryStateView({
         {creating && onChange ? (
           <NewStateForm
             existingNames={new Set(Object.keys(effectiveRegistry.variables))}
+            t={t}
             onCancel={() => setCreating(false)}
             onCreate={(name, declaration) => {
               onChange({ ...effectiveRegistry, variables: { ...effectiveRegistry.variables, [name]: declaration } });
@@ -166,9 +188,11 @@ export function StoryStateView({
         ) : isEmpty ? (
           <EmptyState
             icon={Plus}
-            title="还没有故事状态"
-            description="玩家的选择本身已经可以直接用在分流条件里。只有需要累积或记住的东西（好感度、拿到钥匙、当前路线）才要在这里建一个。"
-            action={onChange ? <Button variant="primary" onClick={() => setCreating(true)}>新建第一个状态</Button> : undefined}
+            title={t("script.stateView.empty.title")}
+            description={t("script.stateView.empty.description")}
+            action={onChange
+              ? <Button variant="primary" onClick={() => setCreating(true)}>{t("script.stateView.empty.action")}</Button>
+              : undefined}
           />
         ) : active && selected ? (
           <>
@@ -182,6 +206,7 @@ export function StoryStateView({
               onChange={(next) => update(selected, next)}
               onRename={onRename}
               onRemove={() => remove(selected)}
+              t={t}
             />
             <StateUsage
               name={selected}
@@ -192,10 +217,11 @@ export function StoryStateView({
               manifest={manifest}
               onOpenNode={onOpenNode}
               onSelectEdge={onSelectEdge}
+              t={t}
             />
           </>
         ) : (
-          <p className="gs-story-state__empty">没有匹配的故事状态。</p>
+          <p className="gs-story-state__empty">{t("script.stateView.noMatches")}</p>
         )}
       </div>
     </div>
@@ -215,6 +241,7 @@ function StateUsage({
   manifest,
   onOpenNode,
   onSelectEdge,
+  t,
 }: {
   name: string;
   declaration: VariableDeclaration;
@@ -224,15 +251,18 @@ function StateUsage({
   manifest?: Manifest;
   onOpenNode?: (nodeId: string, instructionIndex?: number) => void;
   onSelectEdge?: (edgeId: string) => void;
+  t: StudioTranslator;
 }) {
-  const nodeTitle = (nodeId?: string) => graph.nodes.find((node) => node.id === nodeId)?.title || nodeId || "未知节点";
+  const nodeTitle = (nodeId?: string) => graph.nodes.find((node) => node.id === nodeId)?.title
+    || nodeId
+    || t("script.stateView.unknownNode");
   const writes = usage?.writes ?? [];
   const reads = usage?.reads ?? [];
-  const issues = (usage?.issues ?? []).map((issue) => describeVariableIssue(issue, name, registry, manifest));
+  const issues = (usage?.issues ?? []).map((issue) => describeVariableIssue(issue, name, registry, manifest, t));
 
   return (
     <section className="gs-state-usage">
-      <h3>在故事里</h3>
+      <h3>{t("script.stateView.inStory")}</h3>
 
       {issues.length > 0 && (
         <div className="gs-state-usage__issues">
@@ -246,7 +276,9 @@ function StateUsage({
       )}
 
       <div className="gs-state-usage__block">
-        <h4>{writes.length === 0 ? "还没有任何地方改变它" : `${writes.length} 处改变它`}</h4>
+        <h4>{writes.length === 0
+          ? t("script.stateView.noWrites")
+          : t("script.stateView.writes", { count: writes.length })}</h4>
         {writes.map((point, index) => (
           <button
             key={`${point.nodeId}:${point.instructionIndex}:${index}`}
@@ -255,7 +287,9 @@ function StateUsage({
             onClick={() => point.nodeId && onOpenNode?.(point.nodeId, point.instructionIndex)}
           >
             <span>{nodeTitle(point.nodeId)}</span>
-            <span className="gs-state-usage__hint">第 {(point.instructionIndex ?? 0) + 1} 条 · 去看看</span>
+            <span className="gs-state-usage__hint">
+              {t("script.stateView.instruction", { number: (point.instructionIndex ?? 0) + 1 })}
+            </span>
           </button>
         ))}
       </div>
@@ -263,8 +297,10 @@ function StateUsage({
       <div className="gs-state-usage__block">
         <h4>
           {reads.length === 0
-            ? declaration.displayOnly ? "只给界面显示用，不参与分流" : "还没有任何分流用到它"
-            : `${reads.length} 处分流用到它`}
+            ? declaration.displayOnly
+              ? t("script.stateView.displayOnly")
+              : t("script.stateView.noReads")
+            : t("script.stateView.reads", { count: reads.length })}
         </h4>
         {reads.map((point, index) => (
           <button
@@ -273,8 +309,8 @@ function StateUsage({
             className="gs-state-usage__row"
             onClick={() => point.edgeId && onSelectEdge?.(point.edgeId)}
           >
-            <span>{nodeTitle(point.nodeId)} 的分流</span>
-            <span className="gs-state-usage__hint">去看看</span>
+            <span>{t("script.stateView.branchAt", { title: nodeTitle(point.nodeId) })}</span>
+            <span className="gs-state-usage__hint">{t("script.stateView.open")}</span>
           </button>
         ))}
       </div>
@@ -287,5 +323,3 @@ function matches(query: string, fields: Array<string | undefined>): boolean {
   if (!normalized) return true;
   return fields.some((field) => field?.toLowerCase().includes(normalized));
 }
-
-export { SCOPE_LABEL };
