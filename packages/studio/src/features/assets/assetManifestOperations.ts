@@ -1,3 +1,4 @@
+import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import type { FileRevision, Manifest } from "../../lib/types";
 import type { ToastInput } from "../common/Toast";
 
@@ -22,6 +23,7 @@ export interface SaveDraftManifestParams {
   onSaved: () => void | Promise<void>;
   setDraftManifest: (manifest: Manifest | null) => void;
   notify: (toast: ToastInput) => void;
+  t?: StudioTranslator;
   isDraftSnapshotCurrent?: () => boolean;
 }
 
@@ -33,6 +35,7 @@ export async function saveDraftManifest({
   onSaved,
   setDraftManifest,
   notify,
+  t,
   isDraftSnapshotCurrent,
 }: SaveDraftManifestParams): Promise<void> {
   if (!draftManifest) return;
@@ -44,6 +47,7 @@ export async function saveDraftManifest({
     onSaved,
     setDraftManifest,
     notify,
+    t,
     isDraftSnapshotCurrent,
   });
 }
@@ -60,6 +64,7 @@ export interface PersistManifestWithFeedbackParams {
   setDraftManifest: (manifest: Manifest | null) => void;
   notify: (toast: ToastInput) => void;
   expectedRevision?: FileRevision | null;
+  t?: StudioTranslator;
   isDraftSnapshotCurrent?: () => boolean;
 }
 
@@ -71,6 +76,7 @@ export async function persistManifestWithFeedback({
   onSaved,
   setDraftManifest,
   notify,
+  t = translateZhCN,
   isDraftSnapshotCurrent = () => true,
 }: PersistManifestWithFeedbackParams): Promise<void> {
   try {
@@ -79,25 +85,37 @@ export async function persistManifestWithFeedback({
     await onSaved();
   } catch (error) {
     if (isDraftSnapshotCurrent()) setDraftManifest(next);
-    notify(createManifestSaveFailureToast(error));
+    notify(createManifestSaveFailureToast(error, t));
   }
 }
 
-export function createManifestSaveFailureToast(error: unknown): ToastInput {
+export function createManifestSaveFailureToast(
+  error: unknown,
+  t: StudioTranslator = translateZhCN,
+): ToastInput {
   return {
     kind: "error",
-    message: "保存资源登记表失败",
-    detail: `${formatUnknownError(error)}。当前草稿已保留。`,
+    message: t("assets.manifestSaveFailed"),
+    detail: t("assets.manifestSaveFailedDetail", {
+      error: formatUnknownError(error),
+    }),
   };
 }
 
-export function createImportFailureToast(errors: string[], importedCount: number): ToastInput {
+export function createImportFailureToast(
+  errors: string[],
+  importedCount: number,
+  t: StudioTranslator = translateZhCN,
+): ToastInput {
   const failureCount = errors.length;
   return {
     kind: "error",
     message: importedCount > 0
-      ? `已导入 ${importedCount} 个资源，${failureCount} 个失败`
-      : `导入失败：${failureCount} 个资源失败`,
+      ? t("assets.importPartialFailed", {
+        imported: importedCount,
+        failed: failureCount,
+      })
+      : t("assets.importAllFailed", { failed: failureCount }),
     detail: errors.join("\n"),
   };
 }
@@ -112,36 +130,48 @@ export interface DeleteAssetAndPruneManifestRefsResult {
 export function createAssetDeleteFailureToast(
   result: DeleteAssetAndPruneManifestRefsResult,
   relPath: string,
+  t: StudioTranslator = translateZhCN,
 ): ToastInput | null {
+  const error = formatUnknownError(result.error);
+
   if (!result.deleted && result.manifestSaved) {
     return {
       kind: "error",
-      message: "引用已移除，但资产文件未删除",
-      detail: `${relPath}\n${formatUnknownError(result.error)}。文件仍在磁盘，可重新登记为资产。`,
+      message: t("assets.deleteFileAfterPruneFailed"),
+      detail: t("assets.deleteFileAfterPruneFailedDetail", {
+        path: relPath,
+        error,
+      }),
     };
   }
 
   if (!result.deleted && result.manifestSaveFailed) {
     return {
       kind: "error",
-      message: "资源登记表更新失败，未删除资产",
-      detail: `${relPath}\n${formatUnknownError(result.error)}。资产及原引用均已保留。`,
+      message: t("assets.deleteManifestBeforeFileFailed"),
+      detail: t("assets.deleteManifestBeforeFileFailedDetail", {
+        path: relPath,
+        error,
+      }),
     };
   }
 
   if (!result.deleted) {
     return {
       kind: "error",
-      message: "删除资产失败",
-      detail: `${relPath}\n${formatUnknownError(result.error)}`,
+      message: t("assets.deleteFileFailed"),
+      detail: `${relPath}\n${error}`,
     };
   }
 
   if (result.manifestSaveFailed) {
     return {
       kind: "error",
-      message: "资产已删除，但资源登记表更新失败",
-      detail: `${relPath}\n${formatUnknownError(result.error)}。请刷新项目后检查悬空引用。`,
+      message: t("assets.deleteManifestAfterFileFailed"),
+      detail: t("assets.deleteManifestAfterFileFailedDetail", {
+        path: relPath,
+        error,
+      }),
     };
   }
 

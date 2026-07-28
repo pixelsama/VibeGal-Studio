@@ -165,7 +165,7 @@ export function AssetsWorkspace({
     }
 
     if (manifestSaveError) {
-      const failure = createManifestSaveFailureToast(manifestSaveError);
+      const failure = createManifestSaveFailureToast(manifestSaveError, t);
       notify({
         ...failure,
         detail: errors.length > 0
@@ -177,7 +177,7 @@ export function AssetsWorkspace({
           : failure.detail,
       });
     } else if (errors.length > 0) {
-      notify(createImportFailureToast(errors, newPaths.length));
+      notify(createImportFailureToast(errors, newPaths.length, t));
     } else if (newPaths.length > 0) {
       notify({ kind: "success", message: t("assets.importSuccess", { count: newPaths.length }) });
     }
@@ -238,7 +238,7 @@ export function AssetsWorkspace({
       deleteAssetFn: deleteAsset,
       saveManifestFn: saveManifestQueued,
     });
-    const failureToast = createAssetDeleteFailureToast(result, relPath);
+    const failureToast = createAssetDeleteFailureToast(result, relPath, t);
     if (failureToast) {
       notify(failureToast);
     }

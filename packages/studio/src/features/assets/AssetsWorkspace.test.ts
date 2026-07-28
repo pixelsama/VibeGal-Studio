@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { StudioI18nProvider } from "../../lib/i18n";
+import { resolveCatalogMessage, StudioI18nProvider } from "../../lib/i18n";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://${path}`,
@@ -26,6 +26,7 @@ import {
   DraftManifestBanner,
   createImportFailureToast,
   createAssetDeleteFailureToast,
+  createManifestSaveFailureToast,
   deleteAssetAndPruneManifestRefs,
   persistManifestWithFeedback,
   saveDraftManifest,
@@ -616,6 +617,55 @@ describe("asset workspace feedback", () => {
     expect(toast?.kind).toBe("error");
     expect(toast?.message).toBe("资产已删除，但资源登记表更新失败");
     expect(toast?.detail).toContain("assets/backgrounds/sky.png");
+    expect(toast?.detail).toContain("revision conflict");
+  });
+
+  it("translates save, import, and delete failures while preserving literal details", () => {
+    const t = (key: Parameters<typeof resolveCatalogMessage>[1], params?: Parameters<typeof resolveCatalogMessage>[2]) => (
+      resolveCatalogMessage("en", key, params)
+    );
+    const saveToast = createManifestSaveFailureToast(
+      new Error("revision conflict"),
+      t,
+    );
+    const importToast = createImportFailureToast([
+      "bad.png: permission denied",
+      "missing.png: not found",
+    ], 1, t);
+    const deleteToast = createAssetDeleteFailureToast(
+      { deleted: true, manifestSaved: false, manifestSaveFailed: true, error: new Error("revision conflict") },
+      "assets/backgrounds/sky.png",
+      t,
+    );
+
+    expect(saveToast.message).toBe("Failed to save the asset registry");
+    expect(saveToast.detail).toContain("revision conflict");
+    expect(saveToast.detail).toContain("current draft has been preserved");
+    expect(importToast.message).toBe("Imported 1 assets; 2 failed");
+    expect(importToast.detail).toBe("bad.png: permission denied\nmissing.png: not found");
+    expect(deleteToast?.message).toBe("The asset was deleted, but the asset registry update failed");
+    expect(deleteToast?.detail).toContain("assets/backgrounds/sky.png");
+    expect(deleteToast?.detail).toContain("revision conflict");
+  });
+
+  it("uses the mounted translator for persistence failures", async () => {
+    let toast: ToastInput | null = null;
+
+    await persistManifestWithFeedback({
+      projectPath: "/project",
+      next: base,
+      saveManifestFn: async () => {
+        throw new Error("revision conflict");
+      },
+      onSaved: () => {},
+      setDraftManifest: () => {},
+      notify: (message) => {
+        toast = message;
+      },
+      t: (key, params) => resolveCatalogMessage("en", key, params),
+    });
+
+    expect(toast?.message).toBe("Failed to save the asset registry");
     expect(toast?.detail).toContain("revision conflict");
   });
 

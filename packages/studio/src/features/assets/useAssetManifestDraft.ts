@@ -14,6 +14,7 @@ import {
 import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
 import { type ToastInput } from "../common/Toast";
 import { useSaveShortcut } from "../common/useSaveShortcut";
+import { useStudioI18n } from "../../lib/i18n";
 import {
   discardDraftManifest,
   persistManifestWithFeedback,
@@ -35,6 +36,7 @@ export function useAssetManifestDraft({
   onDirtyChange,
   notify,
 }: UseAssetManifestDraftOptions) {
+  const { t } = useStudioI18n();
   const draftStorage = useMemo(getSessionDraftStorage, []);
   const draftStorageKey = useMemo(
     () => projectDraftStorageKey(project.path, "content/manifest.json"),
@@ -129,6 +131,7 @@ export function useAssetManifestDraft({
         onSaved,
         setDraftManifest,
         notify,
+        t,
         isDraftSnapshotCurrent: () => isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current),
       });
     } finally {
@@ -146,6 +149,7 @@ export function useAssetManifestDraft({
       onSaved,
       setDraftManifest,
       notify,
+      t,
       isDraftSnapshotCurrent: () => isDraftSnapshotCurrent(savedDraftVersion, draftVersionRef.current),
     });
   }
