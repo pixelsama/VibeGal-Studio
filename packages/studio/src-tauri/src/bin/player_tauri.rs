@@ -134,17 +134,21 @@ fn read_window_metadata(root: &Path) -> (String, f64, f64) {
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
         .unwrap_or(Value::Null);
     let title = manifest
-        .get("title")
+        .get("productName")
         .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| manifest.get("title").and_then(Value::as_str))
         .unwrap_or("VibeGal Game")
         .to_string();
     let width = manifest
-        .pointer("/stage/width")
+        .pointer("/viewport/width")
         .and_then(Value::as_f64)
+        .or_else(|| manifest.pointer("/stage/width").and_then(Value::as_f64))
         .unwrap_or(1280.0);
     let height = manifest
-        .pointer("/stage/height")
+        .pointer("/viewport/height")
         .and_then(Value::as_f64)
+        .or_else(|| manifest.pointer("/stage/height").and_then(Value::as_f64))
         .unwrap_or(720.0);
     (title, width, height)
 }
@@ -321,6 +325,29 @@ mod tests {
         );
         assert_eq!(content_type(Path::new("content/bgm.mp3")), "audio/mpeg");
         assert_eq!(content_type(Path::new("content/movie.webm")), "video/webm");
+    }
+
+    #[test]
+    fn window_metadata_prefers_distribution_values() {
+        let root = std::env::temp_dir().join(format!(
+            "vibegal-player-metadata-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("game.manifest.json"),
+            r#"{"title":"Story","productName":"Package","stage":{"width":1280,"height":720},"viewport":{"mode":"fill","width":1440,"height":810}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_window_metadata(&root),
+            ("Package".to_string(), 1440.0, 810.0)
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

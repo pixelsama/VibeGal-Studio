@@ -11,12 +11,28 @@ const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "build-de
 async function createWebDist(root) {
   const dist = path.join(root, "web-dist");
   await mkdir(path.join(dist, "runtime"), { recursive: true });
+  await mkdir(path.join(dist, "distribution-icons"), { recursive: true });
+  await writeFile(path.join(dist, "distribution-icons/icon.ico"), "derived-icon");
+  await writeFile(path.join(dist, "distribution-icons/icon-512x512.png"), "derived-icon");
   await writeFile(path.join(dist, "index.html"), '<div id="root"></div>');
   await writeFile(path.join(dist, "runtime/bundle.js"), "export {};");
   await writeFile(path.join(dist, "game.manifest.json"), JSON.stringify({
     schemaVersion: 1,
     projectId: "desktop-test",
-    title: "桌面测试游戏",
+    title: "内容标题",
+    productName: "桌面测试游戏",
+    version: "2.3.4-beta.1",
+    viewport: { mode: "fill", width: 1440, height: 810 },
+    icon: "assets/icon.png",
+    icons: {
+      source: "assets/icon.png",
+      web: "content/assets/icon.png",
+      desktop: {
+        png: { "512": "distribution-icons/icon-512x512.png" },
+        ico: "distribution-icons/icon.ico",
+      },
+    },
+    updates: { enabled: false, channel: "preview" },
     buildTarget: "web",
     basePath: "./",
   }));
@@ -53,6 +69,17 @@ test("tauri runtime packages the exact web dist with a reusable player", async (
     const manifest = JSON.parse(await readFile(path.join(outDir, "desktop.manifest.json"), "utf8"));
     assert.equal(manifest.runtime, "tauri");
     assert.equal(manifest.mode, "lightweight");
+    assert.equal(manifest.title, "内容标题");
+    assert.equal(manifest.productName, "桌面测试游戏");
+    assert.equal(manifest.version, "2.3.4-beta.1");
+    assert.deepEqual(manifest.viewport, { mode: "fill", width: 1440, height: 810 });
+    assert.equal(manifest.icon, "assets/icon.png");
+    assert.match(manifest.bundleIcon, /vibegal-icon\.(?:ico|png)$/);
+    assert.equal(
+      await readFile(path.join(outDir, manifest.bundleIcon), "utf8"),
+      "derived-icon",
+    );
+    assert.deepEqual(manifest.updates, { enabled: false, channel: "preview" });
     if (process.platform === "darwin") {
       // macOS 导出为真正的 .app bundle：裸二进制下 WebKit/NSBundle 会崩溃。
       assert.equal(output.executable, "桌面测试游戏.app/Contents/MacOS/桌面测试游戏");
@@ -60,6 +87,7 @@ test("tauri runtime packages the exact web dist with a reusable player", async (
       const plist = await readFile(path.join(outDir, "桌面测试游戏.app/Contents/Info.plist"), "utf8");
       assert.match(plist, /<key>CFBundleExecutable<\/key>\s*<string>桌面测试游戏<\/string>/);
       assert.match(plist, /<key>CFBundlePackageType<\/key>\s*<string>APPL<\/string>/);
+      assert.match(plist, /<key>CFBundleShortVersionString<\/key>\s*<string>2\.3\.4-beta\.1<\/string>/);
       await access(path.join(outDir, manifest.webDist, "game.manifest.json"));
       assert.equal(
         await readFile(path.join(outDir, manifest.webDist, "runtime/bundle.js"), "utf8"),
@@ -125,6 +153,9 @@ test("electron runtime packages the exact web dist with the bundled chromium she
     const appResources = process.platform === "darwin"
       ? path.join(outDir, "桌面测试游戏.app/Contents/Resources/app")
       : path.join(outDir, "resources/app");
+    const packageManifest = JSON.parse(await readFile(path.join(appResources, "package.json"), "utf8"));
+    assert.equal(packageManifest.productName, "桌面测试游戏");
+    assert.equal(packageManifest.version, "2.3.4-beta.1");
     const mainSource = await readFile(path.join(appResources, "main.cjs"), "utf8");
     assert.match(mainSource, /let mainWindow;/, "the Electron window must stay strongly referenced");
     assert.match(mainSource, /vibegal:\/\/game/, "the player should use a stable local origin");
@@ -134,11 +165,23 @@ test("electron runtime packages the exact web dist with the bundled chromium she
     if (process.platform === "darwin") {
       const plist = await readFile(path.join(outDir, "桌面测试游戏.app/Contents/Info.plist"), "utf8");
       assert.match(plist, /<string>桌面测试游戏<\/string>/, "the macOS bundle should be rebranded to the product name");
+      assert.match(plist, /<key>CFBundleShortVersionString<\/key>\s*<string>2\.3\.4-beta\.1<\/string>/);
     }
     const manifest = JSON.parse(await readFile(path.join(outDir, "desktop.manifest.json"), "utf8"));
     assert.equal(manifest.runtime, "electron");
     assert.equal(manifest.mode, "compatible");
     assert.equal(manifest.electronVersion, "test-electron");
+    assert.equal(manifest.title, "内容标题");
+    assert.equal(manifest.productName, "桌面测试游戏");
+    assert.equal(manifest.version, "2.3.4-beta.1");
+    assert.deepEqual(manifest.viewport, { mode: "fill", width: 1440, height: 810 });
+    assert.equal(manifest.icon, "assets/icon.png");
+    assert.match(manifest.bundleIcon, /vibegal-icon\.(?:ico|png)$/);
+    assert.equal(
+      await readFile(path.join(outDir, manifest.bundleIcon), "utf8"),
+      "derived-icon",
+    );
+    assert.deepEqual(manifest.updates, { enabled: false, channel: "preview" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

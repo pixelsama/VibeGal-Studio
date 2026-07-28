@@ -2991,6 +2991,163 @@ fn built_at_iso() -> String {
     format!("unix:{secs}")
 }
 
+fn html_escape_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn distribution_warning(
+    code: &str,
+    message: impl Into<String>,
+    file: Option<String>,
+) -> app_lib::ProjectIssue {
+    app_lib::ProjectIssue {
+        severity: app_lib::GraphIssueSeverity::Warn,
+        source: "distribution".to_string(),
+        code: code.to_string(),
+        message: message.into(),
+        file,
+        json_path: Some("$.distribution.icon".to_string()),
+        node_id: None,
+        edge_id: None,
+    }
+}
+
+fn inspect_distribution_icon(
+    project_root: &Path,
+    icon: Option<&str>,
+) -> Option<app_lib::ProjectIssue> {
+    let Some(icon) = icon else {
+        return Some(distribution_warning(
+            "distribution_icon_missing",
+            "未配置分发图标；构建产物将使用运行壳或浏览器默认图标",
+            Some("content/meta.json".to_string()),
+        ));
+    };
+    let content_root = match fs::canonicalize(project_root.join("content")) {
+        Ok(root) => root,
+        Err(error) => {
+            return Some(distribution_warning(
+                "distribution_icon_unavailable",
+                format!("无法定位项目 content 目录：{error}"),
+                Some("content/meta.json".to_string()),
+            ));
+        }
+    };
+    let source = match fs::canonicalize(project_root.join("content").join(icon)) {
+        Ok(source) if source.is_file() && source.starts_with(&content_root) => source,
+        _ => {
+            return Some(distribution_warning(
+                "distribution_icon_unavailable",
+                format!("分发图标不存在或不在项目 content 目录内：{icon}"),
+                Some(format!("content/{icon}")),
+            ));
+        }
+    };
+    image::open(source).err().map(|error| {
+        distribution_warning(
+            "distribution_icon_conversion_failed",
+            format!("分发图标无法转换为平台尺寸：{error}"),
+            Some(format!("content/{icon}")),
+        )
+    })
+}
+
+fn prepare_distribution_icons(
+    project_root: &Path,
+    out_dir: &Path,
+    icon: Option<&str>,
+) -> Result<(serde_json::Value, Vec<app_lib::ProjectIssue>), String> {
+    let Some(icon) = icon else {
+        return Ok((
+            serde_json::json!({
+                "source": null,
+                "web": null,
+                "desktop": null,
+            }),
+            vec![distribution_warning(
+                "distribution_icon_missing",
+                "未配置分发图标；构建产物将使用运行壳或浏览器默认图标",
+                Some("content/meta.json".to_string()),
+            )],
+        ));
+    };
+
+    let source = project_root.join("content").join(icon);
+    let canonical_content = fs::canonicalize(project_root.join("content"))
+        .map_err(|error| format!("定位 content 目录失败: {error}"))?;
+    let canonical_source = match fs::canonicalize(&source) {
+        Ok(source) if source.is_file() && source.starts_with(&canonical_content) => source,
+        _ => {
+            return Ok((
+                serde_json::json!({
+                    "source": icon,
+                    "web": null,
+                    "desktop": null,
+                }),
+                vec![distribution_warning(
+                    "distribution_icon_unavailable",
+                    format!("分发图标不存在或不在项目 content 目录内：{icon}"),
+                    Some(format!("content/{icon}")),
+                )],
+            ));
+        }
+    };
+
+    let image = match image::open(&canonical_source) {
+        Ok(image) => image,
+        Err(error) => {
+            return Ok((
+                serde_json::json!({
+                    "source": icon,
+                    "web": format!("content/{icon}"),
+                    "desktop": null,
+                }),
+                vec![distribution_warning(
+                    "distribution_icon_conversion_failed",
+                    format!("分发图标无法转换为平台尺寸：{error}"),
+                    Some(format!("content/{icon}")),
+                )],
+            ));
+        }
+    };
+
+    let icon_dir = out_dir.join("distribution-icons");
+    fs::create_dir_all(&icon_dir)
+        .map_err(|error| format!("创建分发图标目录失败 {}: {error}", icon_dir.display()))?;
+    let mut sizes = serde_json::Map::new();
+    for size in [16u32, 32, 64, 128, 256, 512] {
+        let filename = format!("icon-{size}x{size}.png");
+        image
+            .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+            .save(icon_dir.join(&filename))
+            .map_err(|error| format!("生成 {size}x{size} 分发图标失败: {error}"))?;
+        sizes.insert(size.to_string(), serde_json::json!(filename));
+    }
+    let ico_path = icon_dir.join("icon.ico");
+    image
+        .resize_exact(256, 256, image::imageops::FilterType::Lanczos3)
+        .save_with_format(&ico_path, image::ImageFormat::Ico)
+        .map_err(|error| format!("生成 Windows 分发图标失败: {error}"))?;
+
+    Ok((
+        serde_json::json!({
+            "source": icon,
+            "web": format!("content/{icon}"),
+            "desktop": {
+                "directory": "distribution-icons",
+                "png": sizes,
+                "ico": "distribution-icons/icon.ico",
+            },
+        }),
+        vec![],
+    ))
+}
+
 fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
     emit_build_progress(
         options.progress,
@@ -3009,7 +3166,17 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
             vec![],
         )
     })?;
-    let issues = validation_issues(&project);
+    let mut issues = validation_issues(&project);
+    let project_root = PathBuf::from(&project.path);
+    let distribution_icon = project
+        .content
+        .meta
+        .get("distribution")
+        .and_then(|value| value.get("icon"))
+        .and_then(serde_json::Value::as_str);
+    if let Some(issue) = inspect_distribution_icon(&project_root, distribution_icon) {
+        issues.push(issue);
+    }
     let errors: Vec<_> = issues
         .iter()
         .filter(|issue| project_issue_is_error(issue))
@@ -3070,7 +3237,6 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
         ));
     }
 
-    let project_root = PathBuf::from(&project.path);
     ensure_export_out_dir_safe(&project_root, &options.out_dir)?;
     if options.out_dir.exists() {
         fs::remove_dir_all(&options.out_dir).map_err(|e| {
@@ -3169,12 +3335,77 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
         .get("stage")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({ "width": 1280, "height": 720 }));
+    let distribution = project
+        .content
+        .meta
+        .get("distribution")
+        .and_then(serde_json::Value::as_object);
+    let version = distribution
+        .and_then(|value| value.get("version"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("0.1.0");
+    let product_name = distribution
+        .and_then(|value| value.get("productName"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(title);
+    let viewport = distribution
+        .and_then(|value| value.get("viewport"))
+        .cloned()
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "mode": "fit",
+                "width": stage.get("width").cloned().unwrap_or_else(|| serde_json::json!(1280)),
+                "height": stage.get("height").cloned().unwrap_or_else(|| serde_json::json!(720)),
+            })
+        });
+    let icon = distribution
+        .and_then(|value| value.get("icon"))
+        .and_then(serde_json::Value::as_str);
+    let (icons, icon_warnings) = prepare_distribution_icons(&project_root, &options.out_dir, icon)
+        .map_err(|message| {
+            build_error(
+                "distribution_icon_prepare_failed",
+                message,
+                "distribution",
+                icon.map(|value| format!("content/{value}")),
+                Some(renderer_id.clone()),
+                vec![],
+            )
+        })?;
+    if !icon_warnings.is_empty()
+        && !issues.iter().any(|issue| {
+            icon_warnings
+                .iter()
+                .any(|warning| warning.code == issue.code && warning.file == issue.file)
+        })
+    {
+        issues.extend(icon_warnings);
+    }
+    let updates_enabled = distribution
+        .and_then(|value| value.get("updates"))
+        .is_some_and(|value| value.get("endpoint").is_some() && value.get("publicKey").is_some());
+    let updates = distribution
+        .and_then(|value| value.get("updates"))
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({ "channel": "stable" }));
     let built_at = built_at_iso();
     let game_manifest = serde_json::json!({
         "schemaVersion": 1,
         "projectId": project.meta.name,
         "title": title,
+        "productName": product_name,
+        "version": version,
         "stage": stage,
+        "viewport": viewport,
+        "icon": icon,
+        "icons": icons,
+        "updates": {
+            "enabled": updates_enabled,
+            "channel": updates.get("channel").cloned().unwrap_or_else(|| serde_json::json!("stable")),
+            "endpoint": updates.get("endpoint").cloned(),
+            "publicKey": updates.get("publicKey").cloned(),
+        },
         "rendererId": renderer_id.clone(),
         "rendererContractVersion": 1,
         "contractVersion": 1,
@@ -3203,17 +3434,54 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
             )
         },
     )?;
+    let title_html = html_escape_text(title);
+    let web_app_manifest = serde_json::json!({
+        "name": product_name,
+        "short_name": product_name,
+        "start_url": options.base_path.clone(),
+        "display": "standalone",
+        "version": version,
+        "icons": icons
+            .get("desktop")
+            .and_then(|value| value.get("png"))
+            .and_then(serde_json::Value::as_object)
+            .map(|sizes| sizes.iter().filter_map(|(size, filename)| {
+                filename.as_str().map(|filename| serde_json::json!({
+                    "src": format!("distribution-icons/{filename}"),
+                    "sizes": format!("{size}x{size}"),
+                    "type": "image/png",
+                }))
+            }).collect::<Vec<_>>())
+            .unwrap_or_default(),
+    });
+    write_json_file(
+        &options.out_dir.join("manifest.webmanifest"),
+        &web_app_manifest,
+    )
+    .map_err(|message| {
+        build_error(
+            "write_manifest_failed",
+            message,
+            "manifest",
+            Some("manifest.webmanifest".to_string()),
+            Some(renderer_id.clone()),
+            vec![],
+        )
+    })?;
     write_text_file(
         &options.out_dir.join("index.html"),
-        r#"<!doctype html>
+        &format!(
+            r#"<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VibeGal-Studio Export</title>
+    <meta name="vibegal-viewport-mode" content="{}" />
+    <link rel="manifest" href="{}manifest.webmanifest" />
+    <title>{}</title>
     <style>
-      html, body, #root { width: 100%; height: 100%; margin: 0; background: #000; }
-      body { overflow: hidden; }
+      html, body, #root {{ width: 100%; height: 100%; margin: 0; background: #000; }}
+      body {{ overflow: hidden; }}
     </style>
   </head>
   <body>
@@ -3222,6 +3490,15 @@ fn build_web_project(options: BuildOptions) -> Result<BuildOutput, BuildError> {
   </body>
 </html>
 "#,
+            html_escape_text(
+                viewport
+                    .get("mode")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("fit"),
+            ),
+            html_escape_text(&options.base_path),
+            title_html,
+        ),
     )
     .map_err(|message| {
         build_error(
@@ -3321,9 +3598,10 @@ fn build_desktop_project(options: BuildOptions) -> Result<BuildOutput, BuildErro
                 )
             })?;
         let product_name = manifest
-            .get("title")
+            .get("productName")
             .and_then(serde_json::Value::as_str)
             .filter(|title| !title.trim().is_empty())
+            .or_else(|| manifest.get("title").and_then(serde_json::Value::as_str))
             .unwrap_or("VibeGal Game");
         let package_message = match runtime {
             DesktopRuntime::Electron => {
@@ -7047,6 +7325,88 @@ mod tests {
     }
 
     #[test]
+    fn strict_build_rejects_missing_distribution_icon() {
+        let dir = unique_temp_dir("cli-build-distribution-icon-strict");
+        let out_dir = dir.join("dist-game");
+        make_exportable_project(&dir);
+        let mut options = build_options(&dir, &out_dir);
+        options.strict = true;
+
+        let error = build_web_project(options).expect_err("strict build must reject missing icon");
+
+        assert_eq!(error.code, "project_validation_warnings");
+        assert!(error
+            .issues
+            .iter()
+            .any(|issue| issue.code == "distribution_icon_missing"));
+        assert!(
+            !out_dir.exists(),
+            "strict validation must fail before writing output"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn build_web_normalizes_distribution_metadata_without_writing_project_files() {
+        let dir = unique_temp_dir("cli-build-distribution-metadata");
+        let out_dir = dir.join("dist-game");
+        make_exportable_project(&dir);
+        write_text(
+            &dir.join("content/manifest.json"),
+            r#"{"characters":{},"backgrounds":{},"audio":{"bgm":{},"sfx":{},"voice":{}},"cg":{"appIcon":{"path":"assets/icon.png"}}}"#,
+        );
+        let icon_path = dir.join("content/assets/icon.png");
+        std::fs::create_dir_all(icon_path.parent().unwrap()).unwrap();
+        let icon = image::RgbaImage::from_pixel(32, 32, image::Rgba([255, 96, 160, 255]));
+        icon.save(icon_path).unwrap();
+        let meta_path = dir.join("content/meta.json");
+        write_text(
+            &meta_path,
+            r#"{"title":"Story Title","typingSpeedCps":30,"autoAdvanceMs":1200,"chapterGapMs":1500,"stage":{"width":1280,"height":720},"distribution":{"version":"2.3.4","productName":"Package Name","icon":"assets/icon.png","viewport":{"mode":"fill","width":1920,"height":1080},"updates":{"channel":"preview"}}}"#,
+        );
+        let meta_before = std::fs::read(&meta_path).unwrap();
+
+        build_web_project(build_options(&dir, &out_dir)).expect("build should succeed");
+
+        assert_eq!(std::fs::read(&meta_path).unwrap(), meta_before);
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(out_dir.join("game.manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["title"], "Story Title");
+        assert_eq!(manifest["productName"], "Package Name");
+        assert_eq!(manifest["version"], "2.3.4");
+        assert_eq!(manifest["icon"], "assets/icon.png");
+        assert_eq!(manifest["icons"]["source"], "assets/icon.png");
+        assert_eq!(
+            manifest["icons"]["desktop"]["png"]["512"],
+            "icon-512x512.png"
+        );
+        assert!(out_dir
+            .join("distribution-icons/icon-512x512.png")
+            .is_file());
+        assert!(out_dir.join("distribution-icons/icon.ico").is_file());
+        assert_eq!(manifest["viewport"]["mode"], "fill");
+        assert_eq!(manifest["viewport"]["width"], 1920);
+        assert_eq!(manifest["updates"]["channel"], "preview");
+        assert_eq!(manifest["updates"]["enabled"], false);
+        let web_manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(out_dir.join("manifest.webmanifest")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(web_manifest["name"], "Package Name");
+        assert_eq!(web_manifest["version"], "2.3.4");
+        assert_eq!(
+            web_manifest["icons"][0]["src"],
+            "distribution-icons/icon-128x128.png"
+        );
+        assert!(std::fs::read_to_string(out_dir.join("index.html"))
+            .unwrap()
+            .contains("<title>Story Title</title>"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn build_web_uses_selected_renderer_and_copies_content_files() {
         let dir = std::env::temp_dir().join(format!(
             "vibegal-cli-build-selected-{}",
@@ -7079,6 +7439,25 @@ mod tests {
         assert_eq!(manifest["rendererId"], "alt");
         assert_eq!(manifest["basePath"], "/games/test/");
         assert_eq!(manifest["buildTarget"], "web");
+        assert_eq!(manifest["title"], "T");
+        assert_eq!(manifest["productName"], "T");
+        assert_eq!(manifest["version"], "0.1.0");
+        assert_eq!(manifest["viewport"]["mode"], "fit");
+        assert_eq!(manifest["updates"]["channel"], "stable");
+        assert_eq!(manifest["updates"]["enabled"], false);
+        let index = std::fs::read_to_string(out_dir.join("index.html")).unwrap();
+        assert!(index.contains("<title>T</title>"));
+        assert!(index.contains("manifest.webmanifest"));
+        let web_manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(out_dir.join("manifest.webmanifest")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(web_manifest["name"], "T");
+        assert_eq!(web_manifest["version"], "0.1.0");
+        assert!(output
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "distribution_icon_missing"));
         let bundle = std::fs::read_to_string(out_dir.join("runtime/bundle.js")).unwrap();
         assert!(bundle.contains("Alt Selected Renderer"));
         let _ = std::fs::remove_dir_all(&dir);

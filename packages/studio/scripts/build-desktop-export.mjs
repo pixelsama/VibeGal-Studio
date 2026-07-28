@@ -46,6 +46,35 @@ async function assertWebDist(webDist) {
   }
 }
 
+async function readDistributionMetadata(webDist) {
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(path.join(webDist, "game.manifest.json"), "utf8"));
+  } catch (error) {
+    failure(
+      "desktop_game_manifest_invalid",
+      `Unable to read normalized game metadata: ${error instanceof Error ? error.message : String(error)}`,
+      { file: "game.manifest.json" },
+    );
+  }
+  const title = String(manifest.title || "VibeGal Game");
+  const productName = safeProductName(manifest.productName || title);
+  const version = String(manifest.version || "0.1.0");
+  return {
+    title,
+    productName,
+    version,
+    viewport: manifest.viewport || {
+      mode: "fit",
+      width: manifest.stage?.width || 1280,
+      height: manifest.stage?.height || 720,
+    },
+    icon: typeof manifest.icon === "string" ? manifest.icon : null,
+    icons: manifest.icons || { source: null, web: null, desktop: null },
+    updates: manifest.updates || { channel: "stable" },
+  };
+}
+
 async function writeDesktopManifest(outDir, manifest) {
   await writeFile(
     path.join(outDir, "desktop.manifest.json"),
@@ -79,8 +108,9 @@ function bundleIdentifier(productName) {
   return `com.vibegal.${slug || "game"}`;
 }
 
-function macAppInfoPlist(productName) {
+function macAppInfoPlist(productName, version) {
   const name = xmlEscape(productName);
+  const escapedVersion = xmlEscape(version);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -96,9 +126,9 @@ function macAppInfoPlist(productName) {
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>${escapedVersion}</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.0</string>
+  <string>${escapedVersion}</string>
   <key>LSMinimumSystemVersion</key>
   <string>11.0</string>
   <key>NSHighResolutionCapable</key>
@@ -108,7 +138,28 @@ function macAppInfoPlist(productName) {
 `;
 }
 
-async function packageTauri({ webDist, outDir, productName, playerPath }) {
+function desktopIconSource(webDist, metadata) {
+  const relative = process.platform === "win32"
+    ? metadata.icons?.desktop?.ico || metadata.icons?.desktop?.png?.["256"]
+    : metadata.icons?.desktop?.png?.["512"] || metadata.icons?.desktop?.png?.["256"];
+  return relative ? path.join(webDist, relative) : null;
+}
+
+async function installDesktopIcon({ webDist, outDir, metadata, bundle }) {
+  const source = desktopIconSource(webDist, metadata);
+  if (!source) return null;
+  if (process.platform === "darwin" && bundle) {
+    const target = path.join(bundle, "Contents/Resources/vibegal-icon.png");
+    await cp(source, target);
+    return path.relative(outDir, target).replaceAll(path.sep, "/");
+  }
+  const target = path.join(outDir, path.extname(source).toLowerCase() === ".ico" ? "vibegal-icon.ico" : "vibegal-icon.png");
+  await cp(source, target);
+  return path.relative(outDir, target).replaceAll(path.sep, "/");
+}
+
+async function packageTauri({ webDist, outDir, metadata, playerPath }) {
+  const { productName, version } = metadata;
   if (!playerPath) {
     failure("desktop_tauri_player_unavailable", "Tauri player path was not provided.");
   }
@@ -133,13 +184,21 @@ async function packageTauri({ webDist, outDir, productName, playerPath }) {
     await cp(playerPath, bundledExecutable);
     await chmod(bundledExecutable, 0o755);
     await cp(webDist, path.join(resourcesDir, "game"), { recursive: true });
-    await writeFile(path.join(bundle, "Contents/Info.plist"), macAppInfoPlist(productName));
+    const bundleIcon = await installDesktopIcon({ webDist, outDir, metadata, bundle });
+    await writeFile(path.join(bundle, "Contents/Info.plist"), macAppInfoPlist(productName, version));
     const webDistRelative = `${productName}.app/Contents/Resources/game`;
     await writeDesktopManifest(outDir, {
       target: "desktop",
       runtime: "tauri",
       mode: "lightweight",
       productName,
+      title: metadata.title,
+      version,
+      viewport: metadata.viewport,
+      icon: metadata.icon,
+      icons: metadata.icons,
+      bundleIcon,
+      updates: metadata.updates,
       executable,
       webDist: webDistRelative,
     });
@@ -150,11 +209,19 @@ async function packageTauri({ webDist, outDir, productName, playerPath }) {
   if (process.platform !== "win32") {
     await chmod(path.join(outDir, executable), 0o755);
   }
+  const bundleIcon = await installDesktopIcon({ webDist, outDir, metadata });
   await writeDesktopManifest(outDir, {
     target: "desktop",
     runtime: "tauri",
     mode: "lightweight",
     productName,
+    title: metadata.title,
+    version,
+    viewport: metadata.viewport,
+    icon: metadata.icon,
+    icons: metadata.icons,
+    bundleIcon,
+    updates: metadata.updates,
     executable,
     webDist: "game",
   });
@@ -243,9 +310,9 @@ app.whenReady().then(async () => {
   catch {}
   const stage = gameManifest.stage || {};
   mainWindow = new BrowserWindow({
-    title: gameManifest.title || "VibeGal Game",
-    width: Number.isFinite(stage.width) ? stage.width : 1280,
-    height: Number.isFinite(stage.height) ? stage.height : 720,
+    title: gameManifest.productName || gameManifest.title || "VibeGal Game",
+    width: Number.isFinite(gameManifest.viewport?.width) ? gameManifest.viewport.width : Number.isFinite(stage.width) ? stage.width : 1280,
+    height: Number.isFinite(gameManifest.viewport?.height) ? gameManifest.viewport.height : Number.isFinite(stage.height) ? stage.height : 720,
     minWidth: 960,
     minHeight: 540,
     show: !smoke,
@@ -308,22 +375,38 @@ app.on("window-all-closed", () => app.quit());
 `;
 }
 
-async function updateMacBundle(bundle, productName) {
+async function updateMacBundle(bundle, metadata) {
   const plist = path.join(bundle, "Contents/Info.plist");
+  let text;
   try {
-    let text = await readFile(plist, "utf8");
-    for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
-      const expression = new RegExp(`(<key>${key}</key>\\s*<string>)Electron(</string>)`, "g");
-      text = text.replace(expression, `$1${productName}$2`);
-    }
-    await writeFile(plist, text);
+    text = await readFile(plist, "utf8");
   } catch {
-    // Some Electron distributions use a binary plist. The executable remains
-    // runnable; signing/rebranding can be performed by a later installer step.
+    failure(
+      "desktop_bundle_metadata_failed",
+      "Electron Info.plist could not be read as XML; product metadata was not applied.",
+      { file: path.relative(bundle, plist).replaceAll(path.sep, "/") },
+    );
   }
+  const replacements = new Map([
+    ["CFBundleName", metadata.productName],
+    ["CFBundleDisplayName", metadata.productName],
+    ["CFBundleVersion", metadata.version],
+    ["CFBundleShortVersionString", metadata.version],
+  ]);
+  for (const [key, value] of replacements) {
+    const escapedValue = xmlEscape(value);
+    const expression = new RegExp(`(<key>${key}</key>\\s*<string>)[^<]*(</string>)`, "g");
+    if (expression.test(text)) {
+      text = text.replace(expression, `$1${escapedValue}$2`);
+    } else {
+      text = text.replace("</dict>", `  <key>${key}</key>\n  <string>${escapedValue}</string>\n</dict>`);
+    }
+  }
+  await writeFile(plist, text);
 }
 
-async function packageElectron({ webDist, outDir, productName, electronDist, electronVersion }) {
+async function packageElectron({ webDist, outDir, metadata, electronDist, electronVersion }) {
+  const { productName, version } = metadata;
   if (!electronDist) {
     failure("desktop_electron_runtime_unavailable", "Electron runtime directory was not provided.");
   }
@@ -341,7 +424,7 @@ async function packageElectron({ webDist, outDir, productName, electronDist, ele
     const destinationBundle = path.join(outDir, `${productName}.app`);
     await mkdir(outDir, { recursive: true });
     await cp(sourceBundle, destinationBundle, { recursive: true });
-    await updateMacBundle(destinationBundle, productName);
+    await updateMacBundle(destinationBundle, metadata);
     appRoot = destinationBundle;
     appResources = path.join(destinationBundle, "Contents/Resources/app");
     executable = `${productName}.app/Contents/MacOS/Electron`;
@@ -360,16 +443,29 @@ async function packageElectron({ webDist, outDir, productName, electronDist, ele
   await writeFile(path.join(appResources, "package.json"), `${JSON.stringify({
     name: "vibegal-player",
     productName,
-    version: "1.0.0",
+    version,
     main: "main.cjs",
   }, null, 2)}\n`);
   await writeFile(path.join(appResources, "main.cjs"), electronMainSource());
   await cp(webDist, path.join(appResources, "game"), { recursive: true });
+  const bundleIcon = await installDesktopIcon({
+    webDist,
+    outDir,
+    metadata,
+    bundle: process.platform === "darwin" ? appRoot : null,
+  });
   await writeDesktopManifest(outDir, {
     target: "desktop",
     runtime: "electron",
     mode: "compatible",
     productName,
+    title: metadata.title,
+    version,
+    viewport: metadata.viewport,
+    icon: metadata.icon,
+    icons: metadata.icons,
+    bundleIcon,
+    updates: metadata.updates,
     executable,
     webDist: path.relative(outDir, path.join(appResources, "game")).replaceAll(path.sep, "/"),
     electronVersion: electronVersion || "bundled",
@@ -461,13 +557,13 @@ async function main() {
   const runtime = args.runtime;
   const webDist = args["web-dist"] ? path.resolve(args["web-dist"]) : "";
   const outDir = args.out ? path.resolve(args.out) : "";
-  const productName = safeProductName(args["product-name"]);
-  if (!webDist || !outDir || !args["product-name"]) {
-    failure("desktop_worker_invalid_args", "Desktop build requires --runtime, --web-dist, --out and --product-name.");
+  if (!webDist || !outDir) {
+    failure("desktop_worker_invalid_args", "Desktop build requires --runtime, --web-dist and --out.");
   }
   if (runtime !== "tauri" && runtime !== "electron") {
     failure("desktop_runtime_unsupported", `Unsupported desktop runtime: ${runtime || "<missing>"}`);
   }
+  const metadata = await readDistributionMetadata(webDist);
   if (pathOverlaps(webDist, outDir)) {
     failure("desktop_output_path_unsafe", "Desktop output directory must not overlap the Web staging directory.");
   }
@@ -478,13 +574,13 @@ async function main() {
     ? await packageTauri({
       webDist,
       outDir,
-      productName,
+      metadata,
       playerPath: args["tauri-player"] ? path.resolve(args["tauri-player"]) : "",
     })
     : await packageElectron({
       webDist,
       outDir,
-      productName,
+      metadata,
       electronDist: await resolveElectronDist(args["electron-dist"], args["electron-version"]),
       electronVersion: args["electron-version"],
     });
