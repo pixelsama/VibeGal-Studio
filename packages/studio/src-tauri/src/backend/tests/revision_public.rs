@@ -222,6 +222,7 @@ fn public_project_and_issue_json_field_names_remain_stable() {
                 "content",
                 "rendererIds",
                 "missingSupportFiles",
+                "galstudioIgnored",
                 "projectRevision",
                 "graph",
                 "nodes",

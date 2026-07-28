@@ -323,6 +323,8 @@ pub struct ProjectData {
     pub renderer_ids: Vec<String>,
     #[serde(rename = "missingSupportFiles")]
     pub missing_support_files: Vec<String>,
+    #[serde(rename = "galstudioIgnored")]
+    pub galstudio_ignored: bool,
     #[serde(rename = "projectRevision", skip_serializing_if = "Option::is_none")]
     pub project_revision: Option<FileRevision>,
     #[serde(skip_serializing_if = "Option::is_none")]

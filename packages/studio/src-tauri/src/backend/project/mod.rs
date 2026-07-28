@@ -19,5 +19,5 @@ pub(crate) use loader::{
 };
 pub(crate) use templates::{
     ensure_project_self_description, missing_project_self_description_files,
-    write_project_self_description,
+    project_ignores_galstudio, write_project_self_description,
 };

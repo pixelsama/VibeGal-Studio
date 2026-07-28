@@ -18,6 +18,10 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     assert!(!project.join("content/chapters").exists());
     assert!(project.join("content/assets").is_dir());
     assert!(project.join("AGENTS.md").is_file());
+    assert_eq!(
+        fs::read_to_string(project.join(".gitignore")).unwrap(),
+        super::super::project::templates::PROJECT_GITIGNORE
+    );
     assert!(project.join(".galstudio/README.md").is_file());
     assert!(project.join(".galstudio/renderer-contract.md").is_file());
     for schema_name in [
@@ -135,6 +139,7 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
     let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
     assert_eq!(opened.meta.name, "Existing Story");
     assert_eq!(opened.renderer_ids, vec!["default".to_string()]);
+    assert!(opened.galstudio_ignored);
     let graph = opened.graph.expect("新项目应有 graph.json");
     assert_eq!(graph.entry_node_id, "start");
     assert_eq!(graph.chapters.len(), 1);
@@ -157,6 +162,40 @@ fn initialize_project_root_adds_project_files_to_selected_directory() {
         .expect("新项目应有校验报告")
         .project_issues
         .is_empty());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn existing_project_gitignore_is_read_only_and_warns_when_galstudio_is_tracked() {
+    let root = unique_temp_dir("gitignore-boundary");
+    let project = root.join("story");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "start",
+            "nodes": [{
+                "id": "start",
+                "title": "Start",
+                "file": "nodes/start.json",
+                "position": { "x": 0, "y": 0 }
+            }],
+            "edges": []
+        }),
+        &[("nodes/start.json", serde_json::json!([]))],
+    );
+    let existing = "dist/\n# keep project policy\n";
+    write_text(&project.join(".gitignore"), existing);
+
+    let opened = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+
+    assert!(!opened.galstudio_ignored);
+    assert_eq!(fs::read_to_string(project.join(".gitignore")).unwrap(), existing);
+    assert!(!project.join(".galstudio").exists());
+
+    write_text(&project.join(".gitignore"), "dist/\n/.galstudio/\n");
+    let ignored = open_project_inner(project.to_string_lossy().as_ref()).unwrap();
+    assert!(ignored.galstudio_ignored);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -276,6 +315,22 @@ fn initialize_project_root_does_not_overwrite_existing_files() {
         fs::read_to_string(project.join("content/meta.json")).unwrap(),
         "keep me"
     );
+    assert!(!project.join("gal.project.json").exists());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn initialize_project_root_refuses_to_overwrite_existing_gitignore() {
+    let root = unique_temp_dir("init-gitignore-conflict");
+    let renderer_template = root.join("template");
+    let project = root.join("story");
+    write_text(&renderer_template.join("index.tsx"), "export default {};");
+    write_text(&project.join(".gitignore"), "keep me\n");
+
+    let result = initialize_project_root(&project, "story", "default", &renderer_template);
+
+    assert!(result.is_err());
+    assert_eq!(fs::read_to_string(project.join(".gitignore")).unwrap(), "keep me\n");
     assert!(!project.join("gal.project.json").exists());
     let _ = fs::remove_dir_all(&root);
 }

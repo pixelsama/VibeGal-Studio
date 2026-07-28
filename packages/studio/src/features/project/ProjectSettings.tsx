@@ -478,6 +478,20 @@ export function ProjectSettings({
           {status && <span style={statusStyle}>{status}</span>}
         </div>
 
+        {project.galstudioIgnored === false && (
+          <div role="status" style={supportFilesNoticeStyle}>
+            <div style={supportFilesHeaderStyle}>
+              <div>
+                <strong style={supportFilesTitleStyle}>{t("projectSettings.gitignore.title")}</strong>
+                <p style={supportFilesTextStyle}>
+                  {t("projectSettings.gitignore.description")}
+                </p>
+              </div>
+            </div>
+            <code>.galstudio/</code>
+          </div>
+        )}
+
         {missingSupportFiles.length > 0 && (
           <div role="status" style={supportFilesNoticeStyle}>
             <div style={supportFilesHeaderStyle}>

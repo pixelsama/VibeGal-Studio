@@ -274,6 +274,7 @@ fn open_project_with_mode(path: &str, mode: ProjectLoadMode) -> Result<ProjectDa
 
     let renderer_ids = list_renderer_ids(project_path);
     let missing_support_files = super::missing_project_self_description_files(project_path)?;
+    let galstudio_ignored = super::project_ignores_galstudio(project_path)?;
     let project_revision = project_root.revision("gal.project.json")?;
     let (graph, mut graph_issues) = load_project_graph(&content_root)?;
     let graph_revision = project_root.revision("content/graph.json")?;
@@ -450,6 +451,7 @@ fn open_project_with_mode(path: &str, mode: ProjectLoadMode) -> Result<ProjectDa
         },
         renderer_ids,
         missing_support_files,
+        galstudio_ignored,
         project_revision,
         graph: Some(graph),
         nodes: (mode == ProjectLoadMode::Full).then_some(nodes),

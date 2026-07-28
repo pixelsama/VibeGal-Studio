@@ -49,6 +49,19 @@ describe("ProjectSettings", () => {
     expect(html).toContain("1920 x 1080");
   });
 
+  it("warns without modifying an existing gitignore that tracks private project state", () => {
+    const html = renderToStaticMarkup(
+      <ProjectSettings
+        project={{ ...project, galstudioIgnored: false }}
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(html).toContain(".galstudio 尚未忽略");
+    expect(html).toContain(".galstudio/");
+    expect(html).toContain("不会自动修改既有文件");
+  });
+
   it("shows missing support files without writing until the creator repairs them", async () => {
     const repair = vi.fn(async () => [".galstudio/schemas/variables.json"]);
     const incompleteProject: ProjectData = {

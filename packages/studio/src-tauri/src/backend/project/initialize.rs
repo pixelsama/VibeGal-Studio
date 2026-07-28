@@ -29,6 +29,7 @@ fn ensure_project_shell_targets_available(
 ) -> Result<(), String> {
     for path in [
         project_path.join("gal.project.json"),
+        project_path.join(".gitignore"),
         project_path.join("AGENTS.md"),
         project_path.join(".galstudio/README.md"),
         project_path.join(".galstudio/renderer-contract.md"),
@@ -204,6 +205,10 @@ fn write_project_shell(
     fs::create_dir_all(project_path.join("renderers").join(renderer_id))
         .map_err(|e| format!("创建 renderers/{renderer_id} 失败: {e}"))?;
     super::write_project_self_description(project_path)?;
+    super::super::fs::write_text_file(
+        &project_path.join(".gitignore"),
+        super::templates::PROJECT_GITIGNORE,
+    )?;
     copy_dir_all(
         renderer_template_dir,
         &project_path.join("renderers").join(renderer_id),

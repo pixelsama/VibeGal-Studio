@@ -262,6 +262,8 @@ export interface ProjectData {
   rendererIds: string[];
   /** 打开项目时只读检查出的缺失辅助文件；用户可在项目页显式补齐。 */
   missingSupportFiles?: string[];
+  /** 项目的 .gitignore 是否已忽略可再生的 .galstudio 私有目录。 */
+  galstudioIgnored?: boolean;
   /** gal.project.json 的 revision，用于渲染层切换等项目级写入冲突检测 */
   projectRevision?: FileRevision;
   /** 图结构；项目剧本入口来自 content/graph.json */

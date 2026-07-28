@@ -327,6 +327,10 @@ pub(crate) const PROJECT_ENGINE_DTS: &str =
 pub(crate) const PROJECT_REACT_DTS: &str =
     include_str!("../../../../templates/react-shim/react.d.ts");
 
+pub(crate) const PROJECT_GITIGNORE: &str = r#"# VibeGal-Studio rebuildable caches, previews, diagnostics, and private state
+.galstudio/
+"#;
+
 pub(crate) const PROJECT_TSCONFIG_JSON: &str =
     include_str!("../../../../templates/project-tsconfig.json");
 
@@ -424,6 +428,35 @@ pub(crate) fn missing_project_self_description_files(
     }
     missing.sort();
     Ok(missing)
+}
+
+pub(crate) fn project_ignores_galstudio(project_path: &std::path::Path) -> Result<bool, String> {
+    let gitignore_path = project_path.join(".gitignore");
+    match std::fs::symlink_metadata(&gitignore_path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "检查项目 .gitignore 失败 {}: {}",
+                gitignore_path.display(),
+                error
+            ));
+        }
+    }
+
+    let text = std::fs::read_to_string(&gitignore_path)
+        .map_err(|error| format!("读取项目 .gitignore 失败 {}: {}", gitignore_path.display(), error))?;
+    Ok(text.lines().any(|line| {
+        let rule = line.trim();
+        if rule.is_empty() || rule.starts_with('#') || rule.starts_with('!') {
+            return false;
+        }
+        matches!(
+            rule.trim_start_matches('/').trim_end_matches('/'),
+            ".galstudio" | ".galstudio/**" | ".galstudio/*"
+        )
+    }))
 }
 
 /// 用户明确请求时补齐缺失的自描述文件；已存在的文件一律不动。
