@@ -15,6 +15,14 @@ galstudio-workspace/
 └── exchange/
     ├── workspace.json
     ├── PROTOCOL.md
+    ├── roles/              # 运行时角色权威，不属于任何 Git 分支
+    │   ├── development-agent.md
+    │   ├── test-agent.md
+    │   └── main-agent.md
+    ├── agents/             # Codex/Claude/Grok 的监控与邮箱适配
+    │   ├── codex.md
+    │   ├── claude.md
+    │   └── grok.md
     ├── schemas/
     ├── runtime/codex/   # 不随 worktree 切分支的 Codex 调度器副本
     ├── locks/
@@ -26,6 +34,16 @@ galstudio-workspace/
 ```
 
 `.git-store/` 是管理数据，不是源码 checkout。交流目录不属于任何业务 worktree，因此切换分支、构建或清理工作区不会删除消息和测试证据。
+
+## 指令分层
+
+角色不能写进项目级 `AGENTS.md`，也不能根据当前分支或目录名推断。否则 feature 合入测试分支时，开发职责会一起进入测试环境。有效指令固定分为三层：
+
+1. worktree 内的 `AGENTS.md`：只定义产品、工程、安全和 TDD 等所有角色都必须遵守的仓库规则。
+2. `../exchange/roles/`：定义当前会话是开发、测试还是主线维护；这是唯一角色权威。
+3. `../exchange/agents/`：定义 Codex、Claude Code 或 Grok Build 如何监听和认领自己的邮箱。
+
+仓库中的 `qa/agent-mailbox/templates/` 只是安装模板，不是运行时身份文件。初始化脚本把它们复制到 Git 之外的 `exchange/`；Agent 只能读取外置副本来确定角色。因此切分支、merge 或 rebase 都不会改变已经部署的 Agent 身份。
 
 macOS 常驻服务初始化示例：
 
@@ -42,6 +60,20 @@ pnpm agent:workspace:setup -- \
 
 初始化要求源 worktree 已提交且干净。脚本从本地分支创建独立 bare store，因此不会错误地从可能落后的 `origin/main` 建槽；随后把 store 的 `origin` 恢复为源码仓库的远端 URL。命令可重复执行，但绝不切换有未提交修改的 worktree，也不会覆盖已有的非 symlink 路径。
 
+## 启动 Agent
+
+在承担角色的 worktree 中打开 Agent：测试 Agent 在 `test/`，开发 Agent 在 `dev/`，主线维护 Agent 在 `main/`。启动提示不写机器绝对路径。
+
+Grok Build 测试 Agent：
+
+> 读取 ../exchange/roles/test-agent.md、../exchange/agents/grok.md 和 ../exchange/PROTOCOL.md，然后监控 ../exchange/mailboxes/grok/pending/。
+
+Claude Code 测试 Agent：
+
+> 读取 ../exchange/roles/test-agent.md、../exchange/agents/claude.md 和 ../exchange/PROTOCOL.md，然后监控 ../exchange/mailboxes/claude/pending/。
+
+开发角色把 `test-agent.md` 换成 `development-agent.md`，并从 `dev/` 启动。Codex 无需手工常驻；本地调度器会按消息类型自动注入正确的外置角色和 `agents/codex.md`。
+
 ## 消息与状态机
 
 消息必须满足 `exchange/schemas/` 中的 JSON Schema，并且只能是：
@@ -56,7 +88,7 @@ pnpm agent:workspace:setup -- \
 ```bash
 node ../exchange/runtime/codex/agent-mailbox.mjs enqueue \
   --exchange ../exchange \
-  --file /absolute/path/to/message.json
+  --file ../exchange/runs/<request-id>/outgoing/<message-id>.json
 ```
 
 消费者必须先认领，不能先读取再归档：
@@ -163,7 +195,7 @@ node ../exchange/runtime/codex/agent-mailbox.mjs finish \
 Codex 的 LaunchAgent 只监听 `mailboxes/codex/pending/`。它采用文件系统事件触发，并每 60 秒做一次低频漏事件校验；不会扫描项目目录。每条消息启动一个 `codex exec`，一次只处理一条：
 
 - 目标目录只能由消息类型映射到配置中的 `test/` 或 `dev/`，永远不能选择 `main/` 或任意路径。
-- 使用固定任务模板；消息正文不会拼进提示词。
+- 按消息类型选择外置角色文件；项目级 `AGENTS.md` 和分支名不能赋予身份，消息正文不会拼进提示词。
 - 使用 `workspace-write`、`approval=never`，额外写入范围只有 exchange。
 - 三小时超时，processing lease 每 30 秒更新。
 - Codex 最终输出受 `codex-run-result.schema.json` 约束。
@@ -181,7 +213,7 @@ launchctl print gui/$(id -u)/<workspace.json 中的 service.label>
 
 ```bash
 node ../exchange/runtime/codex/codex-mailbox-dispatcher.mjs \
-  --config /absolute/path/to/exchange/workspace.json \
+  --config ../exchange/workspace.json \
   --dry-run
 ```
 

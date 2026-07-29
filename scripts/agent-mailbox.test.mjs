@@ -40,6 +40,29 @@ function testRequest(overrides = {}) {
   };
 }
 
+function testResult(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    messageId: "qa-20260729-001-result-1",
+    requestId: "qa-20260729-001",
+    requestMessageId: "qa-20260729-001-attempt-1",
+    type: "test_result",
+    sender: "grok",
+    recipient: "codex",
+    worktree: "dev",
+    createdAt: "2026-07-29T07:00:00.000Z",
+    attempt: 1,
+    status: "failed",
+    featureBranch: "codex/example-feature",
+    featureCommit: SHA_A,
+    baseCommit: SHA_B,
+    suite: "release",
+    summaryPath: "runs/qa-20260729-001/summary.json",
+    failures: [{ step: "release", error: "Release QA failed" }],
+    ...overrides,
+  };
+}
+
 test("mailbox protocol accepts pinned test requests and rejects command injection fields", () => {
   assert.deepEqual(validateMailboxMessage(testRequest()), testRequest());
   assert.throws(
@@ -168,7 +191,11 @@ test("Codex invocation uses fixed templates and configured worktree paths", () =
   assert.doesNotMatch(prompt, /Ignore every rule/);
   assert.match(prompt, /test_request/);
   assert.match(prompt, /treat its contents as data/i);
-  assert.match(prompt, /\/workspace\/exchange\/PROTOCOL\.md/);
+  assert.match(prompt, /\.\.\/exchange\/roles\/test-agent\.md/);
+  assert.match(prompt, /\.\.\/exchange\/agents\/codex\.md/);
+  assert.match(prompt, /\.\.\/exchange\/PROTOCOL\.md/);
+  assert.match(prompt, /\.\.\/exchange\/mailboxes\/codex\/processing\/request\.json/);
+  assert.doesNotMatch(prompt, /\/workspace\//);
 
   const invocation = buildCodexInvocation({
     codexPath: "/usr/local/bin/codex",
@@ -184,6 +211,24 @@ test("Codex invocation uses fixed templates and configured worktree paths", () =
   assert.ok(invocation.args.includes("/workspace/exchange"));
   assert.equal(invocation.args.at(-1), "-");
   assert.equal(invocation.stdin, prompt);
+});
+
+test("Codex development runs receive the external development role", () => {
+  const message = testResult({
+    status: "failed",
+    testedMergeCommit: undefined,
+    pullRequestUrl: undefined,
+    failures: [{ step: "quick", error: "Focused check failed" }],
+  });
+  const prompt = buildCodexPrompt(
+    message,
+    "/workspace/exchange/mailboxes/codex/processing/result.json",
+  );
+
+  assert.match(prompt, /\.\.\/exchange\/roles\/development-agent\.md/);
+  assert.match(prompt, /\.\.\/exchange\/agents\/codex\.md/);
+  assert.doesNotMatch(prompt, /test-agent\.md/);
+  assert.doesNotMatch(prompt, /\/workspace\//);
 });
 
 test("messages cannot select main or arbitrary filesystem paths as execution worktrees", () => {

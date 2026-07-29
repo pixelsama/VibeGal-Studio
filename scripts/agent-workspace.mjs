@@ -190,6 +190,17 @@ async function installRuntime(plan) {
       await copyFile(path.join(sourceSchemas, entry.name), path.join(schemaDir, entry.name));
     }
   }
+  const instructionTemplates = path.resolve(scriptDir, "..", "qa", "agent-mailbox", "templates");
+  for (const directory of ["roles", "agents"]) {
+    const sourceDirectory = path.join(instructionTemplates, directory);
+    const destinationDirectory = path.join(plan.exchangeRoot, directory);
+    await mkdir(destinationDirectory, { recursive: true });
+    for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        await copyFile(path.join(sourceDirectory, entry.name), path.join(destinationDirectory, entry.name));
+      }
+    }
+  }
   await copyFile(path.resolve(scriptDir, "..", "docs", "agent-workflow.md"), path.join(plan.exchangeRoot, "PROTOCOL.md"));
 }
 

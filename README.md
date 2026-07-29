@@ -132,7 +132,7 @@ pnpm qa:agent:release
 
 每次运行会在 `artifacts/agent-qa/<run-id>/` 生成机器可读 `summary.json`、HTML 报告、JUnit、截图和逐步日志；另一位 Agent 可以只读报告并用 `--only <step-id>` 定点复测。完整交接协议、覆盖矩阵和 CI 行为见 [Agent QA 管线](docs/agent-qa.md)。WebDriver 能力只存在于专用测试构建，不进入正式安装包。
 
-Codex、Claude Code 与 Grok Build 的跨 Agent 开发/测试循环使用独立的 `main`、`test`、`dev` worktree 和共享文件邮箱。Claude Code、Grok 使用各自原生目录监控；Codex 使用本机文件事件 + `launchd` 调度器。消息固定 feature/base SHA，测试 Agent 在临时 QA 分支验证合并结果，只有完整通过后才由测试 Agent 推送 feature 并创建到 `main` 的 PR。初始化、消息 Schema 和故障恢复方法见 [多 Agent 开发与测试工作流](docs/agent-workflow.md)。
+Codex、Claude Code 与 Grok Build 的跨 Agent 开发/测试循环使用独立的 `main`、`test`、`dev` worktree 和共享文件邮箱。角色文件位于 Git 之外的 `exchange/roles/`，不会随 feature merge 串换身份；项目级 `AGENTS.md` 只保留通用规则。Claude Code、Grok 使用各自原生目录监控；Codex 使用本机文件事件 + `launchd` 调度器。消息固定 feature/base SHA，测试 Agent 在临时 QA 分支验证合并结果，只有完整通过后才由测试 Agent 推送 feature 并创建到 `main` 的 PR。初始化、启动提示、消息 Schema 和故障恢复方法见 [多 Agent 开发与测试工作流](docs/agent-workflow.md)。
 
 可重复平台打包：
 

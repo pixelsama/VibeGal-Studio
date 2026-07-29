@@ -151,6 +151,15 @@ test("workspace setup creates a shared bare store and three real worktrees", asy
   assert.equal(config.worktrees.test, path.join(workspaceRoot, "test"));
   await stat(path.join(workspaceRoot, "exchange", "runtime", "codex", "codex-mailbox-dispatcher.mjs"));
   await stat(path.join(workspaceRoot, "exchange", "PROTOCOL.md"));
+  for (const role of ["development-agent.md", "test-agent.md", "main-agent.md"]) {
+    await stat(path.join(workspaceRoot, "exchange", "roles", role));
+  }
+  for (const agent of ["codex.md", "claude.md", "grok.md"]) {
+    await stat(path.join(workspaceRoot, "exchange", "agents", agent));
+  }
+  const testRole = await readFile(path.join(workspaceRoot, "exchange", "roles", "test-agent.md"), "utf8");
+  assert.match(testRole, /\.\.\/exchange\/mailboxes\//);
+  assert.doesNotMatch(testRole, new RegExp(workspaceRoot.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal((await stat(workspaceLink)).isDirectory(), true);
 });
 
