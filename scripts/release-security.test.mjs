@@ -58,6 +58,39 @@ test("release manifest records checksums and unsigned dry-run status", async () 
   }
 });
 
+test("macOS-only beta manifest marks Windows unsupported and uses the beta channel", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "vibegal-macos-beta-manifest-"));
+  try {
+    await writeFile(path.join(dir, "VibeGal-Studio_1.0.0-beta.1_aarch64.dmg"), "mac beta bundle");
+    const result = spawnSync(process.execPath, [generator, dir], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        RELEASE_TAG: "v1.0.0-beta.1",
+        RELEASE_BASE_URL: "https://downloads.example.test/v1.0.0-beta.1",
+        UPDATE_CHANNEL: "beta",
+        MACOS_SIGNING_STATUS: "signed-notarized",
+        WINDOWS_SIGNING_STATUS: "unsupported",
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const releaseManifest = JSON.parse(await readFile(path.join(dir, "release-manifest.json"), "utf8"));
+    assert.equal(releaseManifest.version, "1.0.0-beta.1");
+    assert.deepEqual(releaseManifest.signing, {
+      macos: "signed-notarized",
+      windows: "unsupported",
+      updater: "unsigned-dry-run",
+    });
+    assert.deepEqual(releaseManifest.assets.map((asset) => asset.platform), ["darwin"]);
+    const updateManifest = JSON.parse(await readFile(path.join(dir, "update-manifest.json"), "utf8"));
+    assert.equal(updateManifest.channel, "beta");
+    assert.deepEqual(Object.keys(updateManifest.platforms), ["darwin-arm64"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("updater signer uses a protected key without persisting it", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "vibegal-update-signer-"));
   try {

@@ -12,7 +12,7 @@ const baseUrl = String(process.env.RELEASE_BASE_URL || "").replace(/\/$/, "");
 const updateChannel = process.env.UPDATE_CHANNEL || "stable";
 const publishedAt = process.env.RELEASE_PUBLISHED_AT || new Date().toISOString();
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const signingStatuses = new Set(["signed", "signed-notarized", "unsigned-dry-run"]);
+const signingStatuses = new Set(["signed", "signed-notarized", "unsigned-dry-run", "unsupported"]);
 
 if (!semverPattern.test(releaseVersion)) {
   throw new Error(`Release tag must contain a valid SemVer: ${releaseTag}`);

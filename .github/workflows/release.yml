@@ -74,11 +74,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x64
-            os: windows-latest
-            artifact: VibeGal-Studio-Windows-x64
-            bundle_command: pnpm bundle:windows
-            bundle_path: packages/studio/src-tauri/target/release/bundle/nsis/*.exe
           - name: macOS arm64
             os: macos-latest
             artifact: VibeGal-Studio-macOS-arm64
@@ -116,10 +111,8 @@ jobs:
           APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          node -e "const fs=require('node:fs'); const os=process.env.RUNNER_OS; const env=process.env; let status='unsigned-dry-run'; if(os==='macOS' && ['APPLE_CERTIFICATE_BASE64','APPLE_CERTIFICATE_PASSWORD','APPLE_SIGNING_IDENTITY','APPLE_NOTARY_KEY_BASE64','APPLE_NOTARY_KEY_ID','APPLE_NOTARY_ISSUER_ID'].every(k=>env[k])) status='signed-notarized'; else if(os==='Windows' && ['WINDOWS_CERTIFICATE_BASE64','WINDOWS_CERTIFICATE_PASSWORD'].every(k=>env[k])) status='signed'; fs.appendFileSync(env.GITHUB_OUTPUT, 'status='+status+'\\n'); console.log('Release signing status: '+status);"
+          node -e "const fs=require('node:fs'); const env=process.env; const keys=['APPLE_CERTIFICATE_BASE64','APPLE_CERTIFICATE_PASSWORD','APPLE_SIGNING_IDENTITY','APPLE_NOTARY_KEY_BASE64','APPLE_NOTARY_KEY_ID','APPLE_NOTARY_ISSUER_ID']; const status=keys.every(k=>env[k])?'signed-notarized':'unsigned-dry-run'; fs.appendFileSync(env.GITHUB_OUTPUT, 'status='+status+'\\n'); console.log('Release signing status: '+status);"
 
       - name: Build platform bundle
         run: ${{ matrix.bundle_command }}
@@ -169,23 +162,6 @@ jobs:
           rm -f "$CERTIFICATE" "$NOTARY_KEY"
           security delete-keychain "$KEYCHAIN"
 
-      - name: Sign Windows installer
-        if: runner.os == 'Windows' && steps.signing.outputs.status == 'signed'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $certificate = Join-Path $env:RUNNER_TEMP "vibegal-release.pfx"
-          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
-          $installer = Get-ChildItem packages/studio/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
-          $signTool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $signTool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $certificate /p $env:WINDOWS_CERTIFICATE_PASSWORD $installer.FullName
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $signTool verify /pa /all $installer.FullName
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Remove-Item $certificate -Force
-
       - name: Record signing status
         run: node -e "require('node:fs').writeFileSync('release-signing-status-${{ runner.os }}.txt', '${{ steps.signing.outputs.status }}\\n')"
 
@@ -194,39 +170,6 @@ jobs:
         run: |
           test "$(uname -m)" = "arm64"
           file packages/studio/src-tauri/target/release/bundle/macos/VibeGal-Studio.app/Contents/MacOS/vibegal-studio | grep -q 'arm64'
-
-      - name: Install and smoke Windows bundle
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $installer = Get-ChildItem packages/studio/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
-          $project = Join-Path $env:RUNNER_TEMP "Project With Spaces"
-          Copy-Item examples/sample-novel $project -Recurse
-          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
-          if ($installProcess.ExitCode -ne 0) { exit $installProcess.ExitCode }
-          $installDir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\VibeGal-Studio').InstallLocation.Trim('"')
-          $cli = Join-Path $installDir "vibegal-cli.exe"
-          $originalPath = $env:PATH
-          $env:PATH = "$env:SystemRoot\System32"
-          & $cli validate $project --format json
-          $validateExit = $LASTEXITCODE
-          $env:PATH = $originalPath
-          if ($validateExit -ne 0) { exit $validateExit }
-          $webOut = Join-Path $env:RUNNER_TEMP "Web Export With Spaces"
-          & $cli build $project --target web --out $webOut --format json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $cli smoke $webOut --target web --format json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $desktopOut = Join-Path $env:RUNNER_TEMP "Desktop Export With Spaces"
-          & $cli build $project --target desktop --runtime tauri --out $desktopOut --format json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $cli smoke $desktopOut --target desktop --runtime tauri --format json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $uninstaller = Get-ChildItem $installDir -Filter 'uninstall*.exe' | Select-Object -First 1
-          if ($uninstaller) {
-            $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru
-            if ($uninstallProcess.ExitCode -ne 0) { exit $uninstallProcess.ExitCode }
-          }
 
       - name: Mount and smoke macOS bundle
         if: runner.os == 'macOS'
@@ -281,10 +224,12 @@ jobs:
           RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}
         run: |
           MACOS_SIGNING_STATUS=$(cat release-assets/release-signing-status-macOS.txt 2>/dev/null || printf 'unsigned-dry-run')
-          WINDOWS_SIGNING_STATUS=$(cat release-assets/release-signing-status-Windows.txt 2>/dev/null || printf 'unsigned-dry-run')
-          export MACOS_SIGNING_STATUS WINDOWS_SIGNING_STATUS
+          WINDOWS_SIGNING_STATUS=unsupported
+          UPDATE_CHANNEL=stable
+          if [[ "$RELEASE_TAG" == *-* ]]; then UPDATE_CHANNEL=beta; fi
+          export MACOS_SIGNING_STATUS WINDOWS_SIGNING_STATUS UPDATE_CHANNEL
           export RELEASE_PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          printf 'macos=%s\nwindows=%s\n' "$MACOS_SIGNING_STATUS" "$WINDOWS_SIGNING_STATUS" >> "$GITHUB_OUTPUT"
+          printf 'macos=%s\n' "$MACOS_SIGNING_STATUS" >> "$GITHUB_OUTPUT"
           node scripts/generate-release-manifest.mjs release-assets
 
       - name: Detect protected updater signing credentials
@@ -309,7 +254,7 @@ jobs:
         run: echo "Updater manifest is an unsigned-dry-run; clients must not trust it."
 
       - name: Publish dry-run manifests
-        if: github.event_name == 'workflow_dispatch' && (steps.platform_signing.outputs.macos == 'unsigned-dry-run' || steps.platform_signing.outputs.windows == 'unsigned-dry-run' || steps.updater.outputs.status == 'unsigned-dry-run')
+        if: github.event_name == 'workflow_dispatch' && (steps.platform_signing.outputs.macos == 'unsigned-dry-run' || steps.updater.outputs.status == 'unsigned-dry-run')
         uses: actions/upload-artifact@v4
         with:
           name: VibeGal-Studio-release-dry-run
@@ -323,10 +268,9 @@ jobs:
         if: github.event_name == 'push'
         env:
           MACOS_SIGNING_STATUS: ${{ steps.platform_signing.outputs.macos }}
-          WINDOWS_SIGNING_STATUS: ${{ steps.platform_signing.outputs.windows }}
           UPDATER_SIGNING_STATUS: ${{ steps.updater.outputs.status }}
         run: |
-          node -e "const statuses=['MACOS_SIGNING_STATUS','WINDOWS_SIGNING_STATUS','UPDATER_SIGNING_STATUS']; const missing=statuses.filter(key=>process.env[key]==='unsigned-dry-run'); if(missing.length) throw new Error('Release publication blocked: '+missing.join(', ')+' require protected signing credentials');"
+          node -e "const statuses=['MACOS_SIGNING_STATUS','UPDATER_SIGNING_STATUS']; const missing=statuses.filter(key=>process.env[key]==='unsigned-dry-run'); if(missing.length) throw new Error('Release publication blocked: '+missing.join(', ')+' require protected signing credentials');"
 
       - name: Create GitHub release
         if: github.event_name == 'push'
