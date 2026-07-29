@@ -522,16 +522,17 @@ export function Workspace({
       {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
       <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
-        <div style={{ display: "flex", gap: "var(--space-1)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)", flexShrink: 0 }}>
           <IconButton onClick={() => runWithUnsavedChangesGuard(onBack)} disabled={!canGoBack} title={t("nav.back")} aria-label={t("nav.back")}>
             <ChevronLeft size={18} />
           </IconButton>
           <IconButton onClick={() => runWithUnsavedChangesGuard(onForward)} disabled={!canGoForward} title={t("nav.forward")} aria-label={t("nav.forward")}>
             <ChevronRight size={18} />
           </IconButton>
+          <span className="gs-workspace-title" style={projectNameStyle} title={workTitleTooltip(project, t)}>{workspaceTitle(project)}</span>
         </div>
 
-        {/* 居中：工作台切换，窗口水平绝对居中 */}
+        {/* 中间：工作台切换；参与同一行布局，避免与右侧项目控件重叠 */}
         <div data-tauri-drag-region style={centerGroupStyle}>
           <TabBtn active={workspace === "render"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "render" })}>{t("workspace.render")}</TabBtn>
           <TabBtn active={workspace === "script"} onClick={() => navigateWithGuard({ type: "script-graph" })}>{t("workspace.script")}</TabBtn>
@@ -541,11 +542,10 @@ export function Workspace({
           <TabBtn active={workspace === "export"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "export" })}>{t("workspace.export")}</TabBtn>
         </div>
 
-        {/* 右侧：项目名 + 同步指示器 + 界面风格选择器（渲染层唯一切换入口，Spec 19 §4.2） */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
-          <span style={projectNameStyle} title={workTitleTooltip(project, t)}>{workspaceTitle(project)}</span>
+        {/* 右侧：同步指示器 + 界面风格选择器（渲染层唯一切换入口，Spec 19 §4.2） */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
           <SyncIndicator state={syncState} onRetry={() => void refreshProject(false)} />
-          <span style={rendererLabelStyle} title={t("workspace.renderer.guidance")}>{t("workspace.renderer.label")}</span>
+          <span className="gs-workspace-style-label" style={rendererLabelStyle} title={t("workspace.renderer.guidance")}>{t("workspace.renderer.label")}</span>
           {project.rendererIds.length > 0 ? (
             <select
               aria-label={t("workspace.renderer.label")}
@@ -756,7 +756,7 @@ function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => vo
           boxShadow: state === "syncing" ? "0 0 0 3px var(--status-warn-ring)" : undefined,
         }}
       />
-      {config.label}
+      <span className="gs-workspace-sync-label">{config.label}</span>
     </button>
   );
 }
@@ -787,18 +787,18 @@ const titleBarStyle: React.CSSProperties = {
   background: "var(--bg-app)",
 };
 const centerGroupStyle: React.CSSProperties = {
-  position: "absolute",
-  left: "50%",
-  top: "50%",
-  transform: "translate(-50%, -50%)",
   display: "flex",
   gap: "var(--space-1)",
+  marginLeft: "auto",
+  flexShrink: 0,
 };
 const projectNameStyle: React.CSSProperties = {
+  marginLeft: "var(--space-2)",
   fontSize: "var(--text-sm)",
   fontWeight: 600,
   color: "var(--text-muted)",
   maxWidth: 200,
+  minWidth: 0,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -806,15 +806,18 @@ const projectNameStyle: React.CSSProperties = {
 const rendererLabelStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
 const rendererSelectStyle: React.CSSProperties = {
-  maxWidth: 160,
+  maxWidth: 140,
   padding: "var(--space-1) var(--space-2)",
   borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   color: "var(--text-primary)",
   fontSize: "var(--text-base)",
+  flexShrink: 0,
 };
 const rendererEmptyStyle: React.CSSProperties = {
   maxWidth: 320,
@@ -841,6 +844,8 @@ const syncButtonStyle: React.CSSProperties = {
   border: "1px solid var(--border-strong)",
   background: "var(--bg-panel)",
   fontSize: "var(--text-sm)",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
 const syncDotStyle: React.CSSProperties = {
   width: 8,

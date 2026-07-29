@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { buildDesktopInvocation } from "./build-desktop-core.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const artifacts = path.resolve(process.env.VIBEGAL_AGENT_QA_ARTIFACTS ?? path.join(root, "artifacts/agent-qa/standalone"));
 const binary = path.join(
@@ -14,17 +16,7 @@ const binary = path.join(
   process.platform === "win32" ? "vibegal-studio.exe" : "vibegal-studio",
 );
 
-run("pnpm", [
-  "tauri",
-  "build",
-  "--debug",
-  "--no-bundle",
-  "--features",
-  "agent-qa",
-  "--config",
-  "src-tauri/tauri.agent-qa.conf.json",
-  "--ci",
-]);
+run(buildDesktopInvocation(root));
 
 const bytes = await readFile(binary);
 await mkdir(path.join(artifacts, "desktop"), { recursive: true });
@@ -37,9 +29,8 @@ await writeFile(path.join(artifacts, "desktop/build.json"), `${JSON.stringify({
 }, null, 2)}\n`, "utf8");
 process.stdout.write(`${JSON.stringify({ ok: true, binary })}\n`);
 
-function run(command, args) {
-  const executable = process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
-  const result = spawnSync(executable, args, { cwd: root, env: process.env, stdio: "inherit" });
+function run({ command, args, cwd }) {
+  const result = spawnSync(command, args, { cwd, env: process.env, stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

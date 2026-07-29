@@ -22,6 +22,7 @@ describe("Studio real desktop authoring loop", () => {
       lastOpenedAt: "2026-07-29T00:00:00.000Z",
     });
     await browser.refresh();
+    await disableMotion();
     await waitForBodyText(projectName);
     await clickContaining(projectName);
     await waitForBodyText(initialTitle);
@@ -34,6 +35,7 @@ describe("Studio real desktop authoring loop", () => {
       await trust.click();
     }
     await waitForAnyBodyText(["开始游戏", "Start game"]);
+    await assertTitleBarGroupsDoNotOverlap();
     await browser.saveScreenshot(path.join(screenshots, "01-project-opened.png"));
 
     await clickButton(["脚本", "Script"]);
@@ -46,6 +48,7 @@ describe("Studio real desktop authoring loop", () => {
     await waitForAnyBodyText(["导出游戏", "Export game"]);
     await clickButton(["项目", "Project"]);
     await waitForAnyBodyText(["项目设置", "Project settings"]);
+    await waitForWorkspaceContentVisible();
     await browser.saveScreenshot(path.join(screenshots, "02-workspaces-navigated.png"));
 
     const titleInput = await browser.$(
@@ -56,9 +59,11 @@ describe("Studio real desktop authoring loop", () => {
     await clickButton(["保存", "Save"]);
     await waitForJsonTitle(savedTitle);
     await waitForBodyText(savedTitle);
+    await waitForWorkspaceContentVisible();
     await browser.saveScreenshot(path.join(screenshots, "03-title-saved.png"));
 
     await browser.refresh();
+    await disableMotion();
     await waitForBodyText(projectName);
     await clickContaining(projectName);
     await waitForBodyText(savedTitle);
@@ -71,6 +76,7 @@ describe("Studio real desktop authoring loop", () => {
     await rename(staged, metaFile);
     await waitForBodyText(externalTitle, 20_000);
     await waitForAnyBodyText(["开始游戏", "Start game"], 20_000);
+    await waitForWorkspaceContentVisible();
     await browser.saveScreenshot(path.join(screenshots, "04-external-hot-reload.png"));
 
     const finalMeta = JSON.parse(await readFile(metaFile, "utf8"));
@@ -118,6 +124,93 @@ async function waitForJsonTitle(title) {
       return false;
     }
   }, { timeout: 15_000, timeoutMsg: `content/meta.json did not persist ${title}` });
+}
+
+async function disableMotion() {
+  await browser.execute(() => {
+    const id = "vibegal-agent-qa-disable-motion";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = "*,*::before,*::after{animation-duration:0s!important;transition-duration:0s!important}";
+    document.head.append(style);
+  });
+}
+
+async function waitForWorkspaceContentVisible() {
+  await browser.waitUntil(() => browser.execute(() => {
+    const header = document.querySelector("header[data-tauri-drag-region]");
+    const content = header?.nextElementSibling;
+    if (!(content instanceof HTMLElement)) return false;
+    const style = getComputedStyle(content);
+    return style.visibility !== "hidden"
+      && style.display !== "none"
+      && Number(style.opacity) >= 0.99
+      && content.getBoundingClientRect().height > 0;
+  }), {
+    timeout: 5_000,
+    timeoutMsg: "workspace content did not finish becoming visible",
+  });
+}
+
+async function assertTitleBarGroupsDoNotOverlap() {
+  const layout = await browser.execute(() => {
+    const header = document.querySelector("header[data-tauri-drag-region]");
+    const workspaceTab = header?.querySelector(".gs-tab");
+    const history = header?.firstElementChild;
+    const navigation = workspaceTab?.parentElement;
+    const actions = header?.lastElementChild;
+    if (!(header instanceof HTMLElement)
+      || !(history instanceof HTMLElement)
+      || !(navigation instanceof HTMLElement)
+      || !(actions instanceof HTMLElement)) {
+      return { error: "workspace title bar groups are missing" };
+    }
+    const headerRect = header.getBoundingClientRect();
+    const childBounds = (element) => {
+      const boxes = Array.from(element.children)
+        .filter((child) => getComputedStyle(child).display !== "none")
+        .map((child) => child.getBoundingClientRect());
+      return {
+        left: Math.min(...boxes.map((box) => box.left)),
+        right: Math.max(...boxes.map((box) => box.right)),
+      };
+    };
+    const historyBounds = childBounds(history);
+    const navigationBounds = childBounds(navigation);
+    const actionsBounds = childBounds(actions);
+    const actionsOverflowPx = Array.from(actions.children).reduce((overflow, child) => {
+      if (getComputedStyle(child).display === "none") return overflow;
+      const childRect = child.getBoundingClientRect();
+      return Math.max(
+        overflow,
+        headerRect.top - childRect.top,
+        childRect.bottom - headerRect.bottom,
+      );
+    }, 0);
+    return {
+      historyRight: historyBounds.right,
+      navigationLeft: navigationBounds.left,
+      navigationRight: navigationBounds.right,
+      actionsLeft: actionsBounds.left,
+      overlapPx: Math.max(0, navigationBounds.right - actionsBounds.left),
+      actionsOverflowPx,
+    };
+  });
+
+  assert.equal(layout.error, undefined, layout.error);
+  assert.ok(
+    layout.historyRight <= layout.navigationLeft,
+    "workspace history controls overlap the navigation",
+  );
+  assert.ok(
+    layout.navigationRight <= layout.actionsLeft,
+    `workspace navigation overlaps the project controls by ${layout.overlapPx}px`,
+  );
+  assert.ok(
+    layout.actionsOverflowPx <= 0,
+    `workspace project controls overflow the title bar by ${layout.actionsOverflowPx}px`,
+  );
 }
 
 function xpathLiteral(value) {

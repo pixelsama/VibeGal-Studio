@@ -293,6 +293,25 @@ button:focus-visible {
 }
 
 /* ── 顶部工作台切换标签（Workspace） ── */
+.gs-workspace-title,
+.gs-workspace-style-label,
+.gs-workspace-sync-label {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .gs-workspace-style-label,
+  .gs-workspace-sync-label {
+    display: inline;
+  }
+}
+
+@media (min-width: 1200px) {
+  .gs-workspace-title {
+    display: inline;
+  }
+}
+
 .gs-tab {
   display: inline-flex;
   align-items: center;
