@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibegal.example/schemas/agent-mailbox/codex-run-result.schema.json",
+  "title": "Codex mailbox run result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "outputMessageIds"],
+  "properties": {
+    "status": { "enum": ["completed", "blocked", "failed"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "outputMessageIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+      "uniqueItems": true
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "completed" } } },
+      "then": { "properties": { "outputMessageIds": { "minItems": 1 } } }
+    }
+  ]
+}

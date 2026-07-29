@@ -29,7 +29,10 @@
     "qa:agent:desktop": "node scripts/agent-qa.mjs --suite desktop",
     "qa:agent:package": "node scripts/agent-qa.mjs --suite package",
     "qa:agent:release": "node scripts/agent-qa.mjs --suite release",
-    "check:agent-qa-isolation": "node scripts/check-agent-qa-isolation.mjs"
+    "check:agent-qa-isolation": "node scripts/check-agent-qa-isolation.mjs",
+    "agent:mailbox": "node scripts/agent-mailbox.mjs",
+    "agent:codex:dispatcher": "node scripts/codex-mailbox-dispatcher.mjs",
+    "agent:workspace:setup": "node scripts/agent-workspace.mjs setup"
   },
   "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
   "devDependencies": {

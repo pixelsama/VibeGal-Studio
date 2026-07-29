@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibegal.example/schemas/agent-mailbox/test-request.schema.json",
+  "title": "VibeGal Agent test request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "messageId",
+    "requestId",
+    "type",
+    "sender",
+    "recipient",
+    "worktree",
+    "createdAt",
+    "attempt",
+    "featureBranch",
+    "featureCommit",
+    "baseBranch",
+    "baseCommit",
+    "suite",
+    "changeSummary"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "$ref": "#/$defs/identifier" },
+    "requestId": { "$ref": "#/$defs/identifier" },
+    "type": { "const": "test_request" },
+    "sender": { "$ref": "#/$defs/agent" },
+    "recipient": { "$ref": "#/$defs/agent" },
+    "worktree": { "const": "test" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "featureBranch": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "featureCommit": { "$ref": "#/$defs/sha" },
+    "baseBranch": { "const": "main" },
+    "baseCommit": { "$ref": "#/$defs/sha" },
+    "suite": { "enum": ["quick", "desktop", "package", "release"] },
+    "changeSummary": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "agent": { "enum": ["codex", "claude", "grok"] },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+  }
+}

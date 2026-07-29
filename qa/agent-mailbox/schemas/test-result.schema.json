@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibegal.example/schemas/agent-mailbox/test-result.schema.json",
+  "title": "VibeGal Agent test result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "messageId",
+    "requestId",
+    "requestMessageId",
+    "type",
+    "sender",
+    "recipient",
+    "worktree",
+    "createdAt",
+    "attempt",
+    "status",
+    "featureBranch",
+    "featureCommit",
+    "baseCommit",
+    "suite",
+    "summaryPath",
+    "failures"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "$ref": "#/$defs/identifier" },
+    "requestId": { "$ref": "#/$defs/identifier" },
+    "requestMessageId": { "$ref": "#/$defs/identifier" },
+    "type": { "const": "test_result" },
+    "sender": { "$ref": "#/$defs/agent" },
+    "recipient": { "$ref": "#/$defs/agent" },
+    "worktree": { "const": "dev" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["passed", "failed", "stale", "blocked"] },
+    "featureBranch": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "featureCommit": { "$ref": "#/$defs/sha" },
+    "baseCommit": { "$ref": "#/$defs/sha" },
+    "testedMergeCommit": { "$ref": "#/$defs/sha" },
+    "suite": { "enum": ["quick", "desktop", "package", "release"] },
+    "summaryPath": { "type": "string", "pattern": "^runs/(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+    "pullRequestUrl": { "type": ["string", "null"], "format": "uri", "pattern": "^https://" },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step", "error"],
+        "properties": {
+          "step": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "error": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "reproduction": { "type": "string", "minLength": 1, "maxLength": 4000 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "agent": { "enum": ["codex", "claude", "grok"] },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "passed" } } },
+      "then": { "required": ["testedMergeCommit", "pullRequestUrl"], "properties": { "failures": { "maxItems": 0 } } }
+    }
+  ]
+}
