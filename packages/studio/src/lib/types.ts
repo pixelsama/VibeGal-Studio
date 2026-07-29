@@ -104,6 +104,14 @@ export interface NodeSummary {
   revision?: FileRevision;
 }
 
+/** 首屏完成后批量读取的创作者卡片摘要，不包含指令正文。 */
+export interface NodeCreatorSummary {
+  id: string;
+  relPath: string;
+  sayCount: number;
+  changesState: boolean;
+}
+
 export interface NodeDetail {
   relPath: string;
   data: unknown;

@@ -43,6 +43,7 @@ vi.mock("../../lib/tauri", () => ({
   saveManifest: vi.fn(),
   saveVariables: vi.fn(),
   renameVariable: vi.fn(),
+  readNodeCreatorSummaries: vi.fn().mockResolvedValue([]),
   readNodeDetail: vi.fn(),
   readProjectNodes: vi.fn(),
 }));

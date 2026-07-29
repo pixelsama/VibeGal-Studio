@@ -17,11 +17,16 @@ export function compareScaleBenchmarkBaseline(current, baseline) {
     throw new Error("Baseline browser benchmark has no valid peak JS heap measurement.");
   }
 
+  const namedRunner = current.environment?.runnerClass && baseline.environment?.runnerClass;
   const comparedFields = [
-    ["environment.platform", current.environment?.platform, baseline.environment?.platform],
-    ["environment.architecture", current.environment?.architecture, baseline.environment?.architecture],
-    ["environment.cpuModel", current.environment?.cpuModel, baseline.environment?.cpuModel],
-    ["environment.cpuCount", current.environment?.cpuCount, baseline.environment?.cpuCount],
+    ...(namedRunner
+      ? [["environment.runnerClass", current.environment.runnerClass, baseline.environment.runnerClass]]
+      : [
+          ["environment.platform", current.environment?.platform, baseline.environment?.platform],
+          ["environment.architecture", current.environment?.architecture, baseline.environment?.architecture],
+          ["environment.cpuModel", current.environment?.cpuModel, baseline.environment?.cpuModel],
+          ["environment.cpuCount", current.environment?.cpuCount, baseline.environment?.cpuCount],
+        ]),
     ["browser.name", current.browser.browser?.name, baseline.browser.browser?.name],
     ["browser.viewport.width", current.browser.browser?.viewport?.width, baseline.browser.browser?.viewport?.width],
     ["browser.viewport.height", current.browser.browser?.viewport?.height, baseline.browser.browser?.viewport?.height],

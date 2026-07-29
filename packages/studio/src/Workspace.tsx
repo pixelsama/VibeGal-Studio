@@ -677,8 +677,8 @@ export function Workspace({
         onOpen={() => void ensureFullAnalysis()}
         okLabel={t("workspace.normal")}
         notOkLabel={(n) => t("workspace.issueCount", { count: n })}
-        dialogTitle="Project Issues"
-        dialogAriaLabel="Project Issues"
+        dialogTitle={t("workspace.projectIssues")}
+        dialogAriaLabel={t("workspace.projectIssues")}
         emptyDescription={t("workspace.normal")}
         sourceLabel={(source) => projectIssueSourceLabel(source, t)}
         issueExtra={(issue) =>

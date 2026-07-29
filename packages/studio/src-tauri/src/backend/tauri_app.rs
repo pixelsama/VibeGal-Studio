@@ -22,6 +22,7 @@ pub(crate) fn run() {
             super::commands::open_project,
             super::commands::analyze_project,
             super::commands::read_project_nodes,
+            super::commands::read_node_creator_summaries,
             super::commands::read_node_detail,
             super::commands::read_node_file_snapshot,
             super::commands::create_project,

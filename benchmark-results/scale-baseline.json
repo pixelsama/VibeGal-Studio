@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "benchmark": "scale-v1",
+  "environment": {
+    "runnerClass": "github-ubuntu-24.04-x64",
+    "platform": "linux",
+    "architecture": "x64",
+    "node": "v22",
+    "cpuModel": "managed-by-runner-class",
+    "cpuCount": 0,
+    "totalMemoryBytes": 0,
+    "commit": null
+  },
+  "browser": {
+    "status": "completed",
+    "browser": {
+      "name": "Google Chrome",
+      "version": "runner-managed",
+      "viewport": {
+        "width": 1440,
+        "height": 1000,
+        "deviceScaleFactor": 1
+      }
+    },
+    "measurements": {
+      "peakJsHeapBytes": 180000000
+    },
+    "baselineNote": "Conservative 1.0 CI seed; replace only with an archived passing report from the same runner class."
+  }
+}

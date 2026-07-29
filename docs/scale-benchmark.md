@@ -57,7 +57,7 @@ pnpm benchmark:scale -- benchmark-results/scale-latest.json --browser --require-
   --baseline benchmark-results/scale-baseline.json
 ```
 
-也可通过 `VIBEGAL_BENCHMARK_BASELINE` 指定 baseline。比较器要求 platform、architecture、CPU 型号/核心数、浏览器名和 viewport 完全一致；runner 不一致或任一浏览器报告未完成会失败，而不是把不可比数据当成基线。当前 observed peak 超过 baseline 20% 时，报告仍会写盘并把进程置为失败，便于 CI 保留原始证据。任一浏览器绝对预算或 DOM/可访问性断言失败也采用相同的写报告后非零退出行为。
+也可通过 `VIBEGAL_BENCHMARK_BASELINE` 指定 baseline。本机比较器要求 platform、architecture、CPU 型号/核心数、浏览器名和 viewport 完全一致；CI 则设置稳定的 `VIBEGAL_BENCHMARK_RUNNER_CLASS`，以固定镜像类别取代可能随托管 runner 实例漂移的 CPU 型号/核心数。runner 类别不一致或任一浏览器报告未完成会失败，而不是把不可比数据当成基线。当前 observed peak 超过 baseline 20% 时，报告仍会写盘并把进程置为失败，便于 CI 保留原始证据。任一浏览器绝对预算或 DOM/可访问性断言失败也采用相同的写报告后非零退出行为。
 
 ## 预算与回归规则
 
@@ -71,4 +71,4 @@ pnpm benchmark:scale -- benchmark-results/scale-latest.json --browser --require-
 - 单节点编辑与保存 p95 ≤ 150 ms；
 - peak JS heap 相对同 runner baseline 回归不超过 20%。
 
-绝对预算用于本机验收；CI 使用相同 runner 的历史 baseline 做相对比较。任何报告必须记录环境和 commit。机器或浏览器版本变化时先建立新 baseline，不把环境漂移判作产品回归。
+绝对预算用于本机验收；CI 的 `ubuntu-24.04` job 使用仓库内 `benchmark-results/scale-baseline.json` 和稳定 runner class 做相对比较，并无条件上传原始报告。任何报告必须记录环境和 commit。runner 镜像或浏览器发生实质变化时先在同类 CI runner 建立新 baseline，不把环境漂移判作产品回归。

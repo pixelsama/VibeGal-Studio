@@ -28,6 +28,11 @@ export default defineConfig({
           if (id.includes("/node_modules/@xyflow/react")) {
             return "xyflow";
           }
+          for (const workspace of ["assets", "appearance", "export", "script"]) {
+            if (id.includes(`/src/features/${workspace}/`)) return `workspace-${workspace}`;
+          }
+          if (id.includes("/node_modules/esbuild-wasm")) return "renderer-compiler";
+          if (id.includes("/node_modules/lucide-react")) return "icons";
           return undefined;
         },
       },

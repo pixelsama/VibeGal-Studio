@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectData } from "./types";
 
 vi.mock("./tauri", () => ({
+  readNodeCreatorSummaries: vi.fn(),
   readNodeDetail: vi.fn(),
   readProjectNodes: vi.fn(),
 }));
 
-import { readNodeDetail, readProjectNodes } from "./tauri";
+import { readNodeCreatorSummaries, readNodeDetail, readProjectNodes } from "./tauri";
 import {
   clearProjectNodeCache,
   loadAllProjectNodes,
+  loadNodeCreatorSummaries,
   loadNodeDetail,
 } from "./projectNodeData";
 
@@ -50,6 +52,22 @@ describe("project node caches", () => {
     expect(first).toBe(second);
     await first;
     expect(readProjectNodes).toHaveBeenCalledTimes(1);
+  });
+
+  it("deduplicates lightweight creator-summary requests without loading full node bodies", async () => {
+    vi.mocked(readNodeCreatorSummaries).mockResolvedValue([{
+      id: "a",
+      relPath: "nodes/a.json",
+      sayCount: 2,
+      changesState: true,
+    }]);
+
+    const first = loadNodeCreatorSummaries(project(), 2);
+    const second = loadNodeCreatorSummaries(project(), 2);
+    expect(first).toBe(second);
+    await expect(first).resolves.toEqual([expect.objectContaining({ sayCount: 2 })]);
+    expect(readNodeCreatorSummaries).toHaveBeenCalledTimes(1);
+    expect(readProjectNodes).not.toHaveBeenCalled();
   });
 
   it("invalidates full-node requests on revision and generation changes", async () => {

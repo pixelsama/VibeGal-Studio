@@ -7,6 +7,7 @@ import {
   scenarioParameterOptions,
   scenarioParameterTriggerAtCursor,
 } from "./scenarioCommands";
+import { resolveCatalogMessage } from "../../lib/i18n";
 
 const project: ProjectData = {
   path: "/tmp/project",
@@ -102,6 +103,15 @@ describe("Scenario parameter completion", () => {
       prompt: "怎么称呼你？",
       maxLength: 20,
     });
+  });
+
+  it("localizes command labels and details while keeping stable command kinds", () => {
+    const t = (key: Parameters<typeof resolveCatalogMessage>[1], params?: Parameters<typeof resolveCatalogMessage>[2]) => (
+      resolveCatalogMessage("en", key, params, { strictMissingEnglish: true })
+    );
+    expect(scenarioCommandOptionsForQuery("name", t)).toEqual([
+      expect.objectContaining({ kind: "inputName", label: "Player name", detail: "Ask the player to enter a name" }),
+    ]);
   });
 
   it("replaces only the active token", () => {

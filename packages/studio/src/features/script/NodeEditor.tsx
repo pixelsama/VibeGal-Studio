@@ -663,7 +663,7 @@ export function NodeEditor({
     [cursorOffset, mode, text],
   );
   const commandQuery = commandMenuSource === "trigger" ? scenarioCommandTrigger?.query ?? "" : "";
-  const visibleCommands = useMemo(() => scenarioCommandOptionsForQuery(commandQuery), [commandQuery]);
+  const visibleCommands = useMemo(() => scenarioCommandOptionsForQuery(commandQuery, t), [commandQuery, t]);
   const visibleParameters = useMemo(
     () => parameterTrigger ? scenarioParameterOptions(parameterTrigger, project) : [],
     [parameterTrigger, project],

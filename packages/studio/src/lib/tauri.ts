@@ -13,6 +13,7 @@ import type {
   GraphPositionPatch,
   Manifest,
   NodeDetail,
+  NodeCreatorSummary,
   NodeFileSnapshot,
   NodeEntry,
   ProjectAnalysis,
@@ -99,6 +100,11 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
 /** 显式读取全部节点正文，供预览、搜索和全局分析等完整数据场景使用。 */
 export async function readProjectNodes(projectPath: string): Promise<NodeEntry[]> {
   return invoke<NodeEntry[]>("read_project_nodes", { projectPath });
+}
+
+/** 首屏之后批量读取图卡片所需的派生计数，不传输节点正文。 */
+export async function readNodeCreatorSummaries(projectPath: string): Promise<NodeCreatorSummary[]> {
+  return invoke<NodeCreatorSummary[]>("read_node_creator_summaries", { projectPath });
 }
 
 /** 读取 graph 已登记节点的正文和同一快照 revision。 */

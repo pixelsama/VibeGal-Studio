@@ -37,7 +37,7 @@ if (msvcToolchain) {
   console.log(`[release-smoke] Windows 检测到 MSVC Rust 工具链，使用: ${msvcToolchain}`);
 }
 
-const cli = `cargo run --manifest-path ${join(
+const cli = `cargo run --locked --manifest-path ${join(
   "packages/studio/src-tauri/Cargo.toml",
 )} --bin vibegal-cli validate`;
 

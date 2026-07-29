@@ -5,6 +5,7 @@ import {
   type InsertableKind,
 } from "./instructions";
 import { variableLabel } from "./storyState";
+import { translateZhCN, type StudioMessageKey, type StudioTranslator } from "../../lib/i18n";
 
 export type CommandMenuSource = "trigger" | "line-plus";
 
@@ -206,21 +207,26 @@ export interface ScenarioCommandOption {
   aliases: string[];
 }
 
-const SCENARIO_COMMANDS: ScenarioCommandOption[] = [
-  { kind: "narrate", label: "旁白", detail: "插入一行叙述文本", aliases: ["narrate", "text", "旁白"] },
-  { kind: "say", label: "台词", detail: "插入角色台词", aliases: ["say", "dialog", "台词"] },
-  { kind: "bg", label: "背景", detail: "切换背景", aliases: ["bg", "background", "背景"] },
-  { kind: "bgm", label: "BGM", detail: "播放背景音乐", aliases: ["bgm", "music", "音乐"] },
-  { kind: "sfx", label: "音效", detail: "播放音效", aliases: ["sfx", "sound", "音效"] },
-  { kind: "voice", label: "语音", detail: "播放语音", aliases: ["voice", "语音"] },
-  { kind: "char", label: "角色", detail: "登场或切换立绘", aliases: ["char", "character", "角色"] },
-  { kind: "showCg", label: "CG", detail: "全屏展示一张 CG", aliases: ["showcg", "cg"] },
-  { kind: "playVideo", label: "视频", detail: "播放一段视频", aliases: ["playvideo", "video", "视频"] },
-  { kind: "wait", label: "等待", detail: "等待指定毫秒", aliases: ["wait", "等待"] },
-  { kind: "effect", label: "效果", detail: "触发画面效果", aliases: ["effect", "fx", "效果"] },
-  { kind: "transition", label: "转场", detail: "触发转场覆盖层", aliases: ["transition", "trans", "转场"] },
-  { kind: "set", label: "故事状态", detail: "改变故事状态", aliases: ["set", "state", "状态"] },
-  { kind: "inputName", label: "玩家命名", detail: "请玩家输入名字", aliases: ["inputname", "name", "命名", "名字"] },
+type ScenarioCommandDefinition = Pick<ScenarioCommandOption, "kind" | "aliases"> & {
+  labelKey: StudioMessageKey;
+  detailKey: StudioMessageKey;
+};
+
+const SCENARIO_COMMANDS: ScenarioCommandDefinition[] = [
+  { kind: "narrate", labelKey: "script.command.narrate.label", detailKey: "script.command.narrate.detail", aliases: ["narrate", "text", "旁白"] },
+  { kind: "say", labelKey: "script.command.say.label", detailKey: "script.command.say.detail", aliases: ["say", "dialog", "台词"] },
+  { kind: "bg", labelKey: "script.command.bg.label", detailKey: "script.command.bg.detail", aliases: ["bg", "background", "背景"] },
+  { kind: "bgm", labelKey: "script.command.bgm.label", detailKey: "script.command.bgm.detail", aliases: ["bgm", "music", "音乐"] },
+  { kind: "sfx", labelKey: "script.command.sfx.label", detailKey: "script.command.sfx.detail", aliases: ["sfx", "sound", "音效"] },
+  { kind: "voice", labelKey: "script.command.voice.label", detailKey: "script.command.voice.detail", aliases: ["voice", "语音"] },
+  { kind: "char", labelKey: "script.command.char.label", detailKey: "script.command.char.detail", aliases: ["char", "character", "角色"] },
+  { kind: "showCg", labelKey: "script.command.showCg.label", detailKey: "script.command.showCg.detail", aliases: ["showcg", "cg"] },
+  { kind: "playVideo", labelKey: "script.command.playVideo.label", detailKey: "script.command.playVideo.detail", aliases: ["playvideo", "video", "视频"] },
+  { kind: "wait", labelKey: "script.command.wait.label", detailKey: "script.command.wait.detail", aliases: ["wait", "等待"] },
+  { kind: "effect", labelKey: "script.command.effect.label", detailKey: "script.command.effect.detail", aliases: ["effect", "fx", "效果"] },
+  { kind: "transition", labelKey: "script.command.transition.label", detailKey: "script.command.transition.detail", aliases: ["transition", "trans", "转场"] },
+  { kind: "set", labelKey: "script.command.set.label", detailKey: "script.command.set.detail", aliases: ["set", "state", "状态"] },
+  { kind: "inputName", labelKey: "script.command.inputName.label", detailKey: "script.command.inputName.detail", aliases: ["inputname", "name", "命名", "名字"] },
 ];
 
 export interface ScenarioCommandTrigger {
@@ -276,10 +282,19 @@ export function insertScenarioCommandAtCursor(
   return { text: nextText, cursorOffset: bounds.end + 1 + commandText.length };
 }
 
-export function scenarioCommandOptionsForQuery(query: string) {
+export function scenarioCommandOptionsForQuery(
+  query: string,
+  t: StudioTranslator = translateZhCN,
+): ScenarioCommandOption[] {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) return SCENARIO_COMMANDS;
-  return SCENARIO_COMMANDS.filter((command) => (
+  const commands = SCENARIO_COMMANDS.map((command) => ({
+    kind: command.kind,
+    label: t(command.labelKey),
+    detail: t(command.detailKey),
+    aliases: command.aliases,
+  }));
+  if (!normalized) return commands;
+  return commands.filter((command) => (
     command.label.toLowerCase().includes(normalized)
     || command.kind.toLowerCase().includes(normalized)
     || command.aliases.some((alias) => alias.toLowerCase().includes(normalized))

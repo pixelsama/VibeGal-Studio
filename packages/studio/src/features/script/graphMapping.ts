@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { VariableRegistry } from "@vibegal/engine";
-import type { GraphIssue, GraphReport, GraphNode, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphIssue, GraphReport, GraphNode, Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
+import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import { creatorEdgeLabel, creatorNodeSummary } from "./graphCreatorLanguage";
 
 export const NODE_TYPE = "galNode";
@@ -24,6 +25,8 @@ export function mapGraphToFlow(
   nodeEntries?: NodeEntry[],
   manifest?: Manifest,
   variables?: VariableRegistry,
+  nodeSummaries?: NodeCreatorSummary[],
+  t: StudioTranslator = translateZhCN,
 ): { nodes: Node<FlowNodeData, typeof NODE_TYPE>[]; edges: Edge[] } {
   const duplicateNodeIds = collectDuplicateNodeIds(graphReport);
   const suspiciousEdgeIds = new Set(
@@ -54,10 +57,10 @@ export function mapGraphToFlow(
     );
     const endingIds = endingIdsByNode.get(node.id) ?? [];
     const badges = [
-      ...(node.id === graph.entryNodeId ? ["起点"] : []),
-      ...(outgoing === 0 ? ["图终点"] : []),
-      ...(outgoing >= 2 ? ["分支"] : []),
-      ...endingIds.map((id) => `正式结局：${id}`),
+      ...(node.id === graph.entryNodeId ? [t("script.graph.badge.entry")] : []),
+      ...(outgoing === 0 ? [t("script.graph.badge.terminal")] : []),
+      ...(outgoing >= 2 ? [t("script.graph.badge.branch")] : []),
+      ...endingIds.map((id) => t("script.graph.badge.formalEnding", { id })),
     ];
     return {
       id: node.id,
@@ -70,7 +73,7 @@ export function mapGraphToFlow(
         status: baseStatus,
         incoming,
         outgoing,
-        summary: creatorNodeSummary(node.id, node.file, nodeEntries, manifest),
+        summary: creatorNodeSummary(node.id, node.file, nodeEntries, manifest, nodeSummaries, t),
         badges,
         ...(duplicateNodeIds.has(node.id) ? { duplicateNodeId: true } : {}),
       },
@@ -81,7 +84,7 @@ export function mapGraphToFlow(
     source: edge.from,
     target: edge.to,
     type: "smoothstep",
-    label: creatorEdgeLabel(edge, { graph, variables, manifest }),
+    label: creatorEdgeLabel(edge, { graph, variables, manifest, t }),
     data: {
       condition: edge.condition,
       mode: edge.mode ?? "linear",

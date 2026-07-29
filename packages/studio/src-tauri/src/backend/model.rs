@@ -193,7 +193,7 @@ pub struct NodeEntry {
 }
 
 /// 图工作台首屏使用的节点索引。它只来自 graph.json 和文件元数据，
-/// 不读取节点正文；完整正文由 read_node_detail 按需读取。
+/// 不读取节点正文；卡片摘要与完整正文都在首屏之后按需读取。
 #[derive(Serialize, Clone)]
 pub struct NodeSummary {
     pub id: String,
@@ -207,6 +207,17 @@ pub struct NodeSummary {
     pub outgoing: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<FileRevision>,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct NodeCreatorSummary {
+    pub id: String,
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    #[serde(rename = "sayCount")]
+    pub say_count: usize,
+    #[serde(rename = "changesState")]
+    pub changes_state: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]

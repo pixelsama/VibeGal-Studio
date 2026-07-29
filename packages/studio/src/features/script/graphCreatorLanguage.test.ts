@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Manifest, VariableRegistry } from "@vibegal/engine";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
+import type { NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
+import { resolveCatalogMessage } from "../../lib/i18n";
 import { creatorEdgeLabel, creatorNodeSummary } from "./graphCreatorLanguage";
 
 const graph: ProjectGraph = {
@@ -55,6 +56,20 @@ describe("creatorEdgeLabel", () => {
     )).toBe("否则");
   });
 
+  it("uses the active Studio language for generated labels", () => {
+    const t = (key: Parameters<typeof resolveCatalogMessage>[1], params?: Parameters<typeof resolveCatalogMessage>[2]) => (
+      resolveCatalogMessage("en", key, params, { strictMissingEnglish: true })
+    );
+    expect(creatorEdgeLabel(
+      { mode: "choice", label: null },
+      { graph, variables, manifest, t },
+    )).toBe("Choice");
+    expect(creatorEdgeLabel(
+      { mode: "auto", condition: null },
+      { graph, variables, manifest, t },
+    )).toBe("Otherwise");
+  });
+
   it("preserves raw expressions that cannot be sentenceized", () => {
     expect(creatorEdgeLabel(
       { mode: "auto", condition: "a + b > c" },
@@ -90,8 +105,22 @@ describe("creatorNodeSummary", () => {
     ]);
   });
 
+  it("uses lazy summaries and still identifies formal endings without loaded node bodies", () => {
+    const summaries: NodeCreatorSummary[] = [{
+      id: "ending",
+      relPath: "nodes/ending.json",
+      sayCount: 2,
+      changesState: true,
+    }];
+    expect(creatorNodeSummary("ending", "nodes/ending.json", undefined, manifest, summaries)).toEqual([
+      "2 句台词",
+      "改变故事状态",
+      "正式结局",
+    ]);
+  });
+
   it("handles missing and malformed node data without inventing content", () => {
     expect(creatorNodeSummary("start", "nodes/start.json", nodes, manifest)).toEqual([]);
-    expect(creatorNodeSummary("ending", "nodes/missing.json", undefined, manifest)).toEqual([]);
+    expect(creatorNodeSummary("ending", "nodes/missing.json", undefined, manifest)).toEqual(["正式结局"]);
   });
 });

@@ -127,6 +127,13 @@ pub(crate) fn read_project_nodes(project_path: String) -> Result<Vec<NodeEntry>,
 }
 
 #[tauri::command]
+pub(crate) fn read_node_creator_summaries(
+    project_path: String,
+) -> Result<Vec<super::model::NodeCreatorSummary>, String> {
+    project::read_node_creator_summaries(&project_path)
+}
+
+#[tauri::command]
 pub(crate) fn read_node_detail(project_path: String, rel_path: String) -> Result<NodeDetail, String> {
     project::read_node_detail(&project_path, &rel_path)
 }

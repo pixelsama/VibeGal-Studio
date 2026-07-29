@@ -135,7 +135,11 @@ fn open_project_summary_returns_metadata_only_node_index() {
             ],
             "edges": []
         }),
-        &[("nodes/present.json", serde_json::json!([{"t":"narrate","text":"secret"}]))],
+        &[("nodes/present.json", serde_json::json!([
+            {"t":"say","who":"akari","text":"one"},
+            {"t":"say","who":"akari","text":"two"},
+            {"t":"set","key":"route","value":"a"}
+        ]))],
     );
 
     let opened = open_project_summary(project.to_string_lossy().as_ref()).unwrap();
@@ -154,6 +158,33 @@ fn open_project_summary_returns_metadata_only_node_index() {
         .project_issues
         .iter()
         .all(|issue| issue.source != "node"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn node_creator_summaries_derive_card_counts_without_returning_bodies() {
+    let root = unique_temp_dir("node-creator-summaries");
+    let project = root.join("project");
+    write_graph_project(
+        &project,
+        serde_json::json!({
+            "version": 1,
+            "entryNodeId": "present",
+            "nodes": [{ "id": "present", "title": "Present", "file": "nodes/present.json", "position": { "x": 0, "y": 0 } }],
+            "edges": []
+        }),
+        &[("nodes/present.json", serde_json::json!([
+            {"t":"say","who":"akari","text":"one"},
+            {"t":"say","who":"akari","text":"two"},
+            {"t":"set","key":"route","value":"a"}
+        ]))],
+    );
+
+    let summaries = read_node_creator_summaries(project.to_string_lossy().as_ref()).unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].say_count, 2);
+    assert!(summaries[0].changes_state);
+    assert_eq!(summaries[0].rel_path, "nodes/present.json");
     let _ = fs::remove_dir_all(&root);
 }
 

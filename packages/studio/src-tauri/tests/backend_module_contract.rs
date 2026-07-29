@@ -6,11 +6,12 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 46] = [
+const COMMAND_NAMES: [&str; 47] = [
     "list_projects",
     "open_project",
     "analyze_project",
     "read_project_nodes",
+    "read_node_creator_summaries",
     "read_node_detail",
     "read_node_file_snapshot",
     "create_project",
@@ -70,11 +71,12 @@ const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 46] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 47] = [
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("analyze_project", &["projectPath"]),
     ("read_project_nodes", &["projectPath"]),
+    ("read_node_creator_summaries", &["projectPath"]),
     ("read_node_detail", &["projectPath", "relPath"]),
     (
         "read_node_file_snapshot",

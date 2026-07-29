@@ -39,7 +39,7 @@ import {
   undoGraphHistory,
 } from "./graphHistory";
 import { findNode } from "./graphMapping";
-import { loadNodeDetail, useAllProjectNodes, useNodeDetail } from "../../lib/projectNodeData";
+import { loadNodeDetail, useAllProjectNodes, useNodeCreatorSummaries, useNodeDetail } from "../../lib/projectNodeData";
 import "@xyflow/react/dist/style.css";
 import { endingsForNode, insertEndingCompletion, registerEnding, unregisterEnding, upsertEnding } from "./endingRegistry";
 import { referencesAffectedByNodeDeletion } from "./nodeReferences";
@@ -124,6 +124,11 @@ export function ScriptWorkspace({
     && (primaryView === "state" || primaryView === "translation" || coverageOpen);
   const needsFullNodeData = blockingFullNodeData || (view === "graph" && outlineSearchActive);
   const allNodeData = useAllProjectNodes(project, _refreshKey, needsFullNodeData);
+  const nodeCreatorSummaries = useNodeCreatorSummaries(
+    project,
+    _refreshKey,
+    view === "graph" && primaryView === "flow",
+  );
   const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
   const [retainedNodeEditor, setRetainedNodeEditor] = useState<RetainedNodeEditor | null>(null);
   const [nodeEditorDirty, setNodeEditorDirty] = useState(false);
@@ -930,6 +935,7 @@ export function ScriptWorkspace({
                   graph={graph}
                   visibleNodeIds={visibleNodeIds}
                   graphReport={graphReport}
+                  nodeSummaries={nodeCreatorSummaries}
                   manifest={project.content.manifest}
                   variables={project.content.variables}
                   selectedNodeId={selectedNodeId}

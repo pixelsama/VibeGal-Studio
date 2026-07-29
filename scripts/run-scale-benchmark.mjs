@@ -60,6 +60,9 @@ try {
     benchmark: "scale-v1",
     dataset,
     environment: {
+      ...(process.env.VIBEGAL_BENCHMARK_RUNNER_CLASS
+        ? { runnerClass: process.env.VIBEGAL_BENCHMARK_RUNNER_CLASS }
+        : {}),
       platform: process.platform,
       architecture: process.arch,
       node: process.version,

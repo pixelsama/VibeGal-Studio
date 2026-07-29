@@ -159,6 +159,7 @@ async function loadBenchmarkProject(projectPath) {
     entry.relPath,
     revision(`content/${entry.relPath}`, JSON.stringify(entry.data), index + 10),
   ]));
+  const nodeDataByPath = new Map(nodes.map((entry) => [entry.relPath, entry.data]));
   const incoming = new Map();
   const outgoing = new Map();
   for (const edge of graph.edges) {
@@ -182,6 +183,19 @@ async function loadBenchmarkProject(projectPath) {
       outgoing: outgoing.get(node.id) ?? 0,
       revision: nodeRevisions[node.file],
     })),
+    nodeCreatorSummaries: graph.nodes.map((node) => {
+      const instructions = nodeDataByPath.get(node.file);
+      return {
+        id: node.id,
+        relPath: node.file,
+        sayCount: Array.isArray(instructions)
+          ? instructions.filter((instruction) => instruction?.t === "say").length
+          : 0,
+        changesState: Array.isArray(instructions)
+          ? instructions.some((instruction) => instruction?.t === "set")
+          : false,
+      };
+    }),
     graphRevision: revision("content/graph.json", JSON.stringify(graph), 1),
     manifestRevision: revision("content/manifest.json", JSON.stringify(manifest), 2),
     variablesRevision: revision("content/variables.json", JSON.stringify(variables), 3),
@@ -258,10 +272,11 @@ async function installBenchmarkBridge(cdp, data) {
     window.__TAURI_INTERNALS__.invoke = async (command, args = {}) => {
       stats[command] = (stats[command] || 0) + 1;
       switch (command) {
-        case "load_app_settings": return { theme: "system", rendererTrust: { [JSON.stringify([data.project.path, "default"])]: "${fingerprint}" } };
+        case "load_app_settings": return { theme: "system", language: "zh-CN", rendererTrust: { [JSON.stringify([data.project.path, "default"])]: "${fingerprint}" } };
         case "save_app_settings": return null;
         case "open_project": return copy({ ...data.project, nodes: undefined });
         case "read_project_nodes": return copy(data.project.nodes);
+        case "read_node_creator_summaries": return copy(data.project.nodeCreatorSummaries);
         case "read_node_detail": {
           const entry = nodeMap.get(args.relPath);
           if (!entry) throw new Error("missing node " + args.relPath);

@@ -12,6 +12,8 @@ import path from "node:path";
 import process from "node:process";
 import { parseArgs } from "./renderer-worker-shared.mjs";
 
+const repositoryScripts = path.resolve(import.meta.dirname, "../../../scripts");
+
 function jsonExit(value, code) {
   const stream = code === 0 ? process.stdout : process.stderr;
   stream.write(`${JSON.stringify(value, null, 2)}\n`);
@@ -203,6 +205,12 @@ async function installDesktopIcon({ webDist, outDir, metadata, bundle }) {
 
 async function packageTauri({ webDist, outDir, metadata, playerPath }) {
   const { productName, version } = metadata;
+  if (metadata.updates?.enabled) {
+    failure(
+      "desktop_updater_runtime_unsupported",
+      "Automatic updates require the compatible Electron runtime; the lightweight Tauri player does not embed the verified update client.",
+    );
+  }
   if (!playerPath) {
     failure("desktop_tauri_player_unavailable", "Tauri player path was not provided.");
   }
@@ -276,9 +284,10 @@ async function packageTauri({ webDist, outDir, metadata, playerPath }) {
 
 function electronMainSource() {
   return String.raw`"use strict";
-const { app, BrowserWindow, protocol } = require("electron");
+const { app, BrowserWindow, dialog, protocol, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 protocol.registerSchemesAsPrivileged([{
   scheme: "vibegal",
@@ -328,6 +337,39 @@ function gameFile(url) {
   return resolved === gameRoot || resolved.startsWith(gameRoot + path.sep) ? resolved : null;
 }
 
+async function stageDesktopUpdate(gameManifest) {
+  const updates = gameManifest.updates || {};
+  if (smoke || !updates.enabled || !updates.endpoint || !updates.publicKey) return;
+  const architecture = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : process.arch;
+  const platform = process.platform + "-" + architecture;
+  const updaterUrl = pathToFileURL(path.join(__dirname, "updater", "desktop-update-client.mjs")).href;
+  const updater = await import(updaterUrl);
+  const status = await updater.stageDesktopUpdate({
+    endpoint: updates.endpoint,
+    currentVersion: gameManifest.version,
+    publicKey: updates.publicKey,
+    channel: updates.channel || "stable",
+    platform,
+    downloadDirectory: path.join(app.getPath("userData"), "updates"),
+  });
+  const statusPath = path.join(app.getPath("userData"), "update-status.json");
+  fs.writeFileSync(statusPath, JSON.stringify({ ...status, checkedAt: new Date().toISOString() }, null, 2) + "\n", { mode: 0o600 });
+  if (status.status !== "staged") return;
+  const answer = await dialog.showMessageBox({
+    type: "info",
+    title: gameManifest.productName || gameManifest.title || "VibeGal Game",
+    message: "A verified update is ready to install.",
+    detail: "Version " + status.version + " was downloaded and verified. Install it now?",
+    buttons: ["Install and quit", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (answer.response !== 0) return;
+  const openError = await shell.openPath(status.path);
+  if (openError) throw new Error("Unable to open the platform installer: " + openError);
+  app.quit();
+}
+
 app.whenReady().then(async () => {
   protocol.registerFileProtocol("vibegal", (request, callback) => {
     requestedUrls.push(request.url);
@@ -354,6 +396,9 @@ app.whenReady().then(async () => {
   let gameManifest = {};
   try { gameManifest = JSON.parse(fs.readFileSync(path.join(gameRoot, "game.manifest.json"), "utf8")); }
   catch {}
+  void stageDesktopUpdate(gameManifest).catch((error) => {
+    console.warn("[vibegal-updater] update check failed; current installation is unchanged:", String(error?.message || error));
+  });
   const stage = gameManifest.stage || {};
   mainWindow = new BrowserWindow({
     title: gameManifest.productName || gameManifest.title || "VibeGal Game",
@@ -493,6 +538,11 @@ async function packageElectron({ webDist, outDir, metadata, electronDist, electr
     main: "main.cjs",
   }, null, 2)}\n`);
   await writeFile(path.join(appResources, "main.cjs"), electronMainSource());
+  const updaterDir = path.join(appResources, "updater");
+  await mkdir(updaterDir, { recursive: true });
+  for (const file of ["desktop-update-client.mjs", "verify-update-manifest.mjs", "update-manifest-contract.mjs"]) {
+    await cp(path.join(repositoryScripts, file), path.join(updaterDir, file));
+  }
   await cp(webDist, path.join(appResources, "game"), { recursive: true });
   const bundleIcon = await installDesktopIcon({
     webDist,

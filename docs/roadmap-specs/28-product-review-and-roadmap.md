@@ -1,9 +1,9 @@
 # Review 28 — 产品现状评审与开发路线图
 
-> 状态：路线图已确认；P0–P3 已完成，当前进入 [Spec 32](./32-scale-and-distribution.spec.md) 的 P4 实施。
-> 日期：2026-07-26。
+> 状态：路线图已确认；**P0–P4 全部完成**；目标版本 `1.0.0`。
+> 日期：2026-07-29。
 > 方法：通读仓库 + 实际运行 `pnpm tauri dev`（示例项目 `examples/sample-novel`）逐工作台截图，
-> 并对照 `title-preview/` 的默认渲染层快照。全量测试通过（vitest 852 + node:test 19）。
+> 并对照 `title-preview/` 的默认渲染层快照。版本一致性、doc-contract 与全量门禁纳入收口。
 
 ## 0. 一句话结论
 
@@ -235,16 +235,16 @@ Spec 24 → 26 → 27 这条线（故事状态从"分析报告"变成"创作对�
 4. **立绘表现**：move/scale/flip、表情过渡时长、`animationAtlases` 的运行时语义。
 5. **存档体验**：缩略图、更多槽位、章节跳读/回想入口。
 
-### P4 — 规模与分发（目标 1.0，待 P3 收口）
+### P4 — 规模与分发（1.0.0，已于 2026-07-29 完成）
 
-详细发布安全边界、性能预算、重构纪律与提交顺序见 [Spec 32](./32-scale-and-distribution.spec.md)。
+让 Studio 从功能完整的创作工具进入可维护、可扩展、可分发的 1.0 状态。以下能力均已落地，详细契约与验收见 [Spec 32](./32-scale-and-distribution.spec.md)：
 
-1. 安装包签名与公证；自动更新。
-2. 导出物元数据（图标 / 版本 / 窗口标题 / 分辨率策略）。
-3. 性能：列表虚拟化、大图分层渲染、节点文件懒加载；给出"1000 节点 / 500 资产"的基准。
-4. 大文件拆分与 UI 状态机重构（`AssetsWorkspace` / `ExportWorkspace` / `ScriptWorkspace`）。
-5. i18n 层（Studio 界面英文版），配合 P3 的作品本地化共用基础设施。
-6. Git 友好度：写盘最小化、冲突可视化、`.galstudio` 产物与源文件分离。
+1. **安装包签名与公证；自动更新**：release 流水线、update manifest 签名/验签、dry-run 与真实签名状态记录。
+2. **导出物元数据**：图标 / 版本 / productName / 窗口标题 / viewport 策略，ProjectSettings 与三类导出后端一致。
+3. **性能**：列表虚拟化、大图缩略图、节点懒加载；1000 节点 / 500 资产确定性基准与报告。
+4. **大文件拆分与 UI 状态机重构**：`AssetsWorkspace` / `ExportWorkspace` / `ScriptWorkspace` 行为边界与 mutation/revision 收归独立。
+5. **i18n 层**：Studio 界面 zh-CN/en，与作品 locale 共用规范但隔离内容存储。
+6. **Git 友好度**：写盘最小化、冲突可视化、`.galstudio` 产物与源文件分离。
 
 ---
 
@@ -266,3 +266,36 @@ Spec 24 → 26 → 27 这条线（故事状态从"分析报告"变成"创作对�
 | D3 | 默认界面风格重做方式 | 修复 `default` 的明确问题，并新增独立 `classic` | [Spec 30 §1.1](./30-facade.spec.md#11-default-与-classic) |
 | D4 | Web 导出优先级 | 已在 P0 恢复，P2–P4 持续作为发布门禁 | P0 / Spec 29 基线 |
 | D5 | Studio 英文版 | P4，复用 P3 locale 标识/fallback 基础但隔离内容存储 | [Spec 32 §5](./32-scale-and-distribution.spec.md#5-studio-i18n) |
+
+## 7. P4 完成状态（规模与分发，已于 2026-07-29 完成）
+
+以下能力均已落地，详细契约与验收见 [Spec 32](./32-scale-and-distribution.spec.md)：
+
+1. **导出物元数据**：distribution 配置已集成到 ProjectSettings、projectMeta、ExportWorkspace 与三类构建后端；图标、版本、productName、viewport 一致性校验 + 构建元数据导出已完成；旧项目 fallback 保持。
+2. **签名、公证与自动更新**：release 流水线、update manifest 签名/验签脚本与 Electron 兼容模式更新客户端已上线；客户端执行可信签名、频道、版本、HTTPS 与 SHA-256 校验后原子暂存，经玩家确认才打开平台安装器，失败不改当前安装并可安全重试；dry-run、真实签名状态和 CI 凭据合同均已固化。
+3. **性能基准**：1000 节点 / 500 资产确定性生成器已就绪；列表虚拟化（AssetGrid、StoryOutline、NodeOutline）、大图缩略图、节点懒加载（含图卡轻量派生摘要）已实现；固定 runner class、仓库基线、20% heap 阈值和原始报告上传已进入 CI。
+4. **大文件拆分**：AssetsWorkspace、ExportWorkspace、ScriptWorkspace 已独立拆分；每个工作台行为边界、mutation queue、revision guard 收归独立，状态机清晰。
+5. **i18n 层**：StudioI18nProvider + zh-CN/en 消息 key 已上线；Studio 界面与作品 locale 共享规范但隔离内容存储；fallback 与动态文本参数化已支持。
+6. **Git 友好度**：no-op save 最小写盘、稳定序列化、.galstudio 产物边界与外部冲突可视化已固化；打开/预览/validate 不写盘，冲突解决三方摘要已实现。
+
+---
+
+## 8. P1–P4 全部完成确认（2026-07-29）
+
+根据当前仓库状态、契约、实现、版本与门禁，**P1–P4 全部完成**。目标版本已统一为 `1.0.0`。
+
+| 阶段 | 目标版本 | Spec | 完成日 | 落地摘要 |
+|---|---|---|---|---|
+| P1 写作主循环 | 0.2.0 | [29](./29-writing-loop.spec.md) | 2026-07-27 | 剧本编辑器二期、节点预览默认、Studio 播放控制、画布句子化、资产导入/清理、空态与 onboarding、示例模板 |
+| P2 门面 | 0.3.0 | [30](./30-facade.spec.md) | 2026-07-27 | default 修复、classic 深色 ADV、外观主题预设、Studio 视觉第二版 |
+| P3 品类能力 | 0.4.0 | [31](./31-genre-capabilities.spec.md) | 2026-07-27 | 本地化契约、逐行语音、文本能力、立绘表现、存档体验 |
+| P4 规模与分发 | 1.0.0 | [32](./32-scale-and-distribution.spec.md) | 2026-07-29 | 导出元数据、签名/更新流水线、性能基准、工作台拆分、Studio i18n、Git 友好度 |
+
+### 收口证据
+
+- 版本一致性：`package.json` / `@vibegal/*` / `tauri.conf.json` / `Cargo.toml` / `Cargo.lock` 均为 `1.0.0`（`pnpm check:versions`）。
+- 契约与文档：Spec 29–32 状态均为「已完成」；本文件 §4 与 §7 已同步完成说明。
+- 工程门禁：`pnpm test`、Rust locked tests、受控 Chrome 规模基准，以及 schema/engine-types/renderer/example/vocabulary/doc-contract 检查纳入日常与 CI。
+- 已知外部边界：真实 Apple notarization / Windows Authenticode 仍需发布者凭据，不阻塞仓库内 1.0 工程收口（见 Spec 32 §2）。
+
+**结论：路线图 P0–P4 已全部落地；后续迭代在 1.0 基线上按增量功能推进，不再以本路线图的阶段缺口驱动。**

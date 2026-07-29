@@ -135,6 +135,40 @@ test("scale benchmark heap comparison enforces same-runner 20% regression thresh
   );
 });
 
+test("scale benchmark accepts a named stable runner without coupling to ephemeral CPU metadata", () => {
+  const report = (peakJsHeapBytes, cpuModel) => ({
+    environment: {
+      runnerClass: "github-ubuntu-24.04-x64",
+      platform: "linux",
+      architecture: "x64",
+      cpuModel,
+      cpuCount: 4,
+    },
+    browser: {
+      status: "completed",
+      browser: {
+        name: "Google Chrome",
+        viewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
+      },
+      measurements: { peakJsHeapBytes },
+    },
+  });
+
+  const comparison = compareScaleBenchmarkBaseline(
+    report(110, "ephemeral runner CPU B"),
+    report(100, "ephemeral runner CPU A"),
+  );
+  assert.equal(comparison.passed, true);
+  assert.ok(comparison.runnerFields.includes("environment.runnerClass"));
+  assert.ok(!comparison.runnerFields.includes("environment.cpuModel"));
+});
+
+test("CI runs the controlled browser benchmark against the committed baseline", async () => {
+  const workflow = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  assert.match(workflow, /VIBEGAL_BENCHMARK_RUNNER_CLASS: github-ubuntu-24\.04-x64/);
+  assert.match(workflow, /pnpm benchmark:scale[\s\S]*--browser[\s\S]*--require-browser[\s\S]*--baseline benchmark-results\/scale-baseline\.json/);
+});
+
 test("scale generator is byte-stable and covers the 1000/500 dataset", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), "vibegal-scale-generator-"));
   const first = path.join(temp, "first");

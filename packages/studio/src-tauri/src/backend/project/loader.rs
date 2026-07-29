@@ -230,6 +230,42 @@ pub(crate) fn read_project_nodes(path: &str) -> Result<Vec<NodeEntry>, String> {
     load_node_entries(&content_root, &graph)
 }
 
+pub(crate) fn read_node_creator_summaries(
+    path: &str,
+) -> Result<Vec<super::super::model::NodeCreatorSummary>, String> {
+    let project_root = ProjectRoot::open(Path::new(path))?;
+    let content_root = project_root.content_root()?;
+    let (graph, _) = load_project_graph(&content_root)?;
+    Ok(graph
+        .nodes
+        .iter()
+        .map(|node| {
+            let data = content_root.read_control_json(&node.file).ok();
+            let instructions = data.as_ref().and_then(serde_json::Value::as_array);
+            super::super::model::NodeCreatorSummary {
+                id: node.id.clone(),
+                rel_path: node.file.clone(),
+                say_count: instructions
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter(|instruction| {
+                                instruction.get("t").and_then(serde_json::Value::as_str)
+                                    == Some("say")
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0),
+                changes_state: instructions.is_some_and(|items| {
+                    items.iter().any(|instruction| {
+                        instruction.get("t").and_then(serde_json::Value::as_str) == Some("set")
+                    })
+                }),
+            }
+        })
+        .collect())
+}
+
 pub(crate) fn read_node_detail(path: &str, rel_path: &str) -> Result<NodeDetail, String> {
     let project_root = ProjectRoot::open(Path::new(path))?;
     let content_root = project_root.content_root()?;

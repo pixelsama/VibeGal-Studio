@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { NodeDetail, NodeEntry, ProjectData } from "./types";
-import { readNodeDetail, readProjectNodes } from "./tauri";
+import type { NodeCreatorSummary, NodeDetail, NodeEntry, ProjectData } from "./types";
+import { readNodeCreatorSummaries, readNodeDetail, readProjectNodes } from "./tauri";
 
 interface NodeDataState {
   entries: NodeEntry[];
@@ -11,11 +11,13 @@ interface NodeDataState {
 const MAX_NODE_DETAIL_CACHE_ENTRIES = 100;
 const allNodesCache = new Map<string, Promise<NodeEntry[]>>();
 const nodeDetailCache = new Map<string, Promise<NodeDetail>>();
+const creatorSummariesCache = new Map<string, Promise<NodeCreatorSummary[]>>();
 
 export function clearProjectNodeCache(projectPath?: string) {
   if (!projectPath) {
     allNodesCache.clear();
     nodeDetailCache.clear();
+    creatorSummariesCache.clear();
     return;
   }
   const prefix = `${projectPath}\x00`;
@@ -24,6 +26,9 @@ export function clearProjectNodeCache(projectPath?: string) {
   }
   for (const key of nodeDetailCache.keys()) {
     if (key.startsWith(prefix)) nodeDetailCache.delete(key);
+  }
+  for (const key of creatorSummariesCache.keys()) {
+    if (key.startsWith(prefix)) creatorSummariesCache.delete(key);
   }
 }
 
@@ -47,6 +52,51 @@ export function loadAllProjectNodes(project: ProjectData, generation = 0): Promi
   });
   allNodesCache.set(key, request);
   return request;
+}
+
+export function loadNodeCreatorSummaries(
+  project: ProjectData,
+  generation = 0,
+): Promise<NodeCreatorSummary[]> {
+  const key = `${project.path}\x00creator-summaries\x00${revisionToken(project)}\x00${generation}`;
+  const cached = creatorSummariesCache.get(key);
+  if (cached) return cached;
+  const request = readNodeCreatorSummaries(project.path).catch((error) => {
+    creatorSummariesCache.delete(key);
+    throw error;
+  });
+  creatorSummariesCache.set(key, request);
+  return request;
+}
+
+export function useNodeCreatorSummaries(
+  project: ProjectData,
+  generation = 0,
+  enabled = true,
+): NodeCreatorSummary[] {
+  const [summaries, setSummaries] = useState<NodeCreatorSummary[]>([]);
+  const requestRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      setSummaries([]);
+      return;
+    }
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    loadNodeCreatorSummaries(project, generation)
+      .then((next) => {
+        if (requestRef.current === requestId) setSummaries(next);
+      })
+      .catch(() => {
+        if (requestRef.current === requestId) setSummaries([]);
+      });
+    return () => {
+      if (requestRef.current === requestId) requestRef.current += 1;
+    };
+  }, [enabled, generation, project]);
+
+  return summaries;
 }
 
 export function useAllProjectNodes(

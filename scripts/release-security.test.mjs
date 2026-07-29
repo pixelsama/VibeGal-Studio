@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,10 +8,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { verifyUpdateManifest } from "./verify-update-manifest.mjs";
 import { updateSignaturePayload } from "./update-manifest-contract.mjs";
+import { stageDesktopUpdate } from "./desktop-update-client.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generator = path.join(root, "scripts/generate-release-manifest.mjs");
 const signer = path.join(root, "scripts/sign-update-manifest.mjs");
+const releaseSmoke = path.join(root, "scripts/release-smoke.mjs");
 
 function updatePayload(manifest) {
   return updateSignaturePayload(manifest);
@@ -156,4 +158,79 @@ test("updater accepts only a newer HTTPS manifest with a trusted signature", () 
     }),
     /HTTPS/,
   );
+});
+
+test("desktop updater verifies, downloads, hashes, and stages without touching the current install", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "vibegal-update-client-"));
+  try {
+    const currentInstall = path.join(dir, "current-install.bin");
+    const download = Buffer.from("verified update payload");
+    await writeFile(currentInstall, "current install");
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const base = {
+      schemaVersion: 1,
+      version: "1.1.0",
+      channel: "stable",
+      publishedAt: "2026-07-29T00:00:00Z",
+      platforms: {
+        "darwin-arm64": {
+          url: "https://updates.example.test/game-1.1.0.dmg",
+          sha256: createHash("sha256").update(download).digest("hex"),
+        },
+      },
+    };
+    const manifest = {
+      ...base,
+      signature: sign(null, updatePayload(base), privateKey).toString("base64"),
+    };
+    const fetchImpl = async (url) => {
+      if (url === "https://updates.example.test/stable.json") {
+        return new Response(JSON.stringify(manifest), { status: 200 });
+      }
+      return new Response(download, { status: 200 });
+    };
+
+    const staged = await stageDesktopUpdate({
+      endpoint: "https://updates.example.test/stable.json",
+      currentVersion: "1.0.0",
+      publicKey: publicKey.export({ type: "spki", format: "pem" }),
+      platform: "darwin-arm64",
+      downloadDirectory: path.join(dir, "updates"),
+      fetchImpl,
+    });
+
+    assert.equal(staged.status, "staged");
+    assert.equal(staged.version, "1.1.0");
+    assert.deepEqual(await readFile(staged.path), download);
+    assert.equal(await readFile(currentInstall, "utf8"), "current install");
+
+    const badManifest = {
+      ...manifest,
+      platforms: {
+        "darwin-arm64": { ...manifest.platforms["darwin-arm64"], sha256: "0".repeat(64) },
+      },
+    };
+    badManifest.signature = sign(null, updatePayload(badManifest), privateKey).toString("base64");
+    await assert.rejects(
+      stageDesktopUpdate({
+        endpoint: "https://updates.example.test/stable.json",
+        currentVersion: "1.0.0",
+        publicKey: publicKey.export({ type: "spki", format: "pem" }),
+        platform: "darwin-arm64",
+        downloadDirectory: path.join(dir, "failed-update"),
+        fetchImpl: async (url) => url.endsWith("stable.json")
+          ? new Response(JSON.stringify(badManifest), { status: 200 })
+          : new Response(download, { status: 200 }),
+      }),
+      /SHA-256 mismatch/,
+    );
+    assert.equal(await readFile(currentInstall, "utf8"), "current install");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("release smoke keeps Cargo dependency resolution locked", async () => {
+  const source = await readFile(releaseSmoke, "utf8");
+  assert.match(source, /cargo run --locked --manifest-path/);
 });

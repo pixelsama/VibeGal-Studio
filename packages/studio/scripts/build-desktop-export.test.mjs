@@ -10,7 +10,7 @@ const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "build-de
 const studioRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const validPng = path.join(studioRoot, "src-tauri/icons/128x128@2x.png");
 
-async function createWebDist(root) {
+async function createWebDist(root, updates = { enabled: false, channel: "preview" }) {
   const dist = path.join(root, "web-dist");
   await mkdir(path.join(dist, "runtime"), { recursive: true });
   await mkdir(path.join(dist, "distribution-icons"), { recursive: true });
@@ -34,7 +34,7 @@ async function createWebDist(root) {
         ico: "distribution-icons/icon.ico",
       },
     },
-    updates: { enabled: false, channel: "preview" },
+    updates,
     buildTarget: "web",
     basePath: "./",
   }));
@@ -174,6 +174,11 @@ test("electron runtime packages the exact web dist with the bundled chromium she
     assert.match(mainSource, /vibegal:\/\/game/, "the player should use a stable local origin");
     assert.match(mainSource, /contentType\(file\)/, "protocol responses should preserve JavaScript and media MIME types");
     assert.match(mainSource, /registerFileProtocol\("vibegal"/, "local files must be served as protocol file responses");
+    assert.match(mainSource, /stageDesktopUpdate/, "the compatible player should run the verified update client");
+    assert.match(mainSource, /shell\.openPath/, "a verified staged package should enter the platform installer flow");
+    await access(path.join(appResources, "updater/desktop-update-client.mjs"));
+    await access(path.join(appResources, "updater/verify-update-manifest.mjs"));
+    await access(path.join(appResources, "updater/update-manifest-contract.mjs"));
     assert.equal(await readFile(path.join(appResources, "game/runtime/bundle.js"), "utf8"), "export {};");
     if (process.platform === "darwin") {
       const plist = await readFile(path.join(outDir, "桌面测试游戏.app/Contents/Info.plist"), "utf8");
@@ -212,6 +217,31 @@ test("desktop worker rejects unknown runtimes with machine-readable diagnostics"
     assert.equal(output.ok, false);
     assert.equal(output.code, "desktop_runtime_unsupported");
     assert.equal(output.step, "desktop");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("tauri runtime rejects configured automatic updates instead of silently omitting the client", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "vibegal-desktop-tauri-updater-"));
+  try {
+    const webDist = await createWebDist(root, {
+      enabled: true,
+      channel: "stable",
+      endpoint: "https://updates.example.test/stable.json",
+      publicKey: "trusted-public-key",
+    });
+    const player = path.join(root, process.platform === "win32" ? "vibegal-player-tauri.exe" : "vibegal-player-tauri");
+    await writeFile(player, "fake-player");
+    const result = runWorker([
+      "--runtime", "tauri",
+      "--web-dist", webDist,
+      "--out", path.join(root, "out"),
+      "--product-name", "Update Test",
+      "--tauri-player", player,
+    ]);
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stderr).code, "desktop_updater_runtime_unsupported");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

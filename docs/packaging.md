@@ -63,6 +63,7 @@
 ## 自动更新安全模型
 
 - 项目不提供 `distribution.updates.endpoint` 和 `publicKey` 时 updater 保持关闭；两者必须同时存在，endpoint 必须是 HTTPS。
+- 自动更新客户端随 Electron 兼容模式导出：启动时在后台验签、下载并校验 SHA-256，只把完整包原子暂存到应用数据目录；玩家确认后才交给操作系统打开安装包并退出当前版本。下载、验签、hash 或启动安装器失败都不会修改当前安装，下次启动可安全重试。轻量 Tauri player 不内嵌 Node 更新客户端，因此启用 updater 的项目若选择 Tauri 会明确构建失败，需改用 Electron，而不是产出一个静默忽略更新配置的包。
 - `release-assets/update-manifest.json` 包含版本、频道、发布时间，以及各平台 artifact 的 HTTPS URL 与 SHA-256。签名使用稳定键序 canonical JSON，避免生成器属性顺序影响验签。
 - 客户端只接受可信 Ed25519 公钥签名、HTTPS 下载地址且版本严格高于当前作品版本的 manifest；校验失败、同版本或降级都不会替换当前安装。
 - 下载完成后仍必须先比对 manifest 中 SHA-256，再进入平台安装/替换流程；下载、hash 或签名失败时保留当前版本并允许重新获取 manifest 后安全重试。

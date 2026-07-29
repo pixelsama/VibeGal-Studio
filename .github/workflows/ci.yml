@@ -13,6 +13,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scale-benchmark:
+    name: Scale benchmark regression gate
+    runs-on: ubuntu-24.04
+    env:
+      VIBEGAL_BENCHMARK_RUNNER_CLASS: github-ubuntu-24.04-x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Run controlled browser benchmark
+        run: pnpm benchmark:scale -- benchmark-results/scale-ci.json --browser --require-browser --baseline benchmark-results/scale-baseline.json
+
+      - name: Upload raw benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale-benchmark-report
+          path: benchmark-results/scale-ci.json
+          if-no-files-found: error
+
   app-frontend:
     name: Frontend & CLI scripts
     runs-on: ubuntu-latest

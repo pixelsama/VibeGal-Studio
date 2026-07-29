@@ -17,7 +17,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import type { VariableRegistry } from "@vibegal/engine";
-import type { GraphReport, Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { GraphReport, Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
 import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
@@ -31,6 +31,7 @@ interface GraphCanvasProps {
   graph: ProjectGraph;
   graphReport?: GraphReport;
   nodeEntries?: NodeEntry[];
+  nodeSummaries?: NodeCreatorSummary[];
   manifest?: Manifest;
   variables?: VariableRegistry;
   selectedNodeId: string | null;
@@ -86,6 +87,7 @@ export function GraphCanvas({
   graph,
   graphReport,
   nodeEntries,
+  nodeSummaries,
   manifest,
   variables,
   selectedNodeId,
@@ -132,7 +134,10 @@ export function GraphCanvas({
     const visibleEntries = visibleNodeFiles && nodeEntries
       ? nodeEntries.filter((entry) => visibleNodeFiles.has(entry.relPath))
       : nodeEntries;
-    const visibleFlow = mapGraphToFlow(visibleGraph, graphReport, visibleEntries, manifest, variables);
+    const visibleSummaries = visibleNodeIds
+      ? nodeSummaries?.filter((summary) => visibleNodeIds.has(summary.id))
+      : nodeSummaries;
+    const visibleFlow = mapGraphToFlow(visibleGraph, graphReport, visibleEntries, manifest, variables, visibleSummaries, t);
 
     const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => {
       return {
@@ -161,7 +166,7 @@ export function GraphCanvas({
     });
 
     return { nodes, edges };
-  }, [graph, graphReport, nodeEntries, manifest, variables, selectedEdgeId, selectedNodeId, visibleNodeIds]);
+  }, [graph, graphReport, nodeEntries, nodeSummaries, manifest, variables, selectedEdgeId, selectedNodeId, t, visibleNodeIds]);
 
   useEffect(() => {
     setFlowNodes(flow.nodes);

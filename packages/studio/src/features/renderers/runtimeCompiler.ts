@@ -15,7 +15,7 @@
  */
 import * as esbuild from "esbuild-wasm";
 import type { Loader, Message, Plugin } from "esbuild-wasm";
-import type { RendererFile } from "../../lib/tauri";
+import { readRendererFiles, type RendererFile } from "../../lib/tauri";
 import {
   RendererDiagnosticError,
   rendererFilePath,
@@ -322,7 +322,6 @@ export async function selfCheck(): Promise<string> {
 export async function selfCheckFull(projectPath: string, rendererId: string): Promise<string> {
   const steps: string[] = [];
   try {
-    const { readRendererFiles } = await import("../../lib/tauri");
     steps.push(`1. 读取界面风格 ${rendererId} 源码`);
     const files = await readRendererFiles(projectPath, rendererId);
     steps.push(`2. 读到 ${files.length} 个文件: ${files.map((f) => f.path).join(", ")}`);
