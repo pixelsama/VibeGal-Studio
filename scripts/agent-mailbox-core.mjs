@@ -5,6 +5,7 @@ import {
   open,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -120,6 +121,7 @@ export async function initializeExchange(exchangeRoot) {
 export async function enqueueMailboxMessage(exchangeRoot, message) {
   validateMailboxMessage(message);
   const root = await initializeExchange(exchangeRoot);
+  await assertMessageEvidenceExists(root, message);
   const pendingDir = mailboxDirectory(root, message.recipient, "pending");
   const destination = path.join(pendingDir, `${message.messageId}.json`);
   const temporary = path.join(pendingDir, `.${message.messageId}.${process.pid}.${randomUUID()}.tmp`);
@@ -139,6 +141,26 @@ export async function enqueueMailboxMessage(exchangeRoot, message) {
     await rm(temporary, { force: true });
   }
   return destination;
+}
+
+async function assertMessageEvidenceExists(exchangeRoot, message) {
+  if (message.type !== "test_result") return;
+  const candidate = path.resolve(exchangeRoot, message.summaryPath);
+  let resolvedRoot;
+  let resolvedEvidence;
+  try {
+    [resolvedRoot, resolvedEvidence] = await Promise.all([realpath(exchangeRoot), realpath(candidate)]);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`Test result summary evidence does not exist: ${message.summaryPath}`);
+    }
+    throw error;
+  }
+  if (!isWithinPath(resolvedRoot, resolvedEvidence)) {
+    throw new Error("Test result summary evidence must stay inside exchange");
+  }
+  const info = await stat(resolvedEvidence);
+  if (!info.isFile()) throw new Error(`Test result summary evidence is not a file: ${message.summaryPath}`);
 }
 
 export async function claimNextMailboxMessage(exchangeRoot, recipient, {
@@ -312,8 +334,8 @@ export function buildCodexInvocation({
       path.resolve(config.exchangeRoot),
       "--sandbox",
       "workspace-write",
-      "--ask-for-approval",
-      "never",
+      "-c",
+      'approval_policy="never"',
       "--json",
       "--output-schema",
       path.resolve(outputSchemaPath),
@@ -430,6 +452,11 @@ function isPlainObject(value) {
 
 function isMessageFilename(filename) {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/.test(filename) && !filename.endsWith(".lease.json");
+}
+
+function isWithinPath(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 async function moveWithoutOverwrite(source, destination) {

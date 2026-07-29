@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   classifyCodexRun,
+  codexRunRequiresOutput,
   createSerialRunner,
   parseCodexDispatcherArgs,
 } from "./codex-mailbox-dispatcher-core.mjs";
@@ -46,6 +47,30 @@ test("Codex claims are archived only after a successful structured completion", 
     mailboxState: "failed",
     status: "missing_output_message",
   });
+  assert.deepEqual(classifyCodexRun({
+    exitCode: 0,
+    result: { status: "completed", summary: "pass acknowledged", outputMessageIds: [] },
+    requiresOutput: false,
+  }), {
+    mailboxState: "archive",
+    status: "completed",
+  });
+  assert.deepEqual(classifyCodexRun({
+    exitCode: 0,
+    result: { status: "completed", summary: "missing result", outputMessageIds: [] },
+    requiresOutput: true,
+  }), {
+    mailboxState: "failed",
+    status: "invalid_result",
+  });
+});
+
+test("only passed test results are terminal acknowledgements without a new mailbox message", () => {
+  assert.equal(codexRunRequiresOutput({ type: "test_request" }), true);
+  assert.equal(codexRunRequiresOutput({ type: "test_result", status: "failed" }), true);
+  assert.equal(codexRunRequiresOutput({ type: "test_result", status: "stale" }), true);
+  assert.equal(codexRunRequiresOutput({ type: "test_result", status: "blocked" }), true);
+  assert.equal(codexRunRequiresOutput({ type: "test_result", status: "passed" }), false);
 });
 
 test("filesystem bursts share one active Codex drain", async () => {

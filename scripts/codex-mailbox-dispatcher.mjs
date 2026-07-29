@@ -24,6 +24,7 @@ import {
 } from "./agent-mailbox-core.mjs";
 import {
   classifyCodexRun,
+  codexRunRequiresOutput,
   codexDispatcherHelp,
   createSerialRunner,
   parseCodexDispatcherArgs,
@@ -144,7 +145,12 @@ async function processClaim(claim) {
     // Classification below records the missing or malformed structured result.
   }
   const outputsVerified = await outputMessagesExist(config.exchangeRoot, result?.outputMessageIds);
-  const classification = classifyCodexRun({ exitCode: processResult.exitCode, result, outputsVerified });
+  const classification = classifyCodexRun({
+    exitCode: processResult.exitCode,
+    result,
+    outputsVerified,
+    requiresOutput: codexRunRequiresOutput(claim.message),
+  });
   const finishedAt = new Date().toISOString();
   await writeFile(path.join(runDir, "dispatcher-result.json"), `${JSON.stringify({
     schemaVersion: 1,

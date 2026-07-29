@@ -111,6 +111,8 @@ node ../exchange/runtime/codex/agent-mailbox.mjs finish \
 
 无法正确处理的输入进入 `failed`。调度器启动时会把超过六小时没有心跳的 Codex processing 消息重新排队。Claude Code 和 Grok Build 的原生监控也应调用同一 runtime CLI，以获得相同的认领语义。
 
+`test_result` 入队前，CLI 会验证其 `summaryPath` 已经指向 `exchange/` 内的真实文件；只有文字声称测试通过但没有留下 summary 证据的结果会被拒绝。
+
 ## 测试请求
 
 开发 Agent 只能在 feature 提交已经创建、`git status --short` 为空以后发请求。请求必须锁定完整的 40 位 `featureCommit` 和 `baseCommit`：
@@ -198,8 +200,8 @@ Codex 的 LaunchAgent 只监听 `mailboxes/codex/pending/`。它采用文件系�
 - 按消息类型选择外置角色文件；项目级 `AGENTS.md` 和分支名不能赋予身份，消息正文不会拼进提示词。
 - 使用 `workspace-write`、`approval=never`，额外写入范围只有 exchange。
 - 三小时超时，processing lease 每 30 秒更新。
-- Codex 最终输出受 `codex-run-result.schema.json` 约束。
-- 只有进程退出码为零、结构化状态为 `completed` 且声明了输出消息，输入才归档。
+- Codex 最终输出受 `codex-run-result.schema.json` 约束；当前 CLI 通过 `-c approval_policy="never"` 固定非交互审批策略。
+- 只有进程退出码为零、结构化状态为 `completed`，且需要后续动作时声明的输出消息确实存在，输入才归档。`passed` 测试结果是无需新消息的终态确认。
 - 运行日志会遮蔽常见签名和 GitHub 凭据。
 
 检查服务和邮箱：

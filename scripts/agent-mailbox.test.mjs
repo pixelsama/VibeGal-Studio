@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -141,6 +141,23 @@ test("mailbox lifecycle atomically moves pending messages through processing and
   await assert.rejects(stat(claim.worktreeLockPath));
 });
 
+test("test results cannot be enqueued before their summary evidence exists", async () => {
+  const exchangeRoot = await mkdtemp(path.join(os.tmpdir(), "vibegal-mailbox-evidence-"));
+  await initializeExchange(exchangeRoot);
+  const result = testResult();
+
+  await assert.rejects(
+    enqueueMailboxMessage(exchangeRoot, result),
+    /summary evidence.*does not exist/i,
+  );
+
+  const summaryPath = path.join(exchangeRoot, result.summaryPath);
+  await mkdir(path.dirname(summaryPath), { recursive: true });
+  await writeFile(summaryPath, "{}\n");
+  const pendingPath = await enqueueMailboxMessage(exchangeRoot, result);
+  assert.equal(JSON.parse(await readFile(pendingPath, "utf8")).messageId, result.messageId);
+});
+
 test("mailboxes serialize Agents that target the same worktree slot", async () => {
   const exchangeRoot = await mkdtemp(path.join(os.tmpdir(), "vibegal-mailbox-lock-"));
   await initializeExchange(exchangeRoot);
@@ -208,6 +225,9 @@ test("Codex invocation uses fixed templates and configured worktree paths", () =
   assert.equal(invocation.command, "/usr/local/bin/codex");
   assert.deepEqual(invocation.args.slice(0, 3), ["exec", "-C", "/workspace/test"]);
   assert.ok(invocation.args.includes("workspace-write"));
+  assert.ok(invocation.args.includes('approval_policy="never"'));
+  assert.ok(invocation.args.includes("-c"));
+  assert.ok(!invocation.args.includes("--ask-for-approval"));
   assert.ok(invocation.args.includes("/workspace/exchange"));
   assert.equal(invocation.args.at(-1), "-");
   assert.equal(invocation.stdin, prompt);

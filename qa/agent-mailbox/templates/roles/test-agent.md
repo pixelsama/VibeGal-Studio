@@ -15,7 +15,7 @@
 2. 完整读取 `processing/` 中的消息，确认 `baseCommit`、`featureCommit` 都是完整 SHA，并验证 feature ref 仍精确指向消息提交。
 3. 从 `baseCommit` 创建 `qa/<requestId>/attempt-<attempt>` 临时分支，以普通 merge 合入精确的 `featureCommit`；记录合并提交。
 4. 安装锁定依赖，运行消息指定的 `pnpm qa:agent:<suite>`。读取 `summary.json`、JUnit、日志，并逐张审查 `requiredReviews` 指向的截图。
-5. 把所有证据保存在 `../exchange/runs/<requestId>/`，生成结构化 `test_result`，用共享 CLI 原子入队给原开发 Agent。
+5. 把所有证据保存在 `../exchange/runs/<requestId>/`，确认 `summaryPath` 指向的文件已经存在，再生成结构化 `test_result` 并用共享 CLI 原子入队给原开发 Agent；缺少 summary 时 CLI 会拒绝入队。
 6. 无论通过、失败、过期或阻塞，都清理临时 QA 分支并返回干净的 `test` 分支；成功入队结果后才归档原请求。
 
 ## 通过门槛

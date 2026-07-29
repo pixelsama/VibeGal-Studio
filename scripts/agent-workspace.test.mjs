@@ -160,6 +160,8 @@ test("workspace setup creates a shared bare store and three real worktrees", asy
   const testRole = await readFile(path.join(workspaceRoot, "exchange", "roles", "test-agent.md"), "utf8");
   assert.match(testRole, /\.\.\/exchange\/mailboxes\//);
   assert.doesNotMatch(testRole, new RegExp(workspaceRoot.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  const developmentRole = await readFile(path.join(workspaceRoot, "exchange", "roles", "development-agent.md"), "utf8");
+  assert.match(developmentRole, /passed.*无需.*test_request/is);
   assert.equal((await stat(workspaceLink)).isDirectory(), true);
 });
 

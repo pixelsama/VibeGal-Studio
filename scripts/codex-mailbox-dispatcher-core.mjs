@@ -15,7 +15,7 @@ export function parseCodexDispatcherArgs(argv, cwd = process.cwd()) {
   return parsed;
 }
 
-export function classifyCodexRun({ exitCode, result, outputsVerified = true }) {
+export function classifyCodexRun({ exitCode, result, outputsVerified = true, requiresOutput = true }) {
   if (exitCode !== 0) return { mailboxState: "failed", status: "process_failed" };
   if (
     !result
@@ -24,13 +24,19 @@ export function classifyCodexRun({ exitCode, result, outputsVerified = true }) {
     || typeof result.summary !== "string"
     || !Array.isArray(result.outputMessageIds)
     || result.outputMessageIds.some((id) => typeof id !== "string" || id.length === 0)
-    || (result.status === "completed" && result.outputMessageIds.length === 0)
   ) {
     return { mailboxState: "failed", status: "invalid_result" };
   }
   if (result.status !== "completed") return { mailboxState: "failed", status: result.status };
+  if (requiresOutput && result.outputMessageIds.length === 0) {
+    return { mailboxState: "failed", status: "invalid_result" };
+  }
   if (!outputsVerified) return { mailboxState: "failed", status: "missing_output_message" };
   return { mailboxState: "archive", status: "completed" };
+}
+
+export function codexRunRequiresOutput(message) {
+  return message?.type !== "test_result" || message.status !== "passed";
 }
 
 export function createSerialRunner(task) {
