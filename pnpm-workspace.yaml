@@ -1,4 +1,8 @@
 packages:
   - "packages/*"
 allowBuilds:
+  # Agent QA uses Tauri's embedded WebDriver provider; these downloaded browser
+  # drivers are transitive optional tooling and must not execute install scripts.
+  edgedriver: false
   esbuild: true
+  geckodriver: false

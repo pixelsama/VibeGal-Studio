@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @vibegal/studio dev",
     "build": "pnpm -r build",
-    "test": "pnpm -r test && node --test scripts/*.test.mjs && pnpm check:vocabulary",
+    "test": "pnpm -r test && node --test scripts/*.test.mjs qa/agent/*.test.mjs && pnpm check:vocabulary",
     "tauri": "pnpm --filter @vibegal/studio tauri",
     "bundle": "pnpm tauri build --ci --no-sign",
     "bundle:windows": "pnpm tauri build --bundles nsis --ci --no-sign",
@@ -23,7 +23,22 @@
     "release:sign-update": "node scripts/sign-update-manifest.mjs",
     "release:verify-update": "node scripts/verify-update-manifest.mjs",
     "benchmark:generate": "node scripts/generate-scale-project.mjs",
-    "benchmark:scale": "node scripts/run-scale-benchmark.mjs"
+    "benchmark:scale": "node scripts/run-scale-benchmark.mjs",
+    "qa:agent": "node scripts/agent-qa.mjs",
+    "qa:agent:quick": "node scripts/agent-qa.mjs --suite quick",
+    "qa:agent:desktop": "node scripts/agent-qa.mjs --suite desktop",
+    "qa:agent:package": "node scripts/agent-qa.mjs --suite package",
+    "qa:agent:release": "node scripts/agent-qa.mjs --suite release",
+    "check:agent-qa-isolation": "node scripts/check-agent-qa-isolation.mjs"
   },
-  "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620"
+  "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
+  "devDependencies": {
+    "@wdio/cli": "9.30.0",
+    "@wdio/junit-reporter": "9.29.1",
+    "@wdio/local-runner": "9.30.0",
+    "@wdio/mocha-framework": "9.30.0",
+    "@wdio/spec-reporter": "9.29.1",
+    "@wdio/tauri-plugin": "1.1.0",
+    "@wdio/tauri-service": "1.1.0"
+  }
 }

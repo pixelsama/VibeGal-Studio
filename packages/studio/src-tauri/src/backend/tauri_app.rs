@@ -2,13 +2,21 @@
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub(crate) fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(super::watcher::ProjectWatchers::default())
         .manage(super::commands::AssetScopeState::default())
         .manage(super::game_build::DesktopBuildRegistry::default())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+    #[cfg(feature = "agent-qa")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init());
+    builder
         .setup(|app| {
-            if cfg!(debug_assertions) {
+            // The Agent QA plugin owns the process logger so WebDriver can
+            // forward backend output. Registering tauri-plugin-log as well
+            // would initialize the global logger twice and abort at startup.
+            if cfg!(debug_assertions) && !cfg!(feature = "agent-qa") {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)

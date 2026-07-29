@@ -3,6 +3,8 @@
 用于 PR/发布前的人工核对与自动化验收记录。日期记录格式建议 `YYYY-MM-DD HH:mm`。
 
 ## 版本与合规
+- [ ] `pnpm qa:agent:release` 成功，`summary.json` 的 `status` 为 `passed`
+- [ ] Agent QA 的 HTML、JUnit、截图和逐步日志已作为本次候选版本证据归档
 - [ ] 代码已通过 `pnpm test`
 - [ ] 代码已通过 `cargo test --locked`（`packages/studio/src-tauri`，包含 integration tests）
 - [ ] 代码已通过 `pnpm build`
@@ -18,6 +20,7 @@
 - [ ] `git status --short` 干净（除本次更改外）
 
 ## 核心验收场景
+- [ ] `desktop-authoring-loop` 通过：真实 Tauri 应用可打开项目、切换核心工作区、保存、刷新恢复并接收外部文件热重载
 - [ ] `pnpm smoke:release` 成功（clean sample exit 0，broken samples exit 非零）
 - [ ] CLI：
   - [ ] `vibegal-cli validate examples/sample-novel --format json` 出口码 0

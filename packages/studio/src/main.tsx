@@ -12,16 +12,27 @@ import { VENDOR_GLOBAL } from "./features/renderers/runtimeCompiler";
 
 // 注入 vendor 全局表：渲染层编译产物会从这里取 react/engine。
 // 单例保证：studio 自己用的 react 与渲染层用的是同一份实例（避免 hooks 跨实例报错）。
-(globalThis as unknown as Record<string, unknown>)[VENDOR_GLOBAL] = {
-  react: React,
-  "react/jsx-runtime": jsxRuntime,
-  "react-dom": ReactDOM,
-  "react-dom/client": ReactDOMClient,
-  "@vibegal/engine": engine,
-};
+async function bootstrap() {
+  // The WebdriverIO bridge is compiled only for the dedicated Agent QA flavor.
+  // A normal production build replaces this condition with false and removes
+  // the dynamic import; check:agent-qa-isolation verifies that boundary.
+  if (import.meta.env.VITE_AGENT_QA === "1") {
+    await import("@wdio/tauri-plugin");
+  }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+  (globalThis as unknown as Record<string, unknown>)[VENDOR_GLOBAL] = {
+    react: React,
+    "react/jsx-runtime": jsxRuntime,
+    "react-dom": ReactDOM,
+    "react-dom/client": ReactDOMClient,
+    "@vibegal/engine": engine,
+  };
+
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void bootstrap();

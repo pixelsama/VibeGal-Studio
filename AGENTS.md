@@ -62,6 +62,8 @@ Externally created renderer layers should follow the same directory contract; Vi
 
 Follow TDD for behavior changes. Add or update focused tests before production code when changing project initialization, path safety, watchers, renderer discovery/loading, persistence, or external-file refresh behavior.
 
+Before handing a release candidate to a person, run the repository-native Agent QA pipeline described in `docs/agent-qa.md`. `pnpm qa:agent:quick` covers repository contracts and browser behavior; `pnpm qa:agent:desktop` drives a real Tauri binary through the embedded WebDriver provider; `pnpm qa:agent:release` adds release smoke and current-platform packaging. Inspect the generated `summary.json` first and keep the artifact directory as release evidence. The desktop driver must remain behind the non-default Cargo `agent-qa` feature and the dedicated QA frontend build; never enable it in production bundles.
+
 Keep filesystem access in the Tauri backend. The React frontend should call typed wrappers in `src/lib/tauri.ts` instead of reading project files directly.
 
 Renderer-facing type artifacts: `packages/engine/src/rendererPublic.ts` is the generation entry for the `.galstudio/types/engine.d.ts` shipped into projects. Regenerate with `node packages/studio/scripts/generate-engine-types.mjs` after changing renderer contract types; the drift check is `pnpm check:engine-types`. The React shim (`packages/studio/templates/react-shim/react.d.ts`) and project tsconfig (`packages/studio/templates/project-tsconfig.json`) are hand-maintained and verified by `packages/studio/scripts/engine-types.test.mjs` (fixture projects + the bundled default renderer must typecheck against them).

@@ -117,6 +117,21 @@ pnpm check:versions
 pnpm smoke:release
 ```
 
+无需 Computer Use 的 Agent 发布前验收：
+
+```bash
+# 代码契约 + 浏览器行为
+pnpm qa:agent:quick
+
+# 真实 Tauri 应用：打开、跨工作区导航、保存、刷新后持久化、外部热重载
+pnpm qa:agent:desktop
+
+# 全部检查 + 当前平台安装包构建
+pnpm qa:agent:release
+```
+
+每次运行会在 `artifacts/agent-qa/<run-id>/` 生成机器可读 `summary.json`、HTML 报告、JUnit、截图和逐步日志；另一位 Agent 可以只读报告并用 `--only <step-id>` 定点复测。完整交接协议、覆盖矩阵和 CI 行为见 [Agent QA 管线](docs/agent-qa.md)。WebDriver 能力只存在于专用测试构建，不进入正式安装包。
+
 可重复平台打包：
 
 ```bash

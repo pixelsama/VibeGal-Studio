@@ -1,0 +1,25 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "com.vibegal.studio.agent-qa",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-agent-qa-frontend.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "agent-qa",
+          "description": "Test-only WebDriver capability; never used by production builds.",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "dialog:default",
+            "wdio:default",
+            "wdio-webdriver:default"
+          ]
+        }
+      ]
+    }
+  }
+}
