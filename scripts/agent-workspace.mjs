@@ -3,12 +3,15 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   copyFile,
+  lstat,
   mkdir,
+  readlink,
   readFile,
   readdir,
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -19,6 +22,7 @@ import { promisify } from "node:util";
 import { initializeExchange } from "./agent-mailbox-core.mjs";
 import {
   agentWorkspaceHelp,
+  assertLaunchAgentWorkspaceAccessible,
   buildAgentWorkspacePlan,
   parseAgentWorkspaceArgs,
   renderLaunchAgentPlist,
@@ -34,18 +38,24 @@ try {
     process.exit(0);
   }
   const plan = buildAgentWorkspacePlan(options);
+  if (options.installService) {
+    assertLaunchAgentWorkspaceAccessible(plan.workspaceRoot, { homeDirectory: os.homedir() });
+  }
   if (options.dryRun) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
     process.exit(0);
   }
-  const result = await setupWorkspace(plan, { installService: options.installService });
+  const result = await setupWorkspace(plan, {
+    installService: options.installService,
+    workspaceLink: options.workspaceLink,
+  });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } catch (error) {
   process.stderr.write(`[agent-workspace] ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
   process.exit(2);
 }
 
-async function setupWorkspace(plan, { installService }) {
+async function setupWorkspace(plan, { installService, workspaceLink }) {
   await assertSourceRepository(plan.repositoryRoot);
   await mkdir(plan.workspaceRoot, { recursive: true });
   const originUrl = await gitOutput(["remote", "get-url", "origin"], { cwd: plan.repositoryRoot });
@@ -86,14 +96,34 @@ async function setupWorkspace(plan, { installService }) {
     await installLaunchAgent({ plan, configPath, service });
     serviceStatus = "running";
   }
+  if (workspaceLink) await ensureWorkspaceLink(plan.workspaceRoot, workspaceLink);
   return {
     status: "ready",
     workspaceRoot: plan.workspaceRoot,
     configPath,
     service: serviceStatus,
+    workspaceLink,
     worktrees: config.worktrees,
     branches: config.branches,
   };
+}
+
+async function ensureWorkspaceLink(workspaceRoot, workspaceLink) {
+  const linkPath = path.resolve(workspaceLink);
+  if (linkPath === path.resolve(workspaceRoot)) return;
+  await mkdir(path.dirname(linkPath), { recursive: true });
+  try {
+    const info = await lstat(linkPath);
+    if (!info.isSymbolicLink()) throw new Error(`${linkPath} exists and is not a symlink`);
+    const currentTarget = path.resolve(path.dirname(linkPath), await readlink(linkPath));
+    if (currentTarget !== path.resolve(workspaceRoot)) {
+      throw new Error(`${linkPath} points to ${currentTarget}, not ${workspaceRoot}`);
+    }
+    return;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  await symlink(path.resolve(workspaceRoot), linkPath, "dir");
 }
 
 async function assertSourceRepository(repositoryRoot) {
@@ -182,7 +212,6 @@ async function installLaunchAgent({ plan, configPath, service }) {
   await execFileAsync("launchctl", ["bootout", domain, service.plistPath]).catch(() => undefined);
   await run("launchctl", ["bootstrap", domain, service.plistPath]);
   await run("launchctl", ["enable", `${domain}/${service.label}`]);
-  await run("launchctl", ["kickstart", "-k", `${domain}/${service.label}`]);
 }
 
 function serviceMetadata(workspaceRoot) {

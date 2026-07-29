@@ -4,7 +4,7 @@
 
 ## 工作空间
 
-工作空间是源码仓库的同级目录，而不是源码 worktree 的子目录：
+工作空间不能是源码 worktree 的子目录。在 macOS 上，Codex LaunchAgent 使用位于 `~/.local/share` 的真实目录，并在源码仓库旁建立一个可见 symlink：
 
 ```text
 galstudio-workspace/
@@ -27,17 +27,20 @@ galstudio-workspace/
 
 `.git-store/` 是管理数据，不是源码 checkout。交流目录不属于任何业务 worktree，因此切换分支、构建或清理工作区不会删除消息和测试证据。
 
-初始化示例：
+macOS 常驻服务初始化示例：
 
 ```bash
 pnpm agent:workspace:setup -- \
-  --workspace ../galstudio-workspace \
+  --workspace ~/.local/share/vibegal-agent/galstudio-workspace \
+  --link ../galstudio-workspace \
   --feature-branch codex/my-feature \
   --feature-start main \
   --install-service
 ```
 
-初始化要求源 worktree 已提交且干净。脚本从本地分支创建独立 bare store，因此不会错误地从可能落后的 `origin/main` 建槽；随后把 store 的 `origin` 恢复为源码仓库的远端 URL。命令可重复执行，但绝不切换有未提交修改的 worktree。
+`launchd` 后台进程可能被 macOS 隐私机制阻止访问 `~/Documents`、Desktop、Downloads 或 iCloud Drive。安装器会拒绝把常驻服务直接指向这些目录；`--link` 只给人和交互式 Agent 提供原位置入口，调度器使用不受该限制的真实路径。
+
+初始化要求源 worktree 已提交且干净。脚本从本地分支创建独立 bare store，因此不会错误地从可能落后的 `origin/main` 建槽；随后把 store 的 `origin` 恢复为源码仓库的远端 URL。命令可重复执行，但绝不切换有未提交修改的 worktree，也不会覆盖已有的非 symlink 路径。
 
 ## 消息与状态机
 

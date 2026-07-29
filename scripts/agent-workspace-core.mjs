@@ -7,6 +7,7 @@ export function parseAgentWorkspaceArgs(argv, cwd = process.cwd()) {
     workspaceRoot: null,
     featureBranch: null,
     featureStart: "main",
+    workspaceLink: null,
     installService: false,
     dryRun: false,
   };
@@ -17,6 +18,7 @@ export function parseAgentWorkspaceArgs(argv, cwd = process.cwd()) {
     if (argument === "--") continue;
     if (argument === "--repo") parsed.repositoryRoot = path.resolve(cwd, requiredValue(args, ++index, argument));
     else if (argument === "--workspace") parsed.workspaceRoot = path.resolve(cwd, requiredValue(args, ++index, argument));
+    else if (argument === "--link") parsed.workspaceLink = path.resolve(cwd, requiredValue(args, ++index, argument));
     else if (argument === "--feature-branch") parsed.featureBranch = requiredValue(args, ++index, argument);
     else if (argument === "--feature-start") parsed.featureStart = requiredValue(args, ++index, argument);
     else if (argument === "--install-service") parsed.installService = true;
@@ -60,7 +62,21 @@ export function buildAgentWorkspacePlan({
 }
 
 export function agentWorkspaceHelp() {
-  return `VibeGal Agent workspace\n\nUsage:\n  pnpm agent:workspace:setup -- --feature-branch <branch> [options]\n\nOptions:\n  --workspace <dir>      Container for main/test/dev/exchange\n  --repo <dir>           Source repository used to seed the shared bare Git store\n  --feature-branch <ref> Named branch checked out in the dev slot (required)\n  --feature-start <ref>  Start point when the feature branch does not exist (default: main)\n  --install-service      Install and start the macOS Codex mailbox LaunchAgent\n  --dry-run              Print the plan without changing disk\n`;
+  return `VibeGal Agent workspace\n\nUsage:\n  pnpm agent:workspace:setup -- --feature-branch <branch> [options]\n\nOptions:\n  --workspace <dir>      Actual container for main/test/dev/exchange\n  --link <dir>           Optional visible symlink to the actual workspace\n  --repo <dir>           Source repository used to seed the shared bare Git store\n  --feature-branch <ref> Named branch checked out in the dev slot (required)\n  --feature-start <ref>  Start point when the feature branch does not exist (default: main)\n  --install-service      Install and start the macOS Codex mailbox LaunchAgent\n  --dry-run              Print the plan without changing disk\n`;
+}
+
+export function assertLaunchAgentWorkspaceAccessible(workspaceRoot, {
+  platform = process.platform,
+  homeDirectory,
+} = {}) {
+  if (platform !== "darwin") return;
+  if (!homeDirectory) throw new Error("homeDirectory is required for macOS LaunchAgent validation");
+  const target = path.resolve(workspaceRoot);
+  const protectedRoots = ["Documents", "Desktop", "Downloads", path.join("Library", "Mobile Documents")]
+    .map((entry) => path.join(path.resolve(homeDirectory), entry));
+  if (protectedRoots.some((root) => isWithin(root, target))) {
+    throw new Error("macOS LaunchAgent cannot reliably access a privacy-protected workspace; use an actual --workspace under ~/.local/share and expose it with --link");
+  }
 }
 
 export function renderLaunchAgentPlist({
@@ -138,4 +154,9 @@ function escapeXml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function isWithin(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }

@@ -7,6 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import {
+  assertLaunchAgentWorkspaceAccessible,
   buildAgentWorkspacePlan,
   parseAgentWorkspaceArgs,
   renderLaunchAgentPlist,
@@ -63,6 +64,7 @@ test("workspace CLI requires a named feature branch and resolves paths", () => {
       workspaceRoot: path.resolve("/projects/galstudio", "../galstudio-workspace"),
       featureBranch: "feature/example",
       featureStart: "main",
+      workspaceLink: null,
       installService: false,
       dryRun: false,
     },
@@ -71,6 +73,24 @@ test("workspace CLI requires a named feature branch and resolves paths", () => {
     () => parseAgentWorkspaceArgs(["--workspace", "../workspace"], "/projects/galstudio"),
     /--feature-branch is required/i,
   );
+});
+
+test("macOS LaunchAgent refuses privacy-protected workspace roots", () => {
+  assert.throws(
+    () => assertLaunchAgentWorkspaceAccessible("/Users/alice/Documents/project-workspace", {
+      platform: "darwin",
+      homeDirectory: "/Users/alice",
+    }),
+    /privacy-protected.*--link/i,
+  );
+  assert.doesNotThrow(() => assertLaunchAgentWorkspaceAccessible("/Users/alice/.local/share/project-workspace", {
+    platform: "darwin",
+    homeDirectory: "/Users/alice",
+  }));
+  assert.doesNotThrow(() => assertLaunchAgentWorkspaceAccessible("/Users/alice/Documents/project-workspace", {
+    platform: "linux",
+    homeDirectory: "/Users/alice",
+  }));
 });
 
 test("LaunchAgent plist starts only the installed Codex mailbox runtime", () => {
@@ -93,6 +113,7 @@ test("workspace setup creates a shared bare store and three real worktrees", asy
   const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "vibegal-agent-workspace-"));
   const repositoryRoot = path.join(fixtureRoot, "source");
   const workspaceRoot = path.join(fixtureRoot, "workspace");
+  const workspaceLink = path.join(fixtureRoot, "visible-workspace");
   await execFileAsync("git", ["init", "--initial-branch=main", repositoryRoot]);
   await writeFile(path.join(repositoryRoot, "README.md"), "fixture\n");
   const gitEnv = {
@@ -113,6 +134,7 @@ test("workspace setup creates a shared bare store and three real worktrees", asy
     "setup",
     "--repo", repositoryRoot,
     "--workspace", workspaceRoot,
+    "--link", workspaceLink,
     "--feature-branch", "feature/example",
     "--feature-start", "main",
   ]);
@@ -129,6 +151,7 @@ test("workspace setup creates a shared bare store and three real worktrees", asy
   assert.equal(config.worktrees.test, path.join(workspaceRoot, "test"));
   await stat(path.join(workspaceRoot, "exchange", "runtime", "codex", "codex-mailbox-dispatcher.mjs"));
   await stat(path.join(workspaceRoot, "exchange", "PROTOCOL.md"));
+  assert.equal((await stat(workspaceLink)).isDirectory(), true);
 });
 
 async function gitBranch(worktree) {
