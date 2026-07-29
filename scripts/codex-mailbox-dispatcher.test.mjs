@@ -7,15 +7,18 @@ import {
   parseCodexDispatcherArgs,
 } from "./codex-mailbox-dispatcher-core.mjs";
 
-test("Codex dispatcher requires one absolute workspace config", () => {
+test("Codex dispatcher resolves its workspace config from the current worktree", () => {
   assert.deepEqual(parseCodexDispatcherArgs(["--config", "/workspace/exchange/workspace.json"]), {
     configPath: "/workspace/exchange/workspace.json",
     once: false,
     dryRun: false,
   });
   assert.equal(parseCodexDispatcherArgs(["--config", "/workspace/config.json", "--once"]).once, true);
+  assert.equal(
+    parseCodexDispatcherArgs(["--config", "../exchange/workspace.json"], "/workspace/test").configPath,
+    "/workspace/exchange/workspace.json",
+  );
   assert.throws(() => parseCodexDispatcherArgs([]), /--config is required/i);
-  assert.throws(() => parseCodexDispatcherArgs(["--config", "relative.json"]), /absolute/i);
 });
 
 test("Codex claims are archived only after a successful structured completion", () => {

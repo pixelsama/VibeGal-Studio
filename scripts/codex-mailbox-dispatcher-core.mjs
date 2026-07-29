@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export function parseCodexDispatcherArgs(argv) {
+export function parseCodexDispatcherArgs(argv, cwd = process.cwd()) {
   const parsed = { configPath: null, once: false, dryRun: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -11,8 +11,7 @@ export function parseCodexDispatcherArgs(argv) {
     else throw new Error(`Unknown Codex dispatcher argument: ${argument}`);
   }
   if (!parsed.help && !parsed.configPath) throw new Error("--config is required");
-  if (parsed.configPath && !path.isAbsolute(parsed.configPath)) throw new Error("--config must be an absolute path");
-  if (parsed.configPath) parsed.configPath = path.resolve(parsed.configPath);
+  if (parsed.configPath) parsed.configPath = path.resolve(cwd, parsed.configPath);
   return parsed;
 }
 
@@ -48,7 +47,7 @@ export function createSerialRunner(task) {
 }
 
 export function codexDispatcherHelp() {
-  return `VibeGal Codex mailbox dispatcher\n\nUsage:\n  node codex-mailbox-dispatcher.mjs --config <absolute-workspace.json> [--once] [--dry-run]\n`;
+  return `VibeGal Codex mailbox dispatcher\n\nUsage:\n  node codex-mailbox-dispatcher.mjs --config <workspace.json> [--once] [--dry-run]\n`;
 }
 
 function requiredValue(argv, index, flag) {
