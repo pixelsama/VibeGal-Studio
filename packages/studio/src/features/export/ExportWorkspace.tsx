@@ -84,14 +84,12 @@ export function ExportWorkspace({
     preflightLoading,
     customOutDir,
     effectiveOutDir,
-    effectiveRendererId,
     outDirError,
     blockReason,
     statusText,
     refreshPreflight,
     changeTarget: handleTargetChange,
     changeRuntime: handleRuntimeChange,
-    changeRenderer: handleRendererChange,
     changeOutDir: handleOutDirChange,
     changeStrict: handleStrictChange,
     changeAllowWarnings: handleAllowWarningsChange,
@@ -114,7 +112,6 @@ export function ExportWorkspace({
     const request = {
       projectPath: project.path,
       outDir: effectiveOutDir,
-      rendererId: effectiveRendererId || undefined,
       strict,
       allowWarnings,
     };
@@ -242,17 +239,9 @@ export function ExportWorkspace({
 
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>{t("export.renderer")}</span>
-          <select
-            value={effectiveRendererId}
-            disabled={building || project.rendererIds.length === 0}
-            onChange={(event) => handleRendererChange(event.target.value)}
-            style={selectStyle}
-            aria-label={t("export.renderer")}
-          >
-            {project.rendererIds.map((id) => (
-              <option key={id} value={id}>{id}</option>
-            ))}
-          </select>
+          <span style={{ color: "var(--text-secondary)" }}>
+            {project.meta.activeRendererId || "default"}
+          </span>
         </div>
 
         <div style={fieldGroupStyle}>

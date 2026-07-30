@@ -7,7 +7,7 @@
  *   只读巡检，与 CLI renderer-snapshot 看的是同一组场景。
  */
 import { useMemo, useState } from "react";
-import { FastForward, Play, RotateCcw, StepBack, StepForward } from "lucide-react";
+import { RotateCcw, StepBack, StepForward } from "lucide-react";
 import type { ProjectData } from "../../lib/types";
 import { RuntimeStateInspector } from "./RuntimeStateInspector";
 import { useProjectPlayer } from "./useProjectPlayer";
@@ -25,10 +25,6 @@ import { collectStateSources, stateSourceDefaults } from "../script/storyState";
 import { useStudioI18n } from "../../lib/i18n";
 
 type PreviewMode = "story" | "fixtures";
-
-export function nextStudioFastForwardMode(skipMode: "off" | "read" | "all"): "off" | "all" {
-  return skipMode === "all" ? "off" : "all";
-}
 
 interface Props {
   project: ProjectData;
@@ -186,22 +182,6 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
               <Button onClick={player.stepOnce} title={t("preview.nextTitle")}>
                 <StepForward size={14} />
                 {t("preview.next")}
-              </Button>
-              <Button
-                aria-pressed={player.state.flags.isAutoPlay}
-                variant={player.state.flags.isAutoPlay ? "primary" : "secondary"}
-                onClick={player.toggleAuto}
-              >
-                <Play size={14} />
-                {t("preview.auto")}
-              </Button>
-              <Button
-                aria-pressed={player.state.flags.skipMode === "all"}
-                variant={player.state.flags.skipMode === "all" ? "primary" : "secondary"}
-                onClick={() => player.setSkipMode(nextStudioFastForwardMode(player.state.flags.skipMode))}
-              >
-                <FastForward size={14} />
-                {t("preview.fastForward")}
               </Button>
             </div>
           )}
