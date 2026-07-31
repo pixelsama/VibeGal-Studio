@@ -20,6 +20,7 @@ import {
   PreflightPanel,
   smokeCheckLabel,
   validateDesktopOutDir,
+  warningPolicyToBuildFlags,
 } from "./ExportWorkspace";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -196,8 +197,10 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).not.toContain('value="default"');
     expect(html).toContain("构建桌面游戏");
     expect(html).not.toContain("界面风格");
-    expect(html).toContain("将警告视为错误");
-    expect(html).toContain("仍然允许警告");
+    expect(html).toContain("警告策略");
+    expect(html).toContain("阻止构建（将警告视为错误）");
+    expect(html).toContain("仅提示（允许警告）");
+    expect(html).not.toContain("仍然允许警告");
     expect(html).not.toContain("--strict");
     expect(html).not.toContain("--allow-warnings");
     expect(html).not.toContain("构建成功");
@@ -210,8 +213,7 @@ describe("ExportWorkspace 渲染", () => {
       runtime: "tauri",
       webCustomOutDir: "",
       desktopCustomOutDir: "/desktop-release",
-      strict: false,
-      allowWarnings: false,
+      warningPolicy: "allow",
     } });
 
     const html = renderToStaticMarkup(
@@ -231,8 +233,7 @@ describe("ExportWorkspace 渲染", () => {
       runtime: "tauri",
       webCustomOutDir: "",
       desktopCustomOutDir: "",
-      strict: false,
-      allowWarnings: false,
+      warningPolicy: "allow",
     } });
 
     const html = renderToStaticMarkup(
@@ -248,8 +249,7 @@ describe("ExportWorkspace 渲染", () => {
       runtime: "electron",
       webCustomOutDir: "",
       desktopCustomOutDir: "/project/content/out",
-      strict: false,
-      allowWarnings: false,
+      warningPolicy: "allow",
     } });
 
     const html = renderToStaticMarkup(
@@ -638,5 +638,15 @@ describe("PreflightPanel 渲染", () => {
     );
 
     expect(html).toContain("正在检查构建环境");
+  });
+});
+
+describe("warningPolicyToBuildFlags (spec 33 E9)", () => {
+  it("block 策略映射为 strict=true 且 allowWarnings=false", () => {
+    expect(warningPolicyToBuildFlags("block")).toEqual({ strict: true, allowWarnings: false });
+  });
+
+  it("allow 策略不携带任何警告闸门 flag", () => {
+    expect(warningPolicyToBuildFlags("allow")).toEqual({ strict: false, allowWarnings: false });
   });
 });

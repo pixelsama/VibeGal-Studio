@@ -37,6 +37,65 @@ describe("NodeInspector graph exits", () => {
     }))).not.toThrow();
   });
 
+  it("offers a create-node action in the empty state", () => {
+    const html = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: null,
+      onEnter: () => {},
+      onRename: () => {},
+      onCreateNode: () => {},
+    }));
+
+    expect(html).toContain("新建节点");
+    expect(html).toContain("选择一个节点查看属性");
+  });
+
+  it("omits the create-node action when the callback is absent", () => {
+    const html = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: null,
+      onEnter: () => {},
+      onRename: () => {},
+    }));
+
+    expect(html).not.toContain("新建节点");
+  });
+
+  it("disables the empty-state create-node action while saving (对齐工具栏防护)", () => {
+    const savingHtml = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: null,
+      onEnter: () => {},
+      onRename: () => {},
+      onCreateNode: () => {},
+      saving: true,
+    }));
+    expect(savingHtml).toMatch(/<button[^>]*disabled[^>]*>新建节点<\/button>/);
+
+    const idleHtml = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: null,
+      onEnter: () => {},
+      onRename: () => {},
+      onCreateNode: () => {},
+    }));
+    expect(idleHtml).not.toMatch(/<button[^>]*disabled[^>]*>新建节点<\/button>/);
+  });
+
+  it("hides engineering fields (file path, coordinates, connection counts)", () => {
+    const html = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: "start",
+      onEnter: () => {},
+      onRename: () => {},
+    }));
+
+    expect(html).not.toContain("nodes/start.json");
+    expect(html).not.toContain("x 0 / y 0");
+    expect(html).not.toContain("入 0 / 出 2");
+    expect(html).not.toContain("结构角色");
+  });
+
   it("offers chapter assignment for the selected node", () => {
     const grouped = {
       ...graph,

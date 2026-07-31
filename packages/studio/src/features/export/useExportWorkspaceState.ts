@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { DesktopBuildPreflight, DesktopRuntime } from "../../lib/tauri";
 import type { ProjectData } from "../../lib/types";
 import { useStudioI18n } from "../../lib/i18n";
-import { loadExportPrefs, saveExportPrefs, type ExportPrefs, type ExportTarget } from "../../lib/exportPrefs";
+import {
+  loadExportPrefs,
+  saveExportPrefs,
+  type ExportPrefs,
+  type ExportTarget,
+  type WarningPolicy,
+} from "../../lib/exportPrefs";
 import { useDesktopBuildState } from "./buildStore";
 import {
   defaultDesktopOutDir,
@@ -24,8 +30,7 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
   const [runtime, setRuntime] = useState<DesktopRuntime>(initialPrefs.runtime);
   const [webCustomOutDir, setWebCustomOutDir] = useState(initialPrefs.webCustomOutDir);
   const [desktopCustomOutDir, setDesktopCustomOutDir] = useState(initialPrefs.desktopCustomOutDir);
-  const [strict, setStrict] = useState(initialPrefs.strict);
-  const [allowWarnings, setAllowWarnings] = useState(initialPrefs.allowWarnings);
+  const [warningPolicy, setWarningPolicy] = useState<WarningPolicy>(initialPrefs.warningPolicy);
   const [copied, setCopied] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -67,7 +72,7 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
   }, [building]);
 
   const persistPrefs = (patch: Partial<ExportPrefs>) => {
-    const next = { target, runtime, webCustomOutDir, desktopCustomOutDir, strict, allowWarnings, ...patch };
+    const next = { target, runtime, webCustomOutDir, desktopCustomOutDir, warningPolicy, ...patch };
     saveExportPrefs(project.path, next);
   };
 
@@ -91,14 +96,9 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
     }
   }
 
-  function changeStrict(next: boolean) {
-    setStrict(next);
-    persistPrefs({ strict: next });
-  }
-
-  function changeAllowWarnings(next: boolean) {
-    setAllowWarnings(next);
-    persistPrefs({ allowWarnings: next });
+  function changeWarningPolicy(next: WarningPolicy) {
+    setWarningPolicy(next);
+    persistPrefs({ warningPolicy: next });
   }
 
   const customOutDir = target === "web" ? webCustomOutDir : desktopCustomOutDir;
@@ -125,8 +125,7 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
   return {
     target,
     runtime,
-    strict,
-    allowWarnings,
+    warningPolicy,
     copied,
     actionError,
     buildState,
@@ -143,8 +142,7 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
     changeTarget,
     changeRuntime,
     changeOutDir,
-    changeStrict,
-    changeAllowWarnings,
+    changeWarningPolicy,
     setCopied,
     setActionError,
   };

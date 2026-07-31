@@ -78,6 +78,18 @@ const baseProps = {
 };
 
 describe("GraphCanvas", () => {
+  it("surfaces auto-layout and fit-view as persistent canvas controls (spec 33 E5)", () => {
+    const html = renderToStaticMarkup(
+      <GraphCanvas
+        {...baseProps}
+        onAutoLayout={noop}
+      />,
+    );
+
+    expect(html).toContain('data-control-title="自动排布"');
+    expect(html).toContain('data-control-title="重置视图"');
+  });
+
   it("keeps canvas navigation actions together and removes the floating quick-create button", () => {
     const html = renderToStaticMarkup(
       <GraphCanvas

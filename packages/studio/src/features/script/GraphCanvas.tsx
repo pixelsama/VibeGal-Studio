@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Redo2, Undo2, Workflow } from "lucide-react";
+import { LayoutGrid, Redo2, Scan, Undo2, Workflow } from "lucide-react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -61,6 +61,8 @@ interface GraphCanvasProps {
   onManageEnding?: (id: string) => void;
   /** Phase 7：空白右键 - 自动排布。 */
   onAutoLayout?: () => void;
+  /** Spec 33 E6：唤出快捷键与命令帮助（画布右键菜单入口）。 */
+  onOpenShortcutsHelp?: () => void;
 }
 
 type GraphCanvasFlowNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
@@ -111,6 +113,7 @@ export function GraphCanvas({
   onSetEntry,
   onManageEnding,
   onAutoLayout,
+  onOpenShortcutsHelp,
 }: GraphCanvasProps) {
   const { t } = useStudioI18n();
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<GraphCanvasFlowNode, Edge> | null>(null);
@@ -234,7 +237,14 @@ export function GraphCanvas({
         onSelect: () => onAutoLayout(),
       });
     }
-    items.push({ key: "fit", label: t("script.canvas.fitView"), onSelect: () => flowInstance.fitView({ duration: 250 }) });
+    items.push({ key: "fit", label: t("script.canvas.fitView"), onSelect: handleFitView });
+    if (onOpenShortcutsHelp) {
+      items.push({
+        key: "shortcuts-help",
+        label: t("script.canvas.shortcutsHelp"),
+        onSelect: onOpenShortcutsHelp,
+      });
+    }
 
     setMenu({ anchor: { x: clientX, y: clientY }, items });
   };
@@ -273,6 +283,12 @@ export function GraphCanvas({
     });
 
     setMenu({ anchor: { x: clientX, y: clientY }, items });
+  };
+
+  // Spec 33 E5：适应视图上浮为常驻控件（Controls 按钮与右键菜单共用）。
+  const handleFitView = () => {
+    if (!flowInstance) return;
+    flowInstance.fitView({ duration: 250 });
   };
 
   const handleLocateEntry = () => {
@@ -376,6 +392,25 @@ export function GraphCanvas({
             aria-label={t("script.canvas.redo")}
           >
             <Redo2 size={14} />
+          </ControlButton>
+          {onAutoLayout && (
+            <ControlButton
+              type="button"
+              onClick={onAutoLayout}
+              title={t("script.canvas.autoLayout")}
+              aria-label={t("script.canvas.autoLayout")}
+            >
+              <LayoutGrid size={14} />
+            </ControlButton>
+          )}
+          <ControlButton
+            type="button"
+            onClick={handleFitView}
+            disabled={!flowInstance}
+            title={t("script.canvas.fitView")}
+            aria-label={t("script.canvas.fitView")}
+          >
+            <Scan size={14} />
           </ControlButton>
           {graph.entryNodeId && (
             <ControlButton
