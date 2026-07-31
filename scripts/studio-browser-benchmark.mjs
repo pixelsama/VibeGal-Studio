@@ -13,6 +13,20 @@ const DEFAULT_CHROME = process.platform === "darwin"
     : "google-chrome";
 const fingerprint = "a".repeat(64);
 
+// CI runner 的界面语言不固定（中/英文都实际出现过）：aria-label 选择器
+// 必须双语，否则英文环境下 querySelector 永远落空——waitFor 超时或页面内
+// Promise 挂死（node list 测量曾因此先「Promise was collected」后无限挂死）。
+// template 里的 {aria} 会被替换为中/英文 label 并组成逗号选择器组。
+function bilingualSelector(template, zhLabel, enLabel) {
+  return [zhLabel, enLabel].map((label) => template.replaceAll("{aria}", label)).join(", ");
+}
+
+const OUTLINE_LISTBOX = bilingualSelector('[role=listbox][aria-label="{aria}"]', "章节节点", "Chapter nodes");
+const OUTLINE_OPTION = bilingualSelector('[role=listbox][aria-label="{aria}"] [role=option]', "章节节点", "Chapter nodes");
+const ASSET_GRID = bilingualSelector('[role=grid][aria-label="{aria}"]', "资产列表", "Asset list");
+const ASSET_SEARCH_INPUT = bilingualSelector('input[aria-label="{aria}"]', "搜索资产", "Search assets");
+const SCENARIO_TEXTAREA = bilingualSelector('textarea[aria-label="{aria}"]', "剧本文本", "Script text");
+
 export async function runStudioBrowserBenchmark({
   chromePath = process.env.VIBEGAL_CHROME_PATH || DEFAULT_CHROME,
   studioUrl,
@@ -84,7 +98,7 @@ export async function runStudioBrowserBenchmark({
 
       const assetsStarted = performance.now();
       await clickButton(cdp, ["资产", "Assets"]);
-      await waitForExpression(cdp, "document.querySelector('[role=grid][aria-label=\"资产列表\"]')", 15_000);
+      await waitForExpression(cdp, `document.querySelector('${ASSET_GRID}')`, 15_000);
       const assetsFirstRenderMs = performance.now() - assetsStarted;
       await sampleHeap();
       const assetState = await inspectAssetGrid(cdp);
@@ -340,9 +354,9 @@ async function installBenchmarkBridge(cdp, data) {
 async function measureNodeListScroll(cdp) {
   // 规模基准项目节点多，章节大纲可能滞后于 .react-flow 出现：先等选项挂载，
   // 否则下方 executor 在 rAF 里对 null 操作会静默 pending（Promise 永不 settle）。
-  await waitForExpression(cdp, "document.querySelector('[role=listbox][aria-label=\"章节节点\"] [role=option]')", 15_000);
+  await waitForExpression(cdp, `document.querySelector('${OUTLINE_OPTION}')`, 15_000);
   const result = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
-    const list = document.querySelector('[role=listbox][aria-label="章节节点"]');
+    const list = document.querySelector('${OUTLINE_LISTBOX}');
     if (!list) { reject(new Error('node outline listbox not found')); return; }
     const timer = setTimeout(() => reject(new Error('node list scroll frames did not complete within 10s')), 10_000);
     const frames = [];
@@ -364,27 +378,27 @@ async function measureNodeListScroll(cdp) {
 
 async function measureSingleNodeSave(cdp, sampleHeap) {
   await evaluate(cdp, `(() => {
-    const option = document.querySelector('[role=listbox][aria-label="章节节点"] [role=option]');
+    const option = document.querySelector('${OUTLINE_OPTION}');
     if (!option) throw new Error('node outline option not found');
     option.click();
   })()`);
   await waitForExpression(
     cdp,
-    "[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '进入编辑' && !button.disabled)",
+    `[...document.querySelectorAll('button')].some(${buttonMatches(["进入编辑", "Open editor"])})`,
     5_000,
   );
   await clickButton(cdp, ["进入编辑", "Open editor"]);
-  await waitForExpression(cdp, "document.querySelector('textarea[aria-label=\"剧本文本\"]')", 15_000);
+  await waitForExpression(cdp, `document.querySelector('${SCENARIO_TEXTAREA}')`, 15_000);
   const samples = [];
   for (let index = 0; index < 6; index += 1) {
     const completedBefore = await evaluate(cdp, "window.__VIBEGAL_BENCHMARK__.saveNodeCompleted");
     await evaluate(cdp, `(() => {
-      const textarea = document.querySelector('textarea[aria-label="剧本文本"]');
+      const textarea = document.querySelector('${SCENARIO_TEXTAREA}');
       const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
       setter.call(textarea, textarea.value.replace(/测量(?: [0-9]+)?。?$/, '') + '\\n规模保存测量 ${index}。');
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
-    await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '保存' && !button.disabled)", 5_000);
+    await waitForExpression(cdp, `[...document.querySelectorAll('button')].some(${buttonMatches(["保存", "Save"])})`, 5_000);
     const started = await evaluate(cdp, "performance.now()");
     await clickButton(cdp, ["保存", "Save"]);
     await waitForExpression(
@@ -394,7 +408,7 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
     );
     const completedAt = await evaluate(cdp, "window.__VIBEGAL_BENCHMARK__.lastSaveNodeCompletedAt");
     samples.push(completedAt - started);
-    await waitForExpression(cdp, "document.querySelector('textarea[aria-label=\"剧本文本\"]') && [...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '保存' && !button.disabled)", 5_000);
+    await waitForExpression(cdp, `document.querySelector('${SCENARIO_TEXTAREA}') && [...document.querySelectorAll('button')].some(${buttonMatches(["保存", "Save"])})`, 5_000);
   }
   await sampleHeap();
   return { samples: samples.slice(2), warmupSamplesMs: samples.slice(0, 2) };
@@ -402,7 +416,7 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
 
 async function inspectAssetGrid(cdp) {
   return evaluate(cdp, `(() => {
-    const grid = document.querySelector('[role=grid][aria-label="资产列表"]');
+    const grid = document.querySelector('${ASSET_GRID}');
     const cells = [...grid.querySelectorAll('[role=gridcell]')];
     const rects = cells.map((cell) => cell.getBoundingClientRect());
     let overlapPairs = 0;
@@ -432,8 +446,8 @@ async function measureAssetSearch(cdp, sampleHeap) {
   ];
   for (const { value, count } of values) {
     const sample = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
-      const input = document.querySelector('input[aria-label="搜索资产"]');
-      const grid = document.querySelector('[role=grid][aria-label="资产列表"]');
+      const input = document.querySelector('${ASSET_SEARCH_INPUT}');
+      const grid = document.querySelector('${ASSET_GRID}');
       if (!input || !grid) { reject(new Error('asset search controls not found')); return; }
       const columns = Number(grid.getAttribute('aria-colcount'));
       const expectedRows = Math.ceil(${count} / columns);

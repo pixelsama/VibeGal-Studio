@@ -736,7 +736,8 @@ export async function runWebRuntimeUiBehaviorSmoke(
   await clickUiButton('[data-player-action="quick-load"]');
   await waitForCondition(() => visibleRuntimeText(runtime) === previous.savedText, "quick load did not restore the saved text");
 
-  const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
+  // reload 后渲染层需重新编译挂载，同样用放宽窗口（Windows CI 冷启动）。
+  const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]', 30_000);
   stage.click();
   await waitForCondition(() => services.history.getBacklog().length > 0, "history did not update after restored playback");
   await clickUiButton('[data-player-action="history"]');
@@ -774,7 +775,9 @@ export async function runWebRuntimeUiBehaviorSmoke(
 async function runUiSmokeFirstPhase(runtime: WebRuntimePlayer): Promise<UiSmokePhase> {
   const services = runtime.rendererProps().runtime;
   if (!services) throw new Error("默认界面风格 UI 冒烟测试需要运行时服务。");
-  const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]');
+  // 首次 stage 等待要覆盖冷启动全链路（渲染层编译 + React 挂载）：
+  // CI Windows runner 冷启动 5s 默认窗口不够（smoke_behavior_failed）。
+  const stage = await waitForUiElement<HTMLElement>('[data-player-stage="true"]', 30_000);
   // 标题门（Spec 21 §7）：真实启动先呈现标题画面——先断言「开始游戏」出现并
   // 点击，再做 stage-click 推进断言，标题门从 smoke 的破坏者变成被测路径。
   await clickUiButton('[data-title-action="start"]');
@@ -970,12 +973,12 @@ async function clickUiButton(selector: string): Promise<void> {
   await nextUiTurn();
 }
 
-async function waitForUiElement<T extends Element = Element>(selector: string): Promise<T> {
+async function waitForUiElement<T extends Element = Element>(selector: string, timeoutMs?: number): Promise<T> {
   let found: T | null = null;
   await waitForCondition(() => {
     found = document.querySelector<T>(selector);
     return found != null;
-  }, `UI element was not rendered: ${selector}`);
+  }, `UI element was not rendered: ${selector}`, timeoutMs);
   return found!;
 }
 
