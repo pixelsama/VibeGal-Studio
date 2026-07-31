@@ -201,7 +201,13 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
           ) : (
             <StageFrame stage={player.rendererProps.stage}>
               <Renderer {...player.rendererProps} />
-              <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
+              <RuntimeMediaOverlay
+                media={player.media}
+                onClose={player.closeMedia}
+                onSkip={player.skipVideo}
+                closeLabel={t("preview.media.closeCg")}
+                skipLabel={t("preview.media.skipVideo")}
+              />
             </StageFrame>
           )}
         </div>

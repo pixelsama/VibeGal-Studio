@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { prepareWebExporter } from "./prepare-web-exporter.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const studioRoot = path.resolve(scriptDir, "..");
@@ -84,3 +86,51 @@ test("prepared web exporter runs outside the repository layout", async () => {
     await rm(outDir, { recursive: true, force: true });
   }
 });
+
+test("exporter payload resolves its relative imports inside the payload (regression: overlay imported Studio src/lib)", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "vibegal-exporter-"));
+  try {
+    prepareWebExporter(outDir);
+    const files = [];
+    const visit = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        // node_modules 包是整包复制的黑盒依赖（内部 chunk/动态导入由包自身保证），
+        // 完整性检查只覆盖 exporter 自有源码（清单职责所在）。
+        if (entry.isDirectory()) {
+          if (entry.name !== "node_modules") visit(full);
+        }
+        // .d.ts 是类型声明（esbuild 剥离类型导入，不参与运行时解析），不检查
+        else if (/\.(ts|tsx|js|mjs|cjs)$/.test(entry.name) && !entry.name.endsWith(".d.ts")) files.push(full);
+      }
+    };
+    visit(outDir);
+    assert.ok(files.length > 0, "exporter payload contains source files");
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      const relative = path.relative(outDir, file);
+      for (const match of source.matchAll(/(?:import|from)\s+["'](\.[^"']+)["']/g)) {
+        // 类型导入（import type / export type）在 esbuild 打包时被剥离，不产生运行时依赖
+        if (/\btype\s*$/.test(source.slice(Math.max(0, match.index - 8), match.index))) continue;
+        const specifier = match[1];
+        assert.ok(
+          resolveInside(outDir, path.dirname(file), specifier),
+          `${relative}: unresolved relative import "${specifier}" (exporter payload must be self-contained)`,
+        );
+      }
+    }
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+function resolveInside(root, fromDir, specifier) {
+  const base = path.resolve(fromDir, specifier);
+  const candidates = [
+    base,
+    `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.mjs`, `${base}.cjs`, `${base}.json`, `${base}.d.ts`,
+    path.join(base, "index.ts"), path.join(base, "index.tsx"),
+    path.join(base, "index.js"), path.join(base, "index.mjs"),
+  ];
+  return candidates.some((candidate) => existsSync(candidate));
+}

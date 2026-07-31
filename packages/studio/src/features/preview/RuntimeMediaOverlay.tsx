@@ -1,5 +1,4 @@
 import { resolveAsset, type Manifest, type RuntimeEffect } from "@vibegal/engine";
-import { useStudioI18n } from "../../lib/i18n";
 
 export type RuntimeMediaState =
   | { type: "cg"; id: string; src: string; label: string }
@@ -35,12 +34,23 @@ export function runtimeMediaFromEffect(
   return null;
 }
 
-export function RuntimeMediaOverlay({ media, onClose, onSkip }: {
+/**
+ * 媒体覆盖层（CG / 视频弹层）。
+ *
+ * 本组件同时被 Studio（预览 / 节点试演）与 web 导出运行时宿主
+ * （webRuntimeHost）使用；按钮文案由宿主注入（closeLabel/skipLabel），
+ * **不依赖 Studio 的 i18n 目录**——exporter 打包不含 src/lib（Installed CLI
+ * 无源码环境下解析会失败，曾致 renderer 编译回归）。缺省用中性英文词。
+ */
+export function RuntimeMediaOverlay({ media, onClose, onSkip, closeLabel = "Close", skipLabel = "Skip" }: {
   media: RuntimeMediaState;
   onClose: () => void;
   onSkip: () => void;
+  /** CG 关闭按钮文案（Studio 传 i18n 文案，web 运行时用缺省/宿主文案）。 */
+  closeLabel?: string;
+  /** 视频跳过按钮文案（同上）。 */
+  skipLabel?: string;
 }) {
-  const { t } = useStudioI18n();
   if (!media) return null;
 
   return (
@@ -48,8 +58,8 @@ export function RuntimeMediaOverlay({ media, onClose, onSkip }: {
       {media.type === "cg" ? (
         <>
           <img src={media.src} alt={media.label} style={mediaStyle} />
-          <button type="button" onClick={onClose} style={actionStyle} aria-label={t("preview.media.closeCg")}>
-            {t("preview.media.closeCg")}
+          <button type="button" onClick={onClose} style={actionStyle} aria-label={closeLabel}>
+            {closeLabel}
           </button>
         </>
       ) : (
@@ -66,8 +76,8 @@ export function RuntimeMediaOverlay({ media, onClose, onSkip }: {
             onLoadedData={(event) => { event.currentTarget.dataset.vibegalVideoLoaded = "true"; }}
           />
           {media.skippable && (
-            <button type="button" onClick={onSkip} style={actionStyle} aria-label={t("preview.media.skipVideo")}>
-              {t("preview.media.skipVideo")}
+            <button type="button" onClick={onSkip} style={actionStyle} aria-label={skipLabel}>
+              {skipLabel}
             </button>
           )}
         </>
