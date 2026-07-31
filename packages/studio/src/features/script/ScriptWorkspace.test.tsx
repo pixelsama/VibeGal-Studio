@@ -94,6 +94,8 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("Story flow");
     expect(html).toContain("Story state");
     expect(html).toContain("Translation comparison");
+    // Spec 33 E10：面板内 tab（三级导航）用弱化变体，与工作区 tab 区分层级
+    expect(html).toContain("gs-tab--pane");
     expect(html).toContain("New node");
     expect(html).toContain("序章");
     expect(html).not.toContain("剧情流程");

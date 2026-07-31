@@ -159,6 +159,8 @@ describe("AppearanceWorkspace", () => {
     expect(html).toContain("尚未启用外观编辑");
     expect(html).toContain("宫格");
     expect(html).toContain("单场景");
+    // Spec 33 E10：面板内 tab（宫格/单场景切换）用弱化变体，与工作区 tab 区分层级
+    expect(html).toContain("gs-tab--pane");
     // 宫格：内置 12 场景同屏（抽查剧情 + 面板 + 标题页三侧）
     for (const title of ["对话", "旁白", "选项", "多立绘", "存档", "CG 画廊", "结局列表", "标题画面"]) {
       expect(html).toContain(title);

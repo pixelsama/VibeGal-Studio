@@ -131,6 +131,8 @@ describe("Preview 场景快照", () => {
     expect(html).toContain("剧情模式台词");
     expect(html).toContain("剧情播放");
     expect(html).toContain("场景快照");
+    // Spec 33 E10：面板内 tab（剧情/场景快照切换）用弱化变体，与工作区 tab 区分层级
+    expect(html).toContain("gs-tab--pane");
     expect(html).not.toContain("场景刷");
     expect(html).toContain('aria-label="调试起点"');
     expect(html).toContain('aria-label="调试指令"');

@@ -804,7 +804,7 @@ export function ScriptWorkspace({
             type="button"
             role="tab"
             aria-selected={primaryView === "flow"}
-            className={primaryView === "flow" ? "gs-tab gs-tab--active" : "gs-tab"}
+            className={primaryView === "flow" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={() => setPrimaryView("flow")}
           >
             {t("script.view.flow")}
@@ -813,7 +813,7 @@ export function ScriptWorkspace({
             type="button"
             role="tab"
             aria-selected={primaryView === "state"}
-            className={primaryView === "state" ? "gs-tab gs-tab--active" : "gs-tab"}
+            className={primaryView === "state" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={() => setPrimaryView("state")}
           >
             {t("script.view.state")}
@@ -822,7 +822,7 @@ export function ScriptWorkspace({
             type="button"
             role="tab"
             aria-selected={primaryView === "translation"}
-            className={primaryView === "translation" ? "gs-tab gs-tab--active" : "gs-tab"}
+            className={primaryView === "translation" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={() => setPrimaryView("translation")}
           >
             {t("script.view.translation")}
