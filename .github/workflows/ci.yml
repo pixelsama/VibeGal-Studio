@@ -410,6 +410,10 @@ jobs:
       - name: Build and smoke with installed CLI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          # Windows runner 上 Chrome 冷启动偶发超过默认 30s 窗口（smoke_browser_failed）；
+          # 放宽到 90s，配合 CLI 内置的一轮超时重试 + 诊断输出。
+          VIBEGAL_SMOKE_BROWSER_TIMEOUT_MS: "90000"
         run: |
           $stage = Join-Path $env:RUNNER_TEMP "installed-cli-smoke"
           $installDir = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\VibeGal-Studio').InstallLocation.Trim('"')

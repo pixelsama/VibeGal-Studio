@@ -6,7 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
-import { runStudioBrowserBenchmark } from "./studio-browser-benchmark.mjs";
+import { runStudioBrowserBenchmark, runStudioBrowserBenchmarkWithRetry } from "./studio-browser-benchmark.mjs";
 import { compareScaleBenchmarkBaseline } from "./scale-benchmark-baseline.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -143,7 +143,11 @@ async function runBrowserHarness({ project, requireBrowser }) {
   try {
     const studioUrl = `http://127.0.0.1:${port}/`;
     await waitForServer(studioUrl, preview, () => output);
-    return await runStudioBrowserBenchmark({ chromePath, studioUrl, projectPath: project, studioDir });
+    // 瞬时 CDP 错误（Promise was collected 等导航竞态）换新 Chrome 整轮重试；
+    // 真实失败（按钮缺失/超时/断言）不重试，保持回归信号。
+    return await runStudioBrowserBenchmarkWithRetry(() => (
+      runStudioBrowserBenchmark({ chromePath, studioUrl, projectPath: project, studioDir })
+    ));
   } catch (error) {
     if (requireBrowser) throw error;
     return notRunBrowser(`Controlled Chrome harness failed: ${error instanceof Error ? error.message : String(error)}`);

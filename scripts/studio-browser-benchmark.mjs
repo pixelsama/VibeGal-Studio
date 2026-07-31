@@ -616,3 +616,43 @@ function round(value) {
 async function readJson(file) {
   return JSON.parse(await readFile(file, "utf8"));
 }
+
+// ── 瞬时 CDP 错误重试（CI Chrome 环境稳定性）──────────────────────────────
+// 测量期间页面导航/渲染进程回收会让在途 Runtime.evaluate（awaitPromise）
+// 被 Chrome 以「Promise was collected / Execution context was destroyed」拒绝。
+// 这类错误是环境竞态而非回归信号：整个测量会话作废，换新 Chrome 重跑即可。
+const TRANSIENT_CDP_PATTERNS = [
+  "Promise was collected",
+  "Execution context was destroyed",
+  "Inspected target navigated or closed",
+  "Target closed",
+];
+
+export function isTransientCdpError(error) {
+  const message = typeof error === "string" ? error : error?.message;
+  if (!message) return false;
+  return TRANSIENT_CDP_PATTERNS.some((pattern) => message.includes(pattern));
+}
+
+/**
+ * 以「全新 Chrome 重跑整轮测量」的方式重试瞬时 CDP 错误。
+ * run 必须是幂等的（每次调用自行启动/清理 Chrome）；
+ * 非瞬时错误（按钮找不到、超时、断言失败）立即抛出，不掩盖真实回归。
+ */
+export async function runStudioBrowserBenchmarkWithRetry(run, {
+  maxAttempts = 3,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  log = (line) => process.stderr.write(`${line}\n`),
+} = {}) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await run(attempt);
+    } catch (error) {
+      if (!isTransientCdpError(error) || attempt === maxAttempts) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      log(`[benchmark] transient CDP error (attempt ${attempt}/${maxAttempts}): ${message} — retrying with a fresh Chrome`);
+      await sleep(1_000);
+    }
+  }
+  throw new Error("unreachable");
+}

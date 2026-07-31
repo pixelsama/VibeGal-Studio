@@ -4654,6 +4654,114 @@ fn serve_smoke_connection(
     let _ = stream.flush();
 }
 
+/// 行为 smoke 浏览器超时（毫秒）：默认 30s，可用
+/// VIBEGAL_SMOKE_BROWSER_TIMEOUT_MS 覆盖（Windows CI runner 上 Chrome
+/// 冷启动明显更慢——同类问题见 agent-qa WebDriver statusPollTimeout）。
+/// 下限 1s；缺失/解析失败回退默认。
+fn parse_smoke_browser_timeout_ms(raw: Option<&str>) -> u64 {
+    const DEFAULT_MS: u64 = 30_000;
+    const MIN_MS: u64 = 1_000;
+    let Some(raw) = raw else { return DEFAULT_MS };
+    match raw.trim().parse::<u64>() {
+        Ok(value) => value.max(MIN_MS),
+        Err(_) => DEFAULT_MS,
+    }
+}
+
+fn smoke_browser_timeout() -> std::time::Duration {
+    std::time::Duration::from_millis(parse_smoke_browser_timeout_ms(
+        std::env::var("VIBEGAL_SMOKE_BROWSER_TIMEOUT_MS")
+            .ok()
+            .as_deref(),
+    ))
+}
+
+/// 单轮行为 smoke 浏览器尝试：新 profile 启动 Chrome，等待页面回报或超时。
+/// 超时是 CI runner 上最常见的环境性失败（冷启动慢），由调用方决定是否重试。
+fn run_behavior_browser_attempt(
+    browser: &str,
+    url: &str,
+    report: &std::sync::Arc<std::sync::Mutex<Option<BrowserSmokeReport>>>,
+    timeout: std::time::Duration,
+    debug: bool,
+) -> std::io::Result<BrowserSmokeReport> {
+    let profile = std::env::temp_dir().join(format!(
+        "vibegal-smoke-browser-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let mut browser_command = Command::new(browser);
+    browser_command
+        .arg("--headless=new")
+        .arg("--disable-gpu")
+        .arg("--disable-dev-shm-usage")
+        .arg("--disable-background-networking")
+        .arg("--disable-extensions")
+        .arg("--disable-component-extensions-with-background-pages")
+        .arg("--no-first-run")
+        .arg("--no-sandbox")
+        .arg("--autoplay-policy=no-user-gesture-required")
+        .arg(format!("--user-data-dir={}", profile.display()))
+        .arg(url)
+        .stdout(std::process::Stdio::null());
+    if debug {
+        browser_command
+            .arg("--remote-debugging-port=9225")
+            .arg("--enable-logging=stderr")
+            .stderr(std::process::Stdio::inherit());
+        eprintln!("[vibegal-smoke] opening {url}");
+    } else {
+        browser_command.stderr(std::process::Stdio::null());
+    }
+    let child = browser_command.spawn();
+    eprintln!("[vibegal-smoke] behavior browser launched: {browser}");
+    let result = match child {
+        Ok(mut process) => {
+            let deadline = std::time::Instant::now() + timeout;
+            loop {
+                if let Some(callback) = report.lock().ok().and_then(|slot| slot.clone()) {
+                    eprintln!(
+                        "[vibegal-smoke] behavior report received: status={}",
+                        callback.status
+                    );
+                    let _ = process.kill();
+                    let _ = process.wait();
+                    break Ok(callback);
+                }
+                match process.try_wait() {
+                    Ok(Some(status)) => {
+                        eprintln!("[vibegal-smoke] behavior browser exited early: {status}");
+                        break Err(std::io::Error::other(format!(
+                            "Chrome/Chromium behavior smoke exited before reporting ({status})"
+                        )));
+                    }
+                    Ok(None) if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Ok(None) => {
+                        eprintln!("[vibegal-smoke] behavior browser timed out, killing");
+                        let _ = process.kill();
+                        let _ = process.wait();
+                        break Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            format!(
+                                "Chrome/Chromium behavior smoke timed out after {} seconds",
+                                timeout.as_secs()
+                            ),
+                        ));
+                    }
+                    Err(error) => break Err(error),
+                }
+            }
+        }
+        Err(error) => Err(std::io::Error::new(error.kind(), error.to_string())),
+    };
+    let _ = fs::remove_dir_all(&profile);
+    result
+}
+
 fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -4694,81 +4802,37 @@ fn smoke_web_behavior(dist_dir: &Path) -> Result<(), SmokeError> {
         Arc::clone(&stop),
     );
     eprintln!("[vibegal-smoke] behavior server listening on {address}");
-    let profile = std::env::temp_dir().join(format!(
-        "vibegal-smoke-browser-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
     let url = format!("http://{address}/?vibegalSmoke=1");
     let debug = std::env::var_os("VIBEGAL_SMOKE_DEBUG").is_some();
-    let mut browser_command = Command::new(&browser);
-    browser_command
-        .arg("--headless=new")
-        .arg("--disable-gpu")
-        .arg("--disable-dev-shm-usage")
-        .arg("--disable-background-networking")
-        .arg("--disable-extensions")
-        .arg("--disable-component-extensions-with-background-pages")
-        .arg("--no-first-run")
-        .arg("--no-sandbox")
-        .arg("--autoplay-policy=no-user-gesture-required")
-        .arg(format!("--user-data-dir={}", profile.display()))
-        .arg(&url)
-        .stdout(std::process::Stdio::null());
-    if debug {
-        browser_command
-            .arg("--remote-debugging-port=9225")
-            .arg("--enable-logging=stderr")
-            .stderr(std::process::Stdio::inherit());
-        eprintln!("[vibegal-smoke] opening {url}");
-    } else {
-        browser_command.stderr(std::process::Stdio::null());
-    }
-    let child = browser_command.spawn();
-    eprintln!("[vibegal-smoke] behavior browser launched: {browser}");
-    let browser_result = match child {
-        Ok(mut process) => {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-            loop {
-                if let Some(callback) = report.lock().ok().and_then(|slot| slot.clone()) {
-                    eprintln!(
-                        "[vibegal-smoke] behavior report received: status={}",
-                        callback.status
-                    );
-                    let _ = process.kill();
-                    let _ = process.wait();
-                    break Ok(callback);
-                }
-                match process.try_wait() {
-                    Ok(Some(status)) => {
-                        eprintln!("[vibegal-smoke] behavior browser exited early: {status}");
-                        break Err(std::io::Error::other(format!(
-                            "Chrome/Chromium behavior smoke exited before reporting ({status})"
-                        )));
-                    }
-                    Ok(None) if std::time::Instant::now() < deadline => {
-                        std::thread::sleep(std::time::Duration::from_millis(50));
-                    }
-                    Ok(None) => {
-                        eprintln!("[vibegal-smoke] behavior browser timed out, killing");
-                        let _ = process.kill();
-                        let _ = process.wait();
-                        break Err(std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
-                            "Chrome/Chromium behavior smoke timed out after 30 seconds",
-                        ));
-                    }
-                    Err(error) => break Err(error),
+    let timeout = smoke_browser_timeout();
+    // 超时重试一轮（CI runner 上 Chrome 冷启动偶发超过单次窗口）；
+    // 第二轮自动打开 Chrome stderr 诊断，日志可直接定位卡在哪一步。
+    // 非超时错误（spawn 失败 / 提前退出）不重试，避免掩盖真实问题。
+    let mut browser_result = None;
+    let mut last_error = None;
+    for attempt in 1..=2 {
+        if attempt > 1 {
+            eprintln!("[vibegal-smoke] retrying behavior browser with Chrome diagnostics (attempt {attempt}/2)");
+        }
+        match run_behavior_browser_attempt(&browser, &url, &report, timeout, debug || attempt > 1) {
+            Ok(callback) => {
+                browser_result = Some(callback);
+                break;
+            }
+            Err(error) => {
+                let retryable = error.kind() == std::io::ErrorKind::TimedOut;
+                last_error = Some(error);
+                if !retryable {
+                    break;
                 }
             }
         }
-        Err(error) => Err(std::io::Error::new(error.kind(), error.to_string())),
-    };
+    }
+    let browser_result = browser_result
+        .map(Ok)
+        .unwrap_or_else(|| Err(last_error.expect("browser attempt always runs")));
     stop.store(true, Ordering::Relaxed);
     let _ = server.join();
-    let _ = fs::remove_dir_all(&profile);
     let report = browser_result.map_err(|error| {
         smoke_error(
             "smoke_browser_failed",
@@ -8211,6 +8275,22 @@ mod tests {
             Some("content/assets/backgrounds/room.png")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn smoke_browser_timeout_defaults_to_30s() {
+        assert_eq!(parse_smoke_browser_timeout_ms(None), 30_000);
+        assert_eq!(parse_smoke_browser_timeout_ms(Some("")), 30_000);
+        assert_eq!(parse_smoke_browser_timeout_ms(Some("not-a-number")), 30_000);
+    }
+
+    #[test]
+    fn smoke_browser_timeout_accepts_env_override_with_floor() {
+        assert_eq!(parse_smoke_browser_timeout_ms(Some("90000")), 90_000);
+        // 下限 1s：0 / 负数（解析失败）/ 极小值都抬回下限或回退默认
+        assert_eq!(parse_smoke_browser_timeout_ms(Some("0")), 1_000);
+        assert_eq!(parse_smoke_browser_timeout_ms(Some("500")), 1_000);
+        assert_eq!(parse_smoke_browser_timeout_ms(Some("-5")), 30_000);
     }
 
     #[test]
