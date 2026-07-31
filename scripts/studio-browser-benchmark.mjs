@@ -327,7 +327,7 @@ async function installBenchmarkBridge(cdp, data) {
 }
 
 async function measureNodeListScroll(cdp) {
-  const result = await evaluate(cdp, `new Promise((resolve) => {
+  const result = await evaluate(cdp, retainedPromise(`(resolve) => {
     const list = document.querySelector('[role=listbox][aria-label="章节节点"]');
     const frames = [];
     let remaining = 32;
@@ -342,7 +342,7 @@ async function measureNodeListScroll(cdp) {
       else requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
-  })`);
+  }`));
   return result;
 }
 
@@ -415,7 +415,7 @@ async function measureAssetSearch(cdp, sampleHeap) {
     { value: "background_03", count: 10 },
   ];
   for (const { value, count } of values) {
-    const sample = await evaluate(cdp, `new Promise((resolve, reject) => {
+    const sample = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
       const input = document.querySelector('input[aria-label="搜索资产"]');
       const grid = document.querySelector('[role=grid][aria-label="资产列表"]');
       if (!input || !grid) { reject(new Error('asset search controls not found')); return; }
@@ -439,7 +439,7 @@ async function measureAssetSearch(cdp, sampleHeap) {
       setter.call(input, ${JSON.stringify(value)});
       input.dispatchEvent(new Event('input', { bubbles: true }));
       requestAnimationFrame(check);
-    })`);
+    }`));
     samples.push(sample);
     await sampleHeap();
   }
@@ -627,6 +627,25 @@ const TRANSIENT_CDP_PATTERNS = [
   "Inspected target navigated or closed",
   "Target closed",
 ];
+
+/**
+ * 把页面内长寿命 Promise 挂到 window 上再交给 Runtime.evaluate(awaitPromise)。
+ *
+ * 直接 `new Promise(...)` 作为求值结果时，该 Promise 在页面里无引用，
+ * V8 GC（堆采样 + 大项目内存压力下几乎必现）会把它回收，CDP 以
+ * 「Promise was collected」拒绝——曾在 ubuntu runner 上 3/3 重试全灭。
+ * 挂到 window 后 GC 无法回收；settle 后由 then 回调自清引用。
+ */
+export function retainedPromise(executorSource) {
+  return `(() => {
+    const key = "__VIBEGAL_BENCHMARK_PENDING__";
+    const promise = new Promise(${executorSource});
+    window[key] = promise;
+    const release = () => { if (window[key] === promise) window[key] = null; };
+    promise.then(release, release);
+    return promise;
+  })()`;
+}
 
 export function isTransientCdpError(error) {
   const message = typeof error === "string" ? error : error?.message;

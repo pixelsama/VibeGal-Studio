@@ -3,8 +3,25 @@ import test from "node:test";
 
 import {
   isTransientCdpError,
+  retainedPromise,
   runStudioBrowserBenchmarkWithRetry,
 } from "./studio-browser-benchmark.mjs";
+
+test("retainedPromise 把页面内 Promise 挂到 window 防 GC（Promise was collected 根因修复）", async () => {
+  const source = retainedPromise(`(resolve) => setTimeout(() => resolve(42), 0)`);
+
+  // 结构断言：求值结果被 window 引用、settle 后自清、返回原 promise
+  assert.match(source, /window\[key\] = promise/);
+  assert.match(source, /promise\.then\(release, release\)/);
+  assert.match(source, /return promise/);
+
+  // 语义断言：在 Node 里以 window=globalThis 模拟页面环境执行
+  const window = globalThis;
+  const value = await eval(source);
+  assert.equal(value, 42);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(window.__VIBEGAL_BENCHMARK_PENDING__, null);
+});
 
 test("isTransientCdpError 识别导航/上下文竞态类瞬时 CDP 错误", () => {
   assert.equal(isTransientCdpError(new Error("Promise was collected")), true);
