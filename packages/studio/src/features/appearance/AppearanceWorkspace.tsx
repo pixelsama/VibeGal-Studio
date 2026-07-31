@@ -406,7 +406,7 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
         <div style={previewMountStyle}>
           {viewMode === "grid" ? (
             <div style={gridScrollStyle}>
-              {/* 性能注记：宫格把全场景（11 个内置 + 自定义）各挂一棵渲染层树。
+              {/* 性能注记：宫格把全场景（12 个内置 + 自定义）各挂一棵渲染层树。
                   渲染层通常是轻量静态组件，V1 全量挂载换取实现简单；实测卡顿再
                   做视口内懒挂载（IntersectionObserver）。 */}
               <div style={gridStyle}>
