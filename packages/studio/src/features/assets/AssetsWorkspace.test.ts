@@ -11,6 +11,7 @@ import { AssetCard, DanglingCard } from "./AssetCard";
 import { AssetsToolbar } from "./AssetsToolbar";
 import {
   CharacterEditor,
+  CharacterDetailEditor,
   createCharacterSpriteImportFailureToast,
   safeAssetFileStem,
   spriteExprNameForImport,
@@ -757,7 +758,7 @@ describe("read-only asset UI", () => {
 });
 
 describe("character sprite import UI", () => {
-  it("renders the character editor in English while preserving creator-authored names and paths", () => {
+  it("renders the character card grid in English while preserving creator-authored names", () => {
     const html = renderToStaticMarkup(createElement(
       StudioI18nProvider,
       { preference: "en" },
@@ -780,13 +781,11 @@ describe("character sprite import UI", () => {
       }),
     ));
 
+    // 一级视图：卡片网格（角色名可见），编辑表单不直接出现
     expect(html).toContain("Characters");
-    expect(html).toContain("Basic information");
-    expect(html).toContain("Expression assets");
-    expect(html).toContain("Choose image");
     expect(html).toContain("雪");
-    expect(html).toContain("微笑");
-    expect(html).toContain("assets/characters/snow_smile.png");
+    expect(html).not.toContain("Basic information");
+    expect(html).not.toContain("Expression assets");
     expect(html).not.toContain("基本信息");
   });
 
@@ -804,14 +803,22 @@ describe("character sprite import UI", () => {
   });
 
   it("keeps choose image clickable when expression name is empty", () => {
-    const html = renderToStaticMarkup(createElement(CharacterEditor, {
+    const html = renderToStaticMarkup(createElement(CharacterDetailEditor, {
+      characterId: "h",
+      char: { name: "h", color: "#fff", sprites: {} },
       projectPath: "/project",
-      manifest: {
-        characters: { h: { name: "h", color: "#fff", sprites: {} } },
-        backgrounds: {},
-        audio: { bgm: {}, sfx: {}, voice: {} },
-      },
+      interactiveDisabled: false,
       onChange: () => {},
+      onDelete: () => {},
+      onBack: () => {},
+      newExprDraft: "",
+      busy: false,
+      onExprDraftChange: () => {},
+      onAddExpr: () => {},
+      onRenameExpr: () => {},
+      onRemoveExpr: () => {},
+      onSetDefaultExpr: () => {},
+      t: (key) => resolveCatalogMessage("zh-CN", key),
     }));
 
     expect(html).toContain(">选择图片</button>");

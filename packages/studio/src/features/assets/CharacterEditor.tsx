@@ -1,14 +1,15 @@
 /**
- * CharacterEditor —— 角色 section 的三栏编辑器。
+ * CharacterEditor —— 角色 section 的两级编辑器（Spec 33 E7/§6.3）。
  *
- * 左：角色列表（来自 manifest.characters）+ 新建角色
- * 中：选中角色的 default sprite 预览舞台
- * 右：属性面板（name/color 可编辑 + sprite 表情列表：加/删/设默认/重命名）
+ * 一级（卡片网格）：每个角色一张角色卡片（名字 + 默认立绘缩略图 + 颜色），
+ * 「＋ 新建角色」入口；不再直接接管整个主区，侧栏分类保持常驻。
+ * 二级（双栏编辑页）：点击卡片进入 —— 左预览舞台，右属性面板（
+ * name/color 可编辑 + sprite 表情列表：加/删/设默认/重命名），顶部返回按钮。
  *
- * 所有改动通过 onChange(manifest) 上抛为父组件本地草稿，由用户显式保存。
+ * 所有改动通过 onChange(manifest) 上抛为父组件本地草稿，由父组件落盘。
  */
 import { useState } from "react";
-import { X, UserRoundPlus } from "lucide-react";
+import { ArrowLeft, UserRoundPlus, X } from "lucide-react";
 import type { Manifest, ManifestCharacter, CharacterSpriteRef } from "../../lib/types";
 import { useStudioI18n, translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import { deleteAsset, importAsset, pickAssetFiles } from "../../lib/tauri";
@@ -29,8 +30,8 @@ interface CharacterEditorProps {
 
 export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, disabled = false }: CharacterEditorProps) {
   const { t } = useStudioI18n();
-  const characterIds = Object.keys(manifest.characters);
-  const [selectedId, setSelectedId] = useState<string | null>(characterIds[0] ?? null);
+  // 卡片网格（null）↔ 双栏编辑页（角色 id）两级切换
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newExprDraft, setNewExprDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   // 删角色/删表情现在级联清理磁盘文件（Spec 33 A5），属破坏性操作，须先确认。
@@ -43,7 +44,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   // 磁盘操作（导入/级联删除）进行中禁用一切编辑入口，防止旧快照覆盖新改动。
   const interactiveDisabled = disabled || busy;
 
-  const selected = selectedId ? manifest.characters[selectedId] : undefined;
+  const editing = editingId ? manifest.characters[editingId] : undefined;
 
   function updateCharacter(id: string, patch: Partial<ManifestCharacter>) {
     if (interactiveDisabled) return;
@@ -70,7 +71,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
         [id]: { name: "新角色", color: "#ffffff", sprites: {} },
       },
     });
-    setSelectedId(id);
+    setEditingId(id);
   }
 
   /** 某角色所有立绘文件的去重磁盘路径（atlas 引用只算 fallback，不删共享 atlas 图）。 */
@@ -111,9 +112,8 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
       const next = { ...manifest.characters };
       delete next[id];
       onChange({ ...manifest, characters: next });
-      if (selectedId === id) {
-        const remaining = Object.keys(next);
-        setSelectedId(remaining[0] ?? null);
+      if (editingId === id) {
+        setEditingId(null);
       }
       if (failed.length > 0) {
         onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
@@ -203,145 +203,39 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   }
 
   return (
-    <div style={workspaceStyle}>
-      {/* 左：角色列表 */}
-      <div style={listPanelStyle}>
-        <div style={listHeaderStyle}>
-          <span style={panelTitleStyle}>{t("assets.character.title")}</span>
-          <button
-            type="button"
-            style={{ ...smallBtnStyle, opacity: interactiveDisabled ? 0.48 : 1, cursor: interactiveDisabled ? "not-allowed" : "pointer" }}
-            onClick={addCharacter}
-            disabled={interactiveDisabled}
-            title={interactiveDisabled ? t("assets.character.editDisabledTitle") : undefined}
-          >
-            {t("assets.character.new")}
-          </button>
-        </div>
-        {disabled && <div style={readOnlyHintStyle}>{t("assets.character.editDisabled")}</div>}
-        <div style={listStyle}>
-          {characterIds.length === 0 && <div style={emptyRowStyle}>{t("assets.character.emptyList")}</div>}
-          {characterIds.map((id) => (
-            <button
-              key={id}
-              type="button"
-              style={{
-                ...rowStyle,
-                background: id === selectedId ? "var(--bg-active)" : "transparent",
-                color: id === selectedId ? "var(--text-bright)" : "var(--text-secondary)",
-              }}
-              onClick={() => setSelectedId(id)}
-            >
-              {manifest.characters[id].name || id}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 中：预览舞台 */}
-      <div style={stageStyle}>
-        {selected ? (
-          <CharacterStage
-            char={selected}
-            projectPath={projectPath}
-            t={t}
-          />
-        ) : characterIds.length === 0 ? (
-          <EmptyState
-            icon={UserRoundPlus}
-            title={t("assets.character.emptyTitle")}
-            description={t("assets.character.emptyDescription")}
-            action={!interactiveDisabled ? <Button variant="primary" onClick={addCharacter}>{t("assets.character.createFirst")}</Button> : undefined}
-          />
-        ) : (
-          <div style={emptyStageStyle}>{t("assets.character.select")}</div>
-        )}
-      </div>
-
-      {/* 右：属性面板 */}
-      <div style={propsPanelStyle}>
-        {selected && selectedId ? (
-          <>
-            <div style={propGroupStyle}>
-              <div style={panelTitleStyle}>{t("assets.character.basic")}</div>
-              <label style={fieldLabelStyle}>
-                {t("assets.character.name")}
-                <input
-                  type="text"
-                  value={selected.name}
-                  onChange={(e) => updateCharacter(selectedId, { name: e.target.value })}
-                  disabled={interactiveDisabled}
-                  style={fieldInputStyle}
-                />
-              </label>
-              <label style={fieldLabelStyle}>
-                {t("assets.character.color")}
-                <input
-                  type="color"
-                  value={selected.color}
-                  onChange={(e) => updateCharacter(selectedId, { color: e.target.value })}
-                  disabled={interactiveDisabled}
-                  style={colorInputStyle}
-                />
-                <span style={hexStyle}>{selected.color}</span>
-              </label>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  style={{
-                    ...smallBtnStyle,
-                    color: "var(--status-error-text)",
-                    opacity: interactiveDisabled ? 0.48 : 1,
-                    cursor: interactiveDisabled ? "not-allowed" : "pointer",
-                  }}
-                  onClick={() => deleteCharacter(selectedId)}
-                  disabled={interactiveDisabled}
-                >
-                  {t("assets.character.delete")}
-                </button>
-              </div>
-            </div>
-
-            <div style={propGroupStyle}>
-              <div style={panelTitleStyle}>{t("assets.character.expressions")}</div>
-              {Object.entries(selected.sprites).map(([expr, sprite]) => (
-                <SpriteExprRow
-                  key={expr}
-                  expr={expr}
-                  sprite={sprite}
-                  projectPath={projectPath}
-                  isDefault={expr === "default"}
-                  onRename={(newExpr) => renameSpriteExpr(selectedId, expr, newExpr)}
-                  onRemove={() => removeSpriteExpr(selectedId, expr)}
-                  onSetDefault={() => {
-                    if (interactiveDisabled) return;
-                    if (expr === "default") return;
-                    const reordered = { default: sprite, ...omit(selected.sprites, expr) };
-                    updateCharacter(selectedId, { sprites: reordered });
-                  }}
-                  disabled={interactiveDisabled}
-                  t={t}
-                />
-              ))}
-              <SpriteExprAddForm
-                draft={newExprDraft[selectedId] ?? ""}
-                busy={busy}
-                onDraftChange={(v) => setNewExprDraft((d) => ({ ...d, [selectedId]: v }))}
-                onAdd={(expr) => void addSpriteExpr(selectedId, expr)}
-                disabled={interactiveDisabled}
-                t={t}
-              />
-            </div>
-
-            <div style={propGroupStyle}>
-              <div style={panelTitleStyle}>{t("assets.character.advanced")}</div>
-              <div style={idStyle}>id: {selectedId}</div>
-            </div>
-          </>
-        ) : (
-          <div style={emptyPropsStyle} />
-        )}
-      </div>
+    <div style={rootStyle}>
+      {editingId && editing ? (
+        <CharacterDetailEditor
+          characterId={editingId}
+          char={editing}
+          projectPath={projectPath}
+          interactiveDisabled={interactiveDisabled}
+          onChange={(patch) => updateCharacter(editingId, patch)}
+          onDelete={() => deleteCharacter(editingId)}
+          onBack={() => setEditingId(null)}
+          newExprDraft={newExprDraft[editingId] ?? ""}
+          busy={busy}
+          onExprDraftChange={(v) => setNewExprDraft((d) => ({ ...d, [editingId]: v }))}
+          onAddExpr={(expr) => void addSpriteExpr(editingId, expr)}
+          onRenameExpr={(oldExpr, newExpr) => renameSpriteExpr(editingId, oldExpr, newExpr)}
+          onRemoveExpr={(expr) => removeSpriteExpr(editingId, expr)}
+          onSetDefaultExpr={(expr) => {
+            if (interactiveDisabled) return;
+            if (expr === "default") return;
+            const reordered = { default: editing.sprites[expr], ...omit(editing.sprites, expr) };
+            updateCharacter(editingId, { sprites: reordered });
+          }}
+          t={t}
+        />
+      ) : (
+        <CharacterGrid
+          characters={manifest.characters}
+          projectPath={projectPath}
+          disabled={interactiveDisabled}
+          onSelect={setEditingId}
+          onAdd={addCharacter}
+        />
+      )}
       {deleteConfirm && (
         <ConfirmDialog
           message={deleteConfirm.kind === "character"
@@ -368,6 +262,242 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
           onClose={() => setDeleteConfirm(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** 角色默认表情（default sprite）的磁盘路径；无默认表情返回 null。 */
+function characterDefaultSpritePath(char: ManifestCharacter): string | null {
+  const defaultSprite = char.sprites.default;
+  return defaultSprite
+    ? typeof defaultSprite === "string" ? defaultSprite : defaultSprite.fallback
+    : null;
+}
+
+/** 一级视图：角色卡片网格。每张卡片 = 名字 + 默认立绘缩略图 + 颜色标识。 */
+function CharacterGrid({
+  characters,
+  projectPath,
+  disabled,
+  onSelect,
+  onAdd,
+}: {
+  characters: Manifest["characters"];
+  projectPath: string;
+  disabled: boolean;
+  onSelect: (id: string) => void;
+  onAdd: () => void;
+}) {
+  const { t } = useStudioI18n();
+  const ids = Object.keys(characters);
+  return (
+    <div style={gridRootStyle}>
+      <div style={gridHeaderStyle}>
+        <span style={panelTitleStyle}>{t("assets.character.title")}</span>
+        <button
+          type="button"
+          style={{ ...smallBtnStyle, opacity: disabled ? 0.48 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+          onClick={onAdd}
+          disabled={disabled}
+          title={disabled ? t("assets.character.editDisabledTitle") : undefined}
+        >
+          {t("assets.character.new")}
+        </button>
+      </div>
+      {disabled && <div style={readOnlyHintStyle}>{t("assets.character.editDisabled")}</div>}
+      {ids.length === 0 ? (
+        <div style={gridEmptyStyle}>
+          <EmptyState
+            icon={UserRoundPlus}
+            title={t("assets.character.emptyTitle")}
+            description={t("assets.character.emptyDescription")}
+            action={!disabled ? <Button variant="primary" onClick={onAdd}>{t("assets.character.createFirst")}</Button> : undefined}
+          />
+        </div>
+      ) : (
+        <div style={cardGridStyle}>
+          {ids.map((id) => (
+            <CharacterCard
+              key={id}
+              id={id}
+              char={characters[id]}
+              projectPath={projectPath}
+              disabled={disabled}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CharacterCard({
+  id,
+  char,
+  projectPath,
+  disabled,
+  onSelect,
+}: {
+  id: string;
+  char: ManifestCharacter;
+  projectPath: string;
+  disabled: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const { t } = useStudioI18n();
+  const defaultPath = characterDefaultSpritePath(char);
+  return (
+    <button
+      type="button"
+      style={cardStyle}
+      onClick={() => onSelect(id)}
+      disabled={disabled}
+      title={char.name || id}
+    >
+      <div style={cardPreviewStyle}>
+        {defaultPath ? (
+          <AssetImagePreview
+            projectPath={projectPath}
+            relPath={defaultPath}
+            alt={char.name}
+            style={cardImgStyle}
+            placeholderStyle={cardPlaceholderStyle}
+          />
+        ) : (
+          <span style={cardPlaceholderStyle}>{t("assets.character.noDefaultExpression")}</span>
+        )}
+      </div>
+      <div style={cardMetaStyle}>
+        <span style={{ ...cardNameStyle, color: char.color }}>{char.name || id}</span>
+      </div>
+    </button>
+  );
+}
+
+/** 二级视图：双栏编辑页（左预览舞台 / 右属性面板），顶部返回按钮回卡片网格。 */
+export function CharacterDetailEditor({
+  characterId,
+  char,
+  projectPath,
+  interactiveDisabled,
+  onChange,
+  onDelete,
+  onBack,
+  newExprDraft,
+  busy,
+  onExprDraftChange,
+  onAddExpr,
+  onRenameExpr,
+  onRemoveExpr,
+  onSetDefaultExpr,
+  t,
+}: {
+  characterId: string;
+  char: ManifestCharacter;
+  projectPath: string;
+  interactiveDisabled: boolean;
+  onChange: (patch: Partial<ManifestCharacter>) => void;
+  onDelete: () => void;
+  onBack: () => void;
+  newExprDraft: string;
+  busy: boolean;
+  onExprDraftChange: (v: string) => void;
+  onAddExpr: (expr: string) => void;
+  onRenameExpr: (oldExpr: string, newExpr: string) => void;
+  onRemoveExpr: (expr: string) => void;
+  onSetDefaultExpr: (expr: string) => void;
+  t: StudioTranslator;
+}) {
+  return (
+    <div style={detailRootStyle}>
+      <div style={detailHeaderStyle}>
+        <button type="button" style={backButtonStyle} onClick={onBack}>
+          <ArrowLeft size={14} />
+          {t("assets.character.back")}
+        </button>
+        <span style={{ ...detailTitleStyle, color: char.color }}>{char.name || characterId}</span>
+      </div>
+      <div style={detailBodyStyle}>
+        {/* 左：预览舞台 */}
+        <div style={stageStyle}>
+          <CharacterStage char={char} projectPath={projectPath} t={t} />
+        </div>
+
+        {/* 右：属性面板 */}
+        <div style={propsPanelStyle}>
+          <div style={propGroupStyle}>
+            <div style={panelTitleStyle}>{t("assets.character.basic")}</div>
+            <label style={fieldLabelStyle}>
+              {t("assets.character.name")}
+              <input
+                type="text"
+                value={char.name}
+                onChange={(e) => onChange({ name: e.target.value })}
+                disabled={interactiveDisabled}
+                style={fieldInputStyle}
+              />
+            </label>
+            <label style={fieldLabelStyle}>
+              {t("assets.character.color")}
+              <input
+                type="color"
+                value={char.color}
+                onChange={(e) => onChange({ color: e.target.value })}
+                disabled={interactiveDisabled}
+                style={colorInputStyle}
+              />
+              <span style={hexStyle}>{char.color}</span>
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                style={{
+                  ...smallBtnStyle,
+                  color: "var(--status-error-text)",
+                  opacity: interactiveDisabled ? 0.48 : 1,
+                  cursor: interactiveDisabled ? "not-allowed" : "pointer",
+                }}
+                onClick={onDelete}
+                disabled={interactiveDisabled}
+              >
+                {t("assets.character.delete")}
+              </button>
+            </div>
+          </div>
+
+          <div style={propGroupStyle}>
+            <div style={panelTitleStyle}>{t("assets.character.expressions")}</div>
+            {Object.entries(char.sprites).map(([expr, sprite]) => (
+              <SpriteExprRow
+                key={expr}
+                expr={expr}
+                sprite={sprite}
+                projectPath={projectPath}
+                isDefault={expr === "default"}
+                onRename={(newExpr) => onRenameExpr(expr, newExpr)}
+                onRemove={() => onRemoveExpr(expr)}
+                onSetDefault={() => onSetDefaultExpr(expr)}
+                disabled={interactiveDisabled}
+                t={t}
+              />
+            ))}
+            <SpriteExprAddForm
+              draft={newExprDraft}
+              busy={busy}
+              onDraftChange={onExprDraftChange}
+              onAdd={onAddExpr}
+              disabled={interactiveDisabled}
+              t={t}
+            />
+          </div>
+
+          <div style={propGroupStyle}>
+            <div style={panelTitleStyle}>{t("assets.character.advanced")}</div>
+            <div style={idStyle}>id: {characterId}</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -411,10 +541,7 @@ function CharacterStage({
   projectPath: string;
   t: StudioTranslator;
 }) {
-  const defaultSprite = char.sprites.default;
-  const defaultPath = defaultSprite
-    ? typeof defaultSprite === "string" ? defaultSprite : defaultSprite.fallback
-    : null;
+  const defaultPath = characterDefaultSpritePath(char);
   return (
     <div style={stageInnerStyle}>
       {defaultPath ? (
@@ -637,23 +764,22 @@ function omit<T extends Record<string, unknown>>(obj: T, key: string): T {
 
 // ── 样式 ──
 
-const workspaceStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "180px 1fr 280px",
+const rootStyle: React.CSSProperties = {
   width: "100%",
+  height: "100%",
+  overflow: "hidden",
+  position: "relative",
+};
+
+// 一级：卡片网格
+const gridRootStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
   height: "100%",
   overflow: "hidden",
 };
 
-const listPanelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  borderRight: `1px solid var(--border)`,
-  background: "var(--bg-app)",
-  overflow: "hidden",
-};
-
-const listHeaderStyle: React.CSSProperties = {
+const gridHeaderStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -661,28 +787,114 @@ const listHeaderStyle: React.CSSProperties = {
   borderBottom: `1px solid var(--border)`,
 };
 
-const listStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
+const gridEmptyStyle: React.CSSProperties = {
+  display: "grid",
+  placeItems: "center",
+  flex: 1,
   overflowY: "auto",
-  padding: "var(--space-1) var(--space-2)",
-  gap: 2,
 };
 
-const rowStyle: React.CSSProperties = {
+const cardGridStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "var(--space-3)",
+  padding: "var(--space-3)",
+  overflowY: "auto",
+  alignContent: "flex-start",
+};
+
+const cardStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: 160,
+  borderRadius: "var(--radius-md)",
+  border: `1px solid var(--border)`,
+  background: "var(--bg-panel)",
+  overflow: "hidden",
+  cursor: "pointer",
+  padding: 0,
   textAlign: "left",
-  fontSize: "var(--text-base)",
-  padding: "var(--space-2) var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid transparent",
+};
+
+const cardPreviewStyle: React.CSSProperties = {
+  position: "relative",
+  width: "100%",
+  aspectRatio: "4 / 3",
+  background: "var(--bg-app)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const cardImgStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
+const cardPlaceholderStyle: React.CSSProperties = {
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
+  padding: "var(--space-2)",
+};
+
+const cardMetaStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-1)",
+  padding: "var(--space-2) var(--space-3)",
+};
+
+const cardNameStyle: React.CSSProperties = {
+  fontSize: "var(--text-sm)",
+  fontWeight: 600,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+// 二级：双栏编辑页
+const detailRootStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
+  height: "100%",
+  overflow: "hidden",
+};
+
+const detailHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) var(--space-3)",
+  borderBottom: `1px solid var(--border)`,
+  background: "var(--bg-app)",
+  flexShrink: 0,
+};
+
+const backButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "var(--space-1)",
+  fontSize: "var(--text-sm)",
+  padding: "var(--space-1) var(--space-2)",
+  borderRadius: "var(--radius-xs)",
+  border: `1px solid var(--border-input)`,
+  background: "var(--bg-app)",
+  color: "var(--text-secondary)",
   cursor: "pointer",
 };
 
-const emptyRowStyle: React.CSSProperties = {
-  fontSize: "var(--text-sm)",
-  color: "var(--text-muted)",
-  padding: "var(--space-2)",
-  textAlign: "center",
+const detailTitleStyle: React.CSSProperties = {
+  fontSize: "var(--text-lg)",
+  fontWeight: 600,
+};
+
+const detailBodyStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 280px",
+  flex: 1,
+  overflow: "hidden",
 };
 
 const readOnlyHintStyle: React.CSSProperties = {
@@ -728,11 +940,6 @@ const stageNameStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
-const emptyStageStyle: React.CSSProperties = {
-  color: "var(--text-muted)",
-  fontSize: "var(--text-base)",
-};
-
 const propsPanelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -741,10 +948,6 @@ const propsPanelStyle: React.CSSProperties = {
   borderLeft: `1px solid var(--border)`,
   background: "var(--bg-app)",
   overflowY: "auto",
-};
-
-const emptyPropsStyle: React.CSSProperties = {
-  flex: 1,
 };
 
 const propGroupStyle: React.CSSProperties = {
