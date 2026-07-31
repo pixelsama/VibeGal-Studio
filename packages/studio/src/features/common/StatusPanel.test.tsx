@@ -84,6 +84,43 @@ describe("StatusPanel (通用指示器)", () => {
     expect(errorHtml).not.toContain('aria-label="项目正常"');
   });
 
+  it("尚未分析时显示中性态：不亮绿灯、文案既非 okLabel 也非 notOkLabel（Spec 33 A6）", () => {
+    const html = renderToStaticMarkup(
+      <StatusPanel
+        issues={[]}
+        okLabel="项目正常"
+        notOkLabel={(n) => `项目有 ${n} 个问题`}
+        neutralLabel="尚未分析"
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+      />,
+    );
+
+    // 中性文案出现，且不是 okLabel。
+    expect(html).toContain("尚未分析");
+    expect(html).not.toContain("项目正常");
+    expect(html).not.toContain("✓");
+    // 中性图标，不是问题态的感叹号。
+    expect(html).toContain("○");
+    expect(html).not.toContain("!");
+  });
+
+  it("传了 neutralLabel 但有问题时仍走 notOkLabel（中性态不盖过真实问题）", () => {
+    const html = renderToStaticMarkup(
+      <StatusPanel
+        issues={issues}
+        okLabel="项目正常"
+        notOkLabel={(n) => `项目有 ${n} 个问题`}
+        neutralLabel="尚未分析"
+        dialogTitle="Project Issues"
+        dialogAriaLabel="Project Issues"
+      />,
+    );
+
+    expect(html).toContain("项目有 2 个问题");
+    expect(html).not.toContain("尚未分析");
+  });
+
   it("issueExtra 的返回值不出现在折叠态（只在弹窗里）", () => {
     const html = renderToStaticMarkup(
       <StatusPanel
@@ -237,7 +274,7 @@ describe("StatusDialog 按 source 分组", () => {
     expect(errPos).toBeLessThan(warnPos);
   });
 
-  it("每张卡片标注 Error / Warning 标签", () => {
+  it("每张卡片标注 severity 标签（中文环境显示「错误」/「警告」，Spec 33 A7）", () => {
     const html = renderToStaticMarkup(
       <StatusDialog
         issues={mixed}
@@ -248,8 +285,8 @@ describe("StatusDialog 按 source 分组", () => {
         onClose={() => {}}
       />,
     );
-    expect(html).toContain("Error");
-    expect(html).toContain("Warning");
+    expect(html).toContain("错误");
+    expect(html).toContain("警告");
   });
 
   it("isIssueClickable 可以让不可定位的问题保持默认光标", () => {

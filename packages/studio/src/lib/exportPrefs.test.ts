@@ -32,7 +32,6 @@ describe("loadExportPrefs", () => {
             runtime: "tauri",
             webCustomOutDir: "D:/web-release",
             desktopCustomOutDir: "D:/desktop-release",
-            rendererId: "mobile",
             strict: true,
             allowWarnings: true,
           },
@@ -46,7 +45,6 @@ describe("loadExportPrefs", () => {
       runtime: "tauri",
       webCustomOutDir: "D:/web-release",
       desktopCustomOutDir: "D:/desktop-release",
-      rendererId: "mobile",
       strict: true,
       allowWarnings: true,
     });
@@ -57,7 +55,7 @@ describe("loadExportPrefs", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
-          "/project": { runtime: "tauri", customOutDir: "D:/legacy-release", rendererId: "", strict: false, allowWarnings: false },
+          "/project": { runtime: "tauri", customOutDir: "D:/legacy-release", strict: false, allowWarnings: false },
         },
       }),
     });

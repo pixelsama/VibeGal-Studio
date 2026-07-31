@@ -36,6 +36,8 @@ import {
   type NodeEditorMode,
 } from "./nodeEditorModel";
 import { NodeEditorToolbar } from "./NodeEditorToolbar";
+import { ConfirmDialog } from "../common/Dialogs";
+import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 import { ExternalDiffPanel } from "./ExternalDiffPanel";
 import { diffLines, externalDiffTexts, summarizeDiff } from "./externalDiff";
 import { NodePreviewPanel } from "./NodePreviewPanel";
@@ -403,6 +405,12 @@ export function NodeEditor({
   const [parameterTrigger, setParameterTrigger] = useState<ScenarioParameterTrigger | null>(null);
   const [completionIndex, setCompletionIndex] = useState(0);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
+  // 撤销历史清空属于不可逆操作：模式切换走确认对话，外部刷新/载入走 toast（Spec 33 A4）。
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [undoClearConfirm, setUndoClearConfirm] = useState<{ nextMode: NodeEditorMode } | null>(null);
+  function notify(input: ToastInput) {
+    setToast({ id: Date.now(), ...input });
+  }
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const layoutRootRef = useRef<HTMLDivElement | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
@@ -482,6 +490,7 @@ export function NodeEditor({
     loadedRevisionRef.current = incomingRevision;
     clearPendingAssignedIdentities();
     undoHistoryRef.current = createUndoHistory();
+    notify({ kind: "info", message: t("script.editor.undoClearedExternal") });
     replaceText(mode === "json" ? incomingJsonText : incomingScenarioText);
     replaceValidInstructions(incomingInstructions);
     setDiagnostics([]);
@@ -898,6 +907,7 @@ export function NodeEditor({
     const nextJsonText = externalSnapshot.text ?? "";
     draftVersionRef.current += 1;
     undoHistoryRef.current = createUndoHistory();
+    notify({ kind: "info", message: t("script.editor.undoClearedExternal") });
     const parsed = parseJsonInstructionText(nextJsonText);
     if (!parsed.ok) {
       setMode("json");
@@ -1085,7 +1095,14 @@ export function NodeEditor({
     }
   };
 
-  const handleModeToggle = (nextMode: NodeEditorMode) => {
+  // 模式切换会清空撤销历史（Spec 33 A4）：先确认，再执行原切换逻辑。
+  // 失败路径（构建/解析出错）仍在 executeModeToggle 内走 setStatus，不真正清空。
+  const requestModeToggle = (nextMode: NodeEditorMode) => {
+    if (nextMode === mode) return;
+    setUndoClearConfirm({ nextMode });
+  };
+
+  const executeModeToggle = (nextMode: NodeEditorMode) => {
     if (nextMode === mode) return;
     if (nextMode === "json") {
       const built = buildPayload();
@@ -1182,7 +1199,7 @@ export function NodeEditor({
         saving={saving}
         canSave={canSave}
         status={status}
-        onModeToggle={handleModeToggle}
+        onModeToggle={requestModeToggle}
         onOpenExternalDiff={() => setExternalDiffOpen(true)}
         onCopyConflict={handleCopyConflict}
         onSave={handleSave}
@@ -1304,6 +1321,7 @@ export function NodeEditor({
   );
 
   return (
+    <>
     <ScenarioNodeLayout
       rootRef={layoutRootRef}
       editor={editor}
@@ -1329,6 +1347,21 @@ export function NodeEditor({
       )}
       onToggleInspectorPane={handleToggleInspectorPane}
     />
+    <Toast toast={toast} onClose={() => setToast(null)} />
+    {undoClearConfirm && (
+      <ConfirmDialog
+        message={t("script.editor.modeSwitchConfirm")}
+        confirmLabel={t("script.editor.modeSwitchConfirmAction")}
+        danger
+        onConfirm={() => {
+          const pending = undoClearConfirm;
+          setUndoClearConfirm(null);
+          if (pending) executeModeToggle(pending.nextMode);
+        }}
+        onClose={() => setUndoClearConfirm(null)}
+      />
+    )}
+    </>
   );
 }
 

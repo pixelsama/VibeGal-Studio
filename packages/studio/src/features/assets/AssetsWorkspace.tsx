@@ -73,7 +73,12 @@ export function AssetsWorkspace({
   const { t } = useStudioI18n();
   const [section, setSection] = useState<AssetSection>(initialSection);
   const [search, setSearch] = useState("");
-  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    message: string;
+    onConfirm: () => void;
+    /** 默认回退到通用「确认」；破坏性删除由调用方传「删除」。 */
+    confirmLabel?: string;
+  } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   function notify(input: ToastInput) {
@@ -248,6 +253,17 @@ export function AssetsWorkspace({
     await onSaved();
   }
 
+  // 单条删除动磁盘 + 登记表（Spec 33 A1）：先确认再执行。
+  // delete-orphans 已自带批量确认，内部直接调 handleDelete，不走这里以免重复弹窗。
+  function handleDeleteConfirmed(relPath: string, assetRevision?: FileRevision) {
+    if (readOnly) return;
+    setConfirm({
+      message: t("assets.deleteConfirm", { name: baseName(relPath) }),
+      confirmLabel: t("assets.delete"),
+      onConfirm: () => void handleDelete(relPath, assetRevision),
+    });
+  }
+
   function handleRegisterOrphan(entry: AssetEntry) {
     if (readOnly) return;
     void persistManifestFromWorkspace(registerOrphanAssets(manifest, [entry]));
@@ -274,6 +290,8 @@ export function AssetsWorkspace({
         count: cleanupProposal.removeSources.length,
         preview: cleanupProposal.diffPreview.slice(0, 8).join("\n"),
       }),
+      // 纯登记表清理，不碰磁盘文件——按钮文案不得出现「删除」（Spec 33 A2）。
+      confirmLabel: t("assets.cleanupAction"),
       onConfirm: () => void persistManifestFromWorkspace(applyAssetCleanupProposal(manifest, cleanupProposal)),
     });
   }
@@ -284,6 +302,7 @@ export function AssetsWorkspace({
     if (candidates.length === 0) return;
     setConfirm({
       message: t("assets.deleteOrphansConfirm", { count: candidates.length }),
+      confirmLabel: t("assets.delete"),
       onConfirm: async () => {
         for (const entry of candidates) {
           await handleDelete(entry.relPath, entry.revision);
@@ -405,7 +424,7 @@ export function AssetsWorkspace({
                       usageCount={assetUsage.usageCountByPath.get(entry.relPath) ?? 0}
                       unusedInStory={assetUsage.unusedManifestPaths.has(entry.relPath)}
                       readOnly={readOnly}
-                      onDelete={handleDelete}
+                      onDelete={handleDeleteConfirmed}
                       onRegisterOrphan={handleRegisterOrphan}
                     />
                   ))}
@@ -452,7 +471,7 @@ export function AssetsWorkspace({
         <ConfirmDialog
           message={confirm.message}
           danger
-          confirmLabel={t("assets.delete")}
+          confirmLabel={confirm.confirmLabel ?? t("common.confirm")}
           onConfirm={confirm.onConfirm}
           onClose={() => setConfirm(null)}
         />

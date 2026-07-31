@@ -181,7 +181,7 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).not.toContain("导出游戏");
   });
 
-  it("默认渲染：运行时卡片、界面风格、默认输出目录与构建按钮", () => {
+  it("默认渲染：运行时卡片、默认输出目录与构建按钮（界面风格由项目设置统一管理，Spec 33 A3）", () => {
     const html = renderToStaticMarkup(
       createElement(ExportWorkspace, { project: makeProject(), hasUnsavedChanges: false }),
     );
@@ -192,9 +192,10 @@ describe("ExportWorkspace 渲染", () => {
     expect(html).toContain("Electron 兼容模式");
     expect(html).toContain("Tauri 轻量模式");
     expect(html).toContain("/project/dist/desktop-electron");
-    expect(html).toContain('value="default"');
+    // 界面风格下拉已移除（单一真值源在 gal.project.json），导出页不再渲染该控件。
+    expect(html).not.toContain('value="default"');
     expect(html).toContain("构建桌面游戏");
-    expect(html).toContain("界面风格");
+    expect(html).not.toContain("界面风格");
     expect(html).toContain("将警告视为错误");
     expect(html).toContain("仍然允许警告");
     expect(html).not.toContain("--strict");
@@ -209,7 +210,6 @@ describe("ExportWorkspace 渲染", () => {
       runtime: "tauri",
       webCustomOutDir: "",
       desktopCustomOutDir: "/desktop-release",
-      rendererId: "",
       strict: false,
       allowWarnings: false,
     } });
@@ -231,7 +231,6 @@ describe("ExportWorkspace 渲染", () => {
       runtime: "tauri",
       webCustomOutDir: "",
       desktopCustomOutDir: "",
-      rendererId: "",
       strict: false,
       allowWarnings: false,
     } });
@@ -249,7 +248,6 @@ describe("ExportWorkspace 渲染", () => {
       runtime: "electron",
       webCustomOutDir: "",
       desktopCustomOutDir: "/project/content/out",
-      rendererId: "",
       strict: false,
       allowWarnings: false,
     } });

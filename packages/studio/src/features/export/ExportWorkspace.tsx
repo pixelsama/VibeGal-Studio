@@ -91,7 +91,6 @@ export function ExportWorkspace({
     refreshPreflight,
     changeTarget: handleTargetChange,
     changeRuntime: handleRuntimeChange,
-    changeRenderer: handleRendererChange,
     changeOutDir: handleOutDirChange,
     changeStrict: handleStrictChange,
     changeAllowWarnings: handleAllowWarningsChange,
@@ -239,21 +238,6 @@ export function ExportWorkspace({
             </div>
           </div>
         )}
-
-        <div style={fieldGroupStyle}>
-          <span style={fieldLabelStyle}>{t("export.renderer")}</span>
-          <select
-            value={effectiveRendererId}
-            disabled={building || project.rendererIds.length === 0}
-            onChange={(event) => handleRendererChange(event.target.value)}
-            style={selectStyle}
-            aria-label={t("export.renderer")}
-          >
-            {project.rendererIds.map((id) => (
-              <option key={id} value={id}>{id}</option>
-            ))}
-          </select>
-        </div>
 
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>{t("export.outDir")}</span>
@@ -886,16 +870,6 @@ const runtimeCardDescStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
   lineHeight: 1.5,
-};
-
-const selectStyle: CSSProperties = {
-  width: 240,
-  height: "var(--control-lg)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-input)",
-  background: "var(--bg-inset)",
-  color: "var(--text-primary)",
-  padding: "0 var(--space-2)",
 };
 
 const outDirRowStyle: CSSProperties = {

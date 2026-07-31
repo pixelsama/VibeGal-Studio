@@ -254,7 +254,7 @@ Studio 打不开新项目文件。0.1.0-alpha 阶段接受，需在 release note
 | R6 | 混用与或、算术、变量间比较落回表达式模式而非被改写 | `storyState.test.ts` |
 | R7 | 试算默认值覆盖只读命名空间，不再误报「未知变量」 | `storyState.test.ts`、`BranchRules.test.tsx` |
 | R8 | 兜底渲染成「否则」；缺兜底时警告；遮蔽仅在前序恒真时报 | `BranchRules.test.tsx` |
-| R9 | 面板正文只出现意图词，实现术语在「技术详情」内 | `StoryStatePanel.test.tsx` |
+| R9 | 面板正文只出现意图词，实现术语在「技术详情」内 | `StoryStatePanel.test.tsx`（证据失效，覆盖待补：见 Spec 33 B2——`StoryStatePanel` 组件已删除，原 8 个测试随之移除，`StoryStateView` 上的真实覆盖需另补） |
 | R10 | 重命名同时改注册表、条件与指令；冲突/未知名不留部分改动 | `backend/tests/variable_rename.rs` |
 | R11 | 重命名不碰同前缀变量与字符串字面量 | `expression.rs`、`variable_rename.rs` |
 | R12 | 表单原语的 aria 关联、错误播报、边界禁用 | `Form.test.tsx` |

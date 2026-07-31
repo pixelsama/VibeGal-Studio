@@ -1044,17 +1044,6 @@ select:focus-visible {
 
 /* ══ 故事状态面板（features/script/StoryStatePanel.tsx）══════════════════ */
 
-.gs-story-state {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-}
-.gs-story-state__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 .gs-story-state__search {
   position: relative;
   display: flex;
@@ -1075,20 +1064,6 @@ select:focus-visible {
   color: var(--text-muted);
   font-size: var(--text-base);
   line-height: 1.7;
-}
-.gs-story-state__undeclared {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border-warn);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-}
-.gs-story-state__undeclared h4 {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--status-warn-text);
 }
 .gs-story-state__undeclared-row {
   display: flex;

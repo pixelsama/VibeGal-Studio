@@ -12,7 +12,6 @@ export interface ExportPrefs {
   runtime: DesktopRuntime;
   webCustomOutDir: string;
   desktopCustomOutDir: string;
-  rendererId: string;
   strict: boolean;
   allowWarnings: boolean;
 }
@@ -29,7 +28,6 @@ export const DEFAULT_EXPORT_PREFS: ExportPrefs = {
   runtime: "electron",
   webCustomOutDir: "",
   desktopCustomOutDir: "",
-  rendererId: "",
   strict: false,
   allowWarnings: false,
 };
@@ -105,7 +103,6 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
       : typeof maybe.customOutDir === "string"
         ? maybe.customOutDir
         : "",
-    rendererId: typeof maybe.rendererId === "string" ? maybe.rendererId : "",
     strict: typeof maybe.strict === "boolean" ? maybe.strict : false,
     allowWarnings: typeof maybe.allowWarnings === "boolean" ? maybe.allowWarnings : false,
   };

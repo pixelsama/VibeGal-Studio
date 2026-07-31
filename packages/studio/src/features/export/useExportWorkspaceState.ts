@@ -24,7 +24,6 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
   const [runtime, setRuntime] = useState<DesktopRuntime>(initialPrefs.runtime);
   const [webCustomOutDir, setWebCustomOutDir] = useState(initialPrefs.webCustomOutDir);
   const [desktopCustomOutDir, setDesktopCustomOutDir] = useState(initialPrefs.desktopCustomOutDir);
-  const [rendererId, setRendererId] = useState(initialPrefs.rendererId);
   const [strict, setStrict] = useState(initialPrefs.strict);
   const [allowWarnings, setAllowWarnings] = useState(initialPrefs.allowWarnings);
   const [copied, setCopied] = useState(false);
@@ -68,7 +67,7 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
   }, [building]);
 
   const persistPrefs = (patch: Partial<ExportPrefs>) => {
-    const next = { target, runtime, webCustomOutDir, desktopCustomOutDir, rendererId, strict, allowWarnings, ...patch };
+    const next = { target, runtime, webCustomOutDir, desktopCustomOutDir, strict, allowWarnings, ...patch };
     saveExportPrefs(project.path, next);
   };
 
@@ -80,11 +79,6 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
   function changeRuntime(next: DesktopRuntime) {
     setRuntime(next);
     persistPrefs({ runtime: next });
-  }
-
-  function changeRenderer(next: string) {
-    setRendererId(next);
-    persistPrefs({ rendererId: next });
   }
 
   function changeOutDir(next: string) {
@@ -113,7 +107,9 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
     : target === "web"
       ? defaultWebOutDir(project.path)
       : defaultDesktopOutDir(project.path, runtime);
-  const effectiveRendererId = rendererId || project.meta.activeRendererId || project.rendererIds[0] || "";
+  // 导出界面风格只读项目设置（Spec 33 A3）：不再有导出页独立偏好，
+  // 与顶栏「界面风格」共用 gal.project.json 的 activeRendererId 单一真值源。
+  const effectiveRendererId = project.meta.activeRendererId || project.rendererIds[0] || "";
   const outDirError = validateDesktopOutDir(project.path, effectiveOutDir, t);
   const blockReason = preflightBlockReason(preflight, target, runtime, t);
   const statusText = building
@@ -146,7 +142,6 @@ export function useExportWorkspaceState({ project, loadPreflight }: UseExportWor
     refreshPreflight,
     changeTarget,
     changeRuntime,
-    changeRenderer,
     changeOutDir,
     changeStrict,
     changeAllowWarnings,

@@ -37,6 +37,11 @@ export interface StatusPanelProps {
   dialogAriaLabel: string;
   /** 弹窗内正常态副标题，如 "项目正常"；不传则用 okLabel */
   emptyDescription?: string;
+  /**
+   * 尚未分析时的中性文案（Spec 33 A6）。传入即表示当前没有可下结论的报告：
+   * 既不显示「项目正常」（误导），也不显示问题计数，而是中性灰态提示「尚未分析」。
+   */
+  neutralLabel?: string;
   /** 打开问题弹窗前触发；可用于显式加载完整诊断。 */
   onOpen?: () => void;
   /** 后台补全诊断时显示为进行中，避免把部分结果表示为「项目正常」。 */
@@ -60,6 +65,7 @@ export function StatusPanel({
   dialogTitle,
   dialogAriaLabel,
   emptyDescription,
+  neutralLabel,
   onOpen,
   loading = false,
   error = false,
@@ -73,12 +79,16 @@ export function StatusPanel({
   const errors = issues.filter((issue) => issue.severity === "error");
   const hasIssues = issues.length > 0;
   const hasErrors = errors.length > 0;
+  // 中性态优先于 okLabel：尚未分析时不亮绿灯（Spec 33 A6）。
+  const isNeutral = Boolean(neutralLabel) && !loading && !error && !hasIssues;
   const label = loading
     ? t("status.checking")
     : error
       ? t("status.checkFailedRetry")
       : hasIssues
       ? notOkLabel(issues.length)
+      : isNeutral
+      ? neutralLabel!
       : okLabel;
 
   return (
@@ -92,9 +102,9 @@ export function StatusPanel({
           setDialogOpen(true);
         }}
         className="gs-status-indicator"
-        style={indicatorButtonStyle(hasIssues, hasErrors)}
+        style={indicatorButtonStyle(hasIssues, hasErrors, isNeutral)}
       >
-        <span style={indicatorIconStyle(hasIssues)}>{hasIssues ? "!" : "✓"}</span>
+        <span style={indicatorIconStyle(hasIssues)}>{hasIssues ? "!" : isNeutral ? "○" : "✓"}</span>
         {hasIssues && <span style={indicatorCountStyle}>{issues.length}</span>}
       </button>
       {dialogOpen && (
@@ -302,6 +312,7 @@ function IssueCard({
   issueExtra?: (issue: StatusIssue) => ReactNode;
   onClose: () => void;
 }) {
+  const { t } = useStudioI18n();
   const clickable = Boolean(onIssueClick && (!isIssueClickable || isIssueClickable(issue)));
 
   return (
@@ -328,7 +339,7 @@ function IssueCard({
       <span style={issueTextStyle}>
         <span style={issueHeadStyle}>
           <span style={severityTagStyle(issue.severity)}>
-            {issue.severity === "error" ? "Error" : "Warning"}
+            {issue.severity === "error" ? t("status.severity.error") : t("status.severity.warning")}
           </span>
           <span style={issueCodeStyle}>{issue.code}</span>
         </span>
@@ -352,8 +363,14 @@ const indicatorShellStyle: React.CSSProperties = {
   zIndex: 30,
 };
 
-function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean): React.CSSProperties {
-  const color = !hasIssues ? "var(--status-ok-text)" : hasErrors ? "var(--status-error-text)" : "var(--status-warn-text)";
+function indicatorButtonStyle(hasIssues: boolean, hasErrors: boolean, isNeutral = false): React.CSSProperties {
+  const color = isNeutral
+    ? "var(--text-muted)"
+    : !hasIssues
+      ? "var(--status-ok-text)"
+      : hasErrors
+        ? "var(--status-error-text)"
+        : "var(--status-warn-text)";
   return {
     minWidth: hasIssues ? 34 : 24,
     padding: hasIssues ? "0 var(--space-1)" : 0,
