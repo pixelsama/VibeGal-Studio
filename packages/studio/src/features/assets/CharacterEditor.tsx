@@ -40,11 +40,13 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
     expr?: string;
     fileCount: number;
   } | null>(null);
+  // 磁盘操作（导入/级联删除）进行中禁用一切编辑入口，防止旧快照覆盖新改动。
+  const interactiveDisabled = disabled || busy;
 
   const selected = selectedId ? manifest.characters[selectedId] : undefined;
 
   function updateCharacter(id: string, patch: Partial<ManifestCharacter>) {
-    if (disabled) return;
+    if (interactiveDisabled) return;
     const prev = manifest.characters[id];
     if (!prev) return;
     onChange({
@@ -54,7 +56,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   }
 
   function addCharacter() {
-    if (disabled) return;
+    if (interactiveDisabled) return;
     let n = 1;
     let id = `char_${n}`;
     while (manifest.characters[id]) {
@@ -84,7 +86,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
 
   // 删角色：级联清理该角色所有立绘文件（Spec 33 A5）。先确认。
   function deleteCharacter(id: string) {
-    if (disabled) return;
+    if (interactiveDisabled) return;
     const char = manifest.characters[id];
     if (!char) return;
     setDeleteConfirm({
@@ -95,29 +97,34 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   }
 
   async function performCharacterDelete(id: string) {
-    const files = characterSpriteFiles(id);
-    const failed: string[] = [];
-    for (const relPath of files) {
-      try {
-        await deleteAsset(projectPath, relPath);
-      } catch {
-        failed.push(relPath);
+    setBusy(true);
+    try {
+      const files = characterSpriteFiles(id);
+      const failed: string[] = [];
+      for (const relPath of files) {
+        try {
+          await deleteAsset(projectPath, relPath);
+        } catch {
+          failed.push(relPath);
+        }
       }
-    }
-    const next = { ...manifest.characters };
-    delete next[id];
-    onChange({ ...manifest, characters: next });
-    if (selectedId === id) {
-      const remaining = Object.keys(next);
-      setSelectedId(remaining[0] ?? null);
-    }
-    if (failed.length > 0) {
-      onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
+      const next = { ...manifest.characters };
+      delete next[id];
+      onChange({ ...manifest, characters: next });
+      if (selectedId === id) {
+        const remaining = Object.keys(next);
+        setSelectedId(remaining[0] ?? null);
+      }
+      if (failed.length > 0) {
+        onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
   async function addSpriteExpr(id: string, expr: string) {
-    if (disabled) return;
+    if (interactiveDisabled) return;
     const char = manifest.characters[id];
     if (!char) return;
     // 弹出文件选择器导入真实图片，避免写入占位路径制造 missing_asset。
@@ -147,7 +154,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
 
   // 删表情：级联清理该表情对应的立绘文件（Spec 33 A5）。先确认。
   function removeSpriteExpr(id: string, expr: string) {
-    if (disabled) return;
+    if (interactiveDisabled) return;
     const char = manifest.characters[id];
     if (!char || !char.sprites[expr]) return;
     setDeleteConfirm({
@@ -159,27 +166,32 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   }
 
   async function performSpriteExprDelete(id: string, expr: string) {
-    const char = manifest.characters[id];
-    if (!char || !char.sprites[expr]) return;
-    const files = characterSpriteAssetPaths(char.sprites[expr]);
-    const failed: string[] = [];
-    for (const relPath of files) {
-      try {
-        await deleteAsset(projectPath, relPath);
-      } catch {
-        failed.push(relPath);
+    setBusy(true);
+    try {
+      const char = manifest.characters[id];
+      if (!char || !char.sprites[expr]) return;
+      const files = characterSpriteAssetPaths(char.sprites[expr]);
+      const failed: string[] = [];
+      for (const relPath of files) {
+        try {
+          await deleteAsset(projectPath, relPath);
+        } catch {
+          failed.push(relPath);
+        }
       }
-    }
-    const next = { ...char.sprites };
-    delete next[expr];
-    updateCharacter(id, { sprites: next });
-    if (failed.length > 0) {
-      onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
+      const next = { ...char.sprites };
+      delete next[expr];
+      updateCharacter(id, { sprites: next });
+      if (failed.length > 0) {
+        onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
   function renameSpriteExpr(id: string, oldExpr: string, newExpr: string) {
-    if (disabled) return;
+    if (interactiveDisabled) return;
     const char = manifest.characters[id];
     if (!char || !newExpr.trim() || oldExpr === newExpr) return;
     const entries = Object.entries(char.sprites);
@@ -198,10 +210,10 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
           <span style={panelTitleStyle}>{t("assets.character.title")}</span>
           <button
             type="button"
-            style={{ ...smallBtnStyle, opacity: disabled ? 0.48 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+            style={{ ...smallBtnStyle, opacity: interactiveDisabled ? 0.48 : 1, cursor: interactiveDisabled ? "not-allowed" : "pointer" }}
             onClick={addCharacter}
-            disabled={disabled}
-            title={disabled ? t("assets.character.editDisabledTitle") : undefined}
+            disabled={interactiveDisabled}
+            title={interactiveDisabled ? t("assets.character.editDisabledTitle") : undefined}
           >
             {t("assets.character.new")}
           </button>
@@ -239,7 +251,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
             icon={UserRoundPlus}
             title={t("assets.character.emptyTitle")}
             description={t("assets.character.emptyDescription")}
-            action={!disabled ? <Button variant="primary" onClick={addCharacter}>{t("assets.character.createFirst")}</Button> : undefined}
+            action={!interactiveDisabled ? <Button variant="primary" onClick={addCharacter}>{t("assets.character.createFirst")}</Button> : undefined}
           />
         ) : (
           <div style={emptyStageStyle}>{t("assets.character.select")}</div>
@@ -258,7 +270,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                   type="text"
                   value={selected.name}
                   onChange={(e) => updateCharacter(selectedId, { name: e.target.value })}
-                  disabled={disabled}
+                  disabled={interactiveDisabled}
                   style={fieldInputStyle}
                 />
               </label>
@@ -268,7 +280,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                   type="color"
                   value={selected.color}
                   onChange={(e) => updateCharacter(selectedId, { color: e.target.value })}
-                  disabled={disabled}
+                  disabled={interactiveDisabled}
                   style={colorInputStyle}
                 />
                 <span style={hexStyle}>{selected.color}</span>
@@ -279,11 +291,11 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                   style={{
                     ...smallBtnStyle,
                     color: "var(--status-error-text)",
-                    opacity: disabled ? 0.48 : 1,
-                    cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: interactiveDisabled ? 0.48 : 1,
+                    cursor: interactiveDisabled ? "not-allowed" : "pointer",
                   }}
                   onClick={() => deleteCharacter(selectedId)}
-                  disabled={disabled}
+                  disabled={interactiveDisabled}
                 >
                   {t("assets.character.delete")}
                 </button>
@@ -302,12 +314,12 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                   onRename={(newExpr) => renameSpriteExpr(selectedId, expr, newExpr)}
                   onRemove={() => removeSpriteExpr(selectedId, expr)}
                   onSetDefault={() => {
-                    if (disabled) return;
+                    if (interactiveDisabled) return;
                     if (expr === "default") return;
                     const reordered = { default: sprite, ...omit(selected.sprites, expr) };
                     updateCharacter(selectedId, { sprites: reordered });
                   }}
-                  disabled={disabled}
+                  disabled={interactiveDisabled}
                   t={t}
                 />
               ))}
@@ -316,7 +328,7 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
                 busy={busy}
                 onDraftChange={(v) => setNewExprDraft((d) => ({ ...d, [selectedId]: v }))}
                 onAdd={(expr) => void addSpriteExpr(selectedId, expr)}
-                disabled={disabled}
+                disabled={interactiveDisabled}
                 t={t}
               />
             </div>
