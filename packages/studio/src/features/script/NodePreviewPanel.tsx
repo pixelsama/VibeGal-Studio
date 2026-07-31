@@ -128,7 +128,13 @@ export function NodePreviewPanel({
         </div>
         <StageFrame stage={player.rendererProps.stage}>
           <Renderer {...player.rendererProps} />
-          <RuntimeMediaOverlay media={player.media} onClose={player.closeMedia} onSkip={player.skipVideo} />
+          <RuntimeMediaOverlay
+            media={player.media}
+            onClose={player.closeMedia}
+            onSkip={player.skipVideo}
+            closeLabel={t("preview.media.closeCg")}
+            skipLabel={t("preview.media.skipVideo")}
+          />
         </StageFrame>
       </div>
       <BottomSheet title={t("script.nodePreview.runtimeState")} expandedHeight="min(300px, 60%)" defaultExpanded={false}>
