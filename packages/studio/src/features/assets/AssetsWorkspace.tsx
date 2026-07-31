@@ -42,7 +42,7 @@ import {
   createManifestSaveFailureToast,
 } from "./assetManifestOperations";
 import { useAssetManifestDraft } from "./useAssetManifestDraft";
-import { translateZhCN, useStudioI18n, type StudioTranslator } from "../../lib/i18n";
+import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
 import { assetSectionLabel } from "./AssetsSidebar";
 
 interface AssetsWorkspaceProps {
@@ -88,19 +88,14 @@ export function AssetsWorkspace({
   const {
     manifest,
     manifestInvalid,
-    draftManifest,
-    savingDraft,
     draftVersionRef,
     setDraftManifest,
     stageDraft: handleStageManifestDraft,
-    discardDraft: handleDiscardManifestDraft,
-    saveDraft: handleSaveManifestDraft,
     saveManifestQueued,
     persistManifest,
   } = useAssetManifestDraft({ project, onSaved, onDirtyChange, notify });
 
   const readOnly = !canMutateAssets(manifestInvalid);
-  const isDirty = draftManifest !== null;
 
   const view = useAssets(project.path, refreshKey, manifest, project.assetReport);
   const assetUsage = useMemo(() => analyzeAssetUsage(manifest, project.nodes), [manifest, project.nodes]);
@@ -445,16 +440,6 @@ export function AssetsWorkspace({
         )}
       </div>
 
-      {/* 草稿提示（角色编辑等本地未保存时） */}
-      <DraftManifestBanner
-        isDirty={isDirty}
-        canSave={!readOnly && !manifestInvalid && !savingDraft}
-        saving={savingDraft}
-        onSave={() => void handleSaveManifestDraft()}
-        onDiscard={handleDiscardManifestDraft}
-        t={t}
-      />
-
       {/* 文件拖放高亮遮罩（pointer-events: none，不拦截原生拖放事件） */}
       {assetDragOver && (
         <div className="gs-drop-overlay" aria-hidden="true">
@@ -487,54 +472,16 @@ export {
   createAssetDeleteFailureToast,
   createImportFailureToast,
   createManifestSaveFailureToast,
-  discardDraftManifest,
   persistManifestWithFeedback,
-  saveDraftManifest,
   stageManifestDraft,
 } from "./assetManifestOperations";
 export type {
   PersistManifestWithFeedbackParams,
-  SaveDraftManifestParams,
   StoredManifestDraft,
 } from "./assetManifestOperations";
 
 export function canMutateAssets(manifestInvalid: boolean): boolean {
   return !manifestInvalid;
-}
-
-export interface DraftManifestBannerProps {
-  isDirty: boolean;
-  canSave: boolean;
-  onSave: () => void;
-  onDiscard: () => void;
-  saving?: boolean;
-  t?: StudioTranslator;
-}
-
-export function DraftManifestBanner({
-  isDirty,
-  canSave,
-  onSave,
-  onDiscard,
-  saving = false,
-  t = translateZhCN,
-}: DraftManifestBannerProps) {
-  if (!isDirty) return null;
-  return (
-    <div style={draftBannerStyle}>
-      <div style={draftBannerTextStyle}>{t("assets.draft")}</div>
-      <div style={draftBannerActionsStyle}>
-        <button type="button" style={draftDiscardBtnStyle} onClick={onDiscard}>
-          {t("assets.discard")}
-        </button>
-        {canSave && (
-          <button type="button" style={draftSaveBtnStyle} onClick={onSave} disabled={saving}>
-            {saving ? t("assets.saving") : t("assets.save")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function ExtendedAssetRegistryEditor({
@@ -1302,52 +1249,3 @@ const invalidBannerStyle: React.CSSProperties = {
   borderBottom: `1px solid var(--border-error)`,
 };
 
-const draftBannerStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 10,
-  left: "50%",
-  transform: "translateX(-50%)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexWrap: "wrap",
-  gap: "var(--space-2)",
-  fontSize: "var(--text-xs)",
-  color: "var(--text-muted)",
-  background: "var(--bg-app)",
-  padding: "5px var(--space-3)",
-  borderRadius: "var(--radius-sm)",
-  border: `1px solid var(--border)`,
-  zIndex: 30,
-  maxWidth: "calc(100% - var(--space-6))",
-};
-
-const draftBannerTextStyle: React.CSSProperties = {
-  color: "var(--text-muted)",
-};
-
-const draftBannerActionsStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-1)",
-};
-
-const draftDiscardBtnStyle: React.CSSProperties = {
-  fontSize: "var(--text-sm)",
-  padding: "5px var(--space-3)",
-  borderRadius: "var(--radius-sm)",
-  border: `1px solid var(--border-input)`,
-  background: "var(--bg-panel)",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-};
-
-const draftSaveBtnStyle: React.CSSProperties = {
-  fontSize: "var(--text-sm)",
-  padding: "5px var(--space-3)",
-  borderRadius: "var(--radius-sm)",
-  border: `1px solid var(--border-input)`,
-  background: "var(--bg-active)",
-  color: "var(--text-bright)",
-  cursor: "pointer",
-};

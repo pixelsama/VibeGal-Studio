@@ -49,6 +49,13 @@ describe("ProjectSettings", () => {
     expect(html).toContain("1920 x 1080");
   });
 
+  it("自动保存后不再有手动保存按钮（Spec 33 §6.1）", () => {
+    const html = renderToStaticMarkup(<ProjectSettings project={project} onSaved={() => {}} />);
+
+    expect(html).not.toContain("保存");
+    expect(html).not.toContain("保存中");
+  });
+
   it("warns without modifying an existing gitignore that tracks private project state", () => {
     const html = renderToStaticMarkup(
       <ProjectSettings

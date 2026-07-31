@@ -20,16 +20,13 @@ import {
   applyAssetRegistrations,
   applyAssetCleanupProposal,
   buildAssetCleanupProposal,
-  discardDraftManifest,
   canMutateAssets,
   countRefs,
-  DraftManifestBanner,
   createImportFailureToast,
   createAssetDeleteFailureToast,
   createManifestSaveFailureToast,
   deleteAssetAndPruneManifestRefs,
   persistManifestWithFeedback,
-  saveDraftManifest,
   registerOrphanAssets,
   removeDanglingRefs,
   removeAllRefsToPath,
@@ -437,60 +434,6 @@ describe("asset workspace feedback", () => {
     expect(toast?.detail).toContain("当前草稿已保留");
   });
 
-  it("草稿存在且可保存时显示保存和放弃入口", () => {
-    const html = renderToStaticMarkup(createElement(DraftManifestBanner, {
-      isDirty: true,
-      canSave: true,
-      onSave: () => {},
-      onDiscard: () => {},
-    }));
-
-    expect(html).toContain(">放弃改动</button>");
-    expect(html).toContain(">保存改动</button>");
-  });
-
-  it("manifest 不可保存时只保留放弃入口", () => {
-    const html = renderToStaticMarkup(createElement(DraftManifestBanner, {
-      isDirty: true,
-      canSave: false,
-      onSave: () => {},
-      onDiscard: () => {},
-    }));
-
-    expect(html).toContain(">放弃改动</button>");
-    expect(html).not.toContain(">保存改动</button>");
-  });
-
-  it("保存草稿会走现有持久化逻辑并在成功后清空草稿", async () => {
-    const next: Manifest = {
-      ...base,
-      backgrounds: { ...base.backgrounds, dusk: "assets/backgrounds/dusk.png" },
-    };
-    let draft: Manifest | null = next;
-    let savedManifest: Manifest | null = null;
-    let refreshed = false;
-
-    await saveDraftManifest({
-      projectPath: "/project",
-      draftManifest: next,
-      expectedRevision: { relPath: "content/manifest.json", mtimeMs: 1, size: 2 },
-      saveManifestFn: async (_projectPath, manifest) => {
-        savedManifest = manifest;
-      },
-      onSaved: () => {
-        refreshed = true;
-      },
-      setDraftManifest: (manifest) => {
-        draft = manifest;
-      },
-      notify: () => {},
-    });
-
-    expect(savedManifest).toBe(next);
-    expect(draft).toBeNull();
-    expect(refreshed).toBe(true);
-  });
-
   it("异步保存期间出现新编辑时不会清空较新的 manifest 草稿", async () => {
     const saved: Manifest = {
       ...base,
@@ -543,45 +486,6 @@ describe("asset workspace feedback", () => {
     });
 
     expect(draft).toBe(newer);
-  });
-
-  it("保存草稿失败时会保留 draft 并给出保存失败 toast", async () => {
-    const next: Manifest = {
-      ...base,
-      backgrounds: { ...base.backgrounds, dusk: "assets/backgrounds/dusk.png" },
-    };
-    let draft: Manifest | null = null;
-    let toast: ToastInput | null = null;
-
-    await saveDraftManifest({
-      projectPath: "/project",
-      draftManifest: next,
-      saveManifestFn: async () => {
-        throw new Error("revision conflict");
-      },
-      onSaved: () => {},
-      setDraftManifest: (manifest) => {
-        draft = manifest;
-      },
-      notify: (message) => {
-        toast = message;
-      },
-    });
-
-    expect(draft).toBe(next);
-    expect(toast?.kind).toBe("error");
-    expect(toast?.message).toBe("保存资源登记表失败");
-    expect(toast?.detail).toContain("revision conflict");
-  });
-
-  it("放弃草稿会清空 draftManifest", () => {
-    let draft: Manifest | null = base;
-
-    discardDraftManifest((manifest) => {
-      draft = manifest;
-    });
-
-    expect(draft).toBeNull();
   });
 
   it("把导入部分失败转换成用户可见错误反馈", () => {
@@ -706,6 +610,9 @@ describe("read-only asset UI", () => {
     expect(html).toContain("Import assets");
     expect(html).toContain("Search by id or filename");
     expect(html).not.toContain("还没有资源");
+    // 自动保存后不再有「保存改动/放弃改动」草稿横幅（Spec 33 §6.1）。
+    expect(html).not.toContain("Save changes");
+    expect(html).not.toContain("Discard changes");
   });
 
   it("keeps asset categories visible inside the expanded collapsible sidebar", () => {
