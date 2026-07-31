@@ -58,15 +58,17 @@ export async function runStudioBrowserBenchmark({
 
     await cdp.send("Page.navigate", { url: studioUrl });
     await cdp.waitFor("Page.loadEventFired", () => true, 15_000);
-    await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark'))", 15_000);
+    await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
     const workspaceStarted = performance.now();
-    await clickButtonContaining(cdp, "VibeGal Scale Benchmark");
-    await waitForExpression(cdp, "document.querySelector('header button') && document.body.innerText.includes('规模基准项目')", 15_000);
+    await clickButtonContaining(cdp, ["VibeGal Scale Benchmark"]);
+    // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
+    // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
+    await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => ['脚本', 'Script'].includes(candidate.textContent.trim()) && !candidate.disabled)", 60_000);
     const workspaceInteractiveMs = performance.now() - workspaceStarted;
     await sampleHeap();
 
     const graphStarted = performance.now();
-    await clickButton(cdp, "脚本");
+    await clickButton(cdp, ["脚本", "Script"]);
     await waitForExpression(cdp, "document.querySelector('.react-flow')", 15_000);
     const graphInteractiveMs = performance.now() - graphStarted;
     await sampleHeap();
@@ -76,7 +78,7 @@ export async function runStudioBrowserBenchmark({
     const save = await measureSingleNodeSave(cdp, sampleHeap);
 
     const assetsStarted = performance.now();
-    await clickButton(cdp, "资产");
+    await clickButton(cdp, ["资产", "Assets"]);
     await waitForExpression(cdp, "document.querySelector('[role=grid][aria-label=\"资产列表\"]')", 15_000);
     const assetsFirstRenderMs = performance.now() - assetsStarted;
     await sampleHeap();
@@ -138,7 +140,21 @@ export async function runStudioBrowserBenchmark({
       new Promise((resolve) => setTimeout(resolve, 2_000)),
     ]);
     if (chrome.exitCode == null) chrome.kill("SIGKILL");
-    await rm(userDataDir, { recursive: true, force: true });
+    // Chrome 退出后可能还有异步刷盘：cleanup 是收尾，重试几次，
+    // 最终失败只警告、不阻断已完成的 benchmark 结果（CI 上曾因
+    // ENOTEMPTY rmdir 让整个 gate 误报失败）。
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await rm(userDataDir, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          process.stderr.write(`[benchmark] failed to remove Chrome profile ${userDataDir}: ${String(error)}\n`);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+    }
   }
 }
 
@@ -341,7 +357,7 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
     "[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '进入编辑' && !button.disabled)",
     5_000,
   );
-  await clickButton(cdp, "进入编辑");
+  await clickButton(cdp, ["进入编辑", "Open editor"]);
   await waitForExpression(cdp, "document.querySelector('textarea[aria-label=\"剧本文本\"]')", 15_000);
   const samples = [];
   for (let index = 0; index < 6; index += 1) {
@@ -354,7 +370,7 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
     })()`);
     await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '保存' && !button.disabled)", 5_000);
     const started = await evaluate(cdp, "performance.now()");
-    await clickButton(cdp, "保存");
+    await clickButton(cdp, ["保存", "Save"]);
     await waitForExpression(
       cdp,
       `window.__VIBEGAL_BENCHMARK__.saveNodeCompleted > ${completedBefore}`,
@@ -434,24 +450,36 @@ async function readInvokeStats(cdp) {
   return evaluate(cdp, "window.__VIBEGAL_BENCHMARK__.stats");
 }
 
-async function clickButtonContaining(cdp, label) {
-  const clicked = await evaluate(cdp, `(() => {
-    const button = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent.includes(${JSON.stringify(label)}) && !candidate.disabled);
-    if (!button) return false;
-    button.click();
-    return true;
-  })()`);
-  if (!clicked) throw new Error(`button not found containing: ${label}`);
+// 点击前先轮询等待按钮出现（最多 60s）：CI 上大项目（规模基准）打开后
+// 工作区挂载可能超过 15s，盲点/短等待会误报 button not found。
+// labels 支持中英双语（CI 环境语言不固定：曾因 UI 为英文而点不到「脚本」）。
+function buttonMatches(labels) {
+  const list = JSON.stringify(labels);
+  return `(candidate) => ${list}.includes(candidate.textContent.trim()) && !candidate.disabled`;
 }
 
-async function clickButton(cdp, label) {
+async function clickButtonContaining(cdp, labels) {
+  const list = JSON.stringify(labels);
+  await waitForExpression(cdp, `[...document.querySelectorAll('button')].some((candidate) => [${list}].some((label) => candidate.textContent.includes(label)) && !candidate.disabled)`, 60_000);
   const clicked = await evaluate(cdp, `(() => {
-    const button = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)} && !candidate.disabled);
+    const button = [...document.querySelectorAll('button')].find((candidate) => [${list}].some((label) => candidate.textContent.includes(label)) && !candidate.disabled);
     if (!button) return false;
     button.click();
     return true;
   })()`);
-  if (!clicked) throw new Error(`button not found: ${label}`);
+  if (!clicked) throw new Error(`button not found containing: ${list}`);
+}
+
+async function clickButton(cdp, labels) {
+  const list = JSON.stringify(labels);
+  await waitForExpression(cdp, `[...document.querySelectorAll('button')].some(${buttonMatches(labels)})`, 60_000);
+  const clicked = await evaluate(cdp, `(() => {
+    const button = [...document.querySelectorAll('button')].find(${buttonMatches(labels)});
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!clicked) throw new Error(`button not found: ${list}`);
 }
 
 async function waitForExpression(cdp, expression, timeoutMs) {
@@ -460,7 +488,10 @@ async function waitForExpression(cdp, expression, timeoutMs) {
     if (await evaluate(cdp, `Boolean(${expression})`)) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`Timed out waiting for: ${expression}`);
+  // 诊断：超时失败时 dump 页面状态，便于 CI 定位是列表页未打开 / 打开失败 / 文案差异
+  const body = await evaluate(cdp, "document.body.innerText.slice(0, 500)");
+  const buttons = await evaluate(cdp, "[...document.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean).slice(0, 30)");
+  throw new Error(`Timed out waiting for: ${expression}\nbody: ${JSON.stringify(body)}\nbuttons: ${JSON.stringify(buttons)}`);
 }
 
 async function evaluate(cdp, expression) {

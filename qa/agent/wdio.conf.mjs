@@ -35,6 +35,8 @@ export const config = {
     logDir,
     startTimeout: 60_000,
     commandTimeout: 30_000,
+    // Windows CI 冷启动 embedded WebDriver 曾 >60s 未就绪：/status 轮询超时翻倍。
+    statusPollTimeout: 120_000,
   }]],
   logLevel: process.env.VIBEGAL_AGENT_QA_LOG_LEVEL ?? "warn",
   bail: 0,

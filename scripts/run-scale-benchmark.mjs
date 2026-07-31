@@ -123,10 +123,11 @@ async function runBrowserHarness({ project, requireBrowser }) {
   }
 
   const studioDir = path.join(root, "packages/studio");
-  const build = spawnSync("pnpm", ["--filter", "@vibegal/studio", "build"], {
-    cwd: root,
-    encoding: "utf8",
-  });
+  // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
+  // 用显式 cmd.exe /d /s /c 解释。
+  const build = process.platform === "win32"
+    ? spawnSync("cmd.exe", ["/d", "/s", "/c", "pnpm", "--filter", "@vibegal/studio", "build"], { cwd: root, encoding: "utf8" })
+    : spawnSync("pnpm", ["--filter", "@vibegal/studio", "build"], { cwd: root, encoding: "utf8" });
   if (build.status !== 0) throw new Error(build.stderr || build.stdout);
 
   const port = await availablePort();
