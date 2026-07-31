@@ -378,14 +378,14 @@ export function AppearanceWorkspace({ project, rendererId, onSaved, initialViewM
         <div style={toolbarStyle}>
           <button
             type="button"
-            className={viewMode === "grid" ? "gs-tab gs-tab--active" : "gs-tab"}
+            className={viewMode === "grid" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={showGrid}
           >
             {t("appearance.grid")}
           </button>
           <button
             type="button"
-            className={viewMode === "single" ? "gs-tab gs-tab--active" : "gs-tab"}
+            className={viewMode === "single" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={showSingle}
           >
             {t("appearance.single")}

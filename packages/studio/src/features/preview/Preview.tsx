@@ -121,14 +121,14 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
         <div style={toolbarStyle}>
           <button
             type="button"
-            className={fixtureMode ? "gs-tab" : "gs-tab gs-tab--active"}
+            className={fixtureMode ? "gs-tab gs-tab--pane" : "gs-tab gs-tab--pane gs-tab--active"}
             onClick={showStoryMode}
           >
             {t("preview.storyMode")}
           </button>
           <button
             type="button"
-            className={fixtureMode ? "gs-tab gs-tab--active" : "gs-tab"}
+            className={fixtureMode ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={showFixtureMode}
           >
             {t("preview.fixtureMode")}

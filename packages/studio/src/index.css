@@ -337,6 +337,21 @@ button:focus-visible {
   font-weight: 650;
 }
 
+/* 面板内 tab（三级导航，Spec 33 E10）：弱化变体——尺寸更小，
+   active 去掉背景填充，只留文字色变亮 + 细下划线，与工作区 tab（一级）
+   形成视觉层级差。 */
+.gs-tab--pane {
+  height: var(--control-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.gs-tab--pane.gs-tab--active {
+  background: transparent;
+  color: var(--text-bright);
+  box-shadow: inset 0 -1px 0 var(--accent-secondary);
+  font-weight: 600;
+}
+
 /* ── 外观宫格场景卡片：整卡可点，点击跳转单场景设计面（AppearanceWorkspace） ── */
 .gs-scene-card {
   display: block;
