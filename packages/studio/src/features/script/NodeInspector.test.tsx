@@ -61,6 +61,27 @@ describe("NodeInspector graph exits", () => {
     expect(html).not.toContain("新建节点");
   });
 
+  it("disables the empty-state create-node action while saving (对齐工具栏防护)", () => {
+    const savingHtml = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: null,
+      onEnter: () => {},
+      onRename: () => {},
+      onCreateNode: () => {},
+      saving: true,
+    }));
+    expect(savingHtml).toMatch(/<button[^>]*disabled[^>]*>新建节点<\/button>/);
+
+    const idleHtml = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: null,
+      onEnter: () => {},
+      onRename: () => {},
+      onCreateNode: () => {},
+    }));
+    expect(idleHtml).not.toMatch(/<button[^>]*disabled[^>]*>新建节点<\/button>/);
+  });
+
   it("hides engineering fields (file path, coordinates, connection counts)", () => {
     const html = renderToStaticMarkup(createElement(NodeInspector, {
       graph,

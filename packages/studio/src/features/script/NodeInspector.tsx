@@ -88,7 +88,7 @@ export function NodeInspector({
         <div style={emptyStyle}>{t("script.nodeInspector.selectHint")}</div>
         {onCreateNode && (
           <div style={emptyActionStyle}>
-            <Button variant="primary" onClick={onCreateNode}>{t("script.createNode")}</Button>
+            <Button variant="primary" onClick={onCreateNode} disabled={saving}>{t("script.createNode")}</Button>
           </div>
         )}
       </div>
