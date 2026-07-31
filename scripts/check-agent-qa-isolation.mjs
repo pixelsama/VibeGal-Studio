@@ -89,15 +89,19 @@ function commandJson(command, args, cwd) {
 
 function run(command, args, cwd, capture = false) {
   // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
-  // 必须经 shell 解释（args 均为简单字面量，无注入面）。
+  // 用显式 cmd.exe /d /s /c 解释（args 均为简单字面量，无注入面）。
   const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
-  const executable = isPnpmOnWindows ? "pnpm.cmd" : command;
-  const result = spawnSync(executable, args, {
-    cwd,
-    encoding: "utf8",
-    stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-    shell: isPnpmOnWindows,
-  });
+  const result = isPnpmOnWindows
+    ? spawnSync("cmd.exe", ["/d", "/s", "/c", "pnpm", ...args], {
+        cwd,
+        encoding: "utf8",
+        stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+      })
+    : spawnSync(command, args, {
+        cwd,
+        encoding: "utf8",
+        stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+      });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr || `${command} exited with ${result.status}`);
   return capture ? result.stdout : "";

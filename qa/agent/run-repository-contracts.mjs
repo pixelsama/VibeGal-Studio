@@ -18,10 +18,12 @@ const commands = [
 ];
 
 for (const [command, args] of commands) {
-  // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，须经 shell 解释。
+  // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
+  // 用显式 cmd.exe /d /s /c 解释。
   const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
-  const executable = isPnpmOnWindows ? "pnpm.cmd" : command;
-  const result = spawnSync(executable, args, { cwd: root, env: process.env, stdio: "inherit", shell: isPnpmOnWindows });
+  const result = isPnpmOnWindows
+    ? spawnSync("cmd.exe", ["/d", "/s", "/c", "pnpm", ...args], { cwd: root, env: process.env, stdio: "inherit" })
+    : spawnSync(command, args, { cwd: root, env: process.env, stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
