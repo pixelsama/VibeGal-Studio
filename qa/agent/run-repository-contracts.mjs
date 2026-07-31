@@ -20,7 +20,7 @@ const commands = [
 for (const [command, args] of commands) {
   // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
   // 用显式 cmd.exe /d /s /c 解释。
-  const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
+  const isPnpmOnWindows = process.platform === "win32" && (command === "pnpm" || command === "pnpm.cmd");
   const result = isPnpmOnWindows
     ? spawnSync("cmd.exe", ["/d", "/s", "/c", "pnpm", ...args], { cwd: root, env: process.env, stdio: "inherit" })
     : spawnSync(command, args, { cwd: root, env: process.env, stdio: "inherit" });

@@ -32,7 +32,7 @@ process.stdout.write(`${JSON.stringify({ ok: true, binary })}\n`);
 function run({ command, args, cwd }) {
   // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
   // 用显式 cmd.exe /d /s /c 解释（shell: true 的拼接在本机也触发 EINVAL）。
-  const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
+  const isPnpmOnWindows = process.platform === "win32" && (command === "pnpm" || command === "pnpm.cmd");
   const result = isPnpmOnWindows
     ? spawnSync("cmd.exe", ["/d", "/s", "/c", "pnpm", ...args], { cwd, env: process.env, stdio: "inherit" })
     : spawnSync(command, args, { cwd, env: process.env, stdio: "inherit" });

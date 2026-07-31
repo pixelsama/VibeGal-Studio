@@ -90,7 +90,7 @@ function commandJson(command, args, cwd) {
 function run(command, args, cwd, capture = false) {
   // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
   // 用显式 cmd.exe /d /s /c 解释（args 均为简单字面量，无注入面）。
-  const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
+  const isPnpmOnWindows = process.platform === "win32" && (command === "pnpm" || command === "pnpm.cmd");
   const result = isPnpmOnWindows
     ? spawnSync("cmd.exe", ["/d", "/s", "/c", "pnpm", ...args], {
         cwd,
