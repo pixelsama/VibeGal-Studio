@@ -236,6 +236,13 @@ export interface RendererProps {
   controls: RuntimeControls;
   /** 正式 runtime services。Studio preview 必须提供完整字段，可用结构化 unavailable 表示未落地能力。 */
   runtime?: RuntimeServices;
+  /**
+   * 是否运行在编辑器预览中（Studio 预览 / 场景 fixture / CLI 快照）。
+   * 只用于**呈现型**差异（动画、调试信息、资源占位等渲染层内部决策）；
+   * 能力型差异一律由宿主能力表达（runtime 服务降级），不得用本字段判断。
+   * 缺省 undefined = 非预览（发布后的真实游戏）。
+   */
+  preview?: boolean;
 }
 
 /** 每个渲染层目录必须导出的清单。 */

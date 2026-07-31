@@ -213,6 +213,8 @@ export function startVibeGalSnapshotHost(rendererManifest: unknown, hostOptions:
     meta: hostOptions.meta,
     stage: hostOptions.meta.stage,
     controls,
+    // Spec 34：CLI 快照（renderer-snapshot）也是预览环境
+    preview: true,
     runtime: createInMemoryRuntimeServices({
       getState: () => scene.state,
       manifest: hostOptions.manifest,

@@ -75,6 +75,27 @@ describe("useProjectPlayer helpers", () => {
     expect("onChoose" in props).toBe(false);
   });
 
+  it("createProjectRendererProps 透传 preview 标识（Spec 34），缺省为 undefined", () => {
+    const base = {
+      state: createInitialState(),
+      manifest: project.content.manifest,
+      contentBase: `${project.path}/content`,
+      meta: { title: "示例作品", typingSpeedCps: 30, autoAdvanceMs: 1200, chapterGapMs: 1500, stage: { width: 1280, height: 720 } },
+      controls: {
+        advance: () => {},
+        choose: () => {},
+        setAutoPlay: () => {},
+        setSkipMode: () => {},
+        rollbackTo: () => {},
+        restart: () => {},
+      },
+      runtime: null,
+    };
+
+    expect(createProjectRendererProps({ ...base, preview: true }).preview).toBe(true);
+    expect(createProjectRendererProps(base).preview).toBeUndefined();
+  });
+
   it("previewRuntimeAppliesEffectiveSettingsWithoutPersistingAcrossInstances", async () => {
     const setVolumes = vi.fn();
     const setPlaybackTiming = vi.fn();

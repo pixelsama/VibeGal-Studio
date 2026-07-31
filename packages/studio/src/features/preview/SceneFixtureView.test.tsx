@@ -173,6 +173,8 @@ describe("SceneFixtureView", () => {
     const props = captured[0];
     expect(props.state).toBe(scene.state);
     expect(props.contentBase).toBe("/tmp/fixture-project/content");
+    // Spec 34：场景 fixture 始终运行在预览环境（呈现型差异由渲染层按 preview 决策）
+    expect(props.preview).toBe(true);
     // 静态场景的 controls 全部 no-op
     expect(() => props.controls.advance()).not.toThrow();
     // persistent 瘦身快照 → runtime unlock；backlog → history 服务
