@@ -13,6 +13,20 @@ const DEFAULT_CHROME = process.platform === "darwin"
     : "google-chrome";
 const fingerprint = "a".repeat(64);
 
+// CI runner 的界面语言不固定（中/英文都实际出现过）：aria-label 选择器
+// 必须双语，否则英文环境下 querySelector 永远落空——waitFor 超时或页面内
+// Promise 挂死（node list 测量曾因此先「Promise was collected」后无限挂死）。
+// template 里的 {aria} 会被替换为中/英文 label 并组成逗号选择器组。
+function bilingualSelector(template, zhLabel, enLabel) {
+  return [zhLabel, enLabel].map((label) => template.replaceAll("{aria}", label)).join(", ");
+}
+
+const OUTLINE_LISTBOX = bilingualSelector('[role=listbox][aria-label="{aria}"]', "章节节点", "Chapter nodes");
+const OUTLINE_OPTION = bilingualSelector('[role=listbox][aria-label="{aria}"] [role=option]', "章节节点", "Chapter nodes");
+const ASSET_GRID = bilingualSelector('[role=grid][aria-label="{aria}"]', "资产列表", "Asset list");
+const ASSET_SEARCH_INPUT = bilingualSelector('input[aria-label="{aria}"]', "搜索资产", "Search assets");
+const SCENARIO_TEXTAREA = bilingualSelector('textarea[aria-label="{aria}"]', "剧本文本", "Script text");
+
 export async function runStudioBrowserBenchmark({
   chromePath = process.env.VIBEGAL_CHROME_PATH || DEFAULT_CHROME,
   studioUrl,
@@ -56,81 +70,92 @@ export async function runStudioBrowserBenchmark({
       await heapSampler;
     };
 
-    await cdp.send("Page.navigate", { url: studioUrl });
-    await cdp.waitFor("Page.loadEventFired", () => true, 15_000);
-    await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
-    const workspaceStarted = performance.now();
-    await clickButtonContaining(cdp, ["VibeGal Scale Benchmark"]);
-    // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
-    // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
-    await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => ['脚本', 'Script'].includes(candidate.textContent.trim()) && !candidate.disabled)", 60_000);
-    const workspaceInteractiveMs = performance.now() - workspaceStarted;
-    await sampleHeap();
+    const measure = async () => {
+      await cdp.send("Page.navigate", { url: studioUrl });
+      await cdp.waitFor("Page.loadEventFired", () => true, 15_000);
+      await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
+      const workspaceStarted = performance.now();
+      await clickButtonContaining(cdp, ["VibeGal Scale Benchmark"]);
+      // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
+      // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
+      await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => ['脚本', 'Script'].includes(candidate.textContent.trim()) && !candidate.disabled)", 60_000);
+      const workspaceInteractiveMs = performance.now() - workspaceStarted;
+      await sampleHeap();
+      logStep("workspace-interactive");
 
-    const graphStarted = performance.now();
-    await clickButton(cdp, ["脚本", "Script"]);
-    await waitForExpression(cdp, "document.querySelector('.react-flow')", 15_000);
-    const graphInteractiveMs = performance.now() - graphStarted;
-    await sampleHeap();
+      const graphStarted = performance.now();
+      await clickButton(cdp, ["脚本", "Script"]);
+      await waitForExpression(cdp, "document.querySelector('.react-flow')", 15_000);
+      const graphInteractiveMs = performance.now() - graphStarted;
+      await sampleHeap();
+      logStep("graph-interactive");
 
-    const nodeScroll = await measureNodeListScroll(cdp);
-    await sampleHeap();
-    const save = await measureSingleNodeSave(cdp, sampleHeap);
+      const nodeScroll = await measureNodeListScroll(cdp);
+      await sampleHeap();
+      logStep("node-list-scroll");
+      const save = await measureSingleNodeSave(cdp, sampleHeap);
+      logStep("single-node-edit-save");
 
-    const assetsStarted = performance.now();
-    await clickButton(cdp, ["资产", "Assets"]);
-    await waitForExpression(cdp, "document.querySelector('[role=grid][aria-label=\"资产列表\"]')", 15_000);
-    const assetsFirstRenderMs = performance.now() - assetsStarted;
-    await sampleHeap();
-    const assetState = await inspectAssetGrid(cdp);
-    const assetSearch = await measureAssetSearch(cdp, sampleHeap);
+      const assetsStarted = performance.now();
+      await clickButton(cdp, ["资产", "Assets"]);
+      await waitForExpression(cdp, `document.querySelector('${ASSET_GRID}')`, 15_000);
+      const assetsFirstRenderMs = performance.now() - assetsStarted;
+      await sampleHeap();
+      const assetState = await inspectAssetGrid(cdp);
+      logStep("assets-first-render");
+      const assetSearch = await measureAssetSearch(cdp, sampleHeap);
+      logStep("asset-search-input");
 
-    const jsHeapUsedBytes = await sampleHeap();
-    await stopHeapSampling();
-    stopHeapSampling = async () => {};
+      const jsHeapUsedBytes = await sampleHeap();
+      await stopHeapSampling();
+      stopHeapSampling = async () => {};
 
-    return {
-      status: "completed",
-      browser: {
-        name: "Google Chrome",
-        version: page.browserVersion,
-        viewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
-      },
-      measurements: {
-        workspaceInteractiveMs: round(workspaceInteractiveMs),
-        assetsFirstRenderMs: round(assetsFirstRenderMs),
-        assetSearchInputP95Ms: round(percentile(assetSearch.samples, 0.95)),
-        nodeListScrollP95FrameMs: round(percentile(nodeScroll.frames, 0.95)),
-        graphInteractiveMs: round(graphInteractiveMs),
-        singleNodeEditSaveP95Ms: round(percentile(save.samples, 0.95)),
-        peakJsHeapBytes,
-        jsHeapUsedBytes,
-      },
-      assertions: {
-        workspaceInteractive: workspaceInteractiveMs <= 3_000,
-        assetsFirstRender: assetsFirstRenderMs <= 1_000,
-        assetSearchInput: percentile(assetSearch.samples, 0.95) <= 100,
-        nodeListScroll: percentile(nodeScroll.frames, 0.95) <= 32,
-        graphInteractive: graphInteractiveMs <= 2_000,
-        singleNodeEditSave: percentile(save.samples, 0.95) <= 150,
-        assetDomBounded: assetState.mountedCards <= 80,
-        assetCardsDoNotOverlap: assetState.overlapPairs === 0,
-        assetGridAccessible: assetState.rowCount > 0 && assetState.columnCount > 0,
-      },
-      details: {
-        assetSearchSamplesMs: assetSearch.samples.map(round),
-        assetSearchWarmupMs: round(assetSearch.warmupMs),
-        nodeScrollFramesMs: nodeScroll.frames.map(round),
-        nodeScrollMountedOptions: nodeScroll.mountedOptions,
-        singleNodeSaveSamplesMs: save.samples.map(round),
-        singleNodeSaveWarmupSamplesMs: save.warmupSamplesMs.map(round),
-        assetMountedCards: assetState.mountedCards,
-        assetGridRows: assetState.rowCount,
-        assetGridColumns: assetState.columnCount,
-        assetOverlapPairs: assetState.overlapPairs,
-        commands: await readInvokeStats(cdp),
-      },
+      return {
+        status: "completed",
+        browser: {
+          name: "Google Chrome",
+          version: page.browserVersion,
+          viewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
+        },
+        measurements: {
+          workspaceInteractiveMs: round(workspaceInteractiveMs),
+          assetsFirstRenderMs: round(assetsFirstRenderMs),
+          assetSearchInputP95Ms: round(percentile(assetSearch.samples, 0.95)),
+          nodeListScrollP95FrameMs: round(percentile(nodeScroll.frames, 0.95)),
+          graphInteractiveMs: round(graphInteractiveMs),
+          singleNodeEditSaveP95Ms: round(percentile(save.samples, 0.95)),
+          peakJsHeapBytes,
+          jsHeapUsedBytes,
+        },
+        assertions: {
+          workspaceInteractive: workspaceInteractiveMs <= 3_000,
+          assetsFirstRender: assetsFirstRenderMs <= 1_000,
+          assetSearchInput: percentile(assetSearch.samples, 0.95) <= 100,
+          nodeListScroll: percentile(nodeScroll.frames, 0.95) <= 32,
+          graphInteractive: graphInteractiveMs <= 2_000,
+          singleNodeEditSave: percentile(save.samples, 0.95) <= 150,
+          assetDomBounded: assetState.mountedCards <= 80,
+          assetCardsDoNotOverlap: assetState.overlapPairs === 0,
+          assetGridAccessible: assetState.rowCount > 0 && assetState.columnCount > 0,
+        },
+        details: {
+          assetSearchSamplesMs: assetSearch.samples.map(round),
+          assetSearchWarmupMs: round(assetSearch.warmupMs),
+          nodeScrollFramesMs: nodeScroll.frames.map(round),
+          nodeScrollMountedOptions: nodeScroll.mountedOptions,
+          singleNodeSaveSamplesMs: save.samples.map(round),
+          singleNodeSaveWarmupSamplesMs: save.warmupSamplesMs.map(round),
+          assetMountedCards: assetState.mountedCards,
+          assetGridRows: assetState.rowCount,
+          assetGridColumns: assetState.columnCount,
+          assetOverlapPairs: assetState.overlapPairs,
+          commands: await readInvokeStats(cdp),
+        },
+      };
     };
+    // 全局兜底：任何一处 await 挂死（页面 Promise 不 settle / CDP 无响应）时，
+    // 在 watchdog 时限内失败并走 finally 清理 Chrome，而不是占满 job 超时。
+    return await Promise.race([measure(), watchdogRejection(watchdogMs())]);
   } finally {
     await stopHeapSampling().catch(() => {});
     cdp?.close();
@@ -327,8 +352,13 @@ async function installBenchmarkBridge(cdp, data) {
 }
 
 async function measureNodeListScroll(cdp) {
-  const result = await evaluate(cdp, `new Promise((resolve) => {
-    const list = document.querySelector('[role=listbox][aria-label="章节节点"]');
+  // 规模基准项目节点多，章节大纲可能滞后于 .react-flow 出现：先等选项挂载，
+  // 否则下方 executor 在 rAF 里对 null 操作会静默 pending（Promise 永不 settle）。
+  await waitForExpression(cdp, `document.querySelector('${OUTLINE_OPTION}')`, 15_000);
+  const result = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
+    const list = document.querySelector('${OUTLINE_LISTBOX}');
+    if (!list) { reject(new Error('node outline listbox not found')); return; }
+    const timer = setTimeout(() => reject(new Error('node list scroll frames did not complete within 10s')), 10_000);
     const frames = [];
     let remaining = 32;
     let previous = null;
@@ -338,37 +368,37 @@ async function measureNodeListScroll(cdp) {
       list.scrollTop = remaining % 2 ? list.scrollHeight : 0;
       list.dispatchEvent(new Event('scroll', { bubbles: true }));
       remaining -= 1;
-      if (remaining <= 0) requestAnimationFrame(() => resolve({ frames: frames.slice(8), mountedOptions: list.querySelectorAll('[role=option]').length }));
+      if (remaining <= 0) requestAnimationFrame(() => { clearTimeout(timer); resolve({ frames: frames.slice(8), mountedOptions: list.querySelectorAll('[role=option]').length }); });
       else requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
-  })`);
+  }`));
   return result;
 }
 
 async function measureSingleNodeSave(cdp, sampleHeap) {
   await evaluate(cdp, `(() => {
-    const option = document.querySelector('[role=listbox][aria-label="章节节点"] [role=option]');
+    const option = document.querySelector('${OUTLINE_OPTION}');
     if (!option) throw new Error('node outline option not found');
     option.click();
   })()`);
   await waitForExpression(
     cdp,
-    "[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '进入编辑' && !button.disabled)",
+    `[...document.querySelectorAll('button')].some(${buttonMatches(["进入编辑", "Open editor"])})`,
     5_000,
   );
   await clickButton(cdp, ["进入编辑", "Open editor"]);
-  await waitForExpression(cdp, "document.querySelector('textarea[aria-label=\"剧本文本\"]')", 15_000);
+  await waitForExpression(cdp, `document.querySelector('${SCENARIO_TEXTAREA}')`, 15_000);
   const samples = [];
   for (let index = 0; index < 6; index += 1) {
     const completedBefore = await evaluate(cdp, "window.__VIBEGAL_BENCHMARK__.saveNodeCompleted");
     await evaluate(cdp, `(() => {
-      const textarea = document.querySelector('textarea[aria-label="剧本文本"]');
+      const textarea = document.querySelector('${SCENARIO_TEXTAREA}');
       const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
       setter.call(textarea, textarea.value.replace(/测量(?: [0-9]+)?。?$/, '') + '\\n规模保存测量 ${index}。');
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
-    await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '保存' && !button.disabled)", 5_000);
+    await waitForExpression(cdp, `[...document.querySelectorAll('button')].some(${buttonMatches(["保存", "Save"])})`, 5_000);
     const started = await evaluate(cdp, "performance.now()");
     await clickButton(cdp, ["保存", "Save"]);
     await waitForExpression(
@@ -378,7 +408,7 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
     );
     const completedAt = await evaluate(cdp, "window.__VIBEGAL_BENCHMARK__.lastSaveNodeCompletedAt");
     samples.push(completedAt - started);
-    await waitForExpression(cdp, "document.querySelector('textarea[aria-label=\"剧本文本\"]') && [...document.querySelectorAll('button')].some((button) => button.textContent.trim() === '保存' && !button.disabled)", 5_000);
+    await waitForExpression(cdp, `document.querySelector('${SCENARIO_TEXTAREA}') && [...document.querySelectorAll('button')].some(${buttonMatches(["保存", "Save"])})`, 5_000);
   }
   await sampleHeap();
   return { samples: samples.slice(2), warmupSamplesMs: samples.slice(0, 2) };
@@ -386,7 +416,7 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
 
 async function inspectAssetGrid(cdp) {
   return evaluate(cdp, `(() => {
-    const grid = document.querySelector('[role=grid][aria-label="资产列表"]');
+    const grid = document.querySelector('${ASSET_GRID}');
     const cells = [...grid.querySelectorAll('[role=gridcell]')];
     const rects = cells.map((cell) => cell.getBoundingClientRect());
     let overlapPairs = 0;
@@ -415,9 +445,9 @@ async function measureAssetSearch(cdp, sampleHeap) {
     { value: "background_03", count: 10 },
   ];
   for (const { value, count } of values) {
-    const sample = await evaluate(cdp, `new Promise((resolve, reject) => {
-      const input = document.querySelector('input[aria-label="搜索资产"]');
-      const grid = document.querySelector('[role=grid][aria-label="资产列表"]');
+    const sample = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
+      const input = document.querySelector('${ASSET_SEARCH_INPUT}');
+      const grid = document.querySelector('${ASSET_GRID}');
       if (!input || !grid) { reject(new Error('asset search controls not found')); return; }
       const columns = Number(grid.getAttribute('aria-colcount'));
       const expectedRows = Math.ceil(${count} / columns);
@@ -439,7 +469,7 @@ async function measureAssetSearch(cdp, sampleHeap) {
       setter.call(input, ${JSON.stringify(value)});
       input.dispatchEvent(new Event('input', { bubbles: true }));
       requestAnimationFrame(check);
-    })`);
+    }`));
     samples.push(sample);
     await sampleHeap();
   }
@@ -615,4 +645,82 @@ function round(value) {
 
 async function readJson(file) {
   return JSON.parse(await readFile(file, "utf8"));
+}
+
+// ── 瞬时 CDP 错误重试（CI Chrome 环境稳定性）──────────────────────────────
+// 测量期间页面导航/渲染进程回收会让在途 Runtime.evaluate（awaitPromise）
+// 被 Chrome 以「Promise was collected / Execution context was destroyed」拒绝。
+// 这类错误是环境竞态而非回归信号：整个测量会话作废，换新 Chrome 重跑即可。
+const TRANSIENT_CDP_PATTERNS = [
+  "Promise was collected",
+  "Execution context was destroyed",
+  "Inspected target navigated or closed",
+  "Target closed",
+];
+
+/**
+ * 把页面内长寿命 Promise 挂到 window 上再交给 Runtime.evaluate(awaitPromise)。
+ *
+ * 直接 `new Promise(...)` 作为求值结果时，该 Promise 在页面里无引用，
+ * V8 GC（堆采样 + 大项目内存压力下几乎必现）会把它回收，CDP 以
+ * 「Promise was collected」拒绝——曾在 ubuntu runner 上 3/3 重试全灭。
+ * 挂到 window 后 GC 无法回收；settle 后由 then 回调自清引用。
+ */
+export function retainedPromise(executorSource) {
+  return `(() => {
+    const key = "__VIBEGAL_BENCHMARK_PENDING__";
+    const promise = new Promise(${executorSource});
+    window[key] = promise;
+    const release = () => { if (window[key] === promise) window[key] = null; };
+    promise.then(release, release);
+    return promise;
+  })()`;
+}
+
+/** 场景进度日志：CI 上挂死/超时时能直接看到卡在哪个场景。 */
+function logStep(scenario) {
+  process.stderr.write(`[benchmark] scenario done: ${scenario} (${Math.round(performance.now())}ms)\n`);
+}
+
+/** 测量阶段全局兜底时限：默认 10 分钟，VIBEGAL_BENCHMARK_WATCHDOG_MS 可覆盖。 */
+function watchdogMs() {
+  const raw = Number(process.env.VIBEGAL_BENCHMARK_WATCHDOG_MS);
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 600_000;
+}
+
+function watchdogRejection(ms) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(
+      `benchmark watchdog fired after ${ms}ms — 某个页面 Promise 未 settle 或 CDP 无响应（见上方 scenario 进度）`,
+    )), ms).unref?.();
+  });
+}
+
+export function isTransientCdpError(error) {
+  const message = typeof error === "string" ? error : error?.message;
+  if (!message) return false;
+  return TRANSIENT_CDP_PATTERNS.some((pattern) => message.includes(pattern));
+}
+
+/**
+ * 以「全新 Chrome 重跑整轮测量」的方式重试瞬时 CDP 错误。
+ * run 必须是幂等的（每次调用自行启动/清理 Chrome）；
+ * 非瞬时错误（按钮找不到、超时、断言失败）立即抛出，不掩盖真实回归。
+ */
+export async function runStudioBrowserBenchmarkWithRetry(run, {
+  maxAttempts = 3,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  log = (line) => process.stderr.write(`${line}\n`),
+} = {}) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await run(attempt);
+    } catch (error) {
+      if (!isTransientCdpError(error) || attempt === maxAttempts) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      log(`[benchmark] transient CDP error (attempt ${attempt}/${maxAttempts}): ${message} — retrying with a fresh Chrome`);
+      await sleep(1_000);
+    }
+  }
+  throw new Error("unreachable");
 }

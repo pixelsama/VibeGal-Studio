@@ -33,9 +33,10 @@ export const config = {
     frontendLogLevel: "warn",
     logLevel: process.env.VIBEGAL_AGENT_QA_LOG_LEVEL ?? "warn",
     logDir,
-    startTimeout: 60_000,
+    // Windows CI 冷启动 embedded WebDriver 曾两次 >60s 未就绪（server 启动
+    // 超时走 startTimeout；/status 轮询超时走 statusPollTimeout，两个都要抬）。
+    startTimeout: 180_000,
     commandTimeout: 30_000,
-    // Windows CI 冷启动 embedded WebDriver 曾 >60s 未就绪：/status 轮询超时翻倍。
     statusPollTimeout: 120_000,
   }]],
   logLevel: process.env.VIBEGAL_AGENT_QA_LOG_LEVEL ?? "warn",
