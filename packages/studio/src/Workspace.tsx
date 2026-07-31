@@ -669,13 +669,14 @@ export function Workspace({
       )}
 
       {/* 全局状态指示器：汇总图结构 + 资产 + manifest 三类问题。
-          绿勾=全项目无问题，红图标=有某处问题，点开按来源分组。 */}
+          未分析=中性灰（不亮绿灯），绿勾=全项目无问题，红图标=有某处问题，点开按来源分组。 */}
       <StatusPanel
         issues={report.projectIssues}
         loading={analysisState === "loading"}
         error={analysisState === "error"}
         onOpen={() => void ensureFullAnalysis()}
         okLabel={t("workspace.normal")}
+        neutralLabel={analysisState === "idle" && fullReport === null ? t("status.notAnalyzed") : undefined}
         notOkLabel={(n) => t("workspace.issueCount", { count: n })}
         dialogTitle={t("workspace.projectIssues")}
         dialogAriaLabel={t("workspace.projectIssues")}

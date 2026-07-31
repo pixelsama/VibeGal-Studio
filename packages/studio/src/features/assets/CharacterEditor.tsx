@@ -11,11 +11,13 @@ import { useState } from "react";
 import { X, UserRoundPlus } from "lucide-react";
 import type { Manifest, ManifestCharacter, CharacterSpriteRef } from "../../lib/types";
 import { useStudioI18n, translateZhCN, type StudioTranslator } from "../../lib/i18n";
-import { importAsset, pickAssetFiles } from "../../lib/tauri";
+import { deleteAsset, importAsset, pickAssetFiles } from "../../lib/tauri";
 import { Button } from "../common/Button";
+import { ConfirmDialog } from "../common/Dialogs";
 import { EmptyState } from "../common/EmptyState";
 import type { ToastInput } from "../common/Toast";
 import { AssetImagePreview } from "./AssetImagePreview";
+import { characterSpriteAssetPaths } from "./assetUsage";
 
 interface CharacterEditorProps {
   projectPath: string;
@@ -31,6 +33,13 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
   const [selectedId, setSelectedId] = useState<string | null>(characterIds[0] ?? null);
   const [newExprDraft, setNewExprDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  // 删角色/删表情现在级联清理磁盘文件（Spec 33 A5），属破坏性操作，须先确认。
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    kind: "character" | "expression";
+    characterId: string;
+    expr?: string;
+    fileCount: number;
+  } | null>(null);
 
   const selected = selectedId ? manifest.characters[selectedId] : undefined;
 
@@ -62,14 +71,48 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
     setSelectedId(id);
   }
 
+  /** 某角色所有立绘文件的去重磁盘路径（atlas 引用只算 fallback，不删共享 atlas 图）。 */
+  function characterSpriteFiles(id: string): string[] {
+    const char = manifest.characters[id];
+    if (!char) return [];
+    const paths = new Set<string>();
+    for (const sprite of Object.values(char.sprites)) {
+      for (const path of characterSpriteAssetPaths(sprite)) paths.add(path);
+    }
+    return [...paths];
+  }
+
+  // 删角色：级联清理该角色所有立绘文件（Spec 33 A5）。先确认。
   function deleteCharacter(id: string) {
     if (disabled) return;
+    const char = manifest.characters[id];
+    if (!char) return;
+    setDeleteConfirm({
+      kind: "character",
+      characterId: id,
+      fileCount: characterSpriteFiles(id).length,
+    });
+  }
+
+  async function performCharacterDelete(id: string) {
+    const files = characterSpriteFiles(id);
+    const failed: string[] = [];
+    for (const relPath of files) {
+      try {
+        await deleteAsset(projectPath, relPath);
+      } catch {
+        failed.push(relPath);
+      }
+    }
     const next = { ...manifest.characters };
     delete next[id];
     onChange({ ...manifest, characters: next });
     if (selectedId === id) {
       const remaining = Object.keys(next);
       setSelectedId(remaining[0] ?? null);
+    }
+    if (failed.length > 0) {
+      onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
     }
   }
 
@@ -102,13 +145,37 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
     return dot > 0 ? fileName.slice(dot) : "";
   }
 
+  // 删表情：级联清理该表情对应的立绘文件（Spec 33 A5）。先确认。
   function removeSpriteExpr(id: string, expr: string) {
     if (disabled) return;
     const char = manifest.characters[id];
-    if (!char) return;
+    if (!char || !char.sprites[expr]) return;
+    setDeleteConfirm({
+      kind: "expression",
+      characterId: id,
+      expr,
+      fileCount: characterSpriteAssetPaths(char.sprites[expr]).length,
+    });
+  }
+
+  async function performSpriteExprDelete(id: string, expr: string) {
+    const char = manifest.characters[id];
+    if (!char || !char.sprites[expr]) return;
+    const files = characterSpriteAssetPaths(char.sprites[expr]);
+    const failed: string[] = [];
+    for (const relPath of files) {
+      try {
+        await deleteAsset(projectPath, relPath);
+      } catch {
+        failed.push(relPath);
+      }
+    }
     const next = { ...char.sprites };
     delete next[expr];
     updateCharacter(id, { sprites: next });
+    if (failed.length > 0) {
+      onFeedback?.(createCharacterSpriteDeleteFailureToast(failed.length, files.length, t));
+    }
   }
 
   function renameSpriteExpr(id: string, oldExpr: string, newExpr: string) {
@@ -263,6 +330,32 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
           <div style={emptyPropsStyle} />
         )}
       </div>
+      {deleteConfirm && (
+        <ConfirmDialog
+          message={deleteConfirm.kind === "character"
+            ? t("assets.character.deleteConfirm", {
+                name: manifest.characters[deleteConfirm.characterId]?.name ?? deleteConfirm.characterId,
+                count: deleteConfirm.fileCount,
+              })
+            : t("assets.character.deleteExpressionConfirm", {
+                expr: deleteConfirm.expr ?? "",
+                count: deleteConfirm.fileCount,
+              })}
+          confirmLabel={t("assets.delete")}
+          danger
+          onConfirm={() => {
+            const pending = deleteConfirm;
+            setDeleteConfirm(null);
+            if (!pending) return;
+            if (pending.kind === "character") {
+              void performCharacterDelete(pending.characterId);
+            } else if (pending.expr !== undefined) {
+              void performSpriteExprDelete(pending.characterId, pending.expr);
+            }
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 }
@@ -276,6 +369,19 @@ export function createCharacterSpriteImportFailureToast(
     kind: "error",
     message: t("assets.character.importFailed"),
     detail: `${fileName}\n${formatUnknownError(error)}`,
+  };
+}
+
+/** 级联删除立绘文件时部分文件未能移除（登记表已更新，磁盘残留待用户在资源页处理）。 */
+export function createCharacterSpriteDeleteFailureToast(
+  failedCount: number,
+  totalCount: number,
+  t: StudioTranslator = translateZhCN,
+): ToastInput {
+  return {
+    kind: "error",
+    message: t("assets.character.deleteFileFailed"),
+    detail: t("assets.character.deleteFileFailedDetail", { failed: failedCount, total: totalCount }),
   };
 }
 

@@ -7,24 +7,20 @@
  * 面板只呈现作者要回答的问题（这是记什么？初始是多少？哪里改它？），实现细节
  * （内部标识、type/nullable、存储作用域）收进「技术详情」。
  */
-import { useMemo, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { useState } from "react";
 import {
-  variableKind,
   variableTypeForKind,
   type Manifest,
   type VariableDeclaration,
   type VariableKind,
   type VariableRegistry,
 } from "@vibegal/engine";
-import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { Button, IconButton } from "../common/Button";
 import { Field, NumberInput, SegmentedControl, Select, Slider, Switch, TextInput } from "../common/Form";
-import { analyzeGraphVariables, type VariableEntry } from "./variableAnalysis";
+import { type VariableEntry } from "./variableAnalysis";
 import { bandLabelForValue, variableLabel } from "./storyState";
 import {
   translateZhCN,
-  useStudioI18n,
   type StudioTranslator,
 } from "../../lib/i18n";
 
@@ -62,133 +58,6 @@ function scopeLabel(
     scope === "global"
       ? "script.state.scope.global"
       : "script.state.scope.run",
-  );
-}
-
-export interface StoryStatePanelProps {
-  registry: VariableRegistry;
-  graph: ProjectGraph;
-  nodes?: NodeEntry[];
-  manifest?: Manifest;
-  onChange?: (registry: VariableRegistry) => void;
-  /** 安全重命名走后端原子命令，面板只负责发起。 */
-  onRename?: (from: string, to: string) => void;
-  onSelectNode?: (nodeId: string) => void;
-  onSelectEdge?: (edgeId: string) => void;
-}
-
-export function StoryStatePanel({
-  registry,
-  graph,
-  nodes,
-  manifest,
-  onChange,
-  onRename,
-  onSelectNode,
-  onSelectEdge,
-}: StoryStatePanelProps) {
-  const { t } = useStudioI18n();
-  const analysis = useMemo(() => analyzeGraphVariables(graph, nodes, registry), [graph, nodes, registry]);
-  const [query, setQuery] = useState("");
-  const [creating, setCreating] = useState(false);
-
-  const usageByName = useMemo(
-    () => new Map(analysis.variables.map((entry) => [entry.name, entry])),
-    [analysis.variables],
-  );
-
-  const declared = Object.entries(registry.variables)
-    .map(([name, declaration]) => ({ name, declaration, kind: variableKind(declaration) }))
-    .filter(({ name, declaration }) => matches(query, [name, declaration.label, declaration.description]))
-    .sort((left, right) => KIND_ORDER.indexOf(left.kind) - KIND_ORDER.indexOf(right.kind)
-      || left.name.localeCompare(right.name));
-
-  const undeclared = analysis.variables.filter((entry) => !registry.variables[entry.name]);
-
-  const update = (name: string, declaration: VariableDeclaration) => onChange?.({
-    ...registry,
-    variables: { ...registry.variables, [name]: declaration },
-  });
-
-  const remove = (name: string) => {
-    const variables = { ...registry.variables };
-    delete variables[name];
-    onChange?.({ ...registry, variables });
-  };
-
-  return (
-    <section className="gs-story-state">
-      <div className="gs-story-state__toolbar">
-        <div className="gs-story-state__search">
-          <Search size={14} aria-hidden="true" />
-          <input
-            className="gs-input"
-            aria-label={t("script.state.searchLabel")}
-            placeholder={t("script.state.searchPlaceholder")}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-        {onChange && (
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus size={14} aria-hidden="true" />
-            {t("script.state.new")}
-          </Button>
-        )}
-      </div>
-
-      {creating && onChange && (
-        <NewStateForm
-          existingNames={new Set(Object.keys(registry.variables))}
-          t={t}
-          onCancel={() => setCreating(false)}
-          onCreate={(name, declaration) => {
-            onChange({ ...registry, variables: { ...registry.variables, [name]: declaration } });
-            setCreating(false);
-          }}
-        />
-      )}
-
-      {declared.length === 0 && undeclared.length === 0 && (
-        <p className="gs-story-state__empty">
-          {t("script.state.empty")}
-        </p>
-      )}
-
-      {declared.map(({ name, declaration, kind }) => (
-        <StateCard
-          key={name}
-          name={name}
-          declaration={declaration}
-          kind={kind}
-          usage={usageByName.get(name)}
-          manifest={manifest}
-          editable={Boolean(onChange)}
-          onChange={(next) => update(name, next)}
-          onRename={onRename}
-          onRemove={() => remove(name)}
-          onSelectNode={onSelectNode}
-          onSelectEdge={onSelectEdge}
-          t={t}
-        />
-      ))}
-
-      {undeclared.length > 0 && (
-        <div className="gs-story-state__undeclared">
-          <h4>{t("script.state.undeclared")}</h4>
-          {undeclared.map((entry) => (
-            <div key={entry.name} className="gs-story-state__undeclared-row">
-              <span>{entry.name}</span>
-              {onChange && (
-                <Button onClick={() => onChange(registerInferredVariable(registry, entry.name, entry.types))}>
-                  {t("script.state.register")}
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -715,12 +584,6 @@ function describeUsage(
     parts.push(t("script.state.usage.noReads"));
   }
   return parts.join(" · ");
-}
-
-function matches(query: string, fields: Array<string | undefined>): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return fields.some((field) => field?.toLowerCase().includes(normalized));
 }
 
 function nextOptionId(options: NonNullable<VariableDeclaration["options"]>): string {

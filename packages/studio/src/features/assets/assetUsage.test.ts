@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { AssetEntry, Manifest, NodeEntry } from "../../lib/types";
+import type { AssetEntry, CharacterSpriteRef, Manifest, NodeEntry } from "../../lib/types";
 import { deriveAssetView } from "./useAssets";
-import { analyzeAssetUsage } from "./assetUsage";
+import { analyzeAssetUsage, characterSpriteAssetPaths } from "./assetUsage";
 
 const manifest: Manifest = {
   characters: {
@@ -66,5 +66,23 @@ describe("asset usage analysis", () => {
     expect(summary.unusedManifestPaths.has("assets/backgrounds/beach.png")).toBe(true);
     expect(summary.unusedManifestPaths.has("assets/audio/bgm/theme.mp3")).toBe(true);
     expect(summary.unusedManifestPaths.has("assets/characters/hero_idle.png")).toBe(true);
+  });
+});
+
+describe("characterSpriteAssetPaths (Spec 33 A5 级联删除)", () => {
+  it("字符串引用返回其路径", () => {
+    expect(characterSpriteAssetPaths("assets/characters/hero_smile.png" as CharacterSpriteRef))
+      .toEqual(["assets/characters/hero_smile.png"]);
+  });
+
+  it("atlas 引用只返回 fallback，不返回共享的 atlas 图", () => {
+    const paths = characterSpriteAssetPaths({
+      atlas: "heroAtlas",
+      clip: "idle",
+      fallback: "assets/characters/hero_idle.png",
+    });
+    // 关键不变量：级联删除只动 fallback 文件，绝不删被多表情共享的 atlas 图。
+    expect(paths).toEqual(["assets/characters/hero_idle.png"]);
+    expect(paths).not.toContain("heroAtlas");
   });
 });
