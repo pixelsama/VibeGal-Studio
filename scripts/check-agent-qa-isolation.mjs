@@ -88,11 +88,15 @@ function commandJson(command, args, cwd) {
 }
 
 function run(command, args, cwd, capture = false) {
-  const executable = process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
+  // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，
+  // 必须经 shell 解释（args 均为简单字面量，无注入面）。
+  const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
+  const executable = isPnpmOnWindows ? "pnpm.cmd" : command;
   const result = spawnSync(executable, args, {
     cwd,
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+    shell: isPnpmOnWindows,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr || `${command} exited with ${result.status}`);

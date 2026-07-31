@@ -138,7 +138,21 @@ export async function runStudioBrowserBenchmark({
       new Promise((resolve) => setTimeout(resolve, 2_000)),
     ]);
     if (chrome.exitCode == null) chrome.kill("SIGKILL");
-    await rm(userDataDir, { recursive: true, force: true });
+    // Chrome 退出后可能还有异步刷盘：cleanup 是收尾，重试几次，
+    // 最终失败只警告、不阻断已完成的 benchmark 结果（CI 上曾因
+    // ENOTEMPTY rmdir 让整个 gate 误报失败）。
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await rm(userDataDir, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          process.stderr.write(`[benchmark] failed to remove Chrome profile ${userDataDir}: ${String(error)}\n`);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+    }
   }
 }
 
