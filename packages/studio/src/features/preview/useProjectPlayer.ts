@@ -63,6 +63,8 @@ export interface ProjectRendererPropsInput {
   meta: Meta;
   controls: RuntimeControls;
   runtime: RuntimeServices | null;
+  /** Spec 34：真实预览工作台始终是预览环境。缺省 undefined = 非预览。 */
+  preview?: boolean;
 }
 
 export function createProjectRendererProps(input: ProjectRendererPropsInput): RendererProps {
@@ -75,6 +77,7 @@ export function createProjectRendererProps(input: ProjectRendererPropsInput): Re
     stage: input.meta.stage,
     controls: input.controls,
     runtime: input.runtime ?? createInMemoryRuntimeServices({ getState: () => input.state }),
+    ...(input.preview !== undefined ? { preview: input.preview } : {}),
   };
 }
 
@@ -493,6 +496,8 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
     meta,
     controls,
     runtime: runtimeRef.current,
+    // Spec 34：预览工作台是预览环境
+    preview: true,
   });
 
   return {

@@ -166,6 +166,8 @@ export function SceneFixtureView({ project, renderer, scene, zoom, onScaleChange
     stage,
     controls: FIXTURE_CONTROLS,
     runtime,
+    // Spec 34：场景 fixture（外观工作区 / 场景 scrubber）始终是预览环境
+    preview: true,
   };
   const Renderer = renderer.Component;
 
