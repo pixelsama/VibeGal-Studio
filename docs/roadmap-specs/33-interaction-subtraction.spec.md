@@ -219,6 +219,8 @@
 
 `packages/engine/src/renderer.ts:221-239` 没有任何字段能让界面风格知道自己运行在编辑器预览中。这不只影响 HUD——**任何「预览态应当收敛的 chrome」都没有表达手段**。属接口层缺口，非 UI 密度问题，建议单开 spec。
 
+**已单开：`docs/roadmap-specs/34-renderer-preview-flag.spec.md`**（2026-07-31）。决议：`preview?: boolean` 可选字段 + 三处传递；环境差异二分法（能力型走宿主能力 / 呈现型走 preview flag）；退出按钮为能力型用例，列入 34 号 spec 的后续 backlog。
+
 ### 6.6 §6.2 施工决议（2026-07-31 讨论后拍板）
 
 实施 §6.2 时的约束与方案，施工时按此执行，不再重新决策。
