@@ -56,7 +56,8 @@ describe("Studio real desktop authoring loop", () => {
     );
     await titleInput.waitForExist();
     await titleInput.setValue(savedTitle);
-    await clickButton(["保存", "Save"]);
+    // Spec 33 §6.1: settings auto-save after an 800ms debounce; the explicit
+    // save button was removed. waitForJsonTitle polls content/meta.json.
     await waitForJsonTitle(savedTitle);
     await waitForBodyText(savedTitle);
     await waitForWorkspaceContentVisible();

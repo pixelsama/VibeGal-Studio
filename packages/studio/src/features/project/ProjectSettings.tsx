@@ -14,7 +14,10 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
+import { isExternalRevisionChange } from "../script/nodeEditorModel";
+import { useDebouncedCallback } from "../common/useDebouncedCallback";
 import { useSaveShortcut } from "../common/useSaveShortcut";
+import { usePageUndoHistory } from "../common/usePageUndoHistory";
 import { useStudioI18n } from "../../lib/i18n";
 import {
   DEFAULT_STAGE_RESOLUTION,
@@ -24,6 +27,9 @@ import {
   withStageResolution,
   type StageResolution,
 } from "../../lib/projectMeta";
+
+/** 项目设置自动保存防抖：连续击键合并为一次落盘（Spec 33 §6.1）。 */
+const SETTINGS_SAVE_DEBOUNCE_MS = 800;
 
 type SaveFileFn = (
   projectPath: string,
@@ -312,9 +318,43 @@ export function ProjectSettings({
   };
   const dirty = isProjectSettingsDraftDirty(baseSettingsRef.current, formDraft);
 
+  // 自动保存：任何字段变更后防抖落盘（Spec 33 §6.1）。无需手动保存按钮。
+  const autoSave = useDebouncedCallback(() => {
+    void handleSave();
+  }, SETTINGS_SAVE_DEBOUNCE_MS);
+
+  // cmd+z 恢复整页快照（页面级撤销，接管 input 原生撤销）。
+  const applyFormDraft = (snapshot: ProjectSettingsFormDraft) => {
+    draftVersionRef.current += 1;
+    setTitleText(snapshot.titleText);
+    setTypingSpeedText(snapshot.typingSpeedText);
+    setAutoAdvanceText(snapshot.autoAdvanceText);
+    setChapterGapText(snapshot.chapterGapText);
+    setWidthText(snapshot.widthText);
+    setHeightText(snapshot.heightText);
+    setDistributionVersionText(snapshot.distributionVersionText);
+    setDistributionProductNameText(snapshot.distributionProductNameText);
+    setDistributionIconText(snapshot.distributionIconText);
+    setDistributionViewportMode(snapshot.distributionViewportMode);
+    setDistributionViewportWidthText(snapshot.distributionViewportWidthText);
+    setDistributionViewportHeightText(snapshot.distributionViewportHeightText);
+    setStatus(null);
+    autoSave.schedule();
+  };
+  const undoHistory = usePageUndoHistory<ProjectSettingsFormDraft>({
+    current: () => formDraft,
+    apply: applyFormDraft,
+  });
+
   useEffect(() => {
     if (dirty) return;
-    if (loadedRevisionRef.current !== undefined && loadedRevisionRef.current !== project.metaRevision) return;
+    // 已加载/刚保存的 revision 与刷新结果同值 = 无外部改动（含自己的
+    // 保存+刷新往返），保持表单现状。必须按值比较：openProject 每次返回
+    // 新对象实例，引用比较会让下方的外部改动覆盖分支永不触发。
+    if (!isExternalRevisionChange(loadedRevisionRef.current, project.metaRevision)) return;
+    // 外部改动覆盖前：取消待落盘草稿并清空撤销栈，防抖不得把旧草稿写盘覆盖外部改动。
+    autoSave.cancel();
+    undoHistory.reset();
     baseSettingsRef.current = initialSettings;
     loadedRevisionRef.current = project.metaRevision;
     setTitleText(initialSettings.title);
@@ -330,7 +370,7 @@ export function ProjectSettings({
     setDistributionViewportWidthText(String(initialSettings.distribution.viewport?.width ?? initialSettings.stage.width));
     setDistributionViewportHeightText(String(initialSettings.distribution.viewport?.height ?? initialSettings.stage.height));
     setStatus(null);
-  }, [dirty, initialSettings, project.metaRevision]);
+  }, [dirty, initialSettings, project.metaRevision, undoHistory.reset]);
 
   useEffect(() => {
     setMissingSupportFiles(project.missingSupportFiles ?? []);
@@ -400,10 +440,12 @@ export function ProjectSettings({
     : null;
 
   const handlePreset = (stage: StageResolution) => {
+    undoHistory.record(formDraft);
     draftVersionRef.current += 1;
     setWidthText(String(stage.width));
     setHeightText(String(stage.height));
-    setStatus(null);
+    setStatus(t("projectSettings.pendingSave"));
+    autoSave.schedule();
   };
 
   const handleSave = async () => {
@@ -431,24 +473,33 @@ export function ProjectSettings({
     }
   };
 
-  useSaveShortcut(dirty && !saving, () => void handleSave());
+  // Cmd+S = 立即落盘（跳过防抖窗口）。
+  useSaveShortcut(dirty && !saving, () => {
+    autoSave.flush();
+  });
 
   const handleWidthChange = (value: string) => {
+    undoHistory.record(formDraft);
     draftVersionRef.current += 1;
     setWidthText(value);
-    setStatus(null);
+    setStatus(t("projectSettings.pendingSave"));
+    autoSave.schedule();
   };
 
   const handleHeightChange = (value: string) => {
+    undoHistory.record(formDraft);
     draftVersionRef.current += 1;
     setHeightText(value);
-    setStatus(null);
+    setStatus(t("projectSettings.pendingSave"));
+    autoSave.schedule();
   };
 
   const setDraftText = (setter: (value: string) => void, value: string) => {
+    undoHistory.record(formDraft);
     draftVersionRef.current += 1;
     setter(value);
-    setStatus(null);
+    setStatus(t("projectSettings.pendingSave"));
+    autoSave.schedule();
   };
 
   const handleRepairSupportFiles = async () => {
@@ -598,18 +649,6 @@ export function ProjectSettings({
                 step={1}
                 onChange={handleHeightChange}
               />
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={!draft || saving}
-                style={{
-                  ...saveButtonStyle,
-                  opacity: !draft || saving ? 0.55 : 1,
-                  cursor: !draft || saving ? "default" : "pointer",
-                }}
-              >
-                {saving ? t("projectSettings.saving") : t("projectSettings.save")}
-              </button>
             </div>
           </div>
 
@@ -933,12 +972,3 @@ const textInputStyle: CSSProperties = {
   maxWidth: "100%",
 };
 
-const saveButtonStyle: CSSProperties = {
-  height: "var(--control-lg)",
-  padding: "0 var(--space-4)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--accent)",
-  background: "var(--accent)",
-  color: "var(--text-on-accent)",
-  fontSize: "var(--text-base)",
-};

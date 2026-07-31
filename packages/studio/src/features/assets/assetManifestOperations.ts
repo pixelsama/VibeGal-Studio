@@ -15,47 +15,6 @@ export function stageManifestDraft(
   setDraftManifest(next);
 }
 
-export interface SaveDraftManifestParams {
-  projectPath: string;
-  draftManifest: Manifest | null;
-  expectedRevision?: FileRevision | null;
-  saveManifestFn: (projectPath: string, manifest: Manifest, expectedRevision?: FileRevision | null) => Promise<FileRevision | null | void>;
-  onSaved: () => void | Promise<void>;
-  setDraftManifest: (manifest: Manifest | null) => void;
-  notify: (toast: ToastInput) => void;
-  t?: StudioTranslator;
-  isDraftSnapshotCurrent?: () => boolean;
-}
-
-export async function saveDraftManifest({
-  projectPath,
-  draftManifest,
-  expectedRevision,
-  saveManifestFn,
-  onSaved,
-  setDraftManifest,
-  notify,
-  t,
-  isDraftSnapshotCurrent,
-}: SaveDraftManifestParams): Promise<void> {
-  if (!draftManifest) return;
-  await persistManifestWithFeedback({
-    projectPath,
-    next: draftManifest,
-    expectedRevision,
-    saveManifestFn,
-    onSaved,
-    setDraftManifest,
-    notify,
-    t,
-    isDraftSnapshotCurrent,
-  });
-}
-
-export function discardDraftManifest(setDraftManifest: (manifest: Manifest | null) => void): void {
-  setDraftManifest(null);
-}
-
 export interface PersistManifestWithFeedbackParams {
   projectPath: string;
   next: Manifest;
