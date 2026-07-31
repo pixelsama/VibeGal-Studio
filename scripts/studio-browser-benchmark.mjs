@@ -58,10 +58,12 @@ export async function runStudioBrowserBenchmark({
 
     await cdp.send("Page.navigate", { url: studioUrl });
     await cdp.waitFor("Page.loadEventFired", () => true, 15_000);
-    await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark'))", 15_000);
+    await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
     const workspaceStarted = performance.now();
     await clickButtonContaining(cdp, "VibeGal Scale Benchmark");
-    await waitForExpression(cdp, "document.querySelector('header button') && document.body.innerText.includes('规模基准项目')", 15_000);
+    // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
+    // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
+    await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => candidate.textContent.trim() === '脚本' && !candidate.disabled)", 60_000);
     const workspaceInteractiveMs = performance.now() - workspaceStarted;
     await sampleHeap();
 
@@ -478,7 +480,10 @@ async function waitForExpression(cdp, expression, timeoutMs) {
     if (await evaluate(cdp, `Boolean(${expression})`)) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`Timed out waiting for: ${expression}`);
+  // 诊断：超时失败时 dump 页面状态，便于 CI 定位是列表页未打开 / 打开失败 / 文案差异
+  const body = await evaluate(cdp, "document.body.innerText.slice(0, 500)");
+  const buttons = await evaluate(cdp, "[...document.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean).slice(0, 30)");
+  throw new Error(`Timed out waiting for: ${expression}\nbody: ${JSON.stringify(body)}\nbuttons: ${JSON.stringify(buttons)}`);
 }
 
 async function evaluate(cdp, expression) {
