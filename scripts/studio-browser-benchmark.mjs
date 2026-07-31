@@ -455,7 +455,7 @@ async function readInvokeStats(cdp) {
 // labels 支持中英双语（CI 环境语言不固定：曾因 UI 为英文而点不到「脚本」）。
 function buttonMatches(labels) {
   const list = JSON.stringify(labels);
-  return `(candidate) => [${list}].includes(candidate.textContent.trim()) && !candidate.disabled`;
+  return `(candidate) => ${list}.includes(candidate.textContent.trim()) && !candidate.disabled`;
 }
 
 async function clickButtonContaining(cdp, labels) {
