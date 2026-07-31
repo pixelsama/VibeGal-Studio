@@ -17,6 +17,25 @@ export function sameFileRevision(
   return Math.abs(left.mtimeMs - right.mtimeMs) < 0.001;
 }
 
+/**
+ * 外部改动检测（Spec 33 §6.1）：项目刷新带回来的 revision 是否与本地
+ * 已加载/刚保存的基准不同——**必须按值比较**。
+ *
+ * FileRevision 是对象；openProject / save 的每次 IPC 都返回新实例，
+ * 引用比较（===）会把「自己的保存+刷新往返」甚至「无关文件触发的
+ * watcher 刷新」误判为外部改动（曾致资产页撤销栈被反复清空、
+ * 设置页外部改动覆盖分支失效）。
+ *
+ * 基准为 undefined（尚未建立基准）时不视为外部改动。
+ */
+export function isExternalRevisionChange(
+  loadedRevision: FileRevision | null | undefined,
+  incomingRevision: FileRevision | null | undefined,
+): boolean {
+  if (loadedRevision === undefined) return false;
+  return !sameFileRevision(loadedRevision, incomingRevision);
+}
+
 export function isWriteConflictError(error: unknown): boolean {
   if (error instanceof Error) return isWriteConflictError(error.message);
   if (typeof error === "string") {

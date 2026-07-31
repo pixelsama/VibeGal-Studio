@@ -14,6 +14,7 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { isDraftSnapshotCurrent, preventUnloadWhenDirty } from "../script/unsavedChanges";
+import { isExternalRevisionChange } from "../script/nodeEditorModel";
 import { useDebouncedCallback } from "../common/useDebouncedCallback";
 import { useSaveShortcut } from "../common/useSaveShortcut";
 import { usePageUndoHistory } from "../common/usePageUndoHistory";
@@ -347,7 +348,10 @@ export function ProjectSettings({
 
   useEffect(() => {
     if (dirty) return;
-    if (loadedRevisionRef.current !== undefined && loadedRevisionRef.current !== project.metaRevision) return;
+    // 已加载/刚保存的 revision 与刷新结果同值 = 无外部改动（含自己的
+    // 保存+刷新往返），保持表单现状。必须按值比较：openProject 每次返回
+    // 新对象实例，引用比较会让下方的外部改动覆盖分支永不触发。
+    if (!isExternalRevisionChange(loadedRevisionRef.current, project.metaRevision)) return;
     // 外部改动覆盖前：取消待落盘草稿并清空撤销栈，防抖不得把旧草稿写盘覆盖外部改动。
     autoSave.cancel();
     undoHistory.reset();

@@ -12,6 +12,7 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { isDraftSnapshotCurrent } from "../script/unsavedChanges";
+import { isExternalRevisionChange } from "../script/nodeEditorModel";
 import { type ToastInput } from "../common/Toast";
 import { useDebouncedCallback } from "../common/useDebouncedCallback";
 import { usePageUndoHistory } from "../common/usePageUndoHistory";
@@ -112,8 +113,10 @@ export function useAssetManifestDraft({
 
   // 外部改动（Agent/其他工具写盘）到达：取消待落盘草稿并清空撤销栈，
   // 防抖不得把旧草稿写盘覆盖外部改动。revision 冲突保护仍由队列承担。
+  // 必须按值比较 revision：openProject 每次返回新对象实例，引用比较会把
+  // 自己的保存+刷新往返误判为外部改动（撤销栈被清空/在途防抖被取消）。
   useEffect(() => {
-    if (draftBaseRevisionRef.current === undefined || draftBaseRevisionRef.current === project.manifestRevision) return;
+    if (!isExternalRevisionChange(draftBaseRevisionRef.current, project.manifestRevision)) return;
     autoSave.cancel();
     undoHistory.reset();
   }, [project.manifestRevision, autoSave.cancel, undoHistory.reset]);
