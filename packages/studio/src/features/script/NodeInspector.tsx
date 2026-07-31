@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 import type { GraphEdge, Manifest, NodeEntry, NodeSummary, ProjectGraph } from "../../lib/types";
-import { findNode, findNodeData, summarizeNodeConnections } from "./graphMapping";
+import { findNode, findNodeData } from "./graphMapping";
 import { parseGraphCondition } from "./graphCondition";
 import type { VariableRegistry } from "@vibegal/engine";
 import { BranchRules, moveEdge, moveEdgeById, normalizeEdge, orderDefaultAutoEdgeLast } from "./BranchRules";
 import { collectStateSources, stateSourceDefaults } from "./storyState";
 import { useStudioI18n } from "../../lib/i18n";
+import { Button } from "../common/Button";
 
 // 排序模型迁到 BranchRules，这里重新导出以保持既有调用方与测试的入口不变。
 export { moveEdge, moveEdgeById, orderDefaultAutoEdgeLast };
@@ -34,6 +35,8 @@ interface NodeInspectorProps {
   onSetChapter?: (id: string, chapterId: string) => void;
   onUpdateOutgoingEdges?: (nodeId: string, edges: GraphEdge[]) => void;
   onSetEntry?: (id: string) => void;
+  /** 空态时提供「新建节点」动作入口（Spec 33 E4）。 */
+  onCreateNode?: () => void;
   saving?: boolean;
   variables?: VariableRegistry;
   manifest?: Manifest;
@@ -53,6 +56,7 @@ export function NodeInspector({
   onSetChapter,
   onUpdateOutgoingEdges,
   onSetEntry,
+  onCreateNode,
   saving = false,
   variables,
   manifest,
@@ -82,13 +86,17 @@ export function NodeInspector({
       <div style={panelStyle}>
         <div style={panelTitleStyle}>{t("script.nodeInspector.title")}</div>
         <div style={emptyStyle}>{t("script.nodeInspector.selectHint")}</div>
+        {onCreateNode && (
+          <div style={emptyActionStyle}>
+            <Button variant="primary" onClick={onCreateNode}>{t("script.createNode")}</Button>
+          </div>
+        )}
       </div>
     );
   }
 
   const summary = nodeSummaries?.find((candidate) => candidate.id === node.id);
   const hasContent = summary ? summary.exists : findNodeData(nodeEntries, node.file) != null;
-  const { incoming, outgoing } = summary ?? summarizeNodeConnections(graph, node.id);
   const isEntry = node.id === graph.entryNodeId;
   const outgoingEdges = graph.edges.filter((edge) => edge.from === node.id).map(normalizeEdge);
   const linkedEndings = Object.entries(manifest?.unlocks?.endings ?? {}).filter(([, ending]) => ending.nodeId === node.id);
@@ -123,11 +131,6 @@ export function NodeInspector({
         </section>
 
         <section style={sectionStyle}>
-          <Field label="ID" value={node.id} mono />
-          <Field label={t("script.nodeInspector.file")} value={node.file} mono />
-          <Field label={t("script.nodeInspector.entry")} value={isEntry ? t("common.yes") : t("common.no")} />
-          <Field label={t("script.nodeInspector.position")} value={`x ${node.position.x} / y ${node.position.y}`} mono />
-          <Field label={t("script.nodeInspector.connections")} value={t("script.nodeInspector.connectionCounts", { incoming, outgoing })} mono />
           {graph.chapters.length > 0 && (
             <label style={titleFieldStyle}>
               <span style={fieldLabelStyle}>{t("script.nodeInspector.chapter")}</span>
@@ -159,7 +162,6 @@ export function NodeInspector({
         </section>
 
         <section style={sectionStyle}>
-          <Field label={t("script.nodeInspector.structuralRole")} value={outgoing === 0 ? t("script.nodeInspector.graphEnding") : t("script.nodeInspector.flowNode")} />
           <Field label={t("script.nodeInspector.officialEnding")} value={linkedEndings.length ? linkedEndings.map(([id]) => id).join(", ") : t("script.nodeInspector.unregistered")} />
           {linkedEndings.map(([id, ending]) => <div key={id} style={endingRowStyle}>
             <span>{id} · {ending.title}</span>
@@ -296,6 +298,10 @@ const emptyStyle: React.CSSProperties = {
   padding: "var(--space-4)",
   color: "var(--text-muted)",
   fontSize: "var(--text-base)",
+};
+
+const emptyActionStyle: React.CSSProperties = {
+  padding: "0 var(--space-4) var(--space-4)",
 };
 
 const statusTextStyle = (hasContent: boolean): React.CSSProperties => ({

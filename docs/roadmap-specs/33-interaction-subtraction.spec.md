@@ -219,6 +219,23 @@
 
 `packages/engine/src/renderer.ts:221-239` 没有任何字段能让界面风格知道自己运行在编辑器预览中。这不只影响 HUD——**任何「预览态应当收敛的 chrome」都没有表达手段**。属接口层缺口，非 UI 密度问题，建议单开 spec。
 
+### 6.6 §6.2 施工决议（2026-07-31 讨论后拍板）
+
+实施 §6.2 时的约束与方案，施工时按此执行，不再重新决策。
+
+| 条目 | 决议 | 备注 |
+|---|---|---|
+| E3 | 属性面板**删除** 6 个工程字段（ID、`nodes/xxx.json` 文件路径、x/y 坐标、入出边计数、入口 是/否、结构角色），**不做折叠区** | 用户：工程信息没用，直接不在界面显示。兜底：画布已有入口定位器（`GraphCanvas.tsx:380-387`）与节点状态推导（`graphMapping.ts:151-155`）。**保留**：章节 select、正式结局区块、文件缺失警告、标题、进入编辑、BranchRules。连锁：删 8 个 i18n 键（`file`/`entry`/`position`/`connections`/`connectionCounts`/`structuralRole`/`graphEnding`/`flowNode`）；`Field` 组件仅剩正式结局 1 处使用；`NodeInspector.test.tsx` 7 个测试无相关断言 |
+| E4 | 只做空态「新建节点」动作按钮；340px 固定面板的可折叠**顺延** | 字段删完后属性面板变轻，折叠收益降低 |
+| E5+E6 | 工具栏上浮 2 个画布级高频操作（自动布局、适应视图）；节点级操作保持右键菜单；画布右键菜单加「快捷键与命令」项 | E6 入口复用右键机制（E11 约束：不发明第 10 种披露方式） |
+| E7+§6.3 | 角色**保留在侧栏分类**，不再伪装模式开关：分类视图 = 角色卡片网格（一级）→ 点击卡片进入双栏编辑页（左预览 / 右内容编辑，二级）；编辑页内左侧资源分类栏常驻不变 | 编辑页 = 现有预览舞台 + 属性面板去左栏列表（`CharacterEditor.tsx:206-320` 重组）；删除（A5 级联）与新建入口留在编辑页内，**卡片不放删除按钮**（防误触级联）；返回按钮回网格；编辑页内不做角色切换器；空态复用 `assets.character.*` 文案 |
+| E7 折叠 | 侧栏剩 10 项分三组：**视觉**（background/cg/ui/animation）、**音频**（bgm/sfx/voice）、**其他**（video/font），overview 独立；三组默认展开、组头可折叠 | 纯展示层改动：`AssetSection` 类型与 `assetDrop.ts` 逻辑不动，只改 `AssetsSidebar` 的 `SECTIONS` 渲染（`assetSectionLabel` 扁平查找同步适配）；顺带纠正现有分隔线分组（`AssetsSidebar.tsx:43` index 1/3/6，角色混在音频组） |
+| E9 | 合并为单个「警告策略」下拉（阻止构建 / 仅提示） | 迁移 `exportPrefs.strict` + `allowWarnings` 两个持久化字段；两个复选框删除（`ExportWorkspace.tsx:272-283`） |
+| E2 | 顶栏不动 | 6 个工作台 tab 是结构需求；渲染层 select（Spec 19 §4.2 唯一入口）移动风险大于收益 |
+| E10 | 顺延单开 | 纯视觉设计，需设计方向，本轮不夹带 |
+
+**PR 结构**：四项独立 PR 并行（互不 import 未合并代码）：E3+E4、E5+E6、E7+§6.3（含折叠分组）、E9；均从最新 main 切出。
+
 ## 7 已知失效的门禁：`check:vocabulary` 看不见 i18n 目录
 
 **这是本文最重要的留档条目。在修好之前，不得以 `pnpm check:vocabulary` 通过作为文案合规的证据。**

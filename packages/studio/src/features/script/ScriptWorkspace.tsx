@@ -972,6 +972,7 @@ export function ScriptWorkspace({
                   onSetChapter={handleSetNodeChapter}
                   onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
                   onSetEntry={handleSetEntry}
+                  onCreateNode={() => void handleCreateNode()}
                   saving={savingGraph}
                   variables={project.content.variables}
                   manifest={project.content.manifest}
