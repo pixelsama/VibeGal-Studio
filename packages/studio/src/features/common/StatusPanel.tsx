@@ -67,22 +67,19 @@ export function StatusPanel({
   isIssueClickable,
   issueExtra,
   sourceLabel,
-  neutral = false,
 }: StatusPanelProps) {
   const { t } = useStudioI18n();
   const [dialogOpen, setDialogOpen] = useState(false);
   const errors = issues.filter((issue) => issue.severity === "error");
   const hasIssues = issues.length > 0;
   const hasErrors = errors.length > 0;
-  const label = neutral
-    ? t("workspace.neutralAnalysis")
-    : loading
-      ? t("status.checking")
-      : error
-        ? t("status.checkFailedRetry")
-        : hasIssues
-          ? notOkLabel(issues.length)
-          : okLabel;
+  const label = loading
+    ? t("status.checking")
+    : error
+      ? t("status.checkFailedRetry")
+      : hasIssues
+      ? notOkLabel(issues.length)
+      : okLabel;
 
   return (
     <div style={indicatorShellStyle}>
@@ -331,7 +328,7 @@ function IssueCard({
       <span style={issueTextStyle}>
         <span style={issueHeadStyle}>
           <span style={severityTagStyle(issue.severity)}>
-            {issue.severity === "error" ? t("status.error") : t("status.warning")}
+            {issue.severity === "error" ? "Error" : "Warning"}
           </span>
           <span style={issueCodeStyle}>{issue.code}</span>
         </span>

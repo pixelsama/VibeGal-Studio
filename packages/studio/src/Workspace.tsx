@@ -674,7 +674,6 @@ export function Workspace({
         issues={report.projectIssues}
         loading={analysisState === "loading"}
         error={analysisState === "error"}
-        neutral={analysisState === "idle" || fullReport === null}
         onOpen={() => void ensureFullAnalysis()}
         okLabel={t("workspace.normal")}
         notOkLabel={(n) => t("workspace.issueCount", { count: n })}

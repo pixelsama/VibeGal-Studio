@@ -64,13 +64,13 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
 
   function deleteCharacter(id: string) {
     if (disabled) return;
-    const { characters: next, feedback } = computeCharacterDeletion(manifest, id, t);
+    const next = { ...manifest.characters };
+    delete next[id];
     onChange({ ...manifest, characters: next });
     if (selectedId === id) {
       const remaining = Object.keys(next);
       setSelectedId(remaining[0] ?? null);
     }
-    if (feedback) onFeedback?.(feedback);
   }
 
   async function addSpriteExpr(id: string, expr: string) {
@@ -106,14 +106,9 @@ export function CharacterEditor({ projectPath, manifest, onChange, onFeedback, d
     if (disabled) return;
     const char = manifest.characters[id];
     if (!char) return;
-    const hadFile = Object.prototype.hasOwnProperty.call(char.sprites, expr);
     const next = { ...char.sprites };
     delete next[expr];
     updateCharacter(id, { sprites: next });
-    // 同上：移除表情只改草稿，图片文件仍留在磁盘，需要提醒去资产页清理。
-    if (hadFile) {
-      onFeedback?.(createExpressionDeleteResidualFileToast(expr, t));
-    }
   }
 
   function renameSpriteExpr(id: string, oldExpr: string, newExpr: string) {
@@ -282,59 +277,6 @@ export function createCharacterSpriteImportFailureToast(
     message: t("assets.character.importFailed"),
     detail: `${fileName}\n${formatUnknownError(error)}`,
   };
-}
-
-/** 删除角色只改草稿，不会删掉它的表情立绘文件；提醒用户去资产页清理孤儿文件。 */
-export function createCharacterDeleteResidualFilesToast(
-  characterName: string,
-  fileCount: number,
-  t: StudioTranslator = translateZhCN,
-): ToastInput {
-  return {
-    kind: "info",
-    message: t("assets.character.deleteResidualFiles", { name: characterName, count: fileCount }),
-    detail: t("assets.character.deleteResidualFilesDetail"),
-  };
-}
-
-/** 删除单个表情同理：图片文件仍留在磁盘。 */
-export function createExpressionDeleteResidualFileToast(
-  expr: string,
-  t: StudioTranslator = translateZhCN,
-): ToastInput {
-  return {
-    kind: "info",
-    message: t("assets.character.deleteExpressionResidualFile", { expr }),
-    detail: t("assets.character.deleteResidualFilesDetail"),
-  };
-}
-
-export interface CharacterDeletionResult {
-  characters: Record<string, ManifestCharacter>;
-  /** 待删除角色的表情数（= 会留在磁盘上的立绘文件数），无该角色时为 0。 */
-  residualFileCount: number;
-  /** 有残留文件时才给出反馈；纯 manifest 计算，便于单测直接断言。 */
-  feedback: ToastInput | null;
-}
-
-/**
- * 计算删除角色后的 characters 表，以及是否需要提示“有立绘文件留在磁盘”。
- * 角色删除本身只改草稿（可用“放弃改动”撤销），但表情立绘文件不会跟着从磁盘删除，
- * 会变成资产页里的孤儿文件 —— 这里只负责算账，不做任何 IO。
- */
-export function computeCharacterDeletion(
-  manifest: Manifest,
-  id: string,
-  t: StudioTranslator = translateZhCN,
-): CharacterDeletionResult {
-  const char = manifest.characters[id];
-  const residualFileCount = char ? Object.keys(char.sprites).length : 0;
-  const characters = { ...manifest.characters };
-  delete characters[id];
-  const feedback = char && residualFileCount > 0
-    ? createCharacterDeleteResidualFilesToast(char.name || id, residualFileCount, t)
-    : null;
-  return { characters, residualFileCount, feedback };
 }
 
 function formatUnknownError(error: unknown): string {

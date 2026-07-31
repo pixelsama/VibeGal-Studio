@@ -73,9 +73,7 @@ export function AssetsWorkspace({
   const { t } = useStudioI18n();
   const [section, setSection] = useState<AssetSection>(initialSection);
   const [search, setSearch] = useState("");
-  const [confirm, setConfirm] = useState<{ message: string; confirmLabel: string; onConfirm: () => void } | null>(
-    null,
-  );
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   function notify(input: ToastInput) {
@@ -225,15 +223,6 @@ export function AssetsWorkspace({
     ? t("assets.dropSection", { section: assetSectionLabel(section, t) })
     : t("assets.dropOverview");
 
-  // 资产网格里的删除按钮：先确认再真正删磁盘文件（同时会移除所有 manifest 引用）。
-  function handleRequestDelete(relPath: string, assetRevision?: FileRevision) {
-    if (readOnly) return;
-    setConfirm({
-      ...buildAssetDeleteConfirm(relPath, t),
-      onConfirm: () => void handleDelete(relPath, assetRevision),
-    });
-  }
-
   async function handleDelete(relPath: string, assetRevision?: FileRevision) {
     if (readOnly) return;
     const savedDraftVersion = draftVersionRef.current;
@@ -281,7 +270,10 @@ export function AssetsWorkspace({
   function handleCleanupManifestEntries() {
     if (readOnly || cleanupProposal.removeSources.length === 0) return;
     setConfirm({
-      ...buildCleanupManifestEntriesConfirm(cleanupProposal, t),
+      message: t("assets.cleanupConfirm", {
+        count: cleanupProposal.removeSources.length,
+        preview: cleanupProposal.diffPreview.slice(0, 8).join("\n"),
+      }),
       onConfirm: () => void persistManifestFromWorkspace(applyAssetCleanupProposal(manifest, cleanupProposal)),
     });
   }
@@ -291,7 +283,7 @@ export function AssetsWorkspace({
     const candidates = filteredDisk.filter((entry) => view.orphanPaths.has(entry.relPath));
     if (candidates.length === 0) return;
     setConfirm({
-      ...buildDeleteOrphansConfirm(candidates.length, t),
+      message: t("assets.deleteOrphansConfirm", { count: candidates.length }),
       onConfirm: async () => {
         for (const entry of candidates) {
           await handleDelete(entry.relPath, entry.revision);
@@ -413,7 +405,7 @@ export function AssetsWorkspace({
                       usageCount={assetUsage.usageCountByPath.get(entry.relPath) ?? 0}
                       unusedInStory={assetUsage.unusedManifestPaths.has(entry.relPath)}
                       readOnly={readOnly}
-                      onDelete={handleRequestDelete}
+                      onDelete={handleDelete}
                       onRegisterOrphan={handleRegisterOrphan}
                     />
                   ))}
@@ -460,7 +452,7 @@ export function AssetsWorkspace({
         <ConfirmDialog
           message={confirm.message}
           danger
-          confirmLabel={confirm.confirmLabel}
+          confirmLabel={t("assets.delete")}
           onConfirm={confirm.onConfirm}
           onClose={() => setConfirm(null)}
         />
@@ -1059,43 +1051,6 @@ export function applyAssetCleanupProposal(
   _options: { deleteDiskFile?: (path: string) => void } = {},
 ): Manifest {
   return removeDanglingRefs(manifest, proposal.removeSources);
-}
-
-// ── 确认弹窗文案（拆成纯函数便于单测，不依赖组件内部 state） ──
-
-export interface AssetConfirmContent {
-  message: string;
-  confirmLabel: string;
-}
-
-/** 资产网格删除按钮：唯一会真正删磁盘文件（并连带移除引用）的操作，需强调后果。 */
-export function buildAssetDeleteConfirm(relPath: string, t: StudioTranslator = translateZhCN): AssetConfirmContent {
-  return {
-    message: t("assets.deleteConfirm", { name: baseName(relPath) }),
-    confirmLabel: t("assets.delete"),
-  };
-}
-
-/** 清理登记条目：纯 manifest 操作，不删磁盘文件，确认按钮不能说“删除”。 */
-export function buildCleanupManifestEntriesConfirm(
-  proposal: AssetCleanupProposal,
-  t: StudioTranslator = translateZhCN,
-): AssetConfirmContent {
-  return {
-    message: t("assets.cleanupConfirm", {
-      count: proposal.removeSources.length,
-      preview: proposal.diffPreview.slice(0, 8).join("\n"),
-    }),
-    confirmLabel: t("assets.cleanupAction"),
-  };
-}
-
-/** 批量删除孤儿文件：真正删磁盘文件，确认按钮可以说“删除”。 */
-export function buildDeleteOrphansConfirm(count: number, t: StudioTranslator = translateZhCN): AssetConfirmContent {
-  return {
-    message: t("assets.deleteOrphansConfirm", { count }),
-    confirmLabel: t("assets.deleteOrphans", { count }),
-  };
 }
 
 function collectManifestEntrySources(manifest: Manifest): { source: string; path: string }[] {
