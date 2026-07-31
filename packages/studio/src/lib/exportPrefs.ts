@@ -3,6 +3,14 @@ import type { DesktopRuntime } from "./tauri";
 export type ExportTarget = "web" | "desktop";
 
 /**
+ * 构建警告策略（Spec 33 E9）：把「将警告视为错误」与「仍然允许警告」
+ * 两个相互矛盾的复选框合并为单一策略。
+ * - block：存在警告时阻止构建（等价旧 strict=true 且 allowWarnings=false）
+ * - allow：警告仅提示，不阻止构建（旧版其余组合的净效果）
+ */
+export type WarningPolicy = "block" | "allow";
+
+/**
  * 导出工作台的每项目偏好（localStorage 持久化）。
  * 空串目录表示跟随目标默认值：Web 为 dist/web，桌面为 dist/desktop-<runtime>。
  * 两种目标各记一份目录，切换目标不会覆盖另一种目标的发布位置。
@@ -12,8 +20,7 @@ export interface ExportPrefs {
   runtime: DesktopRuntime;
   webCustomOutDir: string;
   desktopCustomOutDir: string;
-  strict: boolean;
-  allowWarnings: boolean;
+  warningPolicy: WarningPolicy;
 }
 
 export interface ExportPrefsStorage {
@@ -28,8 +35,7 @@ export const DEFAULT_EXPORT_PREFS: ExportPrefs = {
   runtime: "electron",
   webCustomOutDir: "",
   desktopCustomOutDir: "",
-  strict: false,
-  allowWarnings: false,
+  warningPolicy: "allow",
 };
 
 interface ExportPrefsFile {
@@ -103,7 +109,14 @@ function normalizeExportPrefs(value: unknown): ExportPrefs {
       : typeof maybe.customOutDir === "string"
         ? maybe.customOutDir
         : "",
-    strict: typeof maybe.strict === "boolean" ? maybe.strict : false,
-    allowWarnings: typeof maybe.allowWarnings === "boolean" ? maybe.allowWarnings : false,
+    // 旧版双复选框迁移：strict=true 且 allowWarnings=false 才等同于 block，
+    // 其余组合（含 strict + allowWarnings 同时开启）的净效果都是 allow。
+    warningPolicy: maybe.warningPolicy === "block"
+      ? "block"
+      : maybe.warningPolicy === "allow"
+        ? "allow"
+        : typeof maybe.strict === "boolean" && maybe.strict === true && maybe.allowWarnings === false
+          ? "block"
+          : "allow",
   };
 }

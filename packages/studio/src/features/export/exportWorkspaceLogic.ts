@@ -4,12 +4,23 @@ import type {
   DesktopRuntime,
 } from "../../lib/tauri";
 import type { ProjectIssue } from "../../lib/types";
-import type { ExportTarget } from "../../lib/exportPrefs";
+import type { ExportTarget, WarningPolicy } from "../../lib/exportPrefs";
 import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import type { DesktopBuildState } from "./buildStore";
 
 export function defaultWebOutDir(projectPath: string): string {
   return `${projectPath}/dist/web`;
+}
+
+/**
+ * 把用户可见的单一警告策略映射为构建请求的双布尔 flag（Spec 33 E9）。
+ * 传输层（tauri → Rust → CLI --strict / --allow-warnings）保持双 flag 语义，
+ * 迁移只发生在偏好层；allow 不带任何警告闸门。
+ */
+export function warningPolicyToBuildFlags(policy: WarningPolicy): { strict: boolean; allowWarnings: boolean } {
+  return policy === "block"
+    ? { strict: true, allowWarnings: false }
+    : { strict: false, allowWarnings: false };
 }
 
 /** 默认桌面输出目录：<项目>/dist/desktop-<runtime>。dist 首级目录已被 watcher 忽略 */

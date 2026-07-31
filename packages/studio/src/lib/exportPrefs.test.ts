@@ -23,7 +23,7 @@ describe("loadExportPrefs", () => {
     expect(loadExportPrefs("/project", makeStorage())).toEqual(DEFAULT_EXPORT_PREFS);
   });
 
-  it("读取指定项目的目标与独立输出目录，其他项目不受影响", () => {
+  it("读取指定项目的目标、独立输出目录与警告策略，其他项目不受影响", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
@@ -32,8 +32,7 @@ describe("loadExportPrefs", () => {
             runtime: "tauri",
             webCustomOutDir: "D:/web-release",
             desktopCustomOutDir: "D:/desktop-release",
-            strict: true,
-            allowWarnings: true,
+            warningPolicy: "block",
           },
           "/other": DEFAULT_EXPORT_PREFS,
         },
@@ -45,8 +44,7 @@ describe("loadExportPrefs", () => {
       runtime: "tauri",
       webCustomOutDir: "D:/web-release",
       desktopCustomOutDir: "D:/desktop-release",
-      strict: true,
-      allowWarnings: true,
+      warningPolicy: "block",
     });
     expect(loadExportPrefs("/missing", storage)).toEqual(DEFAULT_EXPORT_PREFS);
   });
@@ -67,6 +65,29 @@ describe("loadExportPrefs", () => {
     });
   });
 
+  it("旧版 strict=true 且 allowWarnings=false 迁移为 block 策略", () => {
+    const storage = makeStorage({
+      [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
+        projects: { "/project": { strict: true, allowWarnings: false } },
+      }),
+    });
+
+    expect(loadExportPrefs("/project", storage).warningPolicy).toBe("block");
+  });
+
+  it("旧版其他组合（含 strict=true + allowWarnings=true）迁移为 allow 策略", () => {
+    for (const legacy of [
+      { strict: true, allowWarnings: true },
+      { strict: false, allowWarnings: true },
+      { strict: false, allowWarnings: false },
+    ]) {
+      const storage = makeStorage({
+        [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({ projects: { "/project": legacy } }),
+      });
+      expect(loadExportPrefs("/project", storage).warningPolicy).toBe("allow");
+    }
+  });
+
   it("损坏的 JSON 回退到默认偏好", () => {
     const storage = makeStorage({ [EXPORT_PREFS_STORAGE_KEY]: "{not json" });
     expect(loadExportPrefs("/project", storage)).toEqual(DEFAULT_EXPORT_PREFS);
@@ -76,20 +97,17 @@ describe("loadExportPrefs", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
-          "/project": { target: "mobile", runtime: "wine", webCustomOutDir: 42, desktopCustomOutDir: null, strict: "yes", allowWarnings: true },
+          "/project": { target: "mobile", runtime: "wine", webCustomOutDir: 42, desktopCustomOutDir: null, warningPolicy: "strict" },
         },
       }),
     });
 
-    expect(loadExportPrefs("/project", storage)).toEqual({
-      ...DEFAULT_EXPORT_PREFS,
-      allowWarnings: true,
-    });
+    expect(loadExportPrefs("/project", storage)).toEqual(DEFAULT_EXPORT_PREFS);
   });
 });
 
 describe("saveExportPrefs", () => {
-  it("写入指定项目的目标与独立目录并保留其他项目", () => {
+  it("写入指定项目的目标、独立目录与警告策略并保留其他项目", () => {
     const storage = makeStorage({
       [EXPORT_PREFS_STORAGE_KEY]: JSON.stringify({
         projects: {
@@ -103,6 +121,7 @@ describe("saveExportPrefs", () => {
       target: "web",
       webCustomOutDir: "D:/web-out",
       desktopCustomOutDir: "D:/desktop-out",
+      warningPolicy: "block",
     }, storage);
 
     const saved = JSON.parse(storage.data[EXPORT_PREFS_STORAGE_KEY]);
@@ -110,6 +129,7 @@ describe("saveExportPrefs", () => {
       target: "web",
       webCustomOutDir: "D:/web-out",
       desktopCustomOutDir: "D:/desktop-out",
+      warningPolicy: "block",
     });
     expect(saved.projects["/other"].runtime).toBe("tauri");
   });

@@ -18,7 +18,7 @@ import {
   type DesktopBuildResult,
 } from "../../lib/tauri";
 import type { ProjectData, ProjectIssue } from "../../lib/types";
-import type { ExportTarget } from "../../lib/exportPrefs";
+import type { ExportTarget, WarningPolicy } from "../../lib/exportPrefs";
 import {
   buildFailurePresentation,
   buildStepLabel,
@@ -28,6 +28,7 @@ import {
   groupIssuesBySource,
   RUNTIME_OPTIONS,
   smokeCheckLabel,
+  warningPolicyToBuildFlags,
   WEB_BUILD_STEPS,
 } from "./exportWorkspaceLogic";
 export {
@@ -43,6 +44,7 @@ export {
   preflightBlockReason,
   smokeCheckLabel,
   validateDesktopOutDir,
+  warningPolicyToBuildFlags,
   WEB_BUILD_STEPS,
 } from "./exportWorkspaceLogic";
 export type { BuildFailurePresentation, BuildStepStatus } from "./exportWorkspaceLogic";
@@ -74,8 +76,7 @@ export function ExportWorkspace({
   const {
     target,
     runtime,
-    strict,
-    allowWarnings,
+    warningPolicy,
     copied,
     actionError,
     buildState,
@@ -92,8 +93,7 @@ export function ExportWorkspace({
     changeTarget: handleTargetChange,
     changeRuntime: handleRuntimeChange,
     changeOutDir: handleOutDirChange,
-    changeStrict: handleStrictChange,
-    changeAllowWarnings: handleAllowWarningsChange,
+    changeWarningPolicy: handleWarningPolicyChange,
     setCopied,
     setActionError,
   } = useExportWorkspaceState({ project, loadPreflight });
@@ -110,6 +110,8 @@ export function ExportWorkspace({
   const handleBuild = () => {
     if (building || outDirError || blockReason) return;
     setActionError(null);
+    // 单一警告策略 → 构建请求双 flag（Spec 33 E9）；allow 不带警告闸门。
+    const { strict, allowWarnings } = warningPolicyToBuildFlags(warningPolicy);
     const request = {
       projectPath: project.path,
       outDir: effectiveOutDir,
@@ -268,20 +270,19 @@ export function ExportWorkspace({
 
         <div style={fieldGroupStyle}>
           <span style={fieldLabelStyle}>{t("export.advanced")}</span>
-          <CheckboxField
-            label={t("export.strict")}
-            description={t("export.strictDescription")}
-            checked={strict}
-            disabled={building}
-            onChange={handleStrictChange}
-          />
-          <CheckboxField
-            label={t("export.allowWarnings")}
-            description={t("export.allowWarningsDescription")}
-            checked={allowWarnings}
-            disabled={building}
-            onChange={handleAllowWarningsChange}
-          />
+          {/* Spec 33 E9：两个矛盾复选框合并为单一警告策略。 */}
+          <label style={policyFieldStyle}>
+            <span style={fieldLabelStyle}>{t("export.warningPolicy")}</span>
+            <select
+              value={warningPolicy}
+              onChange={(event) => handleWarningPolicyChange(event.target.value as WarningPolicy)}
+              disabled={building}
+              style={policySelectStyle}
+            >
+              <option value="block">{t("export.warningPolicyBlock")}</option>
+              <option value="allow">{t("export.warningPolicyAllow")}</option>
+            </select>
+          </label>
         </div>
 
         {errorCount > 0 && (
@@ -750,35 +751,6 @@ function TargetCard({
   );
 }
 
-function CheckboxField({
-  label,
-  description,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label style={checkboxRowStyle}>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span>
-        <span style={checkboxLabelStyle}>{label}</span>
-        <span style={hintTextStyle}>{description}</span>
-      </span>
-    </label>
-  );
-}
-
 // ──────────────────────────────────────────────
 // 样式（沿用 ProjectSettings 的设计变量）
 // ──────────────────────────────────────────────
@@ -1063,17 +1035,21 @@ const issueItemStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const checkboxRowStyle: CSSProperties = {
+// Spec 33 E9：警告策略下拉（与 ProjectSettings 的 select 风格一致）
+const policyFieldStyle: CSSProperties = {
   display: "flex",
-  alignItems: "flex-start",
-  gap: "var(--space-2)",
+  flexDirection: "column",
+  gap: "var(--space-1)",
 };
 
-const checkboxLabelStyle: CSSProperties = {
-  display: "block",
-  fontSize: "var(--text-sm)",
-  fontWeight: 600,
-  color: "var(--text-primary)",
+const policySelectStyle: CSSProperties = {
+  maxWidth: 320,
+  padding: "var(--space-2)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-input)",
+  background: "var(--bg-inset)",
+  color: "var(--text-bright)",
+  fontSize: "var(--text-base)",
 };
 
 const preflightPanelStyle: CSSProperties = {
