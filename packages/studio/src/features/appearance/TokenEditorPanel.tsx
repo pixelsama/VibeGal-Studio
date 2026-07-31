@@ -3,8 +3,18 @@
  *
  * raw token 留在项目里；未覆盖字段显示 renderer 公开默认值。每个已偏离默认的
  * 字段都可以独立恢复，不触碰同 skin 的其它值。
+ *
+ * Spec 33 §6.4：分组级折叠收敛默认可见集——默认展开核心四组
+ * （dialogueBox/nameBox/choiceBox/stage），其余组折叠；折叠偏好持久化在
+ * localStorage（只存与默认集的差异），跨会话保留。
  */
+import { useState } from "react";
 import { useStudioI18n, type StudioTranslator } from "../../lib/i18n";
+import {
+  effectiveAppearanceGroupCollapsed,
+  loadAppearanceGroupPrefs,
+  updateAppearanceGroupPref,
+} from "../../lib/appearanceGroupPrefs";
 import {
   APPEARANCE_TOKEN_GROUPS,
   effectiveTokenValue,
@@ -33,12 +43,23 @@ const GEOMETRY_FIELDS = new Set(["x", "y", "width", "height"]);
 export function TokenEditorPanel({
   tokens,
   defaults,
-  fontFamilies,
+  fontFamilies = [],
   disabled = false,
   groups = APPEARANCE_TOKEN_GROUPS,
   onEdit,
 }: TokenEditorPanelProps) {
   const { t } = useStudioI18n();
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>(
+    () => loadAppearanceGroupPrefs().collapsedOverrides,
+  );
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedOverrides((current) => {
+      const collapsed = !effectiveAppearanceGroupCollapsed(groupId, current);
+      updateAppearanceGroupPref(groupId, collapsed);
+      return { ...current, [groupId]: collapsed };
+    });
+  };
 
   return (
     <div style={panelStyle}>
@@ -51,8 +72,14 @@ export function TokenEditorPanel({
         const primary = group.fields.filter((field) => !isAdvancedField(field));
         const advanced = group.fields.filter(isAdvancedField);
         return (
-          <section key={group.id} style={groupStyle} aria-label={group.title}>
-            <div style={groupTitleStyle}>{group.title}</div>
+          <details
+            key={group.id}
+            style={groupStyle}
+            open={!effectiveAppearanceGroupCollapsed(group.id, collapsedOverrides)}
+            aria-label={group.title}
+            onToggle={() => toggleGroup(group.id)}
+          >
+            <summary style={groupTitleStyle}>{group.title}</summary>
             {primary.map((field) => (
               <TokenField
                 key={field.key}
@@ -88,7 +115,7 @@ export function TokenEditorPanel({
                 </div>
               </details>
             )}
-          </section>
+          </details>
         );
       })}
     </div>
@@ -259,7 +286,8 @@ function isAdvancedField(field: TokenFieldDef): boolean {
 
 const panelStyle: React.CSSProperties = { padding: "var(--space-3)" };
 const groupStyle: React.CSSProperties = { marginBottom: "var(--space-4)" };
-const groupTitleStyle: React.CSSProperties = { marginBottom: "var(--space-2)", paddingBottom: "var(--space-1)", borderBottom: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "var(--text-sm)", fontWeight: 650 };
+// summary 默认行内盒子：显式块级让标题分隔线撑满组宽，cursor 提示可折叠。
+const groupTitleStyle: React.CSSProperties = { display: "block", cursor: "pointer", marginBottom: "var(--space-2)", paddingBottom: "var(--space-1)", borderBottom: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "var(--text-sm)", fontWeight: 650 };
 const fieldRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", alignItems: "start", gap: "var(--space-2)", marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" };
 const fieldLabelStyle: React.CSSProperties = { paddingTop: 5, overflow: "hidden", color: "var(--text-primary)", fontWeight: 550, textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const fieldControlStyle: React.CSSProperties = { minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "var(--space-1)" };
