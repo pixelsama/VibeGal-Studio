@@ -56,81 +56,92 @@ export async function runStudioBrowserBenchmark({
       await heapSampler;
     };
 
-    await cdp.send("Page.navigate", { url: studioUrl });
-    await cdp.waitFor("Page.loadEventFired", () => true, 15_000);
-    await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
-    const workspaceStarted = performance.now();
-    await clickButtonContaining(cdp, ["VibeGal Scale Benchmark"]);
-    // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
-    // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
-    await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => ['脚本', 'Script'].includes(candidate.textContent.trim()) && !candidate.disabled)", 60_000);
-    const workspaceInteractiveMs = performance.now() - workspaceStarted;
-    await sampleHeap();
+    const measure = async () => {
+      await cdp.send("Page.navigate", { url: studioUrl });
+      await cdp.waitFor("Page.loadEventFired", () => true, 15_000);
+      await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
+      const workspaceStarted = performance.now();
+      await clickButtonContaining(cdp, ["VibeGal Scale Benchmark"]);
+      // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
+      // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
+      await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => ['脚本', 'Script'].includes(candidate.textContent.trim()) && !candidate.disabled)", 60_000);
+      const workspaceInteractiveMs = performance.now() - workspaceStarted;
+      await sampleHeap();
+      logStep("workspace-interactive");
 
-    const graphStarted = performance.now();
-    await clickButton(cdp, ["脚本", "Script"]);
-    await waitForExpression(cdp, "document.querySelector('.react-flow')", 15_000);
-    const graphInteractiveMs = performance.now() - graphStarted;
-    await sampleHeap();
+      const graphStarted = performance.now();
+      await clickButton(cdp, ["脚本", "Script"]);
+      await waitForExpression(cdp, "document.querySelector('.react-flow')", 15_000);
+      const graphInteractiveMs = performance.now() - graphStarted;
+      await sampleHeap();
+      logStep("graph-interactive");
 
-    const nodeScroll = await measureNodeListScroll(cdp);
-    await sampleHeap();
-    const save = await measureSingleNodeSave(cdp, sampleHeap);
+      const nodeScroll = await measureNodeListScroll(cdp);
+      await sampleHeap();
+      logStep("node-list-scroll");
+      const save = await measureSingleNodeSave(cdp, sampleHeap);
+      logStep("single-node-edit-save");
 
-    const assetsStarted = performance.now();
-    await clickButton(cdp, ["资产", "Assets"]);
-    await waitForExpression(cdp, "document.querySelector('[role=grid][aria-label=\"资产列表\"]')", 15_000);
-    const assetsFirstRenderMs = performance.now() - assetsStarted;
-    await sampleHeap();
-    const assetState = await inspectAssetGrid(cdp);
-    const assetSearch = await measureAssetSearch(cdp, sampleHeap);
+      const assetsStarted = performance.now();
+      await clickButton(cdp, ["资产", "Assets"]);
+      await waitForExpression(cdp, "document.querySelector('[role=grid][aria-label=\"资产列表\"]')", 15_000);
+      const assetsFirstRenderMs = performance.now() - assetsStarted;
+      await sampleHeap();
+      const assetState = await inspectAssetGrid(cdp);
+      logStep("assets-first-render");
+      const assetSearch = await measureAssetSearch(cdp, sampleHeap);
+      logStep("asset-search-input");
 
-    const jsHeapUsedBytes = await sampleHeap();
-    await stopHeapSampling();
-    stopHeapSampling = async () => {};
+      const jsHeapUsedBytes = await sampleHeap();
+      await stopHeapSampling();
+      stopHeapSampling = async () => {};
 
-    return {
-      status: "completed",
-      browser: {
-        name: "Google Chrome",
-        version: page.browserVersion,
-        viewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
-      },
-      measurements: {
-        workspaceInteractiveMs: round(workspaceInteractiveMs),
-        assetsFirstRenderMs: round(assetsFirstRenderMs),
-        assetSearchInputP95Ms: round(percentile(assetSearch.samples, 0.95)),
-        nodeListScrollP95FrameMs: round(percentile(nodeScroll.frames, 0.95)),
-        graphInteractiveMs: round(graphInteractiveMs),
-        singleNodeEditSaveP95Ms: round(percentile(save.samples, 0.95)),
-        peakJsHeapBytes,
-        jsHeapUsedBytes,
-      },
-      assertions: {
-        workspaceInteractive: workspaceInteractiveMs <= 3_000,
-        assetsFirstRender: assetsFirstRenderMs <= 1_000,
-        assetSearchInput: percentile(assetSearch.samples, 0.95) <= 100,
-        nodeListScroll: percentile(nodeScroll.frames, 0.95) <= 32,
-        graphInteractive: graphInteractiveMs <= 2_000,
-        singleNodeEditSave: percentile(save.samples, 0.95) <= 150,
-        assetDomBounded: assetState.mountedCards <= 80,
-        assetCardsDoNotOverlap: assetState.overlapPairs === 0,
-        assetGridAccessible: assetState.rowCount > 0 && assetState.columnCount > 0,
-      },
-      details: {
-        assetSearchSamplesMs: assetSearch.samples.map(round),
-        assetSearchWarmupMs: round(assetSearch.warmupMs),
-        nodeScrollFramesMs: nodeScroll.frames.map(round),
-        nodeScrollMountedOptions: nodeScroll.mountedOptions,
-        singleNodeSaveSamplesMs: save.samples.map(round),
-        singleNodeSaveWarmupSamplesMs: save.warmupSamplesMs.map(round),
-        assetMountedCards: assetState.mountedCards,
-        assetGridRows: assetState.rowCount,
-        assetGridColumns: assetState.columnCount,
-        assetOverlapPairs: assetState.overlapPairs,
-        commands: await readInvokeStats(cdp),
-      },
+      return {
+        status: "completed",
+        browser: {
+          name: "Google Chrome",
+          version: page.browserVersion,
+          viewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
+        },
+        measurements: {
+          workspaceInteractiveMs: round(workspaceInteractiveMs),
+          assetsFirstRenderMs: round(assetsFirstRenderMs),
+          assetSearchInputP95Ms: round(percentile(assetSearch.samples, 0.95)),
+          nodeListScrollP95FrameMs: round(percentile(nodeScroll.frames, 0.95)),
+          graphInteractiveMs: round(graphInteractiveMs),
+          singleNodeEditSaveP95Ms: round(percentile(save.samples, 0.95)),
+          peakJsHeapBytes,
+          jsHeapUsedBytes,
+        },
+        assertions: {
+          workspaceInteractive: workspaceInteractiveMs <= 3_000,
+          assetsFirstRender: assetsFirstRenderMs <= 1_000,
+          assetSearchInput: percentile(assetSearch.samples, 0.95) <= 100,
+          nodeListScroll: percentile(nodeScroll.frames, 0.95) <= 32,
+          graphInteractive: graphInteractiveMs <= 2_000,
+          singleNodeEditSave: percentile(save.samples, 0.95) <= 150,
+          assetDomBounded: assetState.mountedCards <= 80,
+          assetCardsDoNotOverlap: assetState.overlapPairs === 0,
+          assetGridAccessible: assetState.rowCount > 0 && assetState.columnCount > 0,
+        },
+        details: {
+          assetSearchSamplesMs: assetSearch.samples.map(round),
+          assetSearchWarmupMs: round(assetSearch.warmupMs),
+          nodeScrollFramesMs: nodeScroll.frames.map(round),
+          nodeScrollMountedOptions: nodeScroll.mountedOptions,
+          singleNodeSaveSamplesMs: save.samples.map(round),
+          singleNodeSaveWarmupSamplesMs: save.warmupSamplesMs.map(round),
+          assetMountedCards: assetState.mountedCards,
+          assetGridRows: assetState.rowCount,
+          assetGridColumns: assetState.columnCount,
+          assetOverlapPairs: assetState.overlapPairs,
+          commands: await readInvokeStats(cdp),
+        },
+      };
     };
+    // 全局兜底：任何一处 await 挂死（页面 Promise 不 settle / CDP 无响应）时，
+    // 在 watchdog 时限内失败并走 finally 清理 Chrome，而不是占满 job 超时。
+    return await Promise.race([measure(), watchdogRejection(watchdogMs())]);
   } finally {
     await stopHeapSampling().catch(() => {});
     cdp?.close();
@@ -327,8 +338,13 @@ async function installBenchmarkBridge(cdp, data) {
 }
 
 async function measureNodeListScroll(cdp) {
-  const result = await evaluate(cdp, retainedPromise(`(resolve) => {
+  // 规模基准项目节点多，章节大纲可能滞后于 .react-flow 出现：先等选项挂载，
+  // 否则下方 executor 在 rAF 里对 null 操作会静默 pending（Promise 永不 settle）。
+  await waitForExpression(cdp, "document.querySelector('[role=listbox][aria-label=\"章节节点\"] [role=option]')", 15_000);
+  const result = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
     const list = document.querySelector('[role=listbox][aria-label="章节节点"]');
+    if (!list) { reject(new Error('node outline listbox not found')); return; }
+    const timer = setTimeout(() => reject(new Error('node list scroll frames did not complete within 10s')), 10_000);
     const frames = [];
     let remaining = 32;
     let previous = null;
@@ -338,7 +354,7 @@ async function measureNodeListScroll(cdp) {
       list.scrollTop = remaining % 2 ? list.scrollHeight : 0;
       list.dispatchEvent(new Event('scroll', { bubbles: true }));
       remaining -= 1;
-      if (remaining <= 0) requestAnimationFrame(() => resolve({ frames: frames.slice(8), mountedOptions: list.querySelectorAll('[role=option]').length }));
+      if (remaining <= 0) requestAnimationFrame(() => { clearTimeout(timer); resolve({ frames: frames.slice(8), mountedOptions: list.querySelectorAll('[role=option]').length }); });
       else requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
@@ -645,6 +661,25 @@ export function retainedPromise(executorSource) {
     promise.then(release, release);
     return promise;
   })()`;
+}
+
+/** 场景进度日志：CI 上挂死/超时时能直接看到卡在哪个场景。 */
+function logStep(scenario) {
+  process.stderr.write(`[benchmark] scenario done: ${scenario} (${Math.round(performance.now())}ms)\n`);
+}
+
+/** 测量阶段全局兜底时限：默认 10 分钟，VIBEGAL_BENCHMARK_WATCHDOG_MS 可覆盖。 */
+function watchdogMs() {
+  const raw = Number(process.env.VIBEGAL_BENCHMARK_WATCHDOG_MS);
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 600_000;
+}
+
+function watchdogRejection(ms) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(
+      `benchmark watchdog fired after ${ms}ms — 某个页面 Promise 未 settle 或 CDP 无响应（见上方 scenario 进度）`,
+    )), ms).unref?.();
+  });
 }
 
 export function isTransientCdpError(error) {
