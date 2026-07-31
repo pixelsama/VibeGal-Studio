@@ -448,7 +448,10 @@ async function readInvokeStats(cdp) {
   return evaluate(cdp, "window.__VIBEGAL_BENCHMARK__.stats");
 }
 
+// 点击前先轮询等待按钮出现（最多 15s）：CI 上页面挂载晚于等待条件时，
+// 盲点一次会误报 button not found（时序竞态）。
 async function clickButtonContaining(cdp, label) {
+  await waitForExpression(cdp, `[...document.querySelectorAll('button')].some((candidate) => candidate.textContent.includes(${JSON.stringify(label)}) && !candidate.disabled)`, 15_000);
   const clicked = await evaluate(cdp, `(() => {
     const button = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent.includes(${JSON.stringify(label)}) && !candidate.disabled);
     if (!button) return false;
@@ -459,6 +462,7 @@ async function clickButtonContaining(cdp, label) {
 }
 
 async function clickButton(cdp, label) {
+  await waitForExpression(cdp, `[...document.querySelectorAll('button')].some((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)} && !candidate.disabled)`, 15_000);
   const clicked = await evaluate(cdp, `(() => {
     const button = [...document.querySelectorAll('button')].find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)} && !candidate.disabled);
     if (!button) return false;

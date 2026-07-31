@@ -30,7 +30,10 @@ await writeFile(path.join(artifacts, "desktop/build.json"), `${JSON.stringify({
 process.stdout.write(`${JSON.stringify({ ok: true, binary })}\n`);
 
 function run({ command, args, cwd }) {
-  const result = spawnSync(command, args, { cwd, env: process.env, stdio: "inherit" });
+  // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，须经 shell 解释。
+  const isPnpmOnWindows = process.platform === "win32" && command === "pnpm";
+  const executable = isPnpmOnWindows ? "pnpm.cmd" : command;
+  const result = spawnSync(executable, args, { cwd, env: process.env, stdio: "inherit", shell: isPnpmOnWindows });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

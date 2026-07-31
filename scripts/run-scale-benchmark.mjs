@@ -123,9 +123,11 @@ async function runBrowserHarness({ project, requireBrowser }) {
   }
 
   const studioDir = path.join(root, "packages/studio");
-  const build = spawnSync("pnpm", ["--filter", "@vibegal/studio", "build"], {
+  // Windows 上 pnpm 是 .cmd 批处理：spawnSync 直接执行会 EINVAL，须经 shell 解释。
+  const build = spawnSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["--filter", "@vibegal/studio", "build"], {
     cwd: root,
     encoding: "utf8",
+    shell: process.platform === "win32",
   });
   if (build.status !== 0) throw new Error(build.stderr || build.stdout);
 
