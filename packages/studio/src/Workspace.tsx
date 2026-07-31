@@ -612,6 +612,7 @@ export function Workspace({
             onReplaceWithGraph={() => replaceLocationWithGuard({ type: "script-graph" })}
             onSaved={handleSaved}
             onDirtyChange={setHasUnsavedChanges}
+            onOpenShortcutsHelp={() => setShortcutsHelpOpen(true)}
           />
         )}
         {workspace === "assets" && (

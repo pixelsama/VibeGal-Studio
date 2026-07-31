@@ -93,6 +93,8 @@ interface Props {
   onReplaceWithGraph: () => void;
   onSaved: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Spec 33 E6：画布右键菜单「快捷键与命令」入口。 */
+  onOpenShortcutsHelp?: () => void;
 }
 
 export type ScriptWorkspaceLocation =
@@ -113,6 +115,7 @@ export function ScriptWorkspace({
   onReplaceWithGraph,
   onSaved,
   onDirtyChange,
+  onOpenShortcutsHelp,
 }: Props) {
   const { t } = useStudioI18n();
   const view = location.view;
@@ -958,6 +961,7 @@ export function ScriptWorkspace({
                   onSetEntry={handleSetEntry}
                   onManageEnding={handleManageEnding}
                   onAutoLayout={handleAutoLayout}
+                  onOpenShortcutsHelp={onOpenShortcutsHelp}
                 />
               </div>
             </div>
