@@ -38,18 +38,31 @@ try {
 process.exit(exitCode);
 
 async function runWdio({ projectPath, projectName, initialTitle, artifacts: artifactsDir }) {
-  const executable = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const child = spawn(executable, ["exec", "wdio", "run", "qa/agent/wdio.conf.mjs"], {
-    cwd: root,
-    env: {
-      ...process.env,
-      VIBEGAL_AGENT_QA_PROJECT: projectPath,
-      VIBEGAL_AGENT_QA_PROJECT_NAME: projectName,
-      VIBEGAL_AGENT_QA_INITIAL_TITLE: initialTitle,
-      VIBEGAL_AGENT_QA_ARTIFACTS: artifactsDir,
-    },
-    stdio: "inherit",
-  });
+  // Windows 上 pnpm 是 .cmd 批处理：spawn 直接执行会 EINVAL，经 cmd.exe 解释。
+  const isPnpmOnWindows = process.platform === "win32";
+  const child = isPnpmOnWindows
+    ? spawn("cmd.exe", ["/d", "/s", "/c", "pnpm", "exec", "wdio", "run", "qa/agent/wdio.conf.mjs"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          VIBEGAL_AGENT_QA_PROJECT: projectPath,
+          VIBEGAL_AGENT_QA_PROJECT_NAME: projectName,
+          VIBEGAL_AGENT_QA_INITIAL_TITLE: initialTitle,
+          VIBEGAL_AGENT_QA_ARTIFACTS: artifactsDir,
+        },
+        stdio: "inherit",
+      })
+    : spawn("pnpm", ["exec", "wdio", "run", "qa/agent/wdio.conf.mjs"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          VIBEGAL_AGENT_QA_PROJECT: projectPath,
+          VIBEGAL_AGENT_QA_PROJECT_NAME: projectName,
+          VIBEGAL_AGENT_QA_INITIAL_TITLE: initialTitle,
+          VIBEGAL_AGENT_QA_ARTIFACTS: artifactsDir,
+        },
+        stdio: "inherit",
+      });
   return new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => resolve(code ?? 1));

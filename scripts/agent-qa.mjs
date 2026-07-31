@@ -97,16 +97,29 @@ async function runStep(step) {
   process.stdout.write(`\n[agent-qa] ${step.id}: ${[command, ...args].join(" ")}\n`);
   let output = "";
   let timedOut = false;
-  const child = spawn(platformCommand(command), args, {
-    cwd: root,
-    env: {
-      ...process.env,
-      VIBEGAL_AGENT_QA: "1",
-      VIBEGAL_AGENT_QA_ARTIFACTS: artifactsDir,
-      VIBEGAL_AGENT_QA_RUN_ID: runId,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  // Windows 上 pnpm 是 .cmd 批处理：spawn 直接执行会 EINVAL，经 cmd.exe 解释。
+  const isPnpmOnWindows = process.platform === "win32" && (command === "pnpm" || command === "pnpm.cmd");
+  const child = isPnpmOnWindows
+    ? spawn("cmd.exe", ["/d", "/s", "/c", "pnpm", ...args], {
+        cwd: root,
+        env: {
+          ...process.env,
+          VIBEGAL_AGENT_QA: "1",
+          VIBEGAL_AGENT_QA_ARTIFACTS: artifactsDir,
+          VIBEGAL_AGENT_QA_RUN_ID: runId,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+    : spawn(platformCommand(command), args, {
+        cwd: root,
+        env: {
+          ...process.env,
+          VIBEGAL_AGENT_QA: "1",
+          VIBEGAL_AGENT_QA_ARTIFACTS: artifactsDir,
+          VIBEGAL_AGENT_QA_RUN_ID: runId,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
   const append = (chunk, destination) => {
     const text = chunk.toString();
     output += text;
@@ -188,7 +201,7 @@ async function writeReport() {
 }
 
 function platformCommand(command) {
-  return process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
+  return process.platform === "win32" && (command === "pnpm" || command === "pnpm.cmd") ? "pnpm.cmd" : command;
 }
 
 function compactTimestamp(value) {
