@@ -70,7 +70,7 @@ async function editAndValidate() {
   assert.equal(validation.code, 0, formatProcessFailure("validate", validation));
   const output = parseJsonDocument(validation, "vibegal-cli validate");
   assertValidateOutput(output);
-  assert.equal(output.projectPath, await realpath(projectPath));
+  assert.equal(await realpath(output.projectPath), await realpath(projectPath));
   assert.deepEqual(await snapshotProject(projectPath), beforeValidation);
 
   await writeArtifact(paths.cliReport, {
@@ -231,7 +231,17 @@ async function openProjectInStudio(expectedTitle = initialTitle) {
     "信任并运行项目界面风格",
     "Trust and run project interface style",
   ]);
-  if (await trust.isExisting()) await trust.click();
+  await browser.waitUntil(async () => {
+    const body = await browser.$("body").getText();
+    return await trust.isExisting() || ["开始游戏", "Start game"].some((text) => body.includes(text));
+  }, {
+    timeout: 20_000,
+    timeoutMsg: "project preview did not reach the trust prompt or title screen",
+  });
+  if (await trust.isExisting()) {
+    await trust.waitForClickable();
+    await trust.click();
+  }
   await waitForAnyBodyText(["开始游戏", "Start game"]);
 }
 

@@ -30,6 +30,8 @@ pnpm qa:agent:release -- --only browser-behavior
 
 定点复测不会隐式重跑被省略的依赖；例如单独重跑 `desktop-authoring-loop` 前，应确认专用 debug 二进制已经由 `desktop-agent-build` 成功构建。查看计划而不执行可使用 `--list` 或 `--dry-run`，自定义证据目录可使用 `--artifacts <dir>`。
 
+桌面 runner 会校验 `desktop-agent-build` 写入的 binary SHA-256 指纹。若先执行普通 `pnpm build` 或其他 Tauri 构建覆盖了 debug binary，runner 会在启动 WebDriver 前直接提示重新执行 `node qa/agent/build-desktop.mjs`，而不会把普通 binary 当作 QA binary 启动。
+
 桌面长链可以按场景独立复测。实现代码可以并行维护，但真实 Tauri 场景必须串行运行，每个场景都有独立临时项目、应用进程和证据目录：
 
 ```bash
@@ -76,6 +78,8 @@ pnpm qa:agent:desktop -- --scenario validation-export
 默认会删除临时项目。排查失败时设置 `VIBEGAL_AGENT_QA_KEEP_FIXTURE=1` 可保留它；设置 `VIBEGAL_AGENT_QA_LOG_LEVEL=info` 可临时打开底层协议日志。正常运行默认使用 `warn`，避免 WebDriver 协议细节淹没测试结论。
 
 当前固定的 `@wdio/tauri-service` 1.1 在 embedded provider 已成功启动时，仍可能打印一次找不到外部 `tauri-driver` 的诊断，并在会话关闭后打印 mock/window 清理 warning。这两类上游生命周期噪声不会改变场景、JUnit 或 Runner 的退出码，也不表示管线依赖外部 driver；不要因此安装 `tauri-driver`。若场景没有进入 `RUNNING`/`PASSED` 或摘要不是 `passed`，才按真实失败处理。1.2 版本目前存在已发布包导出不兼容，升级前必须先跑完整 desktop 套件。
+
+每个 phase 默认动态申请独立的本地 WebDriver 端口，并同时设置 `VIBEGAL_AGENT_QA_WEBDRIVER_PORT` 与 `TAURI_WEBDRIVER_PORT`。后者是 DirectEval 客户端读取的变量；两者必须一致，否则 `browser.tauri.execute()` 可能连接到默认端口上的残留 Tauri 进程。启动后 runner 还会验证 `window.__TAURI__.core.invoke`、原始 core、`window.wdioTauri` 以及 `plugin:wdio|get_active_window_label` 握手。
 
 ## 证据和退出码
 
