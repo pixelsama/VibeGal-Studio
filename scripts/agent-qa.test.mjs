@@ -9,12 +9,16 @@ import {
   renderAgentQaHtml,
   selectAgentQaPlan,
 } from "./agent-qa-core.mjs";
+import { DESKTOP_SCENARIO_IDS } from "../qa/agent/desktop-qa-core.mjs";
 
 test("Agent QA exposes deterministic quick, desktop, package, and release suites", () => {
   assert.equal(parseAgentQaArgs([]).suite, "quick");
   assert.equal(parseAgentQaArgs(["--suite", "desktop"]).suite, "desktop");
   assert.equal(parseAgentQaArgs(["--", "--suite", "desktop"]).suite, "desktop");
+  assert.equal(parseAgentQaArgs([]).scenario, null);
+  assert.equal(parseAgentQaArgs(["--suite", "desktop", "--scenario", "core-authoring"]).scenario, "core-authoring");
   assert.throws(() => parseAgentQaArgs(["--suite", "unknown"]), /unknown Agent QA suite/i);
+  assert.throws(() => parseAgentQaArgs(["--scenario"]), /--scenario requires a value/i);
 
   assert.deepEqual(
     buildAgentQaPlan("quick").map((step) => step.id),
@@ -30,10 +34,28 @@ test("Agent QA exposes deterministic quick, desktop, package, and release suites
     /not part of the selected suite/i,
   );
   assert.deepEqual(
-    buildAgentQaPlan("desktop").map((step) => step.id),
+    buildAgentQaPlan("desktop", { scenario: null }).map((step) => step.id),
     ["agent-qa-isolation", "desktop-agent-build", "desktop-authoring-loop"],
   );
-  const desktopPlan = buildAgentQaPlan("desktop");
+  assert.ok(DESKTOP_SCENARIO_IDS.includes("desktop-authoring-loop"));
+  assert.ok(DESKTOP_SCENARIO_IDS.includes("core-authoring"));
+  assert.deepEqual(
+    buildAgentQaPlan("desktop", { scenario: "core-authoring" })
+      .find((step) => step.id === "desktop-authoring-loop").command,
+    ["node", "qa/agent/run-desktop.mjs", "--scenario", "core-authoring"],
+  );
+  assert.deepEqual(
+    buildAgentQaPlan("desktop", { artifactsDir: "/tmp/agent-qa", scenario: "core-authoring" })
+      .find((step) => step.id === "desktop-authoring-loop").evidence,
+    [
+      "desktop/scenarios/core-authoring/desktop/scenarios.ndjson",
+      "desktop/scenarios/core-authoring/desktop/junit",
+      "desktop/scenarios/core-authoring/project-before-after.json",
+      "desktop/scenarios/core-authoring/desktop/screenshots",
+      "desktop/scenarios/core-authoring/phases.json",
+    ],
+  );
+  const desktopPlan = buildAgentQaPlan("desktop", { scenario: null });
   assert.deepEqual(desktopPlan[1].evidence, ["desktop/build.json"]);
   assert.deepEqual(desktopPlan[2].evidence, [
     "desktop/scenarios.ndjson",
@@ -47,7 +69,7 @@ test("Agent QA exposes deterministic quick, desktop, package, and release suites
   );
   assert.ok(buildAgentQaPlan("package")[1].evidence.some((item) => item.includes("bundle")));
   assert.deepEqual(
-    buildAgentQaPlan("release").map((step) => step.id),
+    buildAgentQaPlan("release", { scenario: null }).map((step) => step.id),
     [
       "repository-contracts",
       "browser-behavior",
@@ -113,6 +135,23 @@ test("Agent QA reports visual evidence as a required Agent review", () => {
     instructions: "Inspect every screenshot for clipping, overlap, loading states, and visual regressions.",
   }]);
   assert.match(renderAgentQaHtml(report), /Visual review required/);
+});
+
+test("Agent QA recognizes visual evidence in an isolated scenario directory", () => {
+  const report = createAgentQaReport({
+    suite: "desktop",
+    runId: "isolated-visual-review",
+    startedAt: "2026-07-29T12:00:00.000Z",
+    finishedAt: "2026-07-29T12:01:00.000Z",
+    artifactsDir: "/tmp/agent-qa",
+    steps: [{
+      id: "desktop-authoring-loop",
+      status: "passed",
+      evidence: ["desktop/scenarios/core-authoring/desktop/screenshots"],
+    }],
+  });
+
+  assert.equal(report.requiredReviews[0].path, "desktop/scenarios/core-authoring/desktop/screenshots");
 });
 
 test("Agent QA redacts release credentials from logs", () => {
