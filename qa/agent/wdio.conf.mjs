@@ -1,6 +1,8 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
+import { resolveDesktopWebdriverPort } from "./build-desktop-core.mjs";
+
 const root = path.resolve(import.meta.dirname, "../..");
 const artifacts = path.resolve(process.env.VIBEGAL_AGENT_QA_ARTIFACTS ?? path.join(root, "artifacts/agent-qa/standalone"));
 const desktopArtifacts = path.join(artifacts, "desktop");
@@ -14,6 +16,11 @@ const binary = path.join(
 );
 const scenarioId = process.env.VIBEGAL_AGENT_QA_SCENARIO ?? "desktop-authoring-loop";
 const phaseId = process.env.VIBEGAL_AGENT_QA_PHASE ?? "authoring";
+const embeddedPort = resolveDesktopWebdriverPort(process.env);
+// @wdio/tauri-service's DirectEval client reads TAURI_WEBDRIVER_PORT from the
+// WDIO process, while the embedded provider receives embeddedPort separately.
+// Keep both views identical so execute() cannot connect to a stale default port.
+process.env.TAURI_WEBDRIVER_PORT = String(embeddedPort);
 const selectedSpec = process.env.VIBEGAL_AGENT_QA_SPEC
   ? path.resolve(process.env.VIBEGAL_AGENT_QA_SPEC)
   : null;
@@ -34,7 +41,7 @@ export const config = {
   services: [["@wdio/tauri-service", {
     appBinaryPath: binary,
     driverProvider: "embedded",
-    embeddedPort: Number(process.env.VIBEGAL_AGENT_QA_WEBDRIVER_PORT ?? 4445),
+    embeddedPort,
     captureBackendLogs: true,
     captureFrontendLogs: true,
     backendLogLevel: "info",
@@ -64,6 +71,7 @@ export const config = {
   ],
   before: async () => {
     await browser.setWindowSize(1440, 1000);
+    await waitForQaBridge();
   },
   afterTest: async (test, _context, result) => {
     const scenario = {
@@ -87,6 +95,29 @@ export const config = {
     appendFileSync(path.join(desktopArtifacts, "scenarios.ndjson"), `${JSON.stringify(scenario)}\n`, "utf8");
   },
 };
+
+async function waitForQaBridge() {
+  let lastError = "unknown bridge error";
+  await browser.waitUntil(async () => {
+    try {
+      const state = await browser.execute(() => ({
+        tauriInvoke: typeof window.__TAURI__?.core?.invoke === "function",
+        originalCoreInvoke: typeof window.__wdio_original_core__?.invoke === "function",
+        wdioExecute: typeof window.wdioTauri?.execute === "function",
+      }));
+      if (!state.tauriInvoke || !state.originalCoreInvoke || !state.wdioExecute) return false;
+      const label = await browser.tauri.execute(({ core }) => core.invoke("plugin:wdio|get_active_window_label"));
+      return label === "main";
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+  }, {
+    timeout: 30_000,
+    interval: 250,
+    timeoutMsg: `Tauri Agent QA bridge did not become ready on port ${embeddedPort}: ${lastError}`,
+  });
+}
 
 function safeName(value) {
   return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "scenario";

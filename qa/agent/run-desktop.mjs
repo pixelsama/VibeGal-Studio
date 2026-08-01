@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -13,6 +15,12 @@ import {
   parseDesktopArgs,
   resolveDesktopSpec,
 } from "./desktop-qa-core.mjs";
+import {
+  desktopQaBinaryPath,
+  desktopQaBuildMarkerPath,
+  resolveDesktopWebdriverPort,
+  validateDesktopQaBuildMetadata,
+} from "./build-desktop-core.mjs";
 import { prepareAgentQaFixture } from "./fixture.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -26,7 +34,9 @@ const explicitScenario = process.argv.slice(2).includes("--scenario");
 const scenarioArtifacts = desktopArtifactDirectory(artifactsRoot, args.scenario, {
   legacyCompatible: !explicitScenario,
 });
+await assertDesktopQaBinary(root);
 const temporary = await mkdtemp(path.join(os.tmpdir(), `vibegal-agent-qa-${args.scenario}-`));
+const configuredPort = process.env.VIBEGAL_AGENT_QA_WEBDRIVER_PORT ?? process.env.TAURI_WEBDRIVER_PORT;
 await mkdir(scenarioArtifacts, { recursive: true });
 
 let fixture;
@@ -44,6 +54,10 @@ try {
 
   for (const phase of phases) {
     const startedAt = new Date().toISOString();
+    const webdriverPort = configuredPort === undefined
+      ? await allocateDesktopWebdriverPort()
+      : resolveDesktopWebdriverPort(process.env);
+    await assertDesktopWebdriverPortFree(webdriverPort);
     const phaseExitCode = await runWdio({
       projectPath: fixture.projectPath,
       projectParentPath: fixture.projectParentPath,
@@ -58,6 +72,7 @@ try {
       spec: resolveDesktopSpec(root, definition),
       fixtureProfile: args.fixtureProfile,
       legacyCompatible: !explicitScenario,
+      webdriverPort,
     });
     const result = {
       id: phase.id,
@@ -101,6 +116,56 @@ try {
 }
 process.exit(exitCode);
 
+async function assertDesktopQaBinary(projectRoot) {
+  const binary = desktopQaBinaryPath(projectRoot);
+  const marker = desktopQaBuildMarkerPath(binary);
+  try {
+    const [binaryBytes, markerText] = await Promise.all([
+      readFile(binary),
+      readFile(marker, "utf8"),
+    ]);
+    validateDesktopQaBuildMetadata({
+      binary,
+      metadata: JSON.parse(markerText),
+      actualSize: binaryBytes.length,
+      actualSha256: createHash("sha256").update(binaryBytes).digest("hex"),
+    });
+  } catch (error) {
+    if (error instanceof Error && /Desktop Agent QA binary/.test(error.message)) throw error;
+    throw new Error(
+      `Desktop Agent QA binary is not prepared at ${binary}; run node qa/agent/build-desktop.mjs first (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+}
+
+async function allocateDesktopWebdriverPort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen({ host: "127.0.0.1", port: 0 }, resolve);
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : null;
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  if (!port) throw new Error("Unable to allocate a desktop WebDriver port");
+  return port;
+}
+
+async function assertDesktopWebdriverPortFree(port) {
+  await new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    const finish = (error) => {
+      socket.destroy();
+      if (error) reject(error);
+      else resolve();
+    };
+    socket.once("connect", () => finish(new Error(
+      `Desktop WebDriver port ${port} is already in use; stop the stale Tauri/WDIO process or choose another port`,
+    )));
+    socket.once("error", () => finish());
+  });
+}
+
 async function runWdio({
   projectPath,
   projectParentPath,
@@ -112,6 +177,7 @@ async function runWdio({
   spec,
   fixtureProfile,
   legacyCompatible,
+  webdriverPort,
 }) {
   // Windows 上 pnpm 是 .cmd 批处理：spawn 直接执行会 EINVAL，经 cmd.exe 解释。
   const isPnpmOnWindows = process.platform === "win32";
@@ -132,6 +198,8 @@ async function runWdio({
       VIBEGAL_AGENT_QA_PHASE: phase.id,
       VIBEGAL_AGENT_QA_PHASE_INDEX: String(phase.index),
       VIBEGAL_AGENT_QA_FIXTURE_PROFILE: fixtureProfile,
+      VIBEGAL_AGENT_QA_WEBDRIVER_PORT: String(webdriverPort),
+      TAURI_WEBDRIVER_PORT: String(webdriverPort),
       VIBEGAL_AGENT_QA_SPEC: spec,
       VIBEGAL_AGENT_QA_LEGACY_COMPAT: legacyCompatible ? "1" : "0",
     },

@@ -17,7 +17,11 @@ async function bootstrap() {
   // A normal production build replaces this condition with false and removes
   // the dynamic import; check:agent-qa-isolation verifies that boundary.
   if (import.meta.env.VITE_AGENT_QA === "1") {
-    await import("@wdio/tauri-plugin");
+    // Initialize explicitly before mounting React. The package also listens
+    // for DOMContentLoaded, but that leaves a race with the first app render
+    // on a cold WKWebView and can miss the original Tauri core snapshot.
+    const wdioPlugin = await import("@wdio/tauri-plugin");
+    await wdioPlugin.init();
   }
 
   (globalThis as unknown as Record<string, unknown>)[VENDOR_GLOBAL] = {
