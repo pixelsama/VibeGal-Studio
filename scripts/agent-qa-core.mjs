@@ -1,5 +1,17 @@
 import path from "node:path";
 
+import {
+  DESKTOP_SCENARIO_IDS,
+  desktopArtifactDirectory,
+} from "../qa/agent/desktop-qa-core.mjs";
+
+// scripts/agent-qa.mjs intentionally remains a thin, stable orchestrator and
+// does not need a second argument-plumbing change for the desktop selector.
+// Keep the last successfully parsed selector as a compatibility handoff to
+// buildAgentQaPlan; callers that use the core API directly can still pass it
+// explicitly.
+let lastParsedDesktopScenario = null;
+
 export const AGENT_QA_SUITES = Object.freeze(["quick", "desktop", "package", "release"]);
 
 const STEP_DEFINITIONS = Object.freeze({
@@ -71,6 +83,7 @@ export function parseAgentQaArgs(argv) {
     suite: "quick",
     artifactsDir: null,
     only: [],
+    scenario: null,
     dryRun: false,
     list: false,
   };
@@ -82,6 +95,8 @@ export function parseAgentQaArgs(argv) {
       parsed.artifactsDir = path.resolve(requiredValue(argv, ++index, "--artifacts"));
     } else if (argument === "--only") {
       parsed.only = requiredValue(argv, ++index, "--only").split(",").map((value) => value.trim()).filter(Boolean);
+    } else if (argument === "--scenario") {
+      parsed.scenario = requiredValue(argv, ++index, "--scenario");
     } else if (argument === "--dry-run") {
       parsed.dryRun = true;
     } else if (argument === "--list") {
@@ -100,23 +115,37 @@ export function parseAgentQaArgs(argv) {
   if (!AGENT_QA_SUITES.includes(parsed.suite)) {
     throw new Error(`Unknown Agent QA suite: ${parsed.suite}`);
   }
+  if (parsed.scenario !== null) {
+    if (!DESKTOP_SCENARIO_IDS.includes(parsed.scenario)) {
+      throw new Error(`Unknown desktop scenario: ${parsed.scenario}`);
+    }
+    if (!SUITE_STEPS[parsed.suite].includes("desktop-authoring-loop")) {
+      throw new Error(`--scenario requires a suite containing desktop-authoring-loop: ${parsed.suite}`);
+    }
+  }
   const knownSteps = new Set(Object.keys(STEP_DEFINITIONS));
   for (const step of parsed.only) {
     if (!knownSteps.has(step)) throw new Error(`Unknown Agent QA step: ${step}`);
   }
+  lastParsedDesktopScenario = parsed.scenario;
   return parsed;
 }
 
-export function buildAgentQaPlan(suite, { artifactsDir } = {}) {
+export function buildAgentQaPlan(suite, { artifactsDir, scenario = lastParsedDesktopScenario } = {}) {
   if (!AGENT_QA_SUITES.includes(suite)) throw new Error(`Unknown Agent QA suite: ${suite}`);
   return SUITE_STEPS[suite].map((id) => {
     const definition = STEP_DEFINITIONS[id];
+    const command = definition.command.map((part) => part.replace("__ARTIFACTS__", artifactsDir ?? "__ARTIFACTS__"));
+    if (id === "desktop-authoring-loop" && scenario !== null) command.push("--scenario", scenario);
+    const desktopEvidence = id === "desktop-authoring-loop"
+      ? desktopEvidencePaths(artifactsDir, scenario)
+      : definition.evidence ?? [];
     return {
       id,
-      command: definition.command.map((part) => part.replace("__ARTIFACTS__", artifactsDir ?? "__ARTIFACTS__")),
+      command,
       timeoutMs: definition.timeoutMs,
       dependencies: [...(definition.dependencies ?? [])],
-      evidence: [...(definition.evidence ?? [])],
+      evidence: [...desktopEvidence],
     };
   });
 }
@@ -144,10 +173,13 @@ export function createAgentQaReport({
   const hasFailure = steps.some((step) => step.status === "failed" || step.status === "timed-out");
   const hasIncomplete = steps.some((step) => step.status === "skipped" || step.status === "not-run");
   const status = hasFailure ? "failed" : hasIncomplete ? "incomplete" : "passed";
-  const requiredReviews = steps.some((step) => (step.evidence ?? []).includes("desktop/screenshots"))
+  const visualEvidence = steps.flatMap((step) => step.evidence ?? []).find((item) => (
+    item === "desktop/screenshots" || item.endsWith("/desktop/screenshots")
+  ));
+  const requiredReviews = visualEvidence
     ? [{
         kind: "visual",
-        path: "desktop/screenshots",
+        path: visualEvidence,
         status: "pending",
         instructions: "Inspect every screenshot for clipping, overlap, loading states, and visual regressions.",
       }]
@@ -209,7 +241,26 @@ export function renderAgentQaHtml(report) {
 }
 
 export function agentQaHelp() {
-  return `VibeGal Agent QA\n\nUsage:\n  pnpm qa:agent -- --suite <quick|desktop|package|release> [options]\n\nOptions:\n  --artifacts <dir>  Evidence output directory\n  --only <ids>       Run comma-separated step ids\n  --dry-run          Write the plan without running commands\n  --list             Print the selected plan as JSON\n`;
+  return `VibeGal Agent QA\n\nUsage:\n  pnpm qa:agent -- --suite <quick|desktop|package|release> [options]\n\nOptions:\n  --artifacts <dir>  Evidence output directory\n  --only <ids>       Run comma-separated step ids\n  --scenario <id>    Run one isolated desktop scenario\n  --dry-run          Write the plan without running commands\n  --list             Print the selected plan as JSON\n`;
+}
+
+function desktopEvidencePaths(artifactsDir, scenario) {
+  if (scenario === null) {
+    return [...(STEP_DEFINITIONS["desktop-authoring-loop"].evidence ?? [])];
+  }
+  const artifactsBase = path.resolve(artifactsDir ?? "__ARTIFACTS__");
+  const relative = path.relative(
+    artifactsBase,
+    desktopArtifactDirectory(artifactsBase, scenario),
+  ).split(path.sep).join("/");
+  const prefix = relative || ".";
+  return [
+    `${prefix}/desktop/scenarios.ndjson`,
+    `${prefix}/desktop/junit`,
+    `${prefix}/project-before-after.json`,
+    `${prefix}/desktop/screenshots`,
+    `${prefix}/phases.json`,
+  ];
 }
 
 function requiredValue(argv, index, flag) {

@@ -12,12 +12,20 @@ const binary = path.join(
   "packages/studio/src-tauri/target/debug",
   process.platform === "win32" ? "vibegal-studio.exe" : "vibegal-studio",
 );
+const scenarioId = process.env.VIBEGAL_AGENT_QA_SCENARIO ?? "desktop-authoring-loop";
+const phaseId = process.env.VIBEGAL_AGENT_QA_PHASE ?? "authoring";
+const selectedSpec = process.env.VIBEGAL_AGENT_QA_SPEC
+  ? path.resolve(process.env.VIBEGAL_AGENT_QA_SPEC)
+  : null;
+const junitFile = process.env.VIBEGAL_AGENT_QA_LEGACY_COMPAT === "1"
+  ? "agent-qa.xml"
+  : `agent-qa-${safeName(`${scenarioId}-${phaseId}`)}.xml`;
 
 for (const directory of [desktopArtifacts, screenshotDir, junitDir, logDir]) mkdirSync(directory, { recursive: true });
 
 export const config = {
   runner: "local",
-  specs: [path.join(root, "qa/agent/specs/**/*.e2e.mjs")],
+  specs: selectedSpec ? [selectedSpec] : [path.join(root, "qa/agent/specs/**/*.e2e.mjs")],
   maxInstances: 1,
   capabilities: [{
     browserName: "tauri",
@@ -50,7 +58,7 @@ export const config = {
     "spec",
     ["junit", {
       outputDir: junitDir,
-      outputFileFormat: () => "agent-qa.xml",
+      outputFileFormat: () => junitFile,
       addFileAttribute: true,
     }],
   ],
@@ -59,14 +67,16 @@ export const config = {
   },
   afterTest: async (test, _context, result) => {
     const scenario = {
-      id: `${test.parent ?? "Agent QA"} / ${test.title}`,
+      scenario: scenarioId,
+      phase: phaseId,
+      id: `${scenarioId} / ${phaseId} / ${test.parent ?? "Agent QA"} / ${test.title}`,
       status: result.passed ? "passed" : "failed",
       durationMs: result.duration,
       retries: result.retries?.attempts ?? 0,
       ...(result.error ? { error: String(result.error.message ?? result.error) } : {}),
     };
     if (!result.passed) {
-      const screenshot = path.join(screenshotDir, `${safeName(test.title)}-failed.png`);
+      const screenshot = path.join(screenshotDir, `${safeName(`${scenarioId}-${phaseId}-${test.title}`)}-failed.png`);
       try {
         await browser.saveScreenshot(screenshot);
         scenario.screenshot = path.relative(artifacts, screenshot);
