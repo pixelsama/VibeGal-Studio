@@ -136,7 +136,11 @@ export function buildAgentQaPlan(suite, { artifactsDir, scenario = lastParsedDes
   return SUITE_STEPS[suite].map((id) => {
     const definition = STEP_DEFINITIONS[id];
     const command = definition.command.map((part) => part.replace("__ARTIFACTS__", artifactsDir ?? "__ARTIFACTS__"));
-    if (id === "desktop-authoring-loop" && scenario !== null) command.push("--scenario", scenario);
+    if (id === "desktop-authoring-loop" && scenario !== null) {
+      command.push("--scenario", scenario);
+      const fixture = desktopFixtureForScenario(scenario);
+      if (fixture) command.push("--fixture", fixture);
+    }
     const desktopEvidence = id === "desktop-authoring-loop"
       ? desktopEvidencePaths(artifactsDir, scenario)
       : definition.evidence ?? [];
@@ -261,6 +265,10 @@ function desktopEvidencePaths(artifactsDir, scenario) {
     `${prefix}/desktop/screenshots`,
     `${prefix}/phases.json`,
   ];
+}
+
+function desktopFixtureForScenario(scenario) {
+  return scenario === "project-lifecycle" ? "empty-parent" : null;
 }
 
 function requiredValue(argv, index, flag) {

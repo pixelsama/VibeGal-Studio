@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -82,5 +82,27 @@ test("desktop QA fixture roots are independent and persist across phases", async
   } finally {
     await rm(firstTemporary, { recursive: true, force: true });
     await rm(secondTemporary, { recursive: true, force: true });
+  }
+});
+
+test("desktop QA registers every long-chain spec with its phase contract", async () => {
+  const expectedPhases = {
+    "desktop-authoring-loop": ["authoring"],
+    "project-lifecycle": ["create", "reopen"],
+    "core-authoring": ["authoring", "reopen"],
+    "external-collaboration": ["open", "external-edit", "conflict"],
+    "asset-workflow": ["import-and-reference", "repair-reference"],
+    "renderer-appearance": ["edit", "reopen"],
+    "validation-export": ["edit-and-validate", "export"],
+  };
+
+  for (const [scenarioId, phases] of Object.entries(expectedPhases)) {
+    const definition = getDesktopScenarioDefinition(scenarioId);
+    await access(path.join(root, definition.spec));
+    assert.deepEqual(
+      buildDesktopPhasePlan(definition).map((phase) => phase.id),
+      phases,
+      `${scenarioId} should expose its complete phase plan`,
+    );
   }
 });

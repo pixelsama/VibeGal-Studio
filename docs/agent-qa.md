@@ -30,6 +30,19 @@ pnpm qa:agent:release -- --only browser-behavior
 
 定点复测不会隐式重跑被省略的依赖；例如单独重跑 `desktop-authoring-loop` 前，应确认专用 debug 二进制已经由 `desktop-agent-build` 成功构建。查看计划而不执行可使用 `--list` 或 `--dry-run`，自定义证据目录可使用 `--artifacts <dir>`。
 
+桌面长链可以按场景独立复测。实现代码可以并行维护，但真实 Tauri 场景必须串行运行，每个场景都有独立临时项目、应用进程和证据目录：
+
+```bash
+pnpm qa:agent:desktop -- --scenario project-lifecycle
+pnpm qa:agent:desktop -- --scenario core-authoring
+pnpm qa:agent:desktop -- --scenario external-collaboration
+pnpm qa:agent:desktop -- --scenario asset-workflow
+pnpm qa:agent:desktop -- --scenario renderer-appearance
+pnpm qa:agent:desktop -- --scenario validation-export
+```
+
+场景覆盖项目生命周期、核心脚本创作、外部文件协作、资产引用修复、Renderer/外观持久化，以及验证与 Web/Tauri 导出。`project-lifecycle` 使用 `empty-parent` fixture，并保留用户文件 sentinel；当前 embedded WebDriver 无法操作原生目录选择器，因此初始化阶段通过测试专用 IPC 准备选定目录，之后的打开、关闭和重开仍由真实桌面 UI 完成。
+
 ## 套件与覆盖矩阵
 
 | 要求 | 可执行步骤 | 实际边界 | 主要证据 |
@@ -79,6 +92,11 @@ desktop/
   project-before-after.json
   junit/agent-qa.xml
   screenshots/*.png
+  scenarios/<scenario-id>/
+    phases.json
+    project-before-after.json
+    desktop/junit/
+    desktop/screenshots/
 browser/
   scale.json
 ```
