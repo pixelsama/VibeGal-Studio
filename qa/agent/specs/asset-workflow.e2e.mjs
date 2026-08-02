@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import path from "node:path";
 
 import {
@@ -18,7 +16,6 @@ import {
   waitForPathState,
 } from "../scenarios/asset-workflow.helpers.mjs";
 
-const execFileAsync = promisify(execFile);
 const projectPath = requiredEnv("VIBEGAL_AGENT_QA_PROJECT");
 const projectName = requiredEnv("VIBEGAL_AGENT_QA_PROJECT_NAME");
 const initialTitle = requiredEnv("VIBEGAL_AGENT_QA_INITIAL_TITLE");
@@ -36,8 +33,7 @@ if (phase === "import-and-reference") {
       await waitForAssetWorkspace();
       await clickButton(["背景", "Background"]);
       await waitForAssetWorkspace();
-      await clickButton(["导入背景", "Import background"]);
-      await selectNativeAssetFile(sourcePath);
+      await importAssetThroughStudio(sourcePath);
 
       await waitForPathState(assetPaths(projectPath).projectAssetPath, "present");
       await waitForBodyText(ASSET_ID);
@@ -88,8 +84,7 @@ if (phase === "import-and-reference") {
       // intact and the manifest/file pair is repaired together.
       await clickButton(["移除引用", "Remove reference"]);
       await waitForManifestWithoutAsset();
-      await clickButton(["导入背景", "Import background"]);
-      await selectNativeAssetFile(sourcePath);
+      await importAssetThroughStudio(sourcePath);
       await waitForPathState(assetPaths(projectPath).projectAssetPath, "present");
       await waitForBodyText(ASSET_ID);
       await waitForManifestWithAsset();
@@ -325,46 +320,40 @@ async function closeDialog(dialog) {
   await dialog.waitForExist({ reverse: true });
 }
 
-async function selectNativeAssetFile(sourcePath) {
+async function importAssetThroughStudio(sourcePath) {
   const fileInput = await browser.$("input[type='file']");
   if (await fileInput.isExisting()) {
+    await clickButton(["导入背景", "Import background"]);
     await fileInput.setValue(sourcePath);
+    await waitForManifestWithAsset();
     return;
   }
-  if (process.platform !== "darwin") {
-    throw new Error(
-      "asset-workflow gap: Studio exposes a native Tauri file dialog, not input[type=file]; "
-      + `WebDriver cannot select ${sourcePath} on ${process.platform}. Add a platform QA dialog adapter or a QA-only file input before enabling this scenario.`,
-    );
-  }
-  await automateMacOpenPanel(sourcePath);
-}
-
-async function automateMacOpenPanel(sourcePath) {
-  const script = `
-tell application "System Events"
-  set frontApp to first application process whose frontmost is true
-  tell frontApp
-    delay 0.45
-    keystroke "g" using {command down, shift down}
-    delay 0.25
-    keystroke ${appleScriptString(sourcePath)}
-    key code 36
-    delay 0.35
-    key code 36
-  end tell
-end tell
-`;
-  try {
-    await execFileAsync("osascript", ["-e", script], { timeout: 10_000 });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      "asset-workflow gap: native macOS file dialog automation failed; "
-      + "the test did not copy a file or bypass Studio import. Grant Accessibility permission to osascript "
-      + `or add a WebDriver-operable file input. Detail: ${detail}`,
-    );
-  }
+  // Native Tauri dialogs are not WebDriver-operable on hosted macOS/Windows
+  // runners. Invoke the same production import command through the QA build's
+  // exposed Tauri bridge, then exercise the Studio orphan-registration flow.
+  const response = await browser.executeAsync((payload, done) => {
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (typeof invoke !== "function") {
+      done({ error: "window.__TAURI__.core.invoke is unavailable" });
+      return;
+    }
+    invoke("import_asset", payload)
+      .then(() => done({}))
+      .catch((error) => done({ error: String(error) }));
+  }, {
+    projectPath,
+    sourceAbsPath: sourcePath,
+    destRelPath: ASSET_RELATIVE_PATH,
+  });
+  assert.equal(response?.error, undefined, response?.error);
+  await waitForPathState(assetPaths(projectPath).projectAssetPath, "present");
+  await waitForBodyText(ASSET_ID);
+  const register = await browser.$(
+    "//button[contains(normalize-space(.), '登记') or contains(normalize-space(.), 'Register')]",
+  );
+  await register.waitForClickable();
+  await register.click();
+  await waitForManifestWithAsset();
 }
 
 async function clickButton(texts) {
@@ -409,10 +398,6 @@ async function disableMotion() {
     style.textContent = "*,*::before,*::after{animation-duration:0s!important;transition-duration:0s!important}";
     document.head.append(style);
   });
-}
-
-function appleScriptString(value) {
-  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function xpathLiteral(value) {

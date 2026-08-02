@@ -5,13 +5,6 @@ import {
   desktopArtifactDirectory,
 } from "../qa/agent/desktop-qa-core.mjs";
 
-// scripts/agent-qa.mjs intentionally remains a thin, stable orchestrator and
-// does not need a second argument-plumbing change for the desktop selector.
-// Keep the last successfully parsed selector as a compatibility handoff to
-// buildAgentQaPlan; callers that use the core API directly can still pass it
-// explicitly.
-let lastParsedDesktopScenario = null;
-
 export const AGENT_QA_SUITES = Object.freeze(["quick", "desktop", "package", "release"]);
 
 const STEP_DEFINITIONS = Object.freeze({
@@ -127,15 +120,17 @@ export function parseAgentQaArgs(argv) {
   for (const step of parsed.only) {
     if (!knownSteps.has(step)) throw new Error(`Unknown Agent QA step: ${step}`);
   }
-  lastParsedDesktopScenario = parsed.scenario;
   return parsed;
 }
 
-export function buildAgentQaPlan(suite, { artifactsDir, scenario = lastParsedDesktopScenario } = {}) {
+export function buildAgentQaPlan(suite, { artifactsDir, scenario = null } = {}) {
   if (!AGENT_QA_SUITES.includes(suite)) throw new Error(`Unknown Agent QA suite: ${suite}`);
   return SUITE_STEPS[suite].map((id) => {
     const definition = STEP_DEFINITIONS[id];
-    const command = definition.command.map((part) => part.replace("__ARTIFACTS__", artifactsDir ?? "__ARTIFACTS__"));
+    const baseCommand = id === "desktop-authoring-loop" && scenario === null
+      ? ["node", "qa/agent/run-desktop-matrix.mjs"]
+      : definition.command;
+    const command = baseCommand.map((part) => part.replace("__ARTIFACTS__", artifactsDir ?? "__ARTIFACTS__"));
     if (id === "desktop-authoring-loop" && scenario !== null) {
       command.push("--scenario", scenario);
       const fixture = desktopFixtureForScenario(scenario);
@@ -250,7 +245,7 @@ export function agentQaHelp() {
 
 function desktopEvidencePaths(artifactsDir, scenario) {
   if (scenario === null) {
-    return [...(STEP_DEFINITIONS["desktop-authoring-loop"].evidence ?? [])];
+    return ["desktop/scenarios"];
   }
   const artifactsBase = path.resolve(artifactsDir ?? "__ARTIFACTS__");
   const relative = path.relative(
