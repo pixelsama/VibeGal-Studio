@@ -286,7 +286,8 @@ describe("Breadcrumb", () => {
       onBackToGraph: () => {},
     }));
 
-    expect(html).toContain("脚本");
+    expect(html).toContain("剧情");
+    expect(html).not.toContain("脚本");
     expect(html).toContain("流程图");
   });
 });
