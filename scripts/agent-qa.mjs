@@ -32,7 +32,10 @@ if (options.help) {
 const startedAt = new Date();
 const runId = `${compactTimestamp(startedAt)}-${process.pid}`;
 const artifactsDir = options.artifactsDir ?? path.join(root, "artifacts", "agent-qa", runId);
-const fullPlan = buildAgentQaPlan(options.suite, { artifactsDir });
+const fullPlan = buildAgentQaPlan(options.suite, {
+  artifactsDir,
+  scenario: options.scenario,
+});
 const selectedIds = new Set(options.only);
 let plan;
 try {

@@ -6,26 +6,28 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { buildDesktopInvocation } from "./build-desktop-core.mjs";
+import { buildDesktopInvocation, desktopQaBinaryPath, desktopQaBuildMarkerPath } from "./build-desktop-core.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const artifacts = path.resolve(process.env.VIBEGAL_AGENT_QA_ARTIFACTS ?? path.join(root, "artifacts/agent-qa/standalone"));
-const binary = path.join(
-  root,
-  "packages/studio/src-tauri/target/debug",
-  process.platform === "win32" ? "vibegal-studio.exe" : "vibegal-studio",
-);
+const binary = desktopQaBinaryPath(root);
 
 run(buildDesktopInvocation(root));
 
 const bytes = await readFile(binary);
-await mkdir(path.join(artifacts, "desktop"), { recursive: true });
-await writeFile(path.join(artifacts, "desktop/build.json"), `${JSON.stringify({
+const sha256 = createHash("sha256").update(bytes).digest("hex");
+const metadata = {
   schemaVersion: 1,
   flavor: "agent-qa",
   binary,
   size: bytes.length,
-  sha256: createHash("sha256").update(bytes).digest("hex"),
+  sha256,
+};
+await writeFile(desktopQaBuildMarkerPath(binary), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+await mkdir(path.join(artifacts, "desktop"), { recursive: true });
+await writeFile(path.join(artifacts, "desktop/build.json"), `${JSON.stringify({
+  ...metadata,
+  marker: desktopQaBuildMarkerPath(binary),
 }, null, 2)}\n`, "utf8");
 process.stdout.write(`${JSON.stringify({ ok: true, binary })}\n`);
 
