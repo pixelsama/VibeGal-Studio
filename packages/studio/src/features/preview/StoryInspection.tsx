@@ -171,7 +171,7 @@ type NextBranch =
  * 解释当前节点的下一步。
  *
  * 求值走 evaluateGraphConditionResult（与运行时同源），逐子句解释复用
- * storyState 的句子模型，所以预览和脚本不会各有一套解释器。
+ * storyState 的句子模型，所以预览和剧情不会各有一套解释器。
  */
 export function describeNextBranch(
   graph: ProjectGraph | null | undefined,
