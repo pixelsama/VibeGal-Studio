@@ -13,6 +13,10 @@ dist/
 website/
 promo/
 
+# ── 本地工具工作目录 ──────────────────
+.workbuddy/
+.zcode/
+
 # ── Tauri / Rust ─────────────────────
 # Rust 编译产物（很大，绝不提交）
 src-tauri/target/
