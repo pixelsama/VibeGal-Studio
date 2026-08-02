@@ -195,7 +195,7 @@ export async function openNodeEditor(nodeTitle = CORE_AUTHORING_NEW_NODE_ID) {
 
 export async function authorNodeInstructions(textarea) {
   await textarea.setValue(CORE_AUTHORING_TEXT);
-  await waitForBodyText("未保存");
+  await waitForAnyBodyText(["未保存", "Unsaved"]);
   const save = await buttonByTexts(["保存", "Save"]);
   await save.waitForClickable();
   await save.click();
