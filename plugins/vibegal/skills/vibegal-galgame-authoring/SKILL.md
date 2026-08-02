@@ -25,12 +25,14 @@ description: 在 VibeGal-Studio galgame 项目（含 gal.project.json 与 conten
 
 1. `nodes_list` / `graph_read` —— 先看清现有结构再动笔
 2. `node_read` —— 读要修改的节点正文
-3. `node_write` —— 覆盖写入**已声明节点**的正文（Instruction[]；身份 id 自动补齐；写后自动复检）
-4. `project_validate` —— 每轮修改后必须重跑，issues 清零才算完成
+3. `graph_write` —— 新增节点（到已声明章节）或连线、删除连线；白名单式，不删除节点/章节
+4. `node_write` —— 覆盖写入节点正文（Instruction[]；身份 id 自动补齐；写后自动复检）
+5. `project_validate` —— 每轮修改后必须重跑，issues 清零才算完成
 
 ## 硬性边界
 
-- `node_write` 只能写 `graph.json` 中已声明的节点文件。**新增/删除节点、连线、章节属于图结构修改**：当前 MCP 工具集不提供图写入，应提示用户在 VibeGal-Studio 图编辑中操作，而不是直接手改 graph.json。
+- 新增节点两步走：先 `graph_write.addNodes` 注册图结构，再 `node_write` 填正文；`node_write` 只能写 `graph.json` 中已声明的节点文件。
+- `graph_write` 只允许新增节点/连线与删除连线；删除节点或章节是破坏性操作，请提示用户在 VibeGal-Studio 图编辑中做。
 - `renderers/` 下的代码修改前必须先读 renderer-contract.md，改完跑 `vibegal-cli renderer-check`。
 - 资产生效前要在 manifest 登记；不要引用不存在的资产路径，最后用 `project_validate` 兜底。
 

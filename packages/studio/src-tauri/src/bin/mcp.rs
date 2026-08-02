@@ -154,6 +154,50 @@ fn tools_list() -> Value {
                     "required": ["path", "instructions"],
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "graph_write",
+                "description": "白名单式修改 content/graph.json 的图结构：addNodes 新增节点到已声明章节、addEdges 新增连线（from/to 必须是已存在节点，mode 缺省 linear）、removeEdges 删除连线。不允许删除节点或章节——那是破坏性操作，请提示用户在 Studio 图编辑中做。写后自动重新校验，返回最新问题列表。新增节点只注册图结构，节点正文需再调用 node_write 填写。",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "项目根目录" },
+                        "addNodes": {
+                            "type": "array",
+                            "description": "要新增的节点 [{id, title, file, chapterId, position?}]，id 与 file 必须全局唯一，chapterId 必须是已声明章节",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "title": { "type": "string" },
+                                    "file": { "type": "string", "description": "相对 content/ 的节点文件路径，如 nodes/branch.json" },
+                                    "chapterId": { "type": "string" },
+                                    "position": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } }
+                                },
+                                "required": ["id", "title", "file", "chapterId"]
+                            }
+                        },
+                        "addEdges": {
+                            "type": "array",
+                            "description": "要新增的连线 [{id, from, to, mode?, label?, condition?}]，from/to 必须是已存在节点，id 必须唯一",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "from": { "type": "string" },
+                                    "to": { "type": "string" },
+                                    "mode": { "type": "string", "enum": ["linear", "choice"], "description": "缺省 linear" },
+                                    "label": { "type": "string" },
+                                    "condition": { "type": "string" }
+                                },
+                                "required": ["id", "from", "to"]
+                            }
+                        },
+                        "removeEdges": { "type": "array", "items": { "type": "string" }, "description": "要删除的连线 id 列表" }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                }
             }
         ]
     });
@@ -163,8 +207,8 @@ fn tools_list() -> Value {
         for tool in tools {
             let name = tool.get("name").and_then(Value::as_str).unwrap_or("");
             let annotations = match name {
-                "node_write" => json!({
-                    "title": "写入节点正文",
+                "node_write" | "graph_write" => json!({
+                    "title": "写入项目数据",
                     "readOnlyHint": false,
                     "destructiveHint": false,
                     "idempotentHint": true,
@@ -201,6 +245,7 @@ fn call_tool(id: Value, params: Option<&Value>) -> String {
         "nodes_list" => tool_nodes_list(&args),
         "node_read" => tool_node_read(&args),
         "node_write" => tool_node_write(&args),
+        "graph_write" => tool_graph_write(&args),
         _ => Err(format!("未知工具: {name}")),
     };
     match outcome {
@@ -234,6 +279,190 @@ fn read_project_file(project_path: &str, rel: &str) -> Result<Value, String> {
     let text = std::fs::read_to_string(&full)
         .map_err(|error| format!("读取 {rel} 失败: {error}"))?;
     serde_json::from_str(&text).map_err(|error| format!("解析 {rel} 失败: {error}"))
+}
+
+fn write_project_json(project_path: &str, rel: &str, value: &Value) -> Result<(), String> {
+    let full = Path::new(project_path).join(rel);
+    let text = serde_json::to_string_pretty(value)
+        .map_err(|error| format!("序列化 {rel} 失败: {error}"))?;
+    std::fs::write(&full, format!("{text}\n"))
+        .map_err(|error| format!("写入 {rel} 失败: {error}"))
+}
+
+// ---------------------------------------------------------------------------
+// graph_write：graph.json 的白名单结构化修改（只增不删，保持图结构可审）
+// ---------------------------------------------------------------------------
+
+fn tool_graph_write(args: &Value) -> Result<Value, String> {
+    let path = required_path(args)?;
+    let mut graph = read_project_file(path, "content/graph.json")?;
+
+    // 既有 id 集合（节点 / 连线），用于唯一性与引用校验
+    let mut node_ids = graph
+        .get("nodes")
+        .and_then(Value::as_array)
+        .map(|nodes| {
+            nodes
+                .iter()
+                .filter_map(|node| node.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect::<std::collections::BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let mut edge_ids = graph
+        .get("edges")
+        .and_then(Value::as_array)
+        .map(|edges| {
+            edges
+                .iter()
+                .filter_map(|edge| edge.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect::<std::collections::BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let chapter_ids: std::collections::BTreeSet<String> = graph
+        .get("chapters")
+        .and_then(Value::as_array)
+        .map(|chapters| {
+            chapters
+                .iter()
+                .filter_map(|chapter| chapter.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // ── 新增节点 ──
+    let add_nodes = args
+        .get("addNodes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut nodes = graph
+        .get("nodes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for node in &add_nodes {
+        let node_id = node
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "addNodes 中的节点缺少非空 id".to_string())?;
+        if node_ids.contains(node_id) {
+            return Err(format!("节点 id 重复: {node_id}"));
+        }
+        let file = node
+            .get("file")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| format!("节点 {node_id} 缺少非空 file（content/ 相对路径）"))?;
+        if nodes.iter().any(|existing| {
+            existing.get("file").and_then(Value::as_str) == Some(file)
+        }) {
+            return Err(format!("节点文件已被占用: {file}"));
+        }
+        let chapter_id = node
+            .get("chapterId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("节点 {node_id} 缺少 chapterId"))?;
+        if !chapter_ids.contains(chapter_id) {
+            return Err(format!(
+                "节点 {node_id} 引用了不存在的章节 {chapter_id}（可选章节: {}）",
+                chapter_ids.iter().cloned().collect::<Vec<_>>().join(", ")
+            ));
+        }
+        let mut object = node.as_object().cloned().unwrap_or_default();
+        // 图上未声明的键不写入 graph.json（title/file/chapterId/position 已含在 node 中）
+        object.entry("position").or_insert_with(|| json!({ "x": 0, "y": 0 }));
+        nodes.push(Value::Object(object));
+        node_ids.insert(node_id.to_string());
+    }
+
+    // ── 新增连线 ──
+    let add_edges = args
+        .get("addEdges")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut edges = graph
+        .get("edges")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for edge in &add_edges {
+        let edge_id = edge
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "addEdges 中的连线缺少非空 id".to_string())?;
+        if edge_ids.contains(edge_id) {
+            return Err(format!("连线 id 重复: {edge_id}"));
+        }
+        let from = edge
+            .get("from")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("连线 {edge_id} 缺少 from"))?;
+        let to = edge
+            .get("to")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("连线 {edge_id} 缺少 to"))?;
+        if !node_ids.contains(from) {
+            return Err(format!("连线 {edge_id} 的 from 不是已存在节点: {from}"));
+        }
+        if !node_ids.contains(to) {
+            return Err(format!("连线 {edge_id} 的 to 不是已存在节点: {to}"));
+        }
+        let mut object = edge.as_object().cloned().unwrap_or_default();
+        object.entry("mode").or_insert_with(|| json!("linear"));
+        edges.push(Value::Object(object));
+        edge_ids.insert(edge_id.to_string());
+    }
+
+    // ── 删除连线（白名单内唯一允许的删除操作）──
+    let remove_edges = args
+        .get("removeEdges")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut removed = Vec::new();
+    for edge_id in &remove_edges {
+        let edge_id = edge_id.as_str().ok_or_else(|| "removeEdges 必须是字符串数组".to_string())?;
+        if !edge_ids.contains(edge_id) {
+            return Err(format!("要删除的连线不存在: {edge_id}"));
+        }
+        removed.push(edge_id.to_string());
+        edge_ids.remove(edge_id);
+    }
+    if !removed.is_empty() {
+        edges.retain(|edge| {
+            edge.get("id").and_then(Value::as_str).map(str::to_string)
+                .map(|id| !removed.contains(&id))
+                .unwrap_or(true)
+        });
+    }
+
+    // 没有实际改动就退出，避免无意义写盘
+    let changed = !add_nodes.is_empty() || !add_edges.is_empty() || !removed.is_empty();
+    if !changed {
+        return Ok(json!({
+            "ok": true,
+            "changed": false,
+            "validation": tool_project_validate(&json!({ "path": path }))?,
+        }));
+    }
+
+    if let Some(object) = graph.as_object_mut() {
+        object.insert("nodes".to_string(), Value::Array(nodes));
+        object.insert("edges".to_string(), Value::Array(edges));
+    }
+    write_project_json(path, "content/graph.json", &graph)?;
+
+    Ok(json!({
+        "ok": true,
+        "changed": true,
+        "addedNodes": add_nodes.iter().map(|node| node.get("id").cloned()).collect::<Vec<_>>(),
+        "addedEdges": add_edges.iter().map(|edge| edge.get("id").cloned()).collect::<Vec<_>>(),
+        "removedEdges": removed,
+        "validation": tool_project_validate(&json!({ "path": path }))?,
+    }))
 }
 
 fn tool_project_validate(args: &Value) -> Result<Value, String> {
@@ -558,7 +787,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            ["project_validate", "graph_read", "nodes_list", "node_read", "node_write"]
+            ["project_validate", "graph_read", "nodes_list", "node_read", "node_write", "graph_write"]
         );
         // 工具描述必须内嵌 graph-first 契约，Agent 不读文档也不能越界
         let node_write = result["tools"]
@@ -720,6 +949,188 @@ mod tests {
         .unwrap();
         let result: Value = serde_json::from_str(&response).unwrap();
         assert_eq!(result["result"]["isError"], true);
+    }
+
+    #[test]
+    fn tools_list_includes_graph_write_with_write_annotations() {
+        let response = handle_mcp_line(&request_line(2, "tools/list", json!({}))).unwrap();
+        let result = response_result(&response);
+        let graph_write = result["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "graph_write")
+            .expect("graph_write must be listed");
+        assert_eq!(graph_write["annotations"]["readOnlyHint"], false);
+        assert!(graph_write["description"]
+            .as_str()
+            .unwrap()
+            .contains("白名单式修改"));
+    }
+
+    #[test]
+    fn graph_write_adds_nodes_edges_and_removes_edges() {
+        let root = unique_temp_dir("graph-write");
+        make_project(&root);
+        let path = root.to_string_lossy().to_string();
+        let response = handle_mcp_line(&request_line(
+            20,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{
+                        "id": "branch",
+                        "title": "分支",
+                        "file": "nodes/branch.json",
+                        "chapterId": "chapter_1"
+                    }],
+                    "addEdges": [
+                        { "id": "start__branch", "from": "start", "to": "branch" },
+                        { "id": "branch__start", "from": "branch", "to": "start", "mode": "choice", "label": "再来一次" }
+                    ],
+                    "removeEdges": ["does_not_exist_yet"]
+                }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        // 删除不存在的连线必须先报错，整体不落盘
+        assert_eq!(result["result"]["isError"], true);
+        let payload = read_project_file(&path, "content/graph.json").unwrap();
+        assert_eq!(payload["nodes"].as_array().unwrap().len(), 1, "失败时必须无副作用");
+
+        let response = handle_mcp_line(&request_line(
+            21,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{
+                        "id": "branch",
+                        "title": "分支",
+                        "file": "nodes/branch.json",
+                        "chapterId": "chapter_1"
+                    }],
+                    "addEdges": [
+                        { "id": "start__branch", "from": "start", "to": "branch" },
+                        { "id": "branch__start", "from": "branch", "to": "start", "mode": "choice", "label": "再来一次" }
+                    ]
+                }
+            }),
+        ))
+        .unwrap();
+        let result = response_result(&response);
+        let payload: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["changed"], true);
+        assert_eq!(payload["addedNodes"], json!(["branch"]));
+        assert_eq!(payload["addedEdges"].as_array().unwrap().len(), 2);
+        // 写后复检无 error 级问题
+        let has_error = payload["validation"]["graphIssues"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .any(|issue| issue["severity"] == "error");
+        assert!(!has_error, "graph_write 后不应有 error 级图问题");
+
+        // 落盘内容校验
+        let graph = read_project_file(&path, "content/graph.json").unwrap();
+        assert_eq!(graph["nodes"].as_array().unwrap().len(), 2);
+        assert_eq!(graph["nodes"][1]["chapterId"], "chapter_1");
+        assert_eq!(graph["nodes"][1]["position"]["x"], 0);
+        assert_eq!(graph["edges"].as_array().unwrap().len(), 2);
+        assert_eq!(graph["edges"][0]["mode"], "linear", "mode 缺省补 linear");
+
+        // 删除连线
+        let response = handle_mcp_line(&request_line(
+            22,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": { "path": path, "removeEdges": ["start__branch"] }
+            }),
+        ))
+        .unwrap();
+        let result = response_result(&response);
+        let payload: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(payload["removedEdges"], json!(["start__branch"]));
+        let graph = read_project_file(&path, "content/graph.json").unwrap();
+        assert_eq!(graph["edges"].as_array().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn graph_write_rejects_duplicate_ids_and_unknown_references() {
+        let root = unique_temp_dir("graph-write-guard");
+        make_project(&root);
+        let path = root.to_string_lossy().to_string();
+
+        // 重复节点 id
+        let response = handle_mcp_line(&request_line(
+            23,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{ "id": "start", "title": "X", "file": "nodes/x.json", "chapterId": "chapter_1" }]
+                }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("重复"));
+
+        // 未声明章节
+        let response = handle_mcp_line(&request_line(
+            24,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{ "id": "x", "title": "X", "file": "nodes/x.json", "chapterId": "chapter_99" }]
+                }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("不存在的章节"));
+
+        // 连线引用未知节点
+        let response = handle_mcp_line(&request_line(
+            25,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addEdges": [{ "id": "a__b", "from": "start", "to": "ghost" }]
+                }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("不是已存在节点"));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

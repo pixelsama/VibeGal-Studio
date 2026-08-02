@@ -18,16 +18,6 @@ pub(crate) enum InstallTarget {
     Opencode,
 }
 
-impl InstallTarget {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::Codex => "codex",
-            Self::Opencode => "opencode",
-        }
-    }
-}
-
 pub(crate) fn run_mcp_install(agent: InstallTarget) -> i32 {
     let cli_path = resolve_cli_command();
     match install(agent, &cli_path) {
