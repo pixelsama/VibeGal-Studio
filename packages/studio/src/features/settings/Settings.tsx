@@ -10,9 +10,13 @@ import {
 import { getDesktopPlatform } from "../../lib/platform";
 import { Button, IconButton } from "../common/Button";
 import {
+  agentDetect,
+  agentMcpInstall,
   getCliToolStatus,
   installCliTool,
   uninstallCliTool,
+  type AgentAvailability,
+  type AgentKind,
   type CliToolStatus,
 } from "../../lib/tauri";
 
@@ -96,11 +100,57 @@ export function Settings({
     }
   }, [cliStatus, t]);
 
+  const [agentAvailability, setAgentAvailability] = useState<AgentAvailability[] | null>(null);
+  const [agentBusy, setAgentBusy] = useState<AgentKind | null>(null);
+  const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
+
+  const refreshAgentAvailability = useCallback(async () => {
+    setAgentError(null);
+    try {
+      setAgentAvailability(await agentDetect());
+    } catch (error) {
+      setAgentError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAgentAvailability();
+  }, [refreshAgentAvailability]);
+
+  const registerAgent = useCallback(async (agent: AgentKind) => {
+    setAgentBusy(agent);
+    setAgentError(null);
+    setAgentMessage(null);
+    try {
+      const result = await agentMcpInstall(agent);
+      if (result.ok) {
+        setAgentMessage(t("settings.agent.registered", { agent: agent.toUpperCase() }));
+      } else {
+        setAgentError(result.message);
+      }
+    } catch (error) {
+      setAgentError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAgentBusy(null);
+    }
+  }, [t]);
+
   const content = (
     <div className="gs-settings-grid" style={contentStyle}>
       <AppearanceSection settings={settings} onUpdate={onUpdate} t={t} />
       <LanguageSection settings={settings} onUpdate={onUpdate} t={t} />
 
+      <AgentConnectionSection
+        availability={agentAvailability}
+        busy={agentBusy}
+        error={agentError}
+        message={agentMessage}
+        cliInstalled={Boolean(cliStatus?.installed)}
+        onRefresh={() => void refreshAgentAvailability()}
+        onRegister={(agent) => void registerAgent(agent)}
+        t={t}
+      />
       <CommandLineToolSection
         status={cliStatus}
         busy={cliBusy}
@@ -298,6 +348,93 @@ export function CommandLineToolSection({
             </>
           )}
           <Button variant="secondary" onClick={onRefresh} disabled={busy}>
+            {t("settings.cli.recheck")}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const AGENT_OPTIONS: { agent: AgentKind; label: string }[] = [
+  { agent: "codex", label: "Codex" },
+  { agent: "claude", label: "Claude" },
+  { agent: "opencode", label: "OpenCode" },
+];
+
+/**
+ * 「连接 Agent」卡片：把 VibeGal MCP server 注册进本机外部 Agent。
+ * 只在对应 CLI 已探测到（可用）时允许注册；CLI 未安装的 Agent 置灰并给出提示。
+ */
+export function AgentConnectionSection({
+  availability,
+  busy,
+  error,
+  message,
+  cliInstalled,
+  onRefresh,
+  onRegister,
+  t = translateZhCN,
+}: {
+  availability: AgentAvailability[] | null;
+  busy: AgentKind | null;
+  error: string | null;
+  message: string | null;
+  cliInstalled: boolean;
+  onRefresh: () => void;
+  onRegister: (agent: AgentKind) => void;
+  t?: StudioTranslator;
+}) {
+  const availabilityByAgent = new Map(
+    (availability ?? []).map((entry) => [entry.agent, entry]),
+  );
+  const checking = availability === null;
+
+  return (
+    <section className="gs-settings-card" style={sectionStyle}>
+      <h2 className="gs-settings-card__title" style={sectionTitleStyle}>{t("settings.agent.title")}</h2>
+      <p className="gs-settings-card__desc" style={sectionDescStyle}>{t("settings.agent.description")}</p>
+      <div style={cliPanelStyle}>
+        {checking ? (
+          <p style={cliStatusTextStyle}>{t("settings.agent.checking")}</p>
+        ) : (
+          AGENT_OPTIONS.map(({ agent, label }) => {
+            const entry = availabilityByAgent.get(agent);
+            const available = entry?.available ?? false;
+            const busyThis = busy === agent;
+            return (
+              <div key={agent} data-agent-connect={agent} style={agentRowStyle}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={cliCommandStyle}>{label}</div>
+                  <div style={cliStatusTextStyle}>
+                    {available
+                      ? t("settings.agent.installed", { version: entry?.version ?? "" })
+                      : t("settings.agent.notInstalled", { agent: label })}
+                  </div>
+                  {!available && (
+                    <div style={agentHintStyle}>{t("settings.agent.notInstalledHint", { agent: label })}</div>
+                  )}
+                </div>
+                <Button
+                  variant="secondary"
+                  data-agent-register={agent}
+                  onClick={() => onRegister(agent)}
+                  disabled={busyThis || !available || !cliInstalled || busy !== null}
+                  title={!cliInstalled ? t("settings.agent.cliHint") : undefined}
+                >
+                  {busyThis ? t("settings.cli.processing") : t("settings.agent.register", { agent: label })}
+                </Button>
+              </div>
+            );
+          })
+        )}
+        {!cliInstalled && !checking && (
+          <p style={agentHintStyle}>{t("settings.agent.cliHint")}</p>
+        )}
+        {message && <p role="status" style={cliMessageStyle}>{message} {t("settings.agent.registeredHint")}</p>}
+        {error && <p role="alert" style={cliIssueStyle}>{error}</p>}
+        <div style={cliActionRowStyle}>
+          <Button variant="secondary" onClick={onRefresh} disabled={busy !== null}>
             {t("settings.cli.recheck")}
           </Button>
         </div>
@@ -545,6 +682,22 @@ const cliMessageStyle: React.CSSProperties = {
   margin: 0,
   fontSize: "var(--text-sm)",
   color: "var(--status-ok-text)",
+};
+
+const agentRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-3)",
+  padding: "var(--space-2) 0",
+  borderBottom: "1px solid var(--border-subtle)",
+};
+
+const agentHintStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
+  lineHeight: 1.5,
+  maxWidth: 420,
 };
 
 const cliActionRowStyle: React.CSSProperties = {

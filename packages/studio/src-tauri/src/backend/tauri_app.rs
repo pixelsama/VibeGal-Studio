@@ -77,6 +77,7 @@ pub(crate) fn run() {
             super::commands::agent_detect,
             super::commands::agent_send,
             super::commands::agent_cancel,
+            super::commands::agent_mcp_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
