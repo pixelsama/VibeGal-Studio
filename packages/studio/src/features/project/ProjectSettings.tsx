@@ -1,5 +1,6 @@
 import { DistributionConfigSchema, type DistributionConfig } from "@vibegal/engine";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { AlertTriangle, Info } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   repairProjectSupportFiles as repairProjectSupportFilesInBackend,
   saveFile,
@@ -526,189 +527,256 @@ export function ProjectSettings({
       <section style={sectionStyle}>
         <div style={headerRowStyle}>
           <h2 className="gs-page-title" style={sectionTitleStyle}>{t("projectSettings.title")}</h2>
-          {status && <span style={statusStyle}>{status}</span>}
+          <span style={statusStyle}>{status ?? t("projectSettings.autoSaveHint")}</span>
         </div>
 
         {project.galstudioIgnored === false && (
-          <div role="status" style={supportFilesNoticeStyle}>
-            <div style={supportFilesHeaderStyle}>
-              <div>
-                <strong style={supportFilesTitleStyle}>{t("projectSettings.gitignore.title")}</strong>
-                <p style={supportFilesTextStyle}>
-                  {t("projectSettings.gitignore.description")}
-                </p>
-              </div>
+          <div role="status" style={noticeInfoStyle}>
+            <Info size={15} style={noticeInfoIconStyle} aria-hidden />
+            <div style={noticeBodyStyle}>
+              <strong style={noticeTitleStyle}>{t("projectSettings.gitignore.title")}</strong>
+              <span style={noticeTextStyle}>
+                {t("projectSettings.gitignore.description")} <code>.galstudio/</code>
+              </span>
             </div>
-            <code>.galstudio/</code>
           </div>
         )}
 
         {missingSupportFiles.length > 0 && (
-          <div role="status" style={supportFilesNoticeStyle}>
-            <div style={supportFilesHeaderStyle}>
-              <div>
-                <strong style={supportFilesTitleStyle}>{t("projectSettings.support.title")}</strong>
-                <p style={supportFilesTextStyle}>
-                  {t("projectSettings.support.description")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleRepairSupportFiles()}
-                disabled={repairingSupportFiles}
-                style={{
-                  ...repairButtonStyle,
-                  opacity: repairingSupportFiles ? 0.55 : 1,
-                  cursor: repairingSupportFiles ? "default" : "pointer",
-                }}
-              >
-                {repairingSupportFiles ? t("projectSettings.support.repairing") : t("projectSettings.support.repair")}
-              </button>
+          <div role="status" style={noticeWarnStyle}>
+            <AlertTriangle size={15} style={noticeWarnIconStyle} aria-hidden />
+            <div style={noticeBodyStyle}>
+              <strong style={noticeTitleStyle}>{t("projectSettings.support.title")}</strong>
+              <span style={noticeTextStyle}>{t("projectSettings.support.description")}</span>
+              <ul style={supportFilesListStyle}>
+                {missingSupportFiles.map((path) => <li key={path}>{path}</li>)}
+              </ul>
+              {supportFileStatus && <span style={noticeStatusStyle}>{supportFileStatus}</span>}
             </div>
-            <ul style={supportFilesListStyle}>
-              {missingSupportFiles.map((path) => <li key={path}>{path}</li>)}
-            </ul>
-            {supportFileStatus && <span style={statusStyle}>{supportFileStatus}</span>}
+            <button
+              type="button"
+              onClick={() => void handleRepairSupportFiles()}
+              disabled={repairingSupportFiles}
+              style={{
+                ...repairButtonStyle,
+                opacity: repairingSupportFiles ? 0.55 : 1,
+                cursor: repairingSupportFiles ? "default" : "pointer",
+              }}
+            >
+              {repairingSupportFiles ? t("projectSettings.support.repairing") : t("projectSettings.support.repair")}
+            </button>
           </div>
         )}
 
-        <div className="gs-settings-grid">
-          <div className="gs-settings-card" style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>{t("projectSettings.basic")}</span>
-            <TextField
-              label={t("projectSettings.workTitle")}
-              hint={t("projectSettings.workTitleHint")}
+        <SettingsSection title={t("projectSettings.basic")}>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.workTitle")}
+            hint={t("projectSettings.workTitleHint")}
+          >
+            <input
+              type="text"
               value={titleText}
-              onChange={(value) => setDraftText(setTitleText, value)}
+              onChange={(event) => setDraftText(setTitleText, event.target.value)}
+              style={rowTextInputStyle}
             />
-            <div style={numberRowStyle}>
-              <NumberField
-                label={t("projectSettings.typingSpeed")}
-                hint={t("projectSettings.typingSpeedHint")}
-                value={typingSpeedText}
-                min={0.1}
-                step={0.1}
-                onChange={(value) => setDraftText(setTypingSpeedText, value)}
-              />
-              <NumberField
-                label={t("projectSettings.autoAdvance")}
-                hint={t("projectSettings.autoAdvanceHint")}
-                value={autoAdvanceText}
-                min={0}
-                step={1}
-                onChange={(value) => setDraftText(setAutoAdvanceText, value)}
-              />
-              <NumberField
-                label={t("projectSettings.chapterGap")}
-                hint={t("projectSettings.chapterGapHint")}
-                value={chapterGapText}
-                min={0}
-                step={1}
-                onChange={(value) => setDraftText(setChapterGapText, value)}
-              />
-            </div>
-          </div>
+          </SettingsRow>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.typingSpeed")}
+            hint={t("projectSettings.typingSpeedHint")}
+          >
+            <input
+              type="number"
+              value={typingSpeedText}
+              min={0.1}
+              step={0.1}
+              onChange={(event) => setDraftText(setTypingSpeedText, event.target.value)}
+              style={rowNumberInputStyle}
+            />
+          </SettingsRow>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.autoAdvance")}
+            hint={t("projectSettings.autoAdvanceHint")}
+          >
+            <input
+              type="number"
+              value={autoAdvanceText}
+              min={0}
+              step={1}
+              onChange={(event) => setDraftText(setAutoAdvanceText, event.target.value)}
+              style={rowNumberInputStyle}
+            />
+          </SettingsRow>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.chapterGap")}
+            hint={t("projectSettings.chapterGapHint")}
+          >
+            <input
+              type="number"
+              value={chapterGapText}
+              min={0}
+              step={1}
+              onChange={(event) => setDraftText(setChapterGapText, event.target.value)}
+              style={rowNumberInputStyle}
+            />
+          </SettingsRow>
+        </SettingsSection>
 
-          <div className="gs-settings-card" style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>{t("projectSettings.stage")}</span>
-            <div style={presetRowStyle}>
-              {STAGE_PRESETS.map((preset) => {
+        <SettingsSection title={t("projectSettings.stage")}>
+          <SettingsRow
+            label={t("projectSettings.stagePresets")}
+            hint={t("projectSettings.stagePresetsHint")}
+          >
+            <div style={segmentedStyle} role="group" aria-label={t("projectSettings.stagePresets")}>
+              {STAGE_PRESETS.map((preset, index) => {
                 const active = activePreset === preset;
                 return (
                   <button
                     key={`${preset.width}x${preset.height}`}
                     type="button"
-                    className="gs-selected-surface"
                     onClick={() => handlePreset(preset)}
                     aria-pressed={active}
                     style={{
-                      ...presetButtonStyle,
-                      borderColor: active ? "var(--accent-secondary)" : "var(--border-strong)",
+                      ...segmentStyle,
+                      borderLeft: index > 0 ? "1px solid var(--border)" : 0,
+                      background: active ? "var(--accent-secondary-soft)" : "transparent",
                       color: active ? "var(--accent-secondary-bright)" : "var(--text-secondary)",
+                      fontWeight: active ? 600 : 400,
                     }}
                   >
-                    {preset.width} x {preset.height}
+                    {preset.width} × {preset.height}
                   </button>
                 );
               })}
+              {!activePreset && (
+                <span style={{ ...segmentStyle, ...customSegmentStyle }}>
+                  {t("projectSettings.customPreset")}
+                </span>
+              )}
             </div>
-            <div style={numberRowStyle}>
-              <NumberField
-                label={t("projectSettings.width")}
+          </SettingsRow>
+          <SettingsRow
+            label={t("projectSettings.customSize")}
+            hint={t("projectSettings.customSizeHint", {
+              wMin: STAGE_WIDTH_RANGE.min,
+              wMax: STAGE_WIDTH_RANGE.max,
+              hMin: STAGE_HEIGHT_RANGE.min,
+              hMax: STAGE_HEIGHT_RANGE.max,
+            })}
+          >
+            <div style={sizeControlStyle}>
+              <input
+                type="number"
+                aria-label={t("projectSettings.width")}
                 value={widthText}
                 min={STAGE_WIDTH_RANGE.min}
                 max={STAGE_WIDTH_RANGE.max}
                 step={1}
-                onChange={handleWidthChange}
+                onChange={(event) => handleWidthChange(event.target.value)}
+                style={rowNumberInputStyle}
               />
-              <NumberField
-                label={t("projectSettings.height")}
+              <span style={sizeTimesStyle}>×</span>
+              <input
+                type="number"
+                aria-label={t("projectSettings.height")}
                 value={heightText}
                 min={STAGE_HEIGHT_RANGE.min}
                 max={STAGE_HEIGHT_RANGE.max}
                 step={1}
-                onChange={handleHeightChange}
+                onChange={(event) => handleHeightChange(event.target.value)}
+                style={rowNumberInputStyle}
               />
             </div>
-          </div>
+          </SettingsRow>
+        </SettingsSection>
 
-          <div className="gs-settings-card" style={fieldGroupStyle}>
-            <span style={fieldLabelStyle}>{t("projectSettings.distribution")}</span>
-            <div style={numberRowStyle}>
-              <TextField
-                label={t("projectSettings.version")}
-                hint={t("projectSettings.versionHint")}
-                value={distributionVersionText}
-                onChange={(value) => setDraftText(setDistributionVersionText, value)}
-              />
-              <TextField
-                label={t("projectSettings.packageName")}
-                hint={t("projectSettings.packageNameHint")}
-                value={distributionProductNameText}
-                onChange={(value) => setDraftText(setDistributionProductNameText, value)}
-              />
-              <TextField
-                label={t("projectSettings.iconPath")}
-                hint={t("projectSettings.iconPathHint")}
-                value={distributionIconText}
-                onChange={(value) => setDraftText(setDistributionIconText, value)}
-              />
-            </div>
-            <label style={numberFieldStyle}>
-              <span style={numberLabelStyle}>{t("projectSettings.viewport")}</span>
-              <select
-                value={distributionViewportMode}
-                onChange={(event) => setDraftText(
-                  (value) => setDistributionViewportMode(value as "fit" | "fill" | "responsive"),
-                  event.target.value,
-                )}
-                style={textInputStyle}
-              >
-                <option value="fit">{t("projectSettings.viewport.fit")}</option>
-                <option value="fill">{t("projectSettings.viewport.fill")}</option>
-                <option value="responsive">{t("projectSettings.viewport.responsive")}</option>
-              </select>
-            </label>
-            <div style={numberRowStyle}>
-              <NumberField
-                label={t("projectSettings.designWidth")}
+        <SettingsSection title={t("projectSettings.distribution")}>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.version")}
+            hint={t("projectSettings.versionHint")}
+          >
+            <input
+              type="text"
+              value={distributionVersionText}
+              onChange={(event) => setDraftText(setDistributionVersionText, event.target.value)}
+              style={rowTextInputStyle}
+            />
+          </SettingsRow>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.packageName")}
+            hint={t("projectSettings.packageNameHint")}
+          >
+            <input
+              type="text"
+              value={distributionProductNameText}
+              onChange={(event) => setDraftText(setDistributionProductNameText, event.target.value)}
+              style={rowTextInputStyle}
+            />
+          </SettingsRow>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.iconPath")}
+            hint={t("projectSettings.iconPathHint")}
+          >
+            <input
+              type="text"
+              value={distributionIconText}
+              onChange={(event) => setDraftText(setDistributionIconText, event.target.value)}
+              style={rowTextInputStyle}
+            />
+          </SettingsRow>
+          <SettingsRow
+            wrapsControl
+            label={t("projectSettings.viewport")}
+            hint={t("projectSettings.viewportHint")}
+          >
+            <select
+              value={distributionViewportMode}
+              onChange={(event) => setDraftText(
+                (value) => setDistributionViewportMode(value as "fit" | "fill" | "responsive"),
+                event.target.value,
+              )}
+              style={rowSelectStyle}
+            >
+              <option value="fit">{t("projectSettings.viewport.fit")}</option>
+              <option value="fill">{t("projectSettings.viewport.fill")}</option>
+              <option value="responsive">{t("projectSettings.viewport.responsive")}</option>
+            </select>
+          </SettingsRow>
+          <SettingsRow
+            label={t("projectSettings.designSize")}
+            hint={t("projectSettings.designSizeHint")}
+          >
+            <div style={sizeControlStyle}>
+              <input
+                type="number"
+                aria-label={t("projectSettings.designWidth")}
                 value={distributionViewportWidthText}
                 min={STAGE_WIDTH_RANGE.min}
                 max={STAGE_WIDTH_RANGE.max}
                 step={1}
-                onChange={(value) => setDraftText(setDistributionViewportWidthText, value)}
+                onChange={(event) => setDraftText(setDistributionViewportWidthText, event.target.value)}
+                style={rowNumberInputStyle}
               />
-              <NumberField
-                label={t("projectSettings.designHeight")}
+              <span style={sizeTimesStyle}>×</span>
+              <input
+                type="number"
+                aria-label={t("projectSettings.designHeight")}
                 value={distributionViewportHeightText}
                 min={STAGE_HEIGHT_RANGE.min}
                 max={STAGE_HEIGHT_RANGE.max}
                 step={1}
-                onChange={(value) => setDraftText(setDistributionViewportHeightText, value)}
+                onChange={(event) => setDraftText(setDistributionViewportHeightText, event.target.value)}
+                style={rowNumberInputStyle}
               />
             </div>
-          </div>
-        </div>
+          </SettingsRow>
+        </SettingsSection>
       </section>
     </div>
   );
@@ -769,63 +837,44 @@ function parseProjectSettingsDraft(draft: ProjectSettingsFormDraft): ProjectMeta
   };
 }
 
-function TextField({
-  label,
-  value,
-  hint,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  onChange: (value: string) => void;
-}) {
+function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <label style={numberFieldStyle}>
-      <span style={numberLabelStyle}>{label}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        style={textInputStyle}
-      />
-      {hint && <span style={fieldHintStyle}>{hint}</span>}
-    </label>
+    <section data-settings-section style={settingsSectionStyle}>
+      <h3 style={settingsSectionTitleStyle}>{title}</h3>
+      <div style={settingsRowsStyle}>{children}</div>
+    </section>
   );
 }
 
-function NumberField({
+/**
+ * 行式设置项：左侧标签 + 描述，右侧控件。
+ * `wrapsControl` 时整行渲染为 <label>（仅用于单控件行），既保留点击聚焦，
+ * 也维持 E2E 通过「label 文案找输入框」的定位方式（qa/agent XPath）。
+ */
+function SettingsRow({
   label,
-  value,
-  min,
-  max,
-  step,
   hint,
-  onChange,
+  wrapsControl = false,
+  children,
 }: {
   label: string;
-  value: string;
-  min: number;
-  max?: number;
-  step: number;
   hint?: string;
-  onChange: (value: string) => void;
+  wrapsControl?: boolean;
+  children: ReactNode;
 }) {
-  return (
-    <label style={numberFieldStyle}>
-      <span style={numberLabelStyle}>{label}</span>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(event) => onChange(event.target.value)}
-        style={numberInputStyle}
-      />
-      {hint && <span style={fieldHintStyle}>{hint}</span>}
-    </label>
+  const content = (
+    <>
+      <div style={rowTextStyle}>
+        <span style={rowLabelStyle}>{label}</span>
+        {hint && <span style={rowHintStyle}>{hint}</span>}
+      </div>
+      <div style={rowControlStyle}>{children}</div>
+    </>
   );
+  if (wrapsControl) {
+    return <label data-settings-row style={rowStyle}>{content}</label>;
+  }
+  return <div data-settings-row style={rowStyle}>{content}</div>;
 }
 
 const pageStyle: CSSProperties = {
@@ -835,7 +884,7 @@ const pageStyle: CSSProperties = {
 };
 
 const sectionStyle: CSSProperties = {
-  width: "100%",
+  width: "min(720px, 100%)",
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-5)",
@@ -843,44 +892,77 @@ const sectionStyle: CSSProperties = {
 
 const headerRowStyle: CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "baseline",
+  justifyContent: "space-between",
   gap: "var(--space-3)",
 };
 
 const sectionTitleStyle: CSSProperties = {};
 
 const statusStyle: CSSProperties = {
+  flexShrink: 0,
   fontSize: "var(--text-sm)",
   color: "var(--text-muted)",
 };
 
-const supportFilesNoticeStyle: CSSProperties = {
+const noticeBaseStyle: CSSProperties = {
   display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-2)",
-  padding: "var(--space-4)",
-  border: "1px solid var(--border-strong)",
+  alignItems: "flex-start",
+  gap: "var(--space-3)",
+  padding: "var(--space-3) var(--space-4)",
   borderRadius: "var(--radius-md)",
+};
+
+const noticeInfoStyle: CSSProperties = {
+  ...noticeBaseStyle,
+  border: "1px solid var(--border)",
   background: "var(--bg-panel)",
 };
 
-const supportFilesHeaderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "var(--space-4)",
+const noticeWarnStyle: CSSProperties = {
+  ...noticeBaseStyle,
+  border: "1px solid var(--border-warn)",
+  background: "var(--bg-tag-warn)",
 };
 
-const supportFilesTitleStyle: CSSProperties = {
+const noticeIconBaseStyle: CSSProperties = {
+  flexShrink: 0,
+  marginTop: 2,
+};
+
+const noticeInfoIconStyle: CSSProperties = {
+  ...noticeIconBaseStyle,
+  color: "var(--text-muted)",
+};
+
+const noticeWarnIconStyle: CSSProperties = {
+  ...noticeIconBaseStyle,
+  color: "var(--status-warn-text)",
+};
+
+const noticeBodyStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-1)",
+};
+
+const noticeTitleStyle: CSSProperties = {
   color: "var(--text-bright)",
   fontSize: "var(--text-sm)",
+  fontWeight: 600,
 };
 
-const supportFilesTextStyle: CSSProperties = {
-  margin: "var(--space-1) 0 0",
+const noticeTextStyle: CSSProperties = {
   color: "var(--text-secondary)",
   fontSize: "var(--text-xs)",
   lineHeight: 1.5,
+};
+
+const noticeStatusStyle: CSSProperties = {
+  fontSize: "var(--text-xs)",
+  color: "var(--text-muted)",
 };
 
 const supportFilesListStyle: CSSProperties = {
@@ -894,81 +976,133 @@ const supportFilesListStyle: CSSProperties = {
 
 const repairButtonStyle: CSSProperties = {
   flexShrink: 0,
-  height: "var(--control-lg)",
+  height: "var(--control-sm)",
   padding: "0 var(--space-3)",
-  border: 0,
+  border: "1px solid var(--accent)",
   borderRadius: "var(--radius-sm)",
-  color: "white",
-  background: "var(--accent)",
-  fontWeight: 600,
-};
-
-const fieldGroupStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-3)",
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: "var(--text-lg)",
-  fontWeight: 700,
-  color: "var(--text-bright)",
-};
-
-const presetRowStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "var(--space-2)",
-};
-
-const presetButtonStyle: CSSProperties = {
-  height: "var(--control-lg)",
-  padding: "0 var(--space-3)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid",
-  background: "var(--bg-panel)",
+  color: "var(--accent-bright)",
+  background: "transparent",
   fontSize: "var(--text-sm)",
+  fontWeight: 500,
 };
 
-const numberRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "end",
-  flexWrap: "wrap",
-  gap: "var(--space-2)",
-};
-
-const numberFieldStyle: CSSProperties = {
+const settingsSectionStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-1)",
 };
 
-const numberLabelStyle: CSSProperties = {
+const settingsSectionTitleStyle: CSSProperties = {
+  margin: 0,
   fontSize: "var(--text-sm)",
-  fontWeight: 650,
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+};
+
+const settingsRowsStyle: CSSProperties = {
+  borderTop: "1px solid var(--border)",
+};
+
+const rowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: "var(--space-2) var(--space-6)",
+  padding: "var(--space-3) 0",
+  borderBottom: "1px solid var(--border-subtle)",
+};
+
+const rowTextStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+  minWidth: 0,
+};
+
+const rowLabelStyle: CSSProperties = {
+  fontSize: "var(--text-base)",
+  fontWeight: 500,
   color: "var(--text-primary)",
 };
 
-const fieldHintStyle: CSSProperties = {
+const rowHintStyle: CSSProperties = {
   maxWidth: 420,
   fontSize: "var(--text-xs)",
   color: "var(--text-muted)",
   lineHeight: 1.5,
 };
 
-const numberInputStyle: CSSProperties = {
-  width: 120,
+const rowControlStyle: CSSProperties = {
+  flexShrink: 0,
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-2)",
+};
+
+const rowInputBaseStyle: CSSProperties = {
   height: "var(--control-lg)",
   borderRadius: "var(--radius-sm)",
   border: "1px solid var(--border-input)",
-  background: "var(--bg-inset)",
+  background: "var(--bg-panel)",
   color: "var(--text-primary)",
   padding: "0 var(--space-2)",
+  fontSize: "var(--text-md)",
 };
 
-const textInputStyle: CSSProperties = {
-  ...numberInputStyle,
-  width: 320,
+const rowTextInputStyle: CSSProperties = {
+  ...rowInputBaseStyle,
+  width: 240,
   maxWidth: "100%",
+};
+
+const rowSelectStyle: CSSProperties = {
+  ...rowInputBaseStyle,
+  width: 240,
+};
+
+const rowNumberInputStyle: CSSProperties = {
+  ...rowInputBaseStyle,
+  width: 88,
+  textAlign: "right",
+};
+
+const segmentedStyle: CSSProperties = {
+  display: "inline-flex",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-sm)",
+  overflow: "hidden",
+  background: "var(--bg-panel)",
+};
+
+const segmentStyle: CSSProperties = {
+  height: "var(--control-lg)",
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 var(--space-3)",
+  border: 0,
+  background: "transparent",
+  fontSize: "var(--text-sm)",
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+};
+
+const customSegmentStyle: CSSProperties = {
+  borderLeft: "1px solid var(--border)",
+  background: "var(--accent-secondary-soft)",
+  color: "var(--accent-secondary-bright)",
+  fontWeight: 600,
+  cursor: "default",
+};
+
+const sizeControlStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-2)",
+};
+
+const sizeTimesStyle: CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
 };
 
