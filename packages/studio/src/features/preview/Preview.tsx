@@ -57,7 +57,7 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
   const [debugInstructionId, setDebugInstructionId] = useState("");
   const [trialOpen, setTrialOpen] = useState(false);
   const [inspecting, setInspecting] = useState(false);
-  // 试算值与脚本工作台共用同一套模型：此前预览页和 Inspector 各有一份互不相通的
+  // 试算值与剧情工作台共用同一套模型：此前预览页和 Inspector 各有一份互不相通的
   // 「注入值 / 模拟变量」，作者在一边调好的值到另一边就消失。
   const [debugVariables, setDebugVariables] = useState<Record<string, string | number | boolean | null>>({});
   const trialSources = useMemo(
