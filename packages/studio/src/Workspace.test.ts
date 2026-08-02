@@ -240,7 +240,8 @@ describe("Workspace renderer chrome", () => {
     }));
 
     expect(html).toContain("预览");
-    expect(html).toContain("脚本");
+    expect(html).toContain("剧情");
+    expect(html).not.toContain("脚本");
     expect(html).toContain("资产");
     expect(html).toContain("项目");
     expect(html).toContain("导出");

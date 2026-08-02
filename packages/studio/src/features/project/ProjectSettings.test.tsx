@@ -32,27 +32,37 @@ describe("ProjectSettings", () => {
     const html = renderToStaticMarkup(<ProjectSettings project={project} onSaved={() => {}} />);
 
     expect(html).toContain("项目设置");
-    expect(html).toContain('class="gs-settings-grid"');
-    expect(html.match(/class="gs-settings-card"/g)).toHaveLength(3);
-    expect(html).toContain('class="gs-selected-surface"');
+    // 行式列表布局：不再使用卡片 grid，改为分区 + 设置行。
+    expect(html).not.toContain("gs-settings-grid");
+    expect(html).not.toContain("gs-settings-card");
+    expect(html.match(/data-settings-section/g)).toHaveLength(3);
+    expect(html.match(/data-settings-row/g)).toHaveLength(11);
+    // E2E 依赖 label 包裹的作品标题输入框（qa/agent XPath）。
+    expect(html).toMatch(/<label[^>]*data-settings-row[^>]*>[\s\S]*?作品标题[\s\S]*?<input/);
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("所有更改已自动保存");
     expect(html).toContain("作品标题");
     expect(html).toContain("默认打字速度");
     expect(html).toContain("默认自动播放间隔");
     expect(html).toContain("章节间隔");
     expect(html).toContain("舞台分辨率");
+    expect(html).toContain("分辨率预设");
+    expect(html).toContain("自定义尺寸");
     expect(html).toContain("导出信息");
     expect(html).toContain("作品版本");
     expect(html).toContain("安装包名称");
     expect(html).toContain("图标路径");
     expect(html).toContain("窗口适配");
-    expect(html).toContain("1280 x 720");
-    expect(html).toContain("1920 x 1080");
+    expect(html).toContain("设计分辨率");
+    expect(html).toContain("1280 × 720");
+    expect(html).toContain("1920 × 1080");
   });
 
   it("自动保存后不再有手动保存按钮（Spec 33 §6.1）", () => {
     const html = renderToStaticMarkup(<ProjectSettings project={project} onSaved={() => {}} />);
 
-    expect(html).not.toContain("保存");
+    // 没有文本恰好为「保存」的按钮/控件；常驻文案是「所有更改已自动保存」。
+    expect(html).not.toContain(">保存<");
     expect(html).not.toContain("保存中");
   });
 

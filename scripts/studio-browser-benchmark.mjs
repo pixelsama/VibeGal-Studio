@@ -76,15 +76,15 @@ export async function runStudioBrowserBenchmark({
       await waitForExpression(cdp, "document.body.innerText.includes('VibeGal-Studio') && [...document.querySelectorAll('button')].some((button) => button.textContent.includes('VibeGal Scale Benchmark') && !button.disabled)", 15_000);
       const workspaceStarted = performance.now();
       await clickButtonContaining(cdp, ["VibeGal Scale Benchmark"]);
-      // 项目真正可交互的标志 = 工作区 tab（脚本）出现；项目列表页也有 header
+      // 项目真正可交互的标志 = 工作区 tab（剧情）出现；项目列表页也有 header
       // button，「header button 存在」不是有效标志（曾致点开项目后误判成功）。
-      await waitForExpression(cdp, "[...document.querySelectorAll('button')].some((candidate) => ['脚本', 'Script'].includes(candidate.textContent.trim()) && !candidate.disabled)", 60_000);
+      await waitForExpression(cdp, `[...document.querySelectorAll('button')].some(${buttonMatches(["剧情", "Story"])})`, 60_000);
       const workspaceInteractiveMs = performance.now() - workspaceStarted;
       await sampleHeap();
       logStep("workspace-interactive");
 
       const graphStarted = performance.now();
-      await clickButton(cdp, ["脚本", "Script"]);
+      await clickButton(cdp, ["剧情", "Story"]);
       await waitForExpression(cdp, "document.querySelector('.react-flow')", 15_000);
       const graphInteractiveMs = performance.now() - graphStarted;
       await sampleHeap();
@@ -484,7 +484,7 @@ async function readInvokeStats(cdp) {
 
 // 点击前先轮询等待按钮出现（最多 60s）：CI 上大项目（规模基准）打开后
 // 工作区挂载可能超过 15s，盲点/短等待会误报 button not found。
-// labels 支持中英双语（CI 环境语言不固定：曾因 UI 为英文而点不到「脚本」）。
+// labels 支持中英双语（CI 环境语言不固定：曾因 UI 为英文而点不到「剧情」tab）。
 function buttonMatches(labels) {
   const list = JSON.stringify(labels);
   return `(candidate) => ${list}.includes(candidate.textContent.trim()) && !candidate.disabled`;
