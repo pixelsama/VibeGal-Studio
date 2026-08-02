@@ -55,7 +55,7 @@ if (phase === "import-and-reference") {
       await clickButton(["背景", "Background"]);
       await waitForAssetWorkspace();
       await assertAssetGridShowsStoryReference();
-      await clickButton(["脚本", "Script"]);
+      await clickButton(["剧情", "Story"]);
       await openPrologueNode();
       await waitForScriptEditor();
       await assertPreviewShowsImportedBackground();
@@ -98,7 +98,7 @@ if (phase === "import-and-reference") {
       const repairedManifest = await readProjectManifest(projectPath);
       assertAssetRegistered(repairedManifest);
       assertAssetReference(await readProjectNode(projectPath));
-      await clickButton(["脚本", "Script"]);
+      await clickButton(["剧情", "Story"]);
       await openPrologueNode();
       await waitForScriptEditor();
       await assertPreviewShowsImportedBackground();
@@ -113,7 +113,7 @@ if (phase === "import-and-reference") {
       ]);
       if (await trust.isExisting()) await trust.click();
       await waitForAnyBodyText(["开始游戏", "Start game"]);
-      await clickButton(["脚本", "Script"]);
+      await clickButton(["剧情", "Story"]);
       await openPrologueNode();
       await waitForScriptEditor();
       await waitForNoProjectIssues();
@@ -165,7 +165,7 @@ async function waitForAssetWorkspace() {
 }
 
 async function referenceAssetInScript() {
-  await clickButton(["脚本", "Script"]);
+  await clickButton(["剧情", "Story"]);
   await openPrologueNode();
   await waitForScriptEditor();
 

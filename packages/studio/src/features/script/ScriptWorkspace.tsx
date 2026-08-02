@@ -119,7 +119,7 @@ export function ScriptWorkspace({
 }: Props) {
   const { t } = useStudioI18n();
   const view = location.view;
-  /** 脚本工作台的一级视图：剧情流程 / 故事状态 / 翻译对照。 */
+  /** 剧情工作台的一级视图：剧情流程 / 故事状态 / 翻译对照。 */
   const [primaryView, setPrimaryView] = useState<"flow" | "state" | "translation">("flow");
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [outlineSearchActive, setOutlineSearchActive] = useState(false);

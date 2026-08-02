@@ -38,7 +38,7 @@ describe("Studio real desktop authoring loop", () => {
     await assertTitleBarGroupsDoNotOverlap();
     await browser.saveScreenshot(path.join(screenshots, "01-project-opened.png"));
 
-    await clickButton(["脚本", "Script"]);
+    await clickButton(["剧情", "Story"]);
     await browser.$(".react-flow").waitForExist();
     await clickButton(["资产", "Assets"]);
     await browser.$("[role=grid]").waitForExist();
