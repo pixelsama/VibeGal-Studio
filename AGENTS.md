@@ -14,17 +14,20 @@ Opening a directory should treat that directory itself as the project root. If i
 
 New project creation chooses a parent directory, asks for a project folder name, creates the child directory, initializes it, and opens it.
 
-## Product Boundary: No In-App AI
+## Product Boundary: Editor-First, Agent as an Optional Layer
 
-VibeGal-Studio's job is to visualize, edit, validate, hot-reload, and preview Galgame project data.
+VibeGal-Studio's job is to visualize, edit, validate, hot-reload, and preview Galgame project data. On top of that editor core, the app optionally connects users to external coding Agents in two directions:
 
-External AI coding ergonomics are welcome and important, but they should be achieved through clear data contracts, stable file layouts, schema documentation, validation reports, hot reload, CLI validation commands, machine-readable errors, and predictable persistence.
+- **In-app Agent chat page**: a standalone page that spawns local Agent CLIs (codex / claude / opencode) with the project root as cwd, streams normalized output, and lets the file watcher refresh editor state. The page is a thin session adapter — it must not add AI features elsewhere in the editor UI.
+- **MCP tool provider**: `vibegal-cli mcp` exposes project tools (validate / graph read / node read+write) over stdio MCP, and `vibegal-cli mcp install <agent>` plus the bundled plugin manifests register them with external Agents.
 
-Prefer Agent-operable workflows over user copy/paste workflows. For example, the current CLI command `vibegal-cli validate <project-path> --format json` should let an external Agent check a project, receive structured errors with a non-zero exit code, fix files, and rerun validation without asking the user to shuttle issue text between apps.
+Hard boundaries that remain:
 
-Do not add in-app AI integration. The app should not expose AI buttons, AI task prompts, prompt handoff files, AI connectors, model/provider settings, token storage, or agent session management.
+- **BYOK only**: the app never manages models, providers, API keys, or tokens. Authentication always comes from the user's own CLI login state; there is no model/provider settings UI and no token storage.
+- **Agent intelligence stays external**: the app does not bundle prompts-as-features beyond first-turn project context injection, does not implement its own planning, and does not ship in-editor AI buttons outside the dedicated Agent page.
+- **Self-description stays**: project `AGENTS.md` + `.galstudio/` remain the offline contract layer for Agents that open the project directory without MCP. MCP tools and plugin skills reference that single source instead of duplicating it.
 
-AI-assisted workflows happen outside VibeGal-Studio: an external Agent reads and writes the project files directly, usually from Codex, Claude Code, or another coding environment. VibeGal-Studio should respond to those file changes through watchers, validation reports, and normal editing UI.
+Prefer Agent-operable workflows over user copy/paste workflows. `vibegal-cli validate <project-path> --format json` and the MCP `project_validate` tool should let an Agent check a project, receive structured errors, fix files, and rerun validation without asking the user to shuttle issue text between apps.
 
 ## Hot Reload Expectations
 

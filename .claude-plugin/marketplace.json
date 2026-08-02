@@ -1,0 +1,13 @@
+{
+  "name": "vibegal-studio",
+  "owner": {
+    "name": "VibeGal-Studio"
+  },
+  "plugins": [
+    {
+      "name": "vibegal",
+      "source": "./plugins/vibegal",
+      "description": "VibeGal-Studio galgame 项目工具：项目校验、图/节点读写 MCP 工具与创作指引技能"
+    }
+  ]
+}

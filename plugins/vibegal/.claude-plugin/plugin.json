@@ -1,0 +1,7 @@
+{
+  "name": "vibegal",
+  "displayName": "VibeGal-Studio 项目工具",
+  "version": "0.1.0",
+  "description": "VibeGal-Studio galgame 项目工具：通过 MCP 暴露项目校验、图读取、节点读写能力，并附带 galgame 创作指引技能。需要本机已安装 vibegal-cli（随 VibeGal-Studio 分发）。",
+  "mcpServers": "./.mcp.json"
+}
