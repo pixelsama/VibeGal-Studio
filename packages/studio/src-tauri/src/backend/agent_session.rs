@@ -130,18 +130,42 @@ pub(crate) struct AgentSessionRegistry {
 }
 
 /// npm 安装的 CLI 在 Windows 上是 .cmd 垫片，CreateProcess 不会按
-/// PATHEXT 解析，必须经 cmd /c 启动（Unix 直接按 PATH 查找）。
+/// PATHEXT 解析；只有 .cmd/.bat 垫片才经 cmd 启动，原生 .exe 直接执行。
 fn agent_command(name: &str) -> Command {
     #[cfg(windows)]
     {
-        let mut command = Command::new("cmd.exe");
-        command.args(["/c", name]);
-        command
+        let executable = windows_program_path(name).unwrap_or_else(|| PathBuf::from(name));
+        match executable.extension().and_then(|extension| extension.to_str()) {
+            Some("cmd") | Some("bat") => {
+                let mut command = Command::new("cmd.exe");
+                command.args(["/d", "/s", "/c"]).arg(executable);
+                command
+            }
+            _ => Command::new(executable),
+        }
     }
     #[cfg(not(windows))]
     {
         Command::new(name)
     }
+}
+
+#[cfg(windows)]
+fn windows_program_path(name: &str) -> Option<std::path::PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        for candidate in [
+            dir.join(name),
+            dir.join(format!("{name}.exe")),
+            dir.join(format!("{name}.cmd")),
+            dir.join(format!("{name}.bat")),
+        ] {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 fn turn_command_args(agent: AgentKind, request: &AgentTurnRequest) -> Vec<String> {

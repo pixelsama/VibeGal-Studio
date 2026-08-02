@@ -23,11 +23,11 @@ path = "src/main.rs"
 
 [[bin]]
 name = "vibegal-cli"
-path = "src/bin/cli.rs"
+path = "src/cli_main.rs"
 
 [[bin]]
 name = "vibegal-player-tauri"
-path = "src/bin/player_tauri.rs"
+path = "src/player_tauri_main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }

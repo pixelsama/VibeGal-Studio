@@ -12,18 +12,19 @@
 
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub(crate) fn run_mcp_server() -> i32 {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
+    let project_root = resolve_project_root();
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(response) = handle_mcp_line(&line) {
+        if let Some(response) = handle_mcp_line_scoped(&line, Some(&project_root)) {
             if writeln!(out, "{response}").is_err() {
                 return 1;
             }
@@ -38,6 +39,10 @@ pub(crate) fn run_mcp_server() -> i32 {
 // ---------------------------------------------------------------------------
 
 fn handle_mcp_line(line: &str) -> Option<String> {
+    handle_mcp_line_scoped(line, None)
+}
+
+fn handle_mcp_line_scoped(line: &str, project_root: Option<&Path>) -> Option<String> {
     let request: Value = serde_json::from_str(line).ok()?;
     if request.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
         return None;
@@ -68,9 +73,9 @@ fn handle_mcp_line(line: &str) -> Option<String> {
         "notifications/initialized" | "notifications/cancelled" | "initialized" => None,
         "ping" => id.map(|id| result(id, json!({}).to_string())),
         "tools/list" => id.map(|id| result(id, tools_list().to_string())),
-        "tools/call" => id.map(|id| call_tool(id, request.get("params"))),
+        "tools/call" => id.map(|id| call_tool(id, request.get("params"), project_root)),
         "resources/list" => id.map(|id| result(id, resources_list().to_string())),
-        "resources/read" => id.map(|id| read_resource(id, request.get("params"))),
+        "resources/read" => id.map(|id| read_resource(id, request.get("params"), project_root)),
         _ => id.map(|id| error(id, -32601, &format!("method not found: {method}"))),
     }
 }
@@ -149,7 +154,8 @@ fn tools_list() -> Value {
                         "path": { "type": "string", "description": "项目根目录" },
                         "nodeId": { "type": "string", "description": "graph.json 中的节点 id" },
                         "file": { "type": "string", "description": "相对 content/ 的节点文件路径，如 nodes/start.json" },
-                        "instructions": { "type": "array", "description": "Instruction[] 正文，结构见 vibegal://schemas/nodeFile" }
+                        "instructions": { "type": "array", "description": "Instruction[] 正文，结构见 vibegal://schemas/nodeFile" },
+                        "expectedRevision": { "type": ["object", "null"], "description": "上次读取的节点 revision；不匹配时拒绝覆盖" }
                     },
                     "required": ["path", "instructions"],
                     "additionalProperties": false
@@ -174,7 +180,8 @@ fn tools_list() -> Value {
                                     "chapterId": { "type": "string" },
                                     "position": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } }
                                 },
-                                "required": ["id", "title", "file", "chapterId"]
+                                "required": ["id", "title", "file", "chapterId"],
+                                "additionalProperties": false
                             }
                         },
                         "addEdges": {
@@ -190,10 +197,12 @@ fn tools_list() -> Value {
                                     "label": { "type": "string" },
                                     "condition": { "type": "string" }
                                 },
-                                "required": ["id", "from", "to"]
+                                "required": ["id", "from", "to"],
+                                "additionalProperties": false
                             }
                         },
-                        "removeEdges": { "type": "array", "items": { "type": "string" }, "description": "要删除的连线 id 列表" }
+                        "removeEdges": { "type": "array", "items": { "type": "string" }, "description": "要删除的连线 id 列表" },
+                        "expectedRevision": { "type": ["object", "null"], "description": "上次读取的 graph revision；不匹配时拒绝覆盖" }
                     },
                     "required": ["path"],
                     "additionalProperties": false
@@ -208,10 +217,10 @@ fn tools_list() -> Value {
             let name = tool.get("name").and_then(Value::as_str).unwrap_or("");
             let annotations = match name {
                 "node_write" | "graph_write" => json!({
-                    "title": "写入项目数据",
+                "title": "写入项目数据",
                     "readOnlyHint": false,
-                    "destructiveHint": false,
-                    "idempotentHint": true,
+                    "destructiveHint": true,
+                    "idempotentHint": false,
                     "openWorldHint": false
                 }),
                 _ => json!({
@@ -233,19 +242,19 @@ fn tools_list() -> Value {
 // tools/call
 // ---------------------------------------------------------------------------
 
-fn call_tool(id: Value, params: Option<&Value>) -> String {
+fn call_tool(id: Value, params: Option<&Value>, project_root: Option<&Path>) -> String {
     let Some(params) = params else {
         return error(id, -32602, "tools/call 缺少 params");
     };
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
     let outcome = match name {
-        "project_validate" => tool_project_validate(&args),
-        "graph_read" => tool_graph_read(&args),
-        "nodes_list" => tool_nodes_list(&args),
-        "node_read" => tool_node_read(&args),
-        "node_write" => tool_node_write(&args),
-        "graph_write" => tool_graph_write(&args),
+        "project_validate" => tool_project_validate(&args, project_root),
+        "graph_read" => tool_graph_read(&args, project_root),
+        "nodes_list" => tool_nodes_list(&args, project_root),
+        "node_read" => tool_node_read(&args, project_root),
+        "node_write" => tool_node_write(&args, project_root),
+        "graph_write" => tool_graph_write(&args, project_root),
         _ => Err(format!("未知工具: {name}")),
     };
     match outcome {
@@ -267,34 +276,128 @@ fn call_tool(id: Value, params: Option<&Value>) -> String {
     }
 }
 
-fn required_path(args: &Value) -> Result<&str, String> {
-    args.get("path")
+fn required_path<'a>(args: &'a Value, project_root: Option<&Path>) -> Result<&'a str, String> {
+    let path = args
+        .get("path")
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "缺少必填参数 path（项目根目录）".to_string())
+        .ok_or_else(|| "缺少必填参数 path（项目根目录）".to_string())?;
+    if let Some(project_root) = project_root {
+        ensure_project_scope(path, project_root)?;
+    }
+    Ok(path)
+}
+
+fn ensure_project_scope(project_path: &str, project_root: &Path) -> Result<(), String> {
+    let requested = Path::new(project_path)
+        .canonicalize()
+        .map_err(|error| format!("无法定位项目目录 {project_path}: {error}"))?;
+    if requested != project_root {
+        return Err(format!(
+            "MCP 只能操作启动时绑定的项目目录 {}，拒绝访问 {}",
+            project_root.display(),
+            requested.display()
+        ));
+    }
+    Ok(())
+}
+
+fn safe_relative_path(rel: &str) -> Result<PathBuf, String> {
+    if rel.is_empty() || rel.contains('\0') || rel.contains('\\') {
+        return Err(format!("非法相对路径: {rel:?}"));
+    }
+    let path = Path::new(rel);
+    if path.is_absolute() {
+        return Err(format!("禁止绝对路径: {rel}"));
+    }
+    let mut safe = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => safe.push(part),
+            Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("路径越界：{rel}"));
+            }
+        }
+    }
+    if safe.as_os_str().is_empty() {
+        return Err(format!("非法相对路径: {rel:?}"));
+    }
+    Ok(safe)
+}
+
+fn project_file_path(project_path: &str, rel: &str) -> Result<PathBuf, String> {
+    let root = Path::new(project_path)
+        .canonicalize()
+        .map_err(|error| format!("无法定位项目目录 {project_path}: {error}"))?;
+    if !root.is_dir() {
+        return Err(format!("项目路径不是目录: {}", root.display()));
+    }
+    let relative = safe_relative_path(rel)?;
+    let mut current = root.clone();
+    for component in relative.components() {
+        current.push(component);
+        if let Ok(metadata) = std::fs::symlink_metadata(&current) {
+            if metadata.file_type().is_symlink() {
+                return Err(format!("拒绝项目路径中的符号链接: {}", current.display()));
+            }
+        }
+    }
+    if current.exists() {
+        let canonical = current
+            .canonicalize()
+            .map_err(|error| format!("无法定位项目文件 {}: {error}", current.display()))?;
+        if !canonical.starts_with(&root) {
+            return Err(format!("路径越界：{} 不在项目目录内", current.display()));
+        }
+    }
+    Ok(current)
+}
+
+fn validate_node_file(file: &str) -> Result<String, String> {
+    let relative = safe_relative_path(file)?;
+    let components = relative.components().collect::<Vec<_>>();
+    if components.len() != 2
+        || components[0] != Component::Normal("nodes".as_ref())
+        || relative.extension().and_then(|extension| extension.to_str()) != Some("json")
+        || relative.file_stem().and_then(|stem| stem.to_str()).is_none_or(str::is_empty)
+    {
+        return Err(format!("节点文件必须是 nodes/<name>.json: {file}"));
+    }
+    Ok(relative.to_string_lossy().into_owned())
+}
+
+fn array_argument(args: &Value, name: &str) -> Result<Vec<Value>, String> {
+    match args.get(name) {
+        None => Ok(Vec::new()),
+        Some(Value::Array(values)) => Ok(values.clone()),
+        Some(_) => Err(format!("{name} 必须是数组")),
+    }
+}
+
+fn reject_unknown_arguments(args: &Value, allowed: &[&str]) -> Result<(), String> {
+    let Some(object) = args.as_object() else {
+        return Err("工具参数必须是对象".to_string());
+    };
+    if let Some(unknown) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
+        return Err(format!("未知工具参数: {unknown}"));
+    }
+    Ok(())
 }
 
 fn read_project_file(project_path: &str, rel: &str) -> Result<Value, String> {
-    let full = Path::new(project_path).join(rel);
+    let full = project_file_path(project_path, rel)?;
     let text = std::fs::read_to_string(&full)
         .map_err(|error| format!("读取 {rel} 失败: {error}"))?;
     serde_json::from_str(&text).map_err(|error| format!("解析 {rel} 失败: {error}"))
-}
-
-fn write_project_json(project_path: &str, rel: &str, value: &Value) -> Result<(), String> {
-    let full = Path::new(project_path).join(rel);
-    let text = serde_json::to_string_pretty(value)
-        .map_err(|error| format!("序列化 {rel} 失败: {error}"))?;
-    std::fs::write(&full, format!("{text}\n"))
-        .map_err(|error| format!("写入 {rel} 失败: {error}"))
 }
 
 // ---------------------------------------------------------------------------
 // graph_write：graph.json 的白名单结构化修改（只增不删，保持图结构可审）
 // ---------------------------------------------------------------------------
 
-fn tool_graph_write(args: &Value) -> Result<Value, String> {
-    let path = required_path(args)?;
+fn tool_graph_write(args: &Value, project_root: Option<&Path>) -> Result<Value, String> {
+    reject_unknown_arguments(args, &["path", "addNodes", "addEdges", "removeEdges", "expectedRevision"])?;
+    let path = required_path(args, project_root)?;
     let mut graph = read_project_file(path, "content/graph.json")?;
 
     // 既有 id 集合（节点 / 连线），用于唯一性与引用校验
@@ -330,11 +433,7 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
         .unwrap_or_default();
 
     // ── 新增节点 ──
-    let add_nodes = args
-        .get("addNodes")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let add_nodes = array_argument(args, "addNodes")?;
     let mut nodes = graph
         .get("nodes")
         .and_then(Value::as_array)
@@ -349,13 +448,14 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
         if node_ids.contains(node_id) {
             return Err(format!("节点 id 重复: {node_id}"));
         }
-        let file = node
+        let raw_file = node
             .get("file")
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| format!("节点 {node_id} 缺少非空 file（content/ 相对路径）"))?;
+        let file = validate_node_file(raw_file)?;
         if nodes.iter().any(|existing| {
-            existing.get("file").and_then(Value::as_str) == Some(file)
+            existing.get("file").and_then(Value::as_str) == Some(file.as_str())
         }) {
             return Err(format!("节点文件已被占用: {file}"));
         }
@@ -369,19 +469,21 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
                 chapter_ids.iter().cloned().collect::<Vec<_>>().join(", ")
             ));
         }
-        let mut object = node.as_object().cloned().unwrap_or_default();
-        // 图上未声明的键不写入 graph.json（title/file/chapterId/position 已含在 node 中）
-        object.entry("position").or_insert_with(|| json!({ "x": 0, "y": 0 }));
+        let mut object = serde_json::Map::new();
+        object.insert("id".to_string(), json!(node_id));
+        object.insert("title".to_string(), node.get("title").cloned().unwrap_or(Value::Null));
+        object.insert("file".to_string(), json!(file));
+        object.insert("chapterId".to_string(), json!(chapter_id));
+        object.insert(
+            "position".to_string(),
+            node.get("position").cloned().unwrap_or_else(|| json!({ "x": 0, "y": 0 })),
+        );
         nodes.push(Value::Object(object));
         node_ids.insert(node_id.to_string());
     }
 
     // ── 新增连线 ──
-    let add_edges = args
-        .get("addEdges")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let add_edges = array_argument(args, "addEdges")?;
     let mut edges = graph
         .get("edges")
         .and_then(Value::as_array)
@@ -410,18 +512,25 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
         if !node_ids.contains(to) {
             return Err(format!("连线 {edge_id} 的 to 不是已存在节点: {to}"));
         }
-        let mut object = edge.as_object().cloned().unwrap_or_default();
-        object.entry("mode").or_insert_with(|| json!("linear"));
+        let mut object = serde_json::Map::new();
+        object.insert("id".to_string(), json!(edge_id));
+        object.insert("from".to_string(), json!(from));
+        object.insert("to".to_string(), json!(to));
+        object.insert(
+            "mode".to_string(),
+            edge.get("mode").cloned().unwrap_or_else(|| json!("linear")),
+        );
+        for key in ["label", "condition"] {
+            if let Some(value) = edge.get(key) {
+                object.insert(key.to_string(), value.clone());
+            }
+        }
         edges.push(Value::Object(object));
         edge_ids.insert(edge_id.to_string());
     }
 
     // ── 删除连线（白名单内唯一允许的删除操作）──
-    let remove_edges = args
-        .get("removeEdges")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let remove_edges = array_argument(args, "removeEdges")?;
     let mut removed = Vec::new();
     for edge_id in &remove_edges {
         let edge_id = edge_id.as_str().ok_or_else(|| "removeEdges 必须是字符串数组".to_string())?;
@@ -445,7 +554,7 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
         return Ok(json!({
             "ok": true,
             "changed": false,
-            "validation": tool_project_validate(&json!({ "path": path }))?,
+                "validation": tool_project_validate(&json!({ "path": path }), project_root)?,
         }));
     }
 
@@ -453,7 +562,13 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
         object.insert("nodes".to_string(), Value::Array(nodes));
         object.insert("edges".to_string(), Value::Array(edges));
     }
-    write_project_json(path, "content/graph.json", &graph)?;
+    app_lib::validate_graph_for_cli(&graph)?;
+    let revision = app_lib::save_graph_for_cli(
+        path,
+        graph,
+        args.get("expectedRevision").cloned(),
+    )?;
+    let validation = tool_project_validate(&json!({ "path": path }), project_root)?;
 
     Ok(json!({
         "ok": true,
@@ -461,12 +576,13 @@ fn tool_graph_write(args: &Value) -> Result<Value, String> {
         "addedNodes": add_nodes.iter().map(|node| node.get("id").cloned()).collect::<Vec<_>>(),
         "addedEdges": add_edges.iter().map(|edge| edge.get("id").cloned()).collect::<Vec<_>>(),
         "removedEdges": removed,
-        "validation": tool_project_validate(&json!({ "path": path }))?,
+        "revision": revision,
+        "validation": validation,
     }))
 }
 
-fn tool_project_validate(args: &Value) -> Result<Value, String> {
-    let path = required_path(args)?;
+fn tool_project_validate(args: &Value, project_root: Option<&Path>) -> Result<Value, String> {
+    let path = required_path(args, project_root)?;
     match app_lib::open_project_for_cli(path) {
         Ok(project) => {
             let graph_issues: Vec<app_lib::GraphIssue> = project
@@ -503,8 +619,8 @@ fn tool_project_validate(args: &Value) -> Result<Value, String> {
     }
 }
 
-fn tool_graph_read(args: &Value) -> Result<Value, String> {
-    read_project_file(required_path(args)?, "content/graph.json")
+fn tool_graph_read(args: &Value, project_root: Option<&Path>) -> Result<Value, String> {
+    read_project_file(required_path(args, project_root)?, "content/graph.json")
 }
 
 fn graph_nodes(graph: &Value) -> Vec<Value> {
@@ -522,18 +638,20 @@ fn resolve_node_file(graph: &Value, args: &Value) -> Result<(String, Option<Stri
             .iter()
             .find(|node| node.get("id").and_then(Value::as_str) == Some(node_id))
             .ok_or_else(|| format!("graph.json 中不存在节点: {node_id}"))?;
-        let file = node
+        let raw_file = node
             .get("file")
             .and_then(Value::as_str)
             .ok_or_else(|| format!("节点 {node_id} 缺少 file 字段"))?;
-        return Ok((file.to_string(), Some(node_id.to_string())));
+        let file = validate_node_file(raw_file)?;
+        return Ok((file, Some(node_id.to_string())));
     }
     if let Some(file) = args.get("file").and_then(Value::as_str) {
+        let file = validate_node_file(file)?;
         // graph-first 约束：file 必须精确命中 graph.json 中某个已声明节点。
         // 未声明的任意路径一律拒绝——顺带挡住绝对路径 / 父目录穿越。
         let node_id = nodes
             .iter()
-            .find(|node| node.get("file").and_then(Value::as_str) == Some(file))
+            .find(|node| node.get("file").and_then(Value::as_str) == Some(file.as_str()))
             .and_then(|node| node.get("id").and_then(Value::as_str))
             .map(str::to_string);
         if node_id.is_none() {
@@ -541,13 +659,13 @@ fn resolve_node_file(graph: &Value, args: &Value) -> Result<(String, Option<Stri
                 "{file} 未在 graph.json 中声明。节点文件必须先注册到图（graph_write）才能读写。"
             ));
         }
-        return Ok((file.to_string(), node_id));
+        return Ok((file, node_id));
     }
     Err("nodeId 与 file 必须提供一个".to_string())
 }
 
-fn tool_nodes_list(args: &Value) -> Result<Value, String> {
-    let graph = read_project_file(required_path(args)?, "content/graph.json")?;
+fn tool_nodes_list(args: &Value, project_root: Option<&Path>) -> Result<Value, String> {
+    let graph = read_project_file(required_path(args, project_root)?, "content/graph.json")?;
     let nodes = graph_nodes(&graph)
         .iter()
         .map(|node| {
@@ -562,16 +680,17 @@ fn tool_nodes_list(args: &Value) -> Result<Value, String> {
     Ok(json!({ "nodes": nodes }))
 }
 
-fn tool_node_read(args: &Value) -> Result<Value, String> {
-    let path = required_path(args)?;
+fn tool_node_read(args: &Value, project_root: Option<&Path>) -> Result<Value, String> {
+    let path = required_path(args, project_root)?;
     let graph = read_project_file(path, "content/graph.json")?;
     let (file, node_id) = resolve_node_file(&graph, args)?;
     let instructions = read_project_file(path, &format!("content/{file}"))?;
     Ok(json!({ "nodeId": node_id, "file": file, "instructions": instructions }))
 }
 
-fn tool_node_write(args: &Value) -> Result<Value, String> {
-    let path = required_path(args)?;
+fn tool_node_write(args: &Value, project_root: Option<&Path>) -> Result<Value, String> {
+    reject_unknown_arguments(args, &["path", "nodeId", "file", "instructions", "expectedRevision"])?;
+    let path = required_path(args, project_root)?;
     let instructions = args
         .get("instructions")
         .cloned()
@@ -601,16 +720,22 @@ fn tool_node_write(args: &Value) -> Result<Value, String> {
     );
     let assigned = app_lib::assign_missing_story_point_ids(&instructions, &context)
         .map_err(|error| format!("补齐 instruction 身份 id 失败: {error}"))?;
-    app_lib::save_node_for_cli(path, &file, assigned.node, None)
+    let saved = app_lib::save_node_for_cli(
+        path,
+        &file,
+        assigned.node,
+        args.get("expectedRevision").cloned(),
+    )
         .map_err(|message| format!("写入节点失败: {message}"))?;
 
     // 写后复检，把最新问题直接喂回 Agent
-    let validation = tool_project_validate(&json!({ "path": path }))?;
+    let validation = tool_project_validate(&json!({ "path": path }), project_root)?;
     Ok(json!({
         "ok": true,
         "nodeId": node_id,
         "file": file,
-        "assignedInstructionIds": assigned.assigned,
+        "assignedInstructionIds": saved.assigned,
+        "revision": saved.revision,
         "validation": validation,
     }))
 }
@@ -657,10 +782,12 @@ fn resources_list() -> Value {
 
 fn resolve_project_root() -> PathBuf {
     // MCP server 由 Agent 以项目根为 cwd 启动
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    std::env::current_dir()
+        .and_then(|path| path.canonicalize())
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
-fn read_resource(id: Value, params: Option<&Value>) -> String {
+fn read_resource(id: Value, params: Option<&Value>, project_root: Option<&Path>) -> String {
     let payload = (|| -> Result<Value, String> {
         let uri = params
             .and_then(|params| params.get("uri"))
@@ -679,7 +806,8 @@ fn read_resource(id: Value, params: Option<&Value>) -> String {
                 format!(".galstudio/schemas/{name}.json")
             }
         };
-        let full = resolve_project_root().join(&rel);
+        let root = project_root.map(Path::to_path_buf).unwrap_or_else(resolve_project_root);
+        let full = project_file_path(root.to_string_lossy().as_ref(), &rel)?;
         let text = std::fs::read_to_string(&full)
             .map_err(|error| format!("读取 {rel} 失败（MCP server 是否以项目根为 cwd 启动？）: {error}"))?;
         Ok(json!({
@@ -947,6 +1075,155 @@ mod tests {
     }
 
     #[test]
+    fn node_read_rejects_unsafe_declared_paths() {
+        let root = unique_temp_dir("read-path-guard");
+        make_project(&root);
+        let secret = root.join("outside-secret.json");
+        write_text(&secret, r#"{"secret":true}"#);
+        let mut graph = read_project_file(&root.to_string_lossy(), "content/graph.json").unwrap();
+        graph["nodes"][0]["file"] = json!("../outside-secret.json");
+        write_text(
+            &root.join("content/graph.json"),
+            &format!("{}\n", serde_json::to_string_pretty(&graph).unwrap()),
+        );
+
+        let response = handle_mcp_line(&request_line(
+            12,
+            "tools/call",
+            json!({
+                "name": "node_read",
+                "arguments": { "path": root.to_string_lossy(), "nodeId": "start" }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert_eq!(std::fs::read_to_string(secret).unwrap(), r#"{"secret":true}"#);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn node_read_rejects_symlinked_node_files() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("read-symlink-guard");
+        make_project(&root);
+        let secret = root.join("outside-secret.json");
+        write_text(&secret, r#"[{"t":"narrate","text":"secret"}]"#);
+        symlink(&secret, root.join("content/nodes/escape.json")).unwrap();
+        let mut graph = read_project_file(&root.to_string_lossy(), "content/graph.json").unwrap();
+        graph["nodes"][0]["file"] = json!("nodes/escape.json");
+        write_text(
+            &root.join("content/graph.json"),
+            &format!("{}\n", serde_json::to_string_pretty(&graph).unwrap()),
+        );
+
+        let response = handle_mcp_line(&request_line(
+            16,
+            "tools/call",
+            json!({
+                "name": "node_read",
+                "arguments": { "path": root.to_string_lossy(), "nodeId": "start" }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert_eq!(std::fs::read_to_string(secret).unwrap(), r#"[{"t":"narrate","text":"secret"}]"#);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn graph_write_rejects_unsafe_node_files_without_mutation() {
+        let root = unique_temp_dir("graph-path-guard");
+        make_project(&root);
+        let path = root.to_string_lossy().to_string();
+        let before = std::fs::read_to_string(root.join("content/graph.json")).unwrap();
+        let response = handle_mcp_line(&request_line(
+            13,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{
+                        "id": "escape",
+                        "title": "逃逸",
+                        "file": "../outside.json",
+                        "chapterId": "chapter_1"
+                    }]
+                }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert_eq!(std::fs::read_to_string(root.join("content/graph.json")).unwrap(), before);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn graph_write_whitelists_fields_and_rejects_schema_invalid_candidates() {
+        let root = unique_temp_dir("graph-schema-guard");
+        make_project(&root);
+        let path = root.to_string_lossy().to_string();
+        let response = handle_mcp_line(&request_line(
+            14,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{
+                        "id": "branch",
+                        "title": "分支",
+                        "file": "nodes/branch.json",
+                        "chapterId": "chapter_1",
+                        "unknown": "must-not-persist"
+                    }],
+                    "addEdges": [{
+                        "id": "start__branch",
+                        "from": "start",
+                        "to": "branch",
+                        "unknown": "must-not-persist"
+                    }]
+                }
+            }),
+        ))
+        .unwrap();
+        let result = response_result(&response);
+        assert_eq!(result["content"][0]["type"], "text");
+        let graph = read_project_file(&path, "content/graph.json").unwrap();
+        assert!(graph["nodes"][1].get("unknown").is_none());
+        assert!(graph["edges"][0].get("unknown").is_none());
+
+        let before = std::fs::read_to_string(root.join("content/graph.json")).unwrap();
+        let response = handle_mcp_line(&request_line(
+            15,
+            "tools/call",
+            json!({
+                "name": "graph_write",
+                "arguments": {
+                    "path": path,
+                    "addNodes": [{
+                        "id": "invalid",
+                        "title": "非法",
+                        "file": "nodes/invalid.json",
+                        "chapterId": "chapter_1",
+                        "position": { "x": "not-a-number", "y": 0 }
+                    }]
+                }
+            }),
+        ))
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert_eq!(std::fs::read_to_string(root.join("content/graph.json")).unwrap(), before);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn unknown_tool_is_an_error_result_not_protocol_error() {
         let response = handle_mcp_line(&request_line(
             9,
@@ -956,6 +1233,34 @@ mod tests {
         .unwrap();
         let result: Value = serde_json::from_str(&response).unwrap();
         assert_eq!(result["result"]["isError"], true);
+    }
+
+    #[test]
+    fn scoped_mcp_rejects_a_different_project_path() {
+        let bound = unique_temp_dir("scope-bound");
+        let other = unique_temp_dir("scope-other");
+        make_project(&bound);
+        make_project(&other);
+        let response = handle_mcp_line_scoped(
+            &request_line(
+                17,
+                "tools/call",
+                json!({
+                    "name": "graph_read",
+                    "arguments": { "path": other.to_string_lossy() }
+                }),
+            ),
+            Some(bound.as_path()),
+        )
+        .unwrap();
+        let result: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("只能操作启动时绑定的项目目录"));
+        let _ = std::fs::remove_dir_all(bound);
+        let _ = std::fs::remove_dir_all(other);
     }
 
     #[test]
@@ -969,6 +1274,8 @@ mod tests {
             .find(|tool| tool["name"] == "graph_write")
             .expect("graph_write must be listed");
         assert_eq!(graph_write["annotations"]["readOnlyHint"], false);
+        assert_eq!(graph_write["annotations"]["destructiveHint"], true);
+        assert_eq!(graph_write["annotations"]["idempotentHint"], false);
         assert!(graph_write["description"]
             .as_str()
             .unwrap()

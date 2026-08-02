@@ -11,9 +11,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "console")]
 
-// tauri-cli 打包时会扫描 src-tauri/src/bin/ 顶层，把每个 .rs 文件都当作
-// 可打包二进制（无视 Cargo.toml 的 autobins=false）。CLI 附属模块因此放在
-// 子目录里用 #[path] 引用，否则 bundle 会去找不存在的 target/release/mcp。
+// tauri-cli 会按 src/bin/ 顶层文件名发现额外二进制；CLI 入口放在 src/
+// 并显式由 Cargo.toml 声明，避免把文件名 cli.rs 误当成 target/release/cli。
 #[path = "cli/mcp.rs"]
 mod mcp;
 #[path = "cli/mcp_install.rs"]
