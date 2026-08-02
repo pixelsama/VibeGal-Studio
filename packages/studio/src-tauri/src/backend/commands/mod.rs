@@ -509,6 +509,53 @@ pub(crate) fn reveal_path(path: String) -> Result<(), String> {
     desktop_system::reveal_path(Path::new(&path))
 }
 
+// ---------------------------------------------------------------------------
+// Agent 会话（外部 CLI：codex / claude / opencode）
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub(crate) async fn agent_detect(
+) -> Result<Vec<super::agent_session::AgentAvailability>, super::agent_session::AgentFailure> {
+    tauri::async_runtime::spawn_blocking(super::agent_session::detect_agents)
+        .await
+        .map_err(|error| {
+            super::agent_session::AgentFailure::new(
+                "agent_task_failed",
+                format!("Agent 探测任务失败: {error}"),
+            )
+        })
+}
+
+#[tauri::command]
+pub(crate) async fn agent_send(
+    app_handle: tauri::AppHandle,
+    request: super::agent_session::AgentTurnRequest,
+    turns: tauri::State<'_, super::agent_session::AgentSessionRegistry>,
+) -> Result<super::agent_session::AgentTurnOutcome, super::agent_session::AgentFailure> {
+    let turns = turns.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        super::agent_session::run_agent_turn(request, &turns, |payload| {
+            let _ = app_handle.emit(super::agent_session::AGENT_TURN_EVENT, payload);
+        })
+    })
+    .await
+    .map_err(|error| {
+        super::agent_session::AgentFailure::new(
+            "agent_task_failed",
+            format!("Agent 轮次任务失败: {error}"),
+        )
+    })?
+}
+
+#[tauri::command]
+pub(crate) fn agent_cancel(
+    turn_id: String,
+    turns: tauri::State<'_, super::agent_session::AgentSessionRegistry>,
+) -> Result<(), super::agent_session::AgentFailure> {
+    turns.cancel(&turn_id)
+}
+
+
 #[tauri::command]
 pub(crate) fn run_desktop_game(executable: String) -> Result<(), String> {
     desktop_system::run_desktop_game(Path::new(&executable))

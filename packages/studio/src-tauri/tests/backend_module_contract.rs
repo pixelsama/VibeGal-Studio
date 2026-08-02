@@ -6,7 +6,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 47] = [
+const COMMAND_NAMES: [&str; 50] = [
+    "agent_detect",
+    "agent_send",
+    "agent_cancel",
     "list_projects",
     "open_project",
     "analyze_project",
