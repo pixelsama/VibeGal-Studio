@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
+#[cfg(windows)]
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -151,7 +153,7 @@ fn agent_command(name: &str) -> Command {
 }
 
 #[cfg(windows)]
-fn windows_program_path(name: &str) -> Option<std::path::PathBuf> {
+fn windows_program_path(name: &str) -> Option<PathBuf> {
     let path_var = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path_var) {
         for candidate in [
@@ -969,6 +971,38 @@ mod tests {
         assert!(!summary.contains('\n'));
         assert!(summary.chars().count() <= 121);
         assert!(summary.ends_with('…'));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cmd_shims_are_launched_through_cmd() {
+        let _path_guard = PATH_ENV_LOCK.lock().unwrap();
+        let root = unique_temp_dir("windows-command");
+        let bin_dir = root.join("bin");
+        let shim = write_fake_cli(&bin_dir, "codex", "", "exit /b 0");
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let mut paths = std::env::split_paths(&original_path).collect::<Vec<_>>();
+        paths.insert(0, bin_dir);
+        std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
+
+        let command = agent_command("codex");
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        std::env::set_var("PATH", original_path);
+        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(command.get_program(), "cmd.exe");
+        assert_eq!(
+            args,
+            vec![
+                "/d".to_string(),
+                "/s".to_string(),
+                "/c".to_string(),
+                shim.to_string_lossy().into_owned(),
+            ]
+        );
     }
 
     // ---- 端到端（假 CLI）----
