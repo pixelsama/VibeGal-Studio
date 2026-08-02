@@ -538,23 +538,38 @@ pub(crate) fn detect_agents() -> Vec<AgentAvailability> {
 }
 
 fn probe_agent_version(agent: AgentKind) -> Option<String> {
-    let child = agent_command(agent.command_name())
+    let mut child = agent_command(agent.command_name())
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    // --version 理应瞬间返回；给 10s 兜底防卡死，超时按不可用处理。
-    let (tx, rx) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let output = child.wait_with_output();
-        let _ = tx.send(output);
-    });
-    let output = rx.recv_timeout(Duration::from_secs(10)).ok()?.ok()?;
-    if !output.status.success() {
-        return None;
+    let mut stdout = child.stdout.take()?;
+    // --version 理应瞬间返回；给 10s 兜底防卡死，超时按不可用处理，
+    // 并在超时时杀掉进程，避免孤儿 CLI 在后台残留。
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut output = Vec::new();
+    loop {
+        let status = match child.try_wait() {
+            Ok(Some(status)) => status,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+            Err(_) => return None,
+        };
+        if !status.success() {
+            return None;
+        }
+        let _ = stdout.read_to_end(&mut output);
+        break;
     }
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = String::from_utf8_lossy(&output);
     let version = text.split_whitespace().last()?.to_string();
     Some(version)
 }

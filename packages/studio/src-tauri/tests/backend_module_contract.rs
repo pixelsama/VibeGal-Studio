@@ -75,7 +75,11 @@ const REQUIRED_DOMAIN_MODULES: [&str; 10] = [
 
 const RETIRED_MIXED_MODULES: [&str; 2] = ["project_commands", "run"];
 
-const COMMAND_JSON_KEYS: [(&str, &[&str]); 47] = [
+const COMMAND_JSON_KEYS: [(&str, &[&str]); 51] = [
+    ("agent_detect", &[]),
+    ("agent_send", &["request"]),
+    ("agent_cancel", &["turnId"]),
+    ("agent_mcp_install", &["agent"]),
     ("list_projects", &["workspaceDir"]),
     ("open_project", &["path"]),
     ("analyze_project", &["projectPath"]),

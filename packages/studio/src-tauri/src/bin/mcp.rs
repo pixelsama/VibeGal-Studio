@@ -529,11 +529,18 @@ fn resolve_node_file(graph: &Value, args: &Value) -> Result<(String, Option<Stri
         return Ok((file.to_string(), Some(node_id.to_string())));
     }
     if let Some(file) = args.get("file").and_then(Value::as_str) {
+        // graph-first 约束：file 必须精确命中 graph.json 中某个已声明节点。
+        // 未声明的任意路径一律拒绝——顺带挡住绝对路径 / 父目录穿越。
         let node_id = nodes
             .iter()
             .find(|node| node.get("file").and_then(Value::as_str) == Some(file))
             .and_then(|node| node.get("id").and_then(Value::as_str))
             .map(str::to_string);
+        if node_id.is_none() {
+            return Err(format!(
+                "{file} 未在 graph.json 中声明。节点文件必须先注册到图（graph_write）才能读写。"
+            ));
+        }
         return Ok((file.to_string(), node_id));
     }
     Err("nodeId 与 file 必须提供一个".to_string())

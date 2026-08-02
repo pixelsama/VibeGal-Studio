@@ -408,7 +408,9 @@ export function AgentConnectionSection({
                   <div style={cliCommandStyle}>{label}</div>
                   <div style={cliStatusTextStyle}>
                     {available
-                      ? t("settings.agent.installed", { version: entry?.version ?? "" })
+                      ? entry?.version
+                        ? t("settings.agent.installed", { version: entry.version })
+                        : t("settings.cli.installed")
                       : t("settings.agent.notInstalled", { agent: label })}
                   </div>
                   {!available && (
