@@ -8,6 +8,8 @@ repository = "https://github.com/pixelsama/VibeGal-Studio"
 edition = "2021"
 rust-version = "1.88.0"
 default-run = "vibegal-studio"
+# 显式声明全部 [[bin]]；src/bin/ 下的 cli 子模块文件（mcp.rs 等）不是独立二进制
+autobins = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
