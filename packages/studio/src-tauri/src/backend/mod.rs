@@ -1,3 +1,4 @@
+pub(crate) mod agent_session;
 pub(crate) mod api;
 mod cli_tool;
 mod commands;

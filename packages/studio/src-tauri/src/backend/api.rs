@@ -50,6 +50,21 @@ pub fn open_project_for_cli(path: &str) -> Result<ProjectData, String> {
     super::project::open_project_for_cli(path)
 }
 
+pub fn validate_graph_for_cli(graph: &serde_json::Value) -> Result<(), String> {
+    super::mutation::validate_graph_for_cli(graph)
+}
+
+pub fn save_graph_for_cli(
+    project_path: &str,
+    graph: serde_json::Value,
+    expected_revision: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, String> {
+    let revision = super::mutation::save_graph(project_path.to_string(), graph, expected_revision)?;
+    revision
+        .map(|value| serde_json::to_value(value).map_err(|error| format!("序列化 graph revision 失败: {error}")))
+        .transpose()
+}
+
 pub fn save_node_for_cli(
     project_path: &str,
     node_file: &str,

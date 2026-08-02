@@ -2,7 +2,7 @@
  * Workspace —— 打开项目后的工作台。
  *
  * 顶部：项目名 + 界面风格选择器 + 返回
- * 内容区：预览 / 脚本 / 资产 / 项目 / 外观 / 导出
+ * 内容区：预览 / 剧情 / 资产 / 项目 / 外观 / 导出
  *
  * Spec 19（创作者词汇与预览/外观信息架构）：
  * - tab「渲染」→「预览」（workspace id `render` 不变）；
@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
 import type {
   GraphIssueFocusRequest,
   ProjectChangedPayload,
@@ -561,6 +561,9 @@ export function Workspace({
           ) : (
             <span style={rendererEmptyStyle}>{t("workspace.renderer.empty", { guidance: t("workspace.renderer.guidance") })}</span>
           )}
+          <IconButton onClick={() => navigateWithGuard({ type: "agent" })} title={t("agent.title")} aria-label={t("agent.title")}>
+            <Bot size={15} />
+          </IconButton>
           <IconButton onClick={() => runWithUnsavedChangesGuard(onOpenSettings)} title={t("nav.settings")} aria-label={t("nav.settings")}>
             <SettingsIcon size={15} />
           </IconButton>
@@ -577,7 +580,7 @@ export function Workspace({
               loadingContent={allNodeData.loading}
               rendererId={rendererId}
               onOpenNode={(nodeId, instructionIndex) => {
-                // 剧情检查里点「在某节点改变了它」→ 切到脚本并聚焦那一条指令。
+                // 剧情检查里点「在某节点改变了它」→ 切到剧情并聚焦那一条指令。
                 if (instructionIndex != null) {
                   graphIssueFocusRequestIdRef.current += 1;
                   setGraphIssueFocus({

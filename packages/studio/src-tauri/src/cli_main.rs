@@ -11,6 +11,13 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "console")]
 
+// tauri-cli 会按 src/bin/ 顶层文件名发现额外二进制；CLI 入口放在 src/
+// 并显式由 Cargo.toml 声明，避免把文件名 cli.rs 误当成 target/release/cli。
+#[path = "cli/mcp.rs"]
+mod mcp;
+#[path = "cli/mcp_install.rs"]
+mod mcp_install;
+
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -127,6 +134,14 @@ enum Commands {
     Node {
         #[command(subcommand)]
         command: NodeCommand,
+    },
+    /// 以 stdio MCP 服务暴露项目工具（validate/graph/node），供外部 Agent 连接
+    Mcp,
+    /// 把 VibeGal MCP server 写入外部 Agent 的配置文件（claude/codex/opencode）
+    McpInstall {
+        /// 目标 Agent：claude / codex / opencode
+        #[arg(value_enum)]
+        agent: crate::mcp_install::InstallTarget,
     },
 }
 
@@ -5583,6 +5598,8 @@ fn main() {
                 format,
             ),
         },
+        Commands::Mcp => mcp::run_mcp_server(),
+        Commands::McpInstall { agent } => mcp_install::run_mcp_install(agent),
     };
     std::process::exit(code);
 }

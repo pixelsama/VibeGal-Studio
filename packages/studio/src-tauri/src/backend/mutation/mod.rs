@@ -199,8 +199,7 @@ pub(crate) fn save_graph(
     graph: serde_json::Value,
     expected_revision: Option<serde_json::Value>,
 ) -> Result<Option<FileRevision>, String> {
-    validate_write_contract(contracts::ContractSchemaKind::Graph, &graph, "graph")?;
-    validate_graph_chapter_references(&graph)?;
+    validate_graph_for_cli(&graph)?;
     let project_root = ProjectRoot::open(Path::new(&project_path))?;
     let content_root = project_root.content_root()?;
     ensure_expected_revision(project_root.path(), "content/graph.json", expected_revision)?;
@@ -216,6 +215,11 @@ pub(crate) fn save_graph(
     let graph_path = content_root.resolve_write_target("graph.json")?;
     write_json(&graph_path, &graph)?;
     project_root.revision("content/graph.json")
+}
+
+pub(crate) fn validate_graph_for_cli(graph: &serde_json::Value) -> Result<(), String> {
+    validate_write_contract(contracts::ContractSchemaKind::Graph, graph, "graph")?;
+    validate_graph_chapter_references(graph)
 }
 
 fn validate_graph_chapter_references(graph: &serde_json::Value) -> Result<(), String> {

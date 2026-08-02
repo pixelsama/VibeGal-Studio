@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { ProjectList, type ProjectOpenOptions } from "./features/projects/ProjectList";
+import { AgentPage } from "./features/agent/AgentPage";
 import { Settings } from "./features/settings/Settings";
 import { LocalizedErrorBoundary } from "./features/common/ErrorBoundary";
 import { Workspace } from "./Workspace";
@@ -82,6 +83,15 @@ function AppContent({ appSettings }: { appSettings: UseAppSettingsResult }) {
         canGoBack={backEnabled}
         presentation="standalone"
       />
+    );
+  }
+
+  // Agent 对话页：独立全屏，从工作台进入（需要已打开的项目）
+  if (location.type === "agent" && project) {
+    return (
+      <LocalizedErrorBoundary title={t("app.workspaceError")}>
+        <AgentPage project={project} canGoBack={backEnabled} onBack={handleBack} />
+      </LocalizedErrorBoundary>
     );
   }
 

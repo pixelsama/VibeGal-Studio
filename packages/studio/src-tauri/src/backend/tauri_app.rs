@@ -6,6 +6,7 @@ pub(crate) fn run() {
         .manage(super::watcher::ProjectWatchers::default())
         .manage(super::commands::AssetScopeState::default())
         .manage(super::game_build::DesktopBuildRegistry::default())
+        .manage(super::agent_session::AgentSessionRegistry::default())
         .plugin(tauri_plugin_dialog::init());
     #[cfg(feature = "agent-qa")]
     let builder = builder
@@ -73,6 +74,10 @@ pub(crate) fn run() {
             super::commands::cli_tool_status,
             super::commands::install_cli_tool,
             super::commands::uninstall_cli_tool,
+            super::commands::agent_detect,
+            super::commands::agent_send,
+            super::commands::agent_cancel,
+            super::commands::agent_mcp_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

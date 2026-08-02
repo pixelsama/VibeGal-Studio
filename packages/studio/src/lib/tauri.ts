@@ -719,6 +719,102 @@ export async function revealPath(path: string): Promise<void> {
   await invoke("reveal_path", { path });
 }
 
+// ---------------------------------------------------------------------------
+// Agent 会话（外部 CLI：codex / claude / opencode，BYOK 复用本机登录态）
+// ---------------------------------------------------------------------------
+
+export type AgentKind = "codex" | "claude" | "opencode";
+
+export interface AgentAvailability {
+  agent: AgentKind;
+  available: boolean;
+  version?: string;
+}
+
+export interface AgentFailure {
+  ok: false;
+  code: string;
+  message: string;
+}
+
+/** 归一化流事件（对应 agent_session.rs 的 AgentStreamEvent，tag = kind） */
+export type AgentStreamEvent =
+  | { kind: "session"; sessionId: string }
+  | { kind: "message"; text: string }
+  | { kind: "tool"; name: string; summary: string };
+
+/** 后端转发的 Agent 轮次事件名（agent_session.rs 的 AGENT_TURN_EVENT） */
+export const AGENT_TURN_EVENT = "agent_turn_event";
+
+export type AgentTurnEventPayload = AgentStreamEvent & {
+  turnId: string;
+  agent: AgentKind;
+};
+
+export interface AgentTurnRequest {
+  projectPath: string;
+  agent: AgentKind;
+  prompt: string;
+  agentSessionId?: string;
+  turnId?: string;
+}
+
+/** 轮次成功结果（ok 恒为 true；Agent 自身的失败经 AgentFailure/isError 表达） */
+export interface AgentTurnOutcome {
+  ok: true;
+  agentSessionId: string | null;
+  text: string;
+  isError: boolean;
+}
+
+export type AgentTurnResult = AgentTurnOutcome | AgentFailure;
+
+function normalizeAgentFailure(error: unknown): AgentFailure {
+  if (isRecord(error) && error.ok === false && typeof error.code === "string") {
+    return {
+      ok: false,
+      code: error.code,
+      message: typeof error.message === "string" ? error.message : String(error),
+    };
+  }
+  return { ok: false, code: "agent_unknown", message: String(error) };
+}
+
+/** 探测本机已安装的三家 Agent CLI（--version 探测，带超时兜底）。 */
+export async function agentDetect(): Promise<AgentAvailability[]> {
+  return invoke<AgentAvailability[]>("agent_detect");
+}
+
+/**
+ * 发起一轮 Agent 对话（每轮一个一次性进程，流事件经 AGENT_TURN_EVENT 推送）。
+ * 失败以 AgentTurnResult 返回而不抛异常（与 smoke/build 同一约定）。
+ */
+export async function agentSend(request: AgentTurnRequest): Promise<AgentTurnResult> {
+  try {
+    const value = await invoke<AgentTurnOutcome>("agent_send", { request });
+    return value;
+  } catch (error) {
+    return normalizeAgentFailure(error);
+  }
+}
+
+/** 取消正在运行的 Agent 轮次。后端找不到该轮次时会 reject AgentFailure 对象。 */
+export async function agentCancel(turnId: string): Promise<void> {
+  await invoke("agent_cancel", { turnId });
+}
+
+/** vibegal-cli mcp-install 的结果（Settings 页「连接 Agent」用） */
+export interface AgentMcpInstallResult {
+  ok: boolean;
+  agent: AgentKind;
+  message: string;
+}
+
+/** 调用随 App 分发的 vibegal-cli mcp-install <agent>，注册 VibeGal MCP server。 */
+export async function agentMcpInstall(agent: AgentKind): Promise<AgentMcpInstallResult> {
+  return invoke<AgentMcpInstallResult>("agent_mcp_install", { agent });
+}
+
 /** 运行构建产物（executable 取构建成功结果里的绝对路径）。失败时 reject 中文字符串。 */
 export async function runDesktopGame(executable: string): Promise<void> {
   await invoke("run_desktop_game", { executable });
