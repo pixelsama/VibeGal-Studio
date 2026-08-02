@@ -98,7 +98,7 @@ async function trustCurrentRendererIfNeeded() {
 }
 
 async function openScriptGraph() {
-  await clickButton(["脚本", "Script"]);
+  await clickButton(["剧情", "Story"]);
   await browser.$(".react-flow").waitForExist();
   await browser.$("[role=listbox]").waitForExist();
 }

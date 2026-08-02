@@ -92,7 +92,7 @@ export async function openProjectFromRecent({ projectPath, projectName, initialT
 }
 
 export async function openScriptWorkspace() {
-  await clickButton(["脚本", "Script"]);
+  await clickButton(["剧情", "Story"]);
   await browser.$(".react-flow").waitForExist();
   await waitForWorkspaceContentVisible();
 }
