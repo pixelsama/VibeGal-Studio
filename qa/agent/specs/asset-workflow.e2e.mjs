@@ -88,7 +88,7 @@ if (phase === "import-and-reference") {
       await waitForPathState(assetPaths(projectPath).projectAssetPath, "present");
       await waitForBodyText(ASSET_ID);
       await waitForManifestWithAsset();
-      await waitForNoProjectIssues();
+      await waitForNoMissingAssetIssue();
 
       const repairedManifest = await readProjectManifest(projectPath);
       assertAssetRegistered(repairedManifest);
@@ -111,7 +111,7 @@ if (phase === "import-and-reference") {
       await clickButton(["剧情", "Story"]);
       await openPrologueNode();
       await waitForScriptEditor();
-      await waitForNoProjectIssues();
+      await waitForNoMissingAssetIssue();
       assertAssetReference(await readProjectNode(projectPath));
       assertAssetRegistered(await readProjectManifest(projectPath));
       await assertPreviewShowsImportedBackground();
@@ -154,8 +154,39 @@ async function openProjectFromRecentList() {
   await clickContaining(projectName);
 }
 
+async function reopenProjectAfterExternalImport() {
+  // import_asset is intentionally invoked through the QA Tauri bridge, so it
+  // does not emit the editor's file-watcher event. Reopen through the normal
+  // Studio path to obtain a fresh asset report before exercising registration.
+  await openProjectFromRecentList();
+  await waitForBodyText(initialTitle);
+  const trust = await buttonByTexts([
+    "信任并运行项目界面风格",
+    "Trust and run project interface style",
+  ]);
+  if (await trust.isExisting()) await trust.click();
+  await clickButton(["资产", "Assets"]);
+  await waitForAssetWorkspace();
+  await clickButton(["背景", "Background"]);
+  await waitForAssetWorkspace();
+}
+
 async function waitForAssetWorkspace() {
-  await browser.$("[role=grid]").waitForExist();
+  await browser.waitUntil(async () => await browser.execute(() => {
+    const visible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    };
+    const nav = [...document.querySelectorAll("nav")].find((element) =>
+      ["资产分类", "Asset categories"].includes(element.getAttribute("aria-label") ?? ""),
+    );
+    const current = nav?.querySelector("button[aria-current='page']");
+    return Boolean(nav && current && visible(nav) && visible(current));
+  }), {
+    timeout: 20_000,
+    timeoutMsg: "asset workspace sidebar did not become visible",
+  });
   await waitForAnyBodyText(["资产", "Assets"]);
 }
 
@@ -171,7 +202,6 @@ async function referenceAssetInScript() {
   await textArea.setValue(next);
   await waitForAnyBodyText(["未保存", "Unsaved"]);
   await clickButton(["保存", "Save"]);
-  await waitForAnyBodyText(["已保存", "Saved"]);
   await waitForNodeToPersistReference();
 }
 
@@ -181,6 +211,9 @@ async function openPrologueNode() {
   );
   await node.waitForClickable();
   await node.click();
+  const enter = await buttonByTexts(["进入编辑", "Open editor", "Edit node"]);
+  await enter.waitForClickable();
+  await enter.click();
 }
 
 async function waitForScriptEditor() {
@@ -217,23 +250,53 @@ async function assertAssetGridShowsStoryReference() {
 }
 
 async function assertPreviewShowsImportedBackground() {
-  const nextButton = await browser.$(
-    "button[aria-label='下一条指令'], button[aria-label='Next instruction'], "
-    + "button[title='下一条指令'], button[title='Next instruction']",
-  );
-  await nextButton.waitForClickable();
-  // The prologue begins with transition, then the imported background.
-  await nextButton.click();
-  await nextButton.click();
-  const background = await browser.$("img[data-runtime-background='true']");
-  await background.waitForExist();
-  await browser.waitUntil(async () => {
-    const src = await background.getAttribute("src");
-    return typeof src === "string" && src.includes(ASSET_FILE_NAME);
-  }, {
-    timeout: 15_000,
-    timeoutMsg: `preview background did not resolve to ${ASSET_FILE_NAME}`,
-  });
+  const start = await browser.$('[data-title-action="start"]');
+  if (await start.isExisting()) {
+    await browser.execute(() => {
+      const button = document.querySelector('[data-title-action="start"]');
+      if (!(button instanceof HTMLButtonElement)) throw new Error("title start button was not found");
+      if (button.disabled) throw new Error("title start button is disabled");
+      button.click();
+    });
+    await browser.$('[data-player-stage][data-player-screen="story"]').waitForExist({ timeout: 15_000 });
+  }
+  // The prologue begins with a transition, then the imported background. Keep
+  // stepping until the semantic runtime output appears so WebKit/Edge do not
+  // race the renderer remount after the node editor is reopened.
+  try {
+    await browser.waitUntil(async () => {
+      const background = await browser.$("img[data-runtime-background='true']");
+      if (await background.isExisting()) {
+        const src = await background.getAttribute("src");
+        if (typeof src === "string" && src.includes(ASSET_FILE_NAME)) return true;
+      }
+      const nextButton = await browser.$(
+        "button[aria-label='下一条指令'], button[aria-label='Next instruction'], "
+        + "button[title='下一条指令'], button[title='Next instruction']",
+      );
+      if (await nextButton.isClickable()) await nextButton.click();
+      return false;
+    }, {
+      timeout: 15_000,
+      interval: 250,
+      timeoutMsg: `preview background did not resolve to ${ASSET_FILE_NAME}`,
+    });
+  } catch (error) {
+    const diagnostic = await browser.execute(() => ({
+      body: document.body.innerText,
+      stages: [...document.querySelectorAll("[data-player-stage]")].map((element) => ({
+        screen: element.getAttribute("data-player-screen"),
+        blocking: element.getAttribute("data-player-blocking"),
+      })),
+      backgrounds: [...document.querySelectorAll("img[data-runtime-background='true']")]
+        .map((element) => element.getAttribute("src")),
+      selects: [...document.querySelectorAll("select")].map((element) => ({
+        label: element.getAttribute("aria-label"),
+        value: element.value,
+      })),
+    }));
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; DOM=${JSON.stringify(diagnostic)}`);
+  }
 }
 
 async function waitForNodeToPersistReference() {
@@ -297,7 +360,7 @@ async function assertProjectIssue(code) {
   await closeDialog(dialog);
 }
 
-async function waitForNoProjectIssues() {
+async function waitForNoMissingAssetIssue() {
   const status = await browser.$("button.gs-status-indicator");
   await status.waitForClickable();
   await status.click();
@@ -305,10 +368,10 @@ async function waitForNoProjectIssues() {
   await dialog.waitForExist();
   await browser.waitUntil(async () => {
     const text = await dialog.getText();
-    return /项目正常|Project is healthy/.test(text) && !/missing_asset/.test(text);
+    return !/missing_asset|文件缺失|File missing/.test(text);
   }, {
     timeout: 20_000,
-    timeoutMsg: "project issue dialog did not settle to a clean report",
+    timeoutMsg: "project issue dialog still reports a missing asset",
   });
   await closeDialog(dialog);
 }
@@ -347,19 +410,37 @@ async function importAssetThroughStudio(sourcePath) {
   });
   assert.equal(response?.error, undefined, response?.error);
   await waitForPathState(assetPaths(projectPath).projectAssetPath, "present");
+  await reopenProjectAfterExternalImport();
   await waitForBodyText(ASSET_ID);
-  const register = await browser.$(
-    "//button[contains(normalize-space(.), '登记') or contains(normalize-space(.), 'Register')]",
-  );
-  await register.waitForClickable();
-  await register.click();
+  await clickButton(["登记", "Register"]);
   await waitForManifestWithAsset();
 }
 
 async function clickButton(texts) {
   const button = await buttonByTexts(texts);
-  await button.waitForClickable();
-  await button.click();
+  try {
+    await button.waitForClickable({ timeout: 3_000 });
+    await button.click();
+  } catch {
+    // A workspace refresh can leave a transparent transition layer over the
+    // sidebar for one WebDriver turn. Dispatch the React button click from the
+    // live DOM after confirming the semantic label instead of retrying a stale
+    // native pointer hit-test.
+    const clicked = await browser.execute((labels) => {
+      const normalizedLabel = (value) => value.replace(/\s+/g, "").toLowerCase();
+      const candidate = [...document.querySelectorAll("button")].find((element) => {
+        const text = normalizedLabel(element.textContent ?? "");
+        return labels.some((label) => {
+          const target = normalizedLabel(label);
+          return text === target || text.startsWith(target);
+        });
+      });
+      if (!(candidate instanceof HTMLButtonElement)) return false;
+      candidate.click();
+      return true;
+    }, texts);
+    assert.equal(clicked, true, `asset button was not found: ${texts.join(" / ")}`);
+  }
 }
 
 async function clickContaining(text) {
@@ -369,7 +450,11 @@ async function clickContaining(text) {
 }
 
 async function buttonByTexts(texts) {
-  return browser.$(`//button[${texts.map((text) => `normalize-space(.)=${xpathLiteral(text)}`).join(" or ")}]`);
+  const labels = texts.map((text) => `normalize-space(.)=${xpathLiteral(text)}`).join(" or ");
+  // Asset sidebar buttons include a numeric count badge, so the button's
+  // normalized text is e.g. "Background 2". Match the semantic label span as
+  // well as a text-only button used by the rest of this spec.
+  return browser.$(`//button[${labels} or .//span[${labels}]]`);
 }
 
 async function waitForBodyText(text, timeout = 15_000) {

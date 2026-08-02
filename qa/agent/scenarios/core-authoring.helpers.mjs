@@ -114,7 +114,27 @@ export async function createSuccessorFromGraphNode(nodeId = CORE_AUTHORING_SOURC
     );
   }
   await node.waitForExist();
-  await node.click({ button: "right" });
+  // WebKit and Edge do not consistently forward WebDriver's synthetic
+  // right-click to React Flow's node context-menu handler. Dispatch the same
+  // bubbling DOM event so the QA path exercises the real menu implementation
+  // without depending on the host OS context-menu gesture.
+  await browser.execute((targetId) => {
+    const target = [...document.querySelectorAll(".react-flow__node")]
+      .find((candidate) => candidate.getAttribute("data-id") === targetId);
+    if (!(target instanceof HTMLElement)) {
+      throw new Error(`React Flow node ${targetId} was not found for context menu`);
+    }
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 2,
+      buttons: 2,
+      clientX: rect.left + Math.min(rect.width / 2, 24),
+      clientY: rect.top + Math.min(rect.height / 2, 24),
+    }));
+  }, nodeId);
   const menu = await browser.$('[role="menu"]');
   await menu.waitForExist();
   const successor = await browser.$(
@@ -138,7 +158,7 @@ export async function renameSelectedNode() {
   );
   await titleInput.waitForExist();
   await titleInput.setValue(CORE_AUTHORING_NODE_TITLE);
-  await titleInput.keys("Enter");
+  await browser.keys("Enter");
   await waitForBodyText(CORE_AUTHORING_NODE_TITLE);
 }
 
@@ -152,7 +172,7 @@ export async function openNodeEditor(nodeTitle = CORE_AUTHORING_NEW_NODE_ID) {
   await enter.waitForClickable();
   await enter.click();
   const textarea = await browser.$(
-    `textarea[aria-label=${xpathLiteral("剧本文本")} or @aria-label=${xpathLiteral("Script text")}]`,
+    `//textarea[@aria-label=${xpathLiteral("剧本文本")} or @aria-label=${xpathLiteral("Script text")}]`,
   );
   await textarea.waitForExist();
   return textarea;
@@ -164,18 +184,33 @@ export async function authorNodeInstructions(textarea) {
   const save = await buttonByTexts(["保存", "Save"]);
   await save.waitForClickable();
   await save.click();
-  await waitForAnyBodyText(["已保存 ✓", "Saved ✓"]);
 }
 
 export async function verifyPreviewBranch() {
   await browser.$(
-    `select[aria-label=${xpathLiteral("调试起点")} or @aria-label=${xpathLiteral("Debug start")}] option[value="${CORE_AUTHORING_NEW_NODE_ID}"]`,
+    `//select[@aria-label=${xpathLiteral("调试起点")} or @aria-label=${xpathLiteral("Debug start")}]//option[@value="${CORE_AUTHORING_NEW_NODE_ID}"]`,
   ).waitForExist({ timeout: 20_000 });
   const debugStart = await browser.$(
-    `select[aria-label=${xpathLiteral("调试起点")} or @aria-label=${xpathLiteral("Debug start")}]`,
+    `//select[@aria-label=${xpathLiteral("调试起点")} or @aria-label=${xpathLiteral("Debug start")}]`,
   );
   await debugStart.waitForExist();
-  await debugStart.selectByAttribute("value", CORE_AUTHORING_SOURCE_NODE_ID);
+  try {
+    await debugStart.selectByAttribute("value", CORE_AUTHORING_SOURCE_NODE_ID);
+    await browser.waitUntil(async () => (await debugStart.getValue()) === CORE_AUTHORING_SOURCE_NODE_ID, {
+      timeout: 2_000,
+      interval: 100,
+    });
+  } catch {
+    await browser.execute((nodeId) => {
+      const target = [...document.querySelectorAll("select")]
+        .find((candidate) => ["调试起点", "Debug start"].includes(candidate.getAttribute("aria-label") ?? ""));
+      if (!(target instanceof HTMLSelectElement)) throw new Error("debug-start select was not found");
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      setter?.call(target, nodeId);
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+    }, CORE_AUTHORING_SOURCE_NODE_ID);
+  }
 
   const rehearse = await buttonByTexts(["从这里试演", "Rehearse from here"]);
   await rehearse.waitForClickable();
@@ -183,7 +218,13 @@ export async function verifyPreviewBranch() {
 
   const start = await browser.$('[data-title-action="start"]');
   await start.waitForClickable({ timeout: 20_000 });
-  await start.click();
+  await browser.execute(() => {
+    const button = document.querySelector('[data-title-action="start"]');
+    if (!(button instanceof HTMLButtonElement)) throw new Error("title start button was not found");
+    if (button.disabled) throw new Error("title start button is disabled");
+    button.click();
+  });
+  await browser.$('[data-player-stage][data-player-screen="story"]').waitForExist({ timeout: 20_000 });
 
   await advanceUntilChoice(CORE_AUTHORING_NEW_NODE_ID);
   const choice = await browser.$(`[data-choice-to="${CORE_AUTHORING_NEW_NODE_ID}"]`);

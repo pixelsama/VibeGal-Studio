@@ -115,8 +115,18 @@ export async function waitForJson(filePath, predicate, timeout = 20_000) {
   }, timeout);
 }
 
-export async function waitForTextareaValue(textarea, text, timeout = 20_000) {
-  await browser.waitUntil(async () => (await textarea.getValue()).includes(text), {
+export async function waitForTextareaValue(_textarea, text, timeout = 20_000) {
+  // A project_changed refresh remounts NodeEditor, so a captured WebDriver
+  // element can become stale while the watcher applies the external write.
+  // Re-resolve the live textarea on every poll.
+  await browser.waitUntil(async () => {
+    try {
+      const textarea = await browser.$("textarea");
+      return (await textarea.isExisting()) && (await textarea.getValue()).includes(text);
+    } catch {
+      return false;
+    }
+  }, {
     timeout,
     timeoutMsg: `textarea did not contain ${JSON.stringify(text)}`,
   });

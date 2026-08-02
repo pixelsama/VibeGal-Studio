@@ -80,9 +80,10 @@ async function openProjectInStudio() {
     "Trust and run project interface style",
     "剧情播放",
     "Story playback",
+    "Play story",
   ], 30_000);
   await trustCurrentRendererIfNeeded();
-  await waitForAnyBodyText(["剧情播放", "Story playback"], 30_000);
+  await waitForAnyBodyText(["剧情播放", "Story playback", "Play story"], 30_000);
   await waitForWorkspaceContentVisible();
 }
 
@@ -137,7 +138,7 @@ async function exerciseExternalEdits() {
   await waitForAnyBodyText(["外部已更新，查看差异", "Updated externally · View diff"], 30_000);
 
   await clickButton(["预览", "Preview"]);
-  await waitForAnyBodyText(["剧情播放", "Story playback"], 30_000);
+  await waitForAnyBodyText(["剧情播放", "Story playback", "Play story"], 30_000);
 
   const manifestFile = path.join(projectPath, MANIFEST_PATH);
   await atomicReplaceJson(manifestFile, (manifest) => {
@@ -162,7 +163,7 @@ async function exerciseExternalEdits() {
     "Trust and run project interface style",
   ], 30_000);
   await trustCurrentRendererIfNeeded();
-  await waitForAnyBodyText(["剧情播放", "Story playback"], 30_000);
+  await waitForAnyBodyText(["剧情播放", "Story playback", "Play story"], 30_000);
 }
 
 async function exerciseUnsavedConflictProtection() {

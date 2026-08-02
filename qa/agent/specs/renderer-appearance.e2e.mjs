@@ -116,7 +116,28 @@ async function verifyRendererInventory() {
 async function selectRenderer(id) {
   const select = await rendererSelect();
   await select.waitForClickable();
-  await select.selectByAttribute("value", id);
+  try {
+    await select.selectByAttribute("value", id);
+    await browser.waitUntil(async () => (await select.getValue()) === id, {
+      timeout: 2_000,
+      interval: 100,
+    });
+  } catch {
+    // The embedded WebDriver provider does not reliably synthesize a native
+    // select change on both WebKit and Edge. Use the native value setter and
+    // dispatch the same change event React receives from a real selection.
+    await browser.execute((rendererId) => {
+      const target = [...document.querySelectorAll("select")]
+        .find((candidate) => ["界面风格", "Interface style"].includes(candidate.getAttribute("aria-label") ?? ""));
+      if (!(target instanceof HTMLSelectElement)) {
+        throw new Error("renderer select was not found");
+      }
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      setter?.call(target, rendererId);
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+    }, id);
+  }
   await assertRendererSelectValue(id);
 }
 
