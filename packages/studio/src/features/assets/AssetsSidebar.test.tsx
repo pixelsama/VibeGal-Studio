@@ -1,8 +1,17 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SECTION_GROUPS, SECTIONS, assetSectionLabel, AssetsSidebar } from "./AssetsSidebar";
+import { SECTION_GROUPS, SECTIONS, assetSectionLabel, AssetsSidebar, countAssetsBySection, type AssetSection } from "./AssetsSidebar";
 import { StudioI18nProvider } from "../../lib/i18n";
+import type { AssetEntry } from "../../lib/types";
+
+function renderSidebar(props: { counts?: Partial<Record<AssetSection, number>> } = {}) {
+  return renderToStaticMarkup(createElement(
+    StudioI18nProvider,
+    { preference: "zh-CN" },
+    createElement(AssetsSidebar, { active: "overview", onSelect: () => {}, counts: props.counts }),
+  ));
+}
 
 describe("AssetsSidebar groups (spec 33 E7)", () => {
   it("renders group headers with every category visible by default", () => {
@@ -50,5 +59,53 @@ describe("AssetsSidebar groups (spec 33 E7)", () => {
     expect(assetSectionLabel("background", identity as never)).toBe("assets.section.background");
     expect(assetSectionLabel("video", identity as never)).toBe("assets.section.video");
     expect(assetSectionLabel("character", identity as never)).toBe("assets.section.character");
+  });
+});
+
+describe("AssetsSidebar visual hierarchy (icons + count badges)", () => {
+  it("renders an icon for every section row and chevrons on expanded group headers", () => {
+    const html = renderSidebar();
+    const expectedIcons = [
+      "lucide-layout-grid", // overview
+      "lucide-image", // background
+      "lucide-user", // character
+      "lucide-layers", // cg
+      "lucide-palette", // ui
+      "lucide-film", // animation
+      "lucide-music", // bgm
+      "lucide-volume-2", // sfx
+      "lucide-mic", // voice
+      "lucide-video", // video
+      "lucide-type", // font
+    ];
+    for (const iconClass of expectedIcons) {
+      expect(html).toContain(iconClass);
+    }
+    // 三个命名分组默认展开 → 三个向下箭头（overview 独立组无组头）
+    expect(html.match(/lucide-chevron-down/g)?.length).toBe(3);
+  });
+
+  it("shows count badges only for sections present in counts", () => {
+    const html = renderSidebar({ counts: { overview: 3, background: 2, bgm: 1 } });
+    expect(html.match(/data-count-badge/g)?.length).toBe(3);
+    expect(html).toContain(">3</span>");
+    expect(html).toContain(">2</span>");
+    expect(html).toContain(">1</span>");
+  });
+
+  it("renders no count badges when counts are omitted", () => {
+    expect(renderSidebar()).not.toContain("data-count-badge");
+  });
+
+  it("counts on-disk assets per section with overview as the total", () => {
+    const onDisk: AssetEntry[] = [
+      { relPath: "assets/backgrounds/a.png", size: 1, kind: "background" },
+      { relPath: "assets/backgrounds/b.png", size: 2, kind: "background" },
+      { relPath: "assets/audio/bgm/theme.mp3", size: 3, kind: "bgm" },
+      { relPath: "assets/misc/readme.txt", size: 4, kind: "unknown" },
+    ];
+    // unknown 计入 overview 总数，但不落到任何分类徽标。
+    expect(countAssetsBySection(onDisk)).toEqual({ overview: 4, background: 2, bgm: 1 });
+    expect(countAssetsBySection([])).toEqual({ overview: 0 });
   });
 });

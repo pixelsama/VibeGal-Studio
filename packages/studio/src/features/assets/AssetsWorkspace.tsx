@@ -26,7 +26,7 @@ import { EmptyState } from "../common/EmptyState";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 import { isDraftSnapshotCurrent } from "../script/unsavedChanges";
 // 注：全局 StatusPanel 现挂载在 Workspace 根容器，资产页不再自带。
-import { AssetsSidebar, type AssetSection } from "./AssetsSidebar";
+import { AssetsSidebar, countAssetsBySection, type AssetSection } from "./AssetsSidebar";
 import { planAssetDrop, isRegistrableSection, type RegistrableAssetKind } from "./assetDrop";
 import { useAssetFileDrop } from "./useAssetFileDrop";
 import { AssetsToolbar } from "./AssetsToolbar";
@@ -313,16 +313,19 @@ export function AssetsWorkspace({
 
   const totalShown = filteredDisk.length + filteredDangling.length;
 
+  // 边栏分类徽标：磁盘资产按 kind 计数（overview = 总数）。
+  const sectionCounts = useMemo(() => countAssetsBySection(view.onDisk), [view.onDisk]);
+
   return (
     <div style={rootStyle}>
       <CollapsibleSidebar
         title={t("assets.title")}
         collapsed={sidebarCollapsed}
         onCollapsedChange={onSidebarCollapsedChange}
-        expandedWidth={132}
+        expandedWidth={168}
         collapsedLabel={t("assets.title")}
       >
-        <AssetsSidebar active={section} onSelect={setSection} />
+        <AssetsSidebar active={section} onSelect={setSection} counts={sectionCounts} />
       </CollapsibleSidebar>
       <div style={mainStyle}>
         {manifestInvalid && (
