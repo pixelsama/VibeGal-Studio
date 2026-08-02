@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const COMMAND_NAMES: [&str; 50] = [
+const COMMAND_NAMES: [&str; 51] = [
+    "agent_mcp_install",
     "agent_detect",
     "agent_send",
     "agent_cancel",

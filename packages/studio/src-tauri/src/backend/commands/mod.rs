@@ -1,5 +1,6 @@
 //! Thin Tauri command adapters over backend domain services.
 
+use serde::{Deserialize, Serialize};
 use super::cli_tool;
 use super::desktop_system;
 use super::fs::ProjectRoot;
@@ -559,6 +560,53 @@ pub(crate) fn agent_cancel(
 #[tauri::command]
 pub(crate) fn run_desktop_game(executable: String) -> Result<(), String> {
     desktop_system::run_desktop_game(Path::new(&executable))
+}
+
+// ---------------------------------------------------------------------------
+// Agent MCP 注册（Settings 页「连接 Agent」入口）
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentMcpInstallResult {
+    pub ok: bool,
+    pub agent: super::agent_session::AgentKind,
+    /// vibegal-cli mcp-install 的 stdout / stderr（成功与失败都带回，方便前端展示）
+    pub message: String,
+}
+
+/// 调用随 App 分发的 vibegal-cli mcp-install <agent>，把 VibeGal MCP server
+/// 注册进外部 Agent（claude/codex 走官方 mcp add，opencode 合并 opencode.json）。
+#[tauri::command]
+pub(crate) async fn agent_mcp_install(
+    app_handle: tauri::AppHandle,
+    agent: super::agent_session::AgentKind,
+) -> Result<AgentMcpInstallResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cli_path = resources::cli_binary_path(&app_handle);
+        let output = std::process::Command::new(&cli_path)
+            .args(["mcp-install", agent.command_name()])
+            .output()
+            .map_err(|error| format!("启动 vibegal-cli 失败: {error}"))?;
+        let message = if output.status.success() {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stderr.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                stderr.trim().to_string()
+            }
+        };
+        Ok(AgentMcpInstallResult {
+            ok: output.status.success(),
+            agent,
+            message,
+        })
+    })
+    .await
+    .map_err(|error| format!("Agent MCP 注册任务失败: {error}"))?
 }
 
 fn cli_paths(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf, Vec<PathBuf>, Option<String>) {

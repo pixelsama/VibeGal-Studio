@@ -803,6 +803,18 @@ export async function agentCancel(turnId: string): Promise<void> {
   await invoke("agent_cancel", { turnId });
 }
 
+/** vibegal-cli mcp-install 的结果（Settings 页「连接 Agent」用） */
+export interface AgentMcpInstallResult {
+  ok: boolean;
+  agent: AgentKind;
+  message: string;
+}
+
+/** 调用随 App 分发的 vibegal-cli mcp-install <agent>，注册 VibeGal MCP server。 */
+export async function agentMcpInstall(agent: AgentKind): Promise<AgentMcpInstallResult> {
+  return invoke<AgentMcpInstallResult>("agent_mcp_install", { agent });
+}
+
 /** 运行构建产物（executable 取构建成功结果里的绝对路径）。失败时 reject 中文字符串。 */
 export async function runDesktopGame(executable: string): Promise<void> {
   await invoke("run_desktop_game", { executable });

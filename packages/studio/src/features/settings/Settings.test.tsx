@@ -1,10 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, isValidElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { AppearanceSection, CommandLineToolSection, LanguageSection, Settings } from "./Settings";
+import {
+  AgentConnectionSection,
+  AppearanceSection,
+  CommandLineToolSection,
+  LanguageSection,
+  Settings,
+} from "./Settings";
 import type { AppSettings } from "../../lib/theme";
 import { StudioI18nProvider } from "../../lib/i18n";
-import type { CliToolStatus } from "../../lib/tauri";
+import type { AgentAvailability, CliToolStatus } from "../../lib/tauri";
 
 const noop = () => {};
 
@@ -319,3 +325,84 @@ function textContent(node: ReactNode): string {
   const props = node.props as { children?: ReactNode };
   return textContent(props.children);
 }
+
+describe("AgentConnectionSection", () => {
+  const allAvailable: AgentAvailability[] = [
+    { agent: "codex", available: true, version: "0.146.0" },
+    { agent: "claude", available: true, version: "2.1.220" },
+    { agent: "opencode", available: true },
+  ];
+
+  function renderSection(
+    props: Partial<React.ComponentProps<typeof AgentConnectionSection>> = {},
+  ) {
+    return renderToStaticMarkup(
+      <AgentConnectionSection
+        availability={allAvailable}
+        busy={null}
+        error={null}
+        message={null}
+        cliInstalled
+        onRefresh={noop}
+        onRegister={noop}
+        {...props}
+      />,
+    );
+  }
+
+  it("探测中显示占位，不渲染 Agent 行", () => {
+    const html = renderSection({ availability: null });
+    expect(html).toContain("正在检测本机 Agent CLI");
+    expect(html).not.toContain('data-agent-connect="codex"');
+  });
+
+  it("全部可用时渲染三行，注册按钮可用", () => {
+    const html = renderSection();
+    expect(html).toContain('data-agent-connect="codex"');
+    expect(html).toContain('data-agent-connect="claude"');
+    expect(html).toContain('data-agent-connect="opencode"');
+    expect(html).toContain("注册到 Codex");
+    expect(html).toContain("已安装 0.146.0");
+    // 可用 + CLI 已装 → 注册按钮不带 disabled
+    expect(registerButtonDisabled(html, "codex")).toBe(false);
+  });
+
+  it("未安装的 Agent 置灰并给出安装提示", () => {
+    const html = renderSection({ availability: [{ agent: "codex", available: false }] });
+    expect(html).toContain("未检测到 Codex CLI");
+    expect(registerButtonDisabled(html, "codex")).toBe(true);
+    // 探测结果缺失的 Agent 同样按未安装渲染并置灰（固定展示三个 Agent）
+    expect(html).toContain('data-agent-connect="claude"');
+    expect(registerButtonDisabled(html, "claude")).toBe(true);
+  });
+
+  it("注册按钮携带 data-agent-register 便于 E2E 定位", () => {
+    // 无 jsdom 环境无法触发真实点击；按钮定位与禁用逻辑用 data 属性 + disabled 断言覆盖，
+    // 点击行为由后端 agent_mcp_install 的 E2E 场景负责。
+    const html = renderSection();
+    expect(html).toMatch(/<button[^>]*data-agent-register="claude"[^>]*>/);
+    expect(html).toMatch(/<button[^>]*data-agent-register="opencode"[^>]*>/);
+  });
+
+  it("vibegal-cli 未安装时注册按钮禁用并提示先装 CLI", () => {
+    const html = renderSection({ cliInstalled: false });
+    expect(registerButtonDisabled(html, "codex")).toBe(true);
+    expect(html).toContain("请先在下方「命令行工具」区安装 vibegal-cli");
+  });
+
+  it("注册成功与失败分别展示状态与错误", () => {
+    const html = renderSection({
+      error: "claude mcp add 执行失败",
+      message: "已注册到 CODEX",
+    });
+    expect(html).toContain("已注册到 CODEX");
+    expect(html).toContain("重启对应 Agent 后生效");
+    expect(html).toContain("claude mcp add 执行失败");
+  });
+
+  function registerButtonDisabled(html: string, agent: string): boolean {
+    const button = html.match(new RegExp(`<button[^>]*data-agent-register="${agent}"[^>]*>`))?.[0];
+    if (!button) return false;
+    return /\sdisabled(="|>|\s)/.test(button);
+  }
+});
