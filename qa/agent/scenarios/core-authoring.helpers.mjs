@@ -138,10 +138,25 @@ export async function createSuccessorFromGraphNode(nodeId = CORE_AUTHORING_SOURC
   const menu = await browser.$('[role="menu"]');
   await menu.waitForExist();
   const successor = await browser.$(
-    `//div[@role="menu"]//button[@role="menuitem" and normalize-space(.)=${xpathLiteral("创建后续节点")} ]`,
+    `//div[@role="menu"]//button[@role="menuitem" and (normalize-space(.)=${xpathLiteral("创建后续节点")} or normalize-space(.)=${xpathLiteral("Create successor node")})]`,
   );
-  await successor.waitForClickable();
-  await successor.click();
+  try {
+    await successor.waitForClickable();
+    await successor.click();
+  } catch {
+    // The embedded WebDriver can report a visible React menu item as
+    // non-clickable on macOS/Edge. Dispatch the same button click from the
+    // live menu after matching the localized label.
+    const clicked = await browser.execute(() => {
+      const labels = ["创建后续节点", "Create successor node"];
+      const candidate = [...document.querySelectorAll('[role="menu"] button[role="menuitem"]')]
+        .find((element) => labels.includes(element.textContent?.trim() ?? ""));
+      if (!(candidate instanceof HTMLButtonElement)) return false;
+      candidate.click();
+      return true;
+    });
+    if (!clicked) throw new Error("successor menu item was not found in the live DOM");
+  }
   await browser.waitUntil(async () => (await browser.$(
     `.react-flow__node[data-id="${CORE_AUTHORING_NEW_NODE_ID}"]`,
   ).isExisting()) || (await browser.$(

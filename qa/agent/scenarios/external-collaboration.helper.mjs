@@ -63,8 +63,23 @@ export function buttonByTexts(texts) {
 
 export async function clickButton(texts) {
   const button = await buttonByTexts(texts);
-  await button.waitForClickable();
-  await button.click();
+  try {
+    await button.waitForClickable();
+    await button.click();
+  } catch {
+    const clicked = await browser.execute((labels) => {
+      const normalize = (value) => value.replace(/\s+/g, "").toLowerCase();
+      const targets = labels.map(normalize);
+      const candidate = [...document.querySelectorAll("button")].find((element) => {
+        const text = normalize(element.textContent ?? "");
+        return targets.some((target) => text === target || text.startsWith(target));
+      });
+      if (!(candidate instanceof HTMLButtonElement)) return false;
+      candidate.click();
+      return true;
+    }, texts);
+    assert.equal(clicked, true, `button was not found in the live DOM: ${texts.join(" / ")}`);
+  }
   return button;
 }
 

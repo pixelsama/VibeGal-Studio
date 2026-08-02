@@ -25,6 +25,7 @@ import {
   waitForJson,
   waitForTextareaValue,
   waitForWorkspaceContentVisible,
+  xpathLiteral,
 } from "../scenarios/external-collaboration.helper.mjs";
 
 const projectPath = requiredEnv("VIBEGAL_AGENT_QA_PROJECT");
@@ -93,8 +94,10 @@ async function trustCurrentRendererIfNeeded() {
     "Trust and run project interface style",
   ]);
   if (await trust.isExisting()) {
-    await trust.waitForClickable();
-    await trust.click();
+    await clickButton([
+      "信任并运行项目界面风格",
+      "Trust and run project interface style",
+    ]);
   }
 }
 
@@ -105,9 +108,17 @@ async function openScriptGraph() {
 }
 
 async function openNodeEditor(nodeTitle) {
-  await clickContaining(nodeTitle);
-  await waitForAnyBodyText(["节点检查", "Node inspection", "进入编辑", "Edit node"]);
-  await clickButton(["进入编辑", "Edit node"]);
+  const option = await browser.$(
+    `//button[@role="option"][.//*[normalize-space()=${xpathLiteral(nodeTitle)}] or normalize-space(.)=${xpathLiteral(nodeTitle)}]`,
+  );
+  if (await option.isExisting()) {
+    await option.waitForClickable();
+    await option.click();
+  } else {
+    await clickContaining(nodeTitle);
+  }
+  await waitForAnyBodyText(["节点检查", "Node inspection", "Properties", "进入编辑", "Edit node", "Open editor"]);
+  await clickButton(["进入编辑", "Edit node", "Open editor"]);
   await browser.$("textarea").waitForExist();
 }
 
