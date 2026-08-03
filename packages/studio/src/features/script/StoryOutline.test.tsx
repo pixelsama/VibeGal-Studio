@@ -44,6 +44,25 @@ describe("StoryOutline", () => {
     expect(html).toContain('aria-label="搜索故事"');
   });
 
+  it("does not suppress the keyboard focus outline on the search input", () => {
+    const html = renderToStaticMarkup(createElement(StoryOutline, {
+      graph,
+      scope: { kind: "all" },
+      selectedNodeId: null,
+      onScopeChange: () => {},
+      onSelectNode: () => {},
+      onCreateNode: () => {},
+      onCreateChapter: () => {},
+      onRenameChapter: () => {},
+      onMoveChapter: () => {},
+      onDeleteChapter: () => {},
+    }));
+
+    expect(html).toContain('aria-label="搜索故事"');
+    // 搜索框不应内联 outline:none 吞掉全局 :focus-visible 焦点环
+    expect(html).not.toContain("outline:none");
+  });
+
   it("offers node creation when the selected chapter is empty", () => {
     const emptyChapterGraph: ProjectGraph = {
       ...graph,
