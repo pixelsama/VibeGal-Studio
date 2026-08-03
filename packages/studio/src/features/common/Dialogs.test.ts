@@ -1,5 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { dialogGlobalKeyAction, dialogTabTrapTarget } from "./Dialogs";
+import { dialogGlobalKeyAction, dialogTabTrapTarget, PromptDialog } from "./Dialogs";
 
 describe("dialogGlobalKeyAction", () => {
   it("only closes dialogs for Escape at the global key level", () => {
@@ -35,5 +37,33 @@ describe("dialogTabTrapTarget", () => {
 
   it("falls back to the dialog container when no focusable element exists", () => {
     expect(dialogTabTrapTarget(0, -1, false)).toEqual({ type: "container" });
+  });
+});
+
+describe("PromptDialog allowUnchanged", () => {
+  it("disables confirm when the value equals the initial value (rename guard)", () => {
+    const html = renderToStaticMarkup(createElement(PromptDialog, {
+      title: "重命名",
+      initialValue: "第一章",
+      confirmLabel: "确认",
+      onConfirm: () => {},
+      onClose: () => {},
+    }));
+
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>确认<\/button>/);
+  });
+
+  it("enables confirm for the unchanged default when allowUnchanged is true (create flow)", () => {
+    const html = renderToStaticMarkup(createElement(PromptDialog, {
+      title: "新建章节",
+      initialValue: "第 2 章",
+      allowUnchanged: true,
+      confirmLabel: "确认",
+      onConfirm: () => {},
+      onClose: () => {},
+    }));
+
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>确认<\/button>/);
+    expect(html).toMatch(/<button[^>]*>确认<\/button>/);
   });
 });

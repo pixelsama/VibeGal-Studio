@@ -159,7 +159,7 @@ export function ScriptWorkspace({
     confirmLabel?: string;
     danger?: boolean;
   } | null>(null);
-  const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; onConfirm: (v: string) => void } | null>(null);
+  const [prompt, setPrompt] = useState<{ title: string; label?: string; initialValue?: string; allowUnchanged?: boolean; onConfirm: (v: string) => void } | null>(null);
   const activeNodeId = location.view === "node" ? location.nodeId : selectedNodeId;
   const selectedNode = useMemo(() => findNode(graph, activeNodeId), [activeNodeId, graph]);
   const activeNodeFile = nodeFileForEditorRoute({
@@ -401,6 +401,8 @@ export function ScriptWorkspace({
       title: t("script.chapter.create"),
       label: t("script.chapter.name"),
       initialValue: `第 ${graph.chapters.length + 1} 章`,
+      // 默认名本身就是要创建的合法值，允许不改动直接确认。
+      allowUnchanged: true,
       onConfirm: (value) => {
         const title = value.trim();
         if (!title) return;
@@ -1030,6 +1032,7 @@ export function ScriptWorkspace({
           title={prompt.title}
           label={prompt.label}
           initialValue={prompt.initialValue}
+          allowUnchanged={prompt.allowUnchanged}
           onConfirm={prompt.onConfirm}
           onClose={() => setPrompt(null)}
         />
