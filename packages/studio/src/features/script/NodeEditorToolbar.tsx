@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Button } from "../common/Button";
 import type { NodeEditorMode } from "./nodeEditorModel";
+import type { StatusMessage } from "./statusMessage";
 import {
   translateZhCN,
   type StudioTranslator,
@@ -30,7 +31,7 @@ export function NodeEditorToolbar({
   writeConflict: boolean;
   saving: boolean;
   canSave: boolean;
-  status: string;
+  status: StatusMessage | null;
   onModeToggle: (mode: NodeEditorMode) => void;
   onOpenExternalDiff: () => void;
   onCopyConflict: () => void;
@@ -64,8 +65,8 @@ export function NodeEditorToolbar({
         </>
       )}
       {status && (
-        <StatusText tone={/失败|问题|failed?|problem/i.test(status) ? "error" : "ok"}>
-          {status}
+        <StatusText tone={status.severity}>
+          {status.message}
         </StatusText>
       )}
       <Button

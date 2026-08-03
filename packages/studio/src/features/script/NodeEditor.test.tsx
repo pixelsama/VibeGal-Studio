@@ -21,6 +21,7 @@ import {
 } from "./NodeEditor";
 import { isSaveKeyboardShortcut } from "./unsavedChanges";
 import { NodeEditorToolbar } from "./NodeEditorToolbar";
+import { statusError, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 import type { ProjectData } from "../../lib/types";
 import { StudioI18nProvider } from "../../lib/i18n";
 
@@ -332,7 +333,7 @@ describe("NodeEditor JSON identity guidance", () => {
 });
 
 describe("NodeEditorToolbar external update entry", () => {
-  function renderToolbar(overrides: { hasExternalUpdate?: boolean; writeConflict?: boolean }) {
+  function renderToolbar(overrides: { hasExternalUpdate?: boolean; writeConflict?: boolean; status?: StatusMessage | null }) {
     return renderToStaticMarkup(createElement(NodeEditorToolbar, {
       title: "开始",
       file: "nodes/start.json",
@@ -342,7 +343,7 @@ describe("NodeEditorToolbar external update entry", () => {
       writeConflict: overrides.writeConflict ?? false,
       saving: false,
       canSave: true,
-      status: "",
+      status: overrides.status ?? null,
       onModeToggle: () => {},
       onOpenExternalDiff: () => {},
       onCopyConflict: () => {},
@@ -364,6 +365,19 @@ describe("NodeEditorToolbar external update entry", () => {
     expect(html).toContain("冲突：查看差异");
     expect(html).toContain("复制差异");
     expect(html).not.toContain("载入磁盘版本");
+  });
+
+  it("colors the status by explicit severity instead of regex-guessing the text", () => {
+    // 警告类文案（含"请先…"、不含"失败"）以前被正则误判为成功绿色。
+    const warnHtml = renderToolbar({ status: statusWarn("请先将节点移动到其他章节") });
+    expect(warnHtml).toContain("var(--status-warn-text)");
+    expect(warnHtml).not.toContain("var(--status-ok-text)");
+
+    const errorHtml = renderToolbar({ status: statusError("保存失败") });
+    expect(errorHtml).toContain("var(--status-error-text)");
+
+    const okHtml = renderToolbar({ status: statusOk("已保存") });
+    expect(okHtml).toContain("var(--status-ok-text)");
   });
 });
 

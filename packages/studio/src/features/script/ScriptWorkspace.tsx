@@ -57,6 +57,7 @@ import {
   persistCreatedNodeWithCompensation,
 } from "./scriptWorkspaceOperations";
 import { useScriptGraphState } from "./useScriptGraphState";
+import { statusError, statusOk, statusWarn, statusSeverityColor } from "./statusMessage";
 import { useStudioI18n } from "../../lib/i18n";
 export {
   buildGraphPositionUpdates,
@@ -336,7 +337,7 @@ export function ScriptWorkspace({
     const id = generateNodeId(graph, "node");
     const file = `nodes/${id}.json`;
     setSavingGraph(true);
-    setGraphStatus("");
+    setGraphStatus(null);
     try {
       const nextState = applyGraphCommand(graphHistory, {
         kind: "addNode",
@@ -364,16 +365,16 @@ export function ScriptWorkspace({
         setGraphHistory(graphHistory);
         setSelectedNodeId(null);
         if (!result.rolledBack) {
-          setGraphStatus(t("script.graph.saveFailedKept", {
+          setGraphStatus(statusError(t("script.graph.saveFailedKept", {
             kind: t("script.node.newKind"),
             detail: result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError),
-          }));
+          })));
         }
       }
     } catch (error) {
-      setGraphStatus(t("script.node.createFailed", {
+      setGraphStatus(statusError(t("script.node.createFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      }));
+      })));
     } finally {
       setSavingGraph(false);
     }
@@ -443,11 +444,11 @@ export function ScriptWorkspace({
     if (!chapter) return;
     const nodeCount = graph.nodes.filter((node) => node.chapterId === chapterId).length;
     if (graph.chapters.length === 1) {
-      setGraphStatus(t("script.chapter.minimum"));
+      setGraphStatus(statusWarn(t("script.chapter.minimum")));
       return;
     }
     if (nodeCount > 0) {
-      setGraphStatus(t("script.chapter.moveNodesFirst", { title: chapter.title, count: nodeCount }));
+      setGraphStatus(statusWarn(t("script.chapter.moveNodesFirst", { title: chapter.title, count: nodeCount })));
       return;
     }
     const deletingActiveChapter = chapterScope.kind === "chapter" && chapterScope.chapterId === chapterId;
@@ -555,7 +556,7 @@ export function ScriptWorkspace({
     if (!newNode) return;
 
     setSavingGraph(true);
-    setGraphStatus("");
+    setGraphStatus(null);
     try {
       const sourceDetail = await loadNodeDetail(project, source.file, _refreshKey);
       const content = JSON.stringify(sourceDetail.data, null, 2);
@@ -575,16 +576,16 @@ export function ScriptWorkspace({
         setGraphHistory(graphHistory);
         setSelectedNodeId(nodeId);
         if (!result.rolledBack) {
-          setGraphStatus(t("script.graph.saveFailedKept", {
+          setGraphStatus(statusError(t("script.graph.saveFailedKept", {
             kind: t("script.node.duplicatedKind"),
             detail: result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError),
-          }));
+          })));
         }
       }
     } catch (error) {
-      setGraphStatus(t("script.node.duplicateFailed", {
+      setGraphStatus(statusError(t("script.node.duplicateFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      }));
+      })));
     } finally {
       setSavingGraph(false);
     }
@@ -596,7 +597,7 @@ export function ScriptWorkspace({
     if (!newNode) return;
 
     setSavingGraph(true);
-    setGraphStatus("");
+    setGraphStatus(null);
     try {
       replaceGraph(next);
       setSelectedNodeId(newNode.id);
@@ -614,16 +615,16 @@ export function ScriptWorkspace({
         setGraphHistory(graphHistory);
         setSelectedNodeId(nodeId);
         if (!result.rolledBack) {
-          setGraphStatus(t("script.graph.saveFailedKept", {
+          setGraphStatus(statusError(t("script.graph.saveFailedKept", {
             kind: t("script.node.newKind"),
             detail: result.rollbackError instanceof Error ? result.rollbackError.message : String(result.rollbackError),
-          }));
+          })));
         }
       }
     } catch (error) {
-      setGraphStatus(t("script.node.successorFailed", {
+      setGraphStatus(statusError(t("script.node.successorFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      }));
+      })));
     } finally {
       setSavingGraph(false);
     }
@@ -667,38 +668,38 @@ export function ScriptWorkspace({
         try {
           const next = registerEnding(project.content.manifest, { id, title: findNode(graph, nodeId)?.title ?? id, nodeId });
           void saveManifest(project.path, next, project.manifestRevision)
-            .then(() => { setGraphStatus(t("script.ending.saved")); onSaved(); })
-            .catch((error) => setGraphStatus(t("script.ending.saveFailed", {
+            .then(() => { setGraphStatus(statusOk(t("script.ending.saved"))); onSaved(); })
+            .catch((error) => setGraphStatus(statusError(t("script.ending.saveFailed", {
               detail: error instanceof Error ? error.message : String(error),
-            })));
+            }))));
         } catch (error) {
-          setGraphStatus(t("script.ending.saveFailed", {
+          setGraphStatus(statusError(t("script.ending.saveFailed", {
             detail: error instanceof Error ? error.message : String(error),
-          }));
+          })));
         }
       },
     });
   };
   const handleVariablesChange = (variables: typeof project.content.variables) => {
     void saveVariables(project.path, variables, project.variablesRevision)
-      .then(() => { setGraphStatus(t("script.variables.saved")); onSaved(); })
-      .catch((error) => setGraphStatus(t("script.variables.saveFailed", {
+      .then(() => { setGraphStatus(statusOk(t("script.variables.saved"))); onSaved(); })
+      .catch((error) => setGraphStatus(statusError(t("script.variables.saveFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      })));
+      }))));
   };
   const handleRenameVariable = (from: string, to: string) => {
     // 后端一次性改写注册表、图条件与 set 指令；成功后整份项目重新加载。
     void renameVariable(project.path, from, to)
       .then((result) => {
-        setGraphStatus(t("script.variables.renamed", {
+        setGraphStatus(statusOk(t("script.variables.renamed", {
           conditions: result.updatedConditions,
           nodes: result.updatedNodes,
-        }));
+        })));
         onSaved();
       })
-      .catch((error) => setGraphStatus(t("script.variables.renameFailed", {
+      .catch((error) => setGraphStatus(statusError(t("script.variables.renameFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      })));
+      }))));
   };
   const handleEditEnding = (endingId: string) => {
     const ending = project.content.manifest.unlocks.endings[endingId];
@@ -707,18 +708,18 @@ export function ScriptWorkspace({
       const next = upsertEnding(project.content.manifest, { id: endingId, title, nodeId: ending.nodeId });
       void saveManifest(project.path, next, project.manifestRevision)
         .then(onSaved)
-        .catch((error) => setGraphStatus(t("script.ending.updateFailed", {
+        .catch((error) => setGraphStatus(statusError(t("script.ending.updateFailed", {
           detail: error instanceof Error ? error.message : String(error),
-        })));
+        }))));
     } });
   };
   const handleUnregisterEnding = (endingId: string) => {
     setConfirm({ message: t("script.ending.unregisterConfirm", { id: endingId }), danger: true, onConfirm: () => {
       void saveManifest(project.path, unregisterEnding(project.content.manifest, endingId), project.manifestRevision)
         .then(onSaved)
-        .catch((error) => setGraphStatus(t("script.ending.unregisterFailed", {
+        .catch((error) => setGraphStatus(statusError(t("script.ending.unregisterFailed", {
           detail: error instanceof Error ? error.message : String(error),
-        })));
+        }))));
     } });
   };
   const handleInsertEndingCompletion = async (nodeId: string, endingId: string) => {
@@ -731,9 +732,9 @@ export function ScriptWorkspace({
       await saveNode(project.path, node.file, next, detail.revision);
       onSaved();
     } catch (error) {
-      setGraphStatus(t("script.ending.insertFailed", {
+      setGraphStatus(statusError(t("script.ending.insertFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      }));
+      })));
     }
   };
 
@@ -918,10 +919,10 @@ export function ScriptWorkspace({
                     <span
                       style={{
                         ...statusTextStyle,
-                        color: /失败|failed?/i.test(graphStatus) ? "var(--status-error-text)" : "var(--status-ok-text)",
+                        color: statusSeverityColor(graphStatus.severity),
                       }}
                     >
-                      {graphStatus}
+                      {graphStatus.message}
                     </span>
                   )}
                 </div>
