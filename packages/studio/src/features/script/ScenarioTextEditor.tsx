@@ -4,6 +4,7 @@ import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption, ScenarioParameterOption } from "./scenarioCommands";
 import { highlightScenarioLine, type ScenarioTokenKind } from "./scenarioHighlight";
 import { useStudioI18n } from "../../lib/i18n";
+import { GripVertical } from "lucide-react";
 
 /** 剧本编辑区的行高/内边距常量：gutter、高亮层、命令菜单定位共用同一份度量。 */
 export const SCENARIO_LINE_HEIGHT = 24;
@@ -170,7 +171,7 @@ export function ScenarioTextEditor({
                       }}
                       style={dragHandleStyle}
                     >
-                      ⠿
+                      <GripVertical size={12} />
                     </button>
                   )}
                   {isCurrent ? (

@@ -241,4 +241,11 @@ describe("ScenarioTextEditor empty guide", () => {
     expect(html).toContain("@bg");
     expect(html).toContain("wrap=\"off\"");
   });
+
+  it("renders the drag handle as an icon, not a braille glyph", () => {
+    const html = renderEditor("@bg classroom fade");
+
+    expect(html).not.toContain("⠿");
+    expect(html).toContain("拖动调整指令顺序");
+  });
 });
