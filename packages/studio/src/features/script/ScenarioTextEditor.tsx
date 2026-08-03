@@ -35,6 +35,7 @@ export function ScenarioTextEditor({
   lineActionTop,
   commandMenuVisible,
   visibleCommands,
+  selectedCommandIndex,
   parameterMenuVisible,
   visibleParameters,
   selectedParameterIndex,
@@ -61,6 +62,7 @@ export function ScenarioTextEditor({
   lineActionTop: number;
   commandMenuVisible: boolean;
   visibleCommands: ScenarioCommandOption[];
+  selectedCommandIndex: number;
   parameterMenuVisible: boolean;
   visibleParameters: ScenarioParameterOption[];
   selectedParameterIndex: number;
@@ -221,18 +223,22 @@ export function ScenarioTextEditor({
       )}
       {commandMenuVisible && (
         <div
-          role="menu"
+          role="listbox"
           aria-label={t("script.editor.commandMenu")}
           style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
         >
-          {visibleCommands.map((command) => (
+          {visibleCommands.map((command, index) => (
             <button
               key={command.kind}
               type="button"
-              role="menuitem"
+              role="option"
+              aria-selected={index === selectedCommandIndex}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onInsertCommand(command.kind)}
-              style={commandMenuButtonStyle}
+              style={{
+                ...commandMenuButtonStyle,
+                background: index === selectedCommandIndex ? "var(--bg-hover)" : "transparent",
+              }}
             >
               <span style={commandMenuLabelStyle}>{command.label}</span>
               <span style={commandMenuDetailStyle}>{command.detail}</span>

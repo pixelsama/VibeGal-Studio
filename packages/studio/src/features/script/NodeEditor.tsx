@@ -404,6 +404,7 @@ export function NodeEditor({
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [parameterTrigger, setParameterTrigger] = useState<ScenarioParameterTrigger | null>(null);
   const [completionIndex, setCompletionIndex] = useState(0);
+  const [commandIndex, setCommandIndex] = useState(0);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
   // 撤销历史清空属于不可逆操作：模式切换走确认对话，外部刷新/载入走 toast（Spec 33 A4）。
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -696,6 +697,10 @@ export function NodeEditor({
   useEffect(() => {
     setCompletionIndex((current) => Math.min(current, Math.max(visibleParameters.length - 1, 0)));
   }, [visibleParameters.length]);
+
+  useEffect(() => {
+    setCommandIndex((current) => Math.min(current, Math.max(visibleCommands.length - 1, 0)));
+  }, [visibleCommands.length]);
 
   useEffect(() => {
     const offset = pendingSelectionRef.current;
@@ -1078,6 +1083,14 @@ export function NodeEditor({
       });
       return;
     }
+    if (commandMenuVisible && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      setCommandIndex((current) => {
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        return (current + delta + visibleCommands.length) % visibleCommands.length;
+      });
+      return;
+    }
     if (event.key === "Escape" && (commandMenuSource || parameterTrigger)) {
       event.preventDefault();
       setCommandMenuSource(null);
@@ -1091,7 +1104,7 @@ export function NodeEditor({
     }
     if ((event.key === "Enter" || event.key === "Tab") && commandMenuVisible && visibleCommands[0]) {
       event.preventDefault();
-      handleInsertCommand(visibleCommands[0].kind);
+      handleInsertCommand((visibleCommands[commandIndex] ?? visibleCommands[0]).kind);
     }
   };
 
@@ -1251,6 +1264,7 @@ export function NodeEditor({
         lineActionTop={lineActionTop}
         commandMenuVisible={commandMenuVisible}
         visibleCommands={visibleCommands}
+        selectedCommandIndex={commandIndex}
         parameterMenuVisible={parameterMenuVisible}
         visibleParameters={visibleParameters}
         selectedParameterIndex={completionIndex}
