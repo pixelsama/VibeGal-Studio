@@ -82,7 +82,7 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { useStudioI18n } from "../../lib/i18n";
-import { statusError, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
+import { statusError, statusInfo, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 
 export {
   isWriteConflictError,
@@ -897,7 +897,7 @@ export function NodeEditor({
   const handleLoadExternal = () => {
     if (saving) return;
     if (!externalSnapshot) {
-      setStatus(statusOk(t("script.editor.loadingExternal")));
+      setStatus(statusInfo(t("script.editor.loadingExternal")));
       void fetchExternalSnapshot();
       return;
     }

@@ -218,6 +218,8 @@ pub struct NodeCreatorSummary {
     pub say_count: usize,
     #[serde(rename = "changesState")]
     pub changes_state: bool,
+    #[serde(rename = "instructionCount")]
+    pub instruction_count: Option<usize>,
 }
 
 #[derive(Serialize, Clone, Debug)]

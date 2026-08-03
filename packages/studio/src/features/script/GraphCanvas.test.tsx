@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { filterVisibleCanvasElements, GraphCanvas } from "./GraphCanvas";
+import { filterVisibleCanvasElements, GraphCanvas, shouldLocateSelectedNode } from "./GraphCanvas";
 import type { ProjectGraph } from "../../lib/types";
 import { StudioI18nProvider } from "../../lib/i18n";
 
@@ -78,6 +78,13 @@ const baseProps = {
 };
 
 describe("GraphCanvas", () => {
+  it("relocates only for a new selection or an explicit programmatic locate request", () => {
+    expect(shouldLocateSelectedNode("node", "node", false)).toBe(false);
+    expect(shouldLocateSelectedNode("node", "other", false)).toBe(true);
+    expect(shouldLocateSelectedNode("node", "node", true)).toBe(true);
+    expect(shouldLocateSelectedNode(null, null, true)).toBe(false);
+  });
+
   it("surfaces auto-layout and fit-view as persistent canvas controls (spec 33 E5)", () => {
     const html = renderToStaticMarkup(
       <GraphCanvas

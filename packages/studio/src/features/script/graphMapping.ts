@@ -51,7 +51,10 @@ export function mapGraphToFlow(
     // 空文件（data 为空数组）算"未编写"：有文件但没有指令，不应显示绿色"已有内容"。
     // nodeEntries 未提供时保守视为有内容，避免误报 empty。
     const nodeData = entry?.data;
-    const hasContent = nodeData == null ? true : !Array.isArray(nodeData) || nodeData.length > 0;
+    const creatorSummary = nodeSummaries?.find((summary) => summary.relPath === node.file);
+    const hasContent = nodeEntries != null
+      ? nodeData == null ? true : !Array.isArray(nodeData) || nodeData.length > 0
+      : creatorSummary?.instructionCount == null || creatorSummary.instructionCount > 0;
     const { incoming, outgoing } = connectionCounts.get(node.id) ?? { incoming: 0, outgoing: 0 };
     const baseStatus = deriveGraphNodeStatusFromSummary(
       graph,

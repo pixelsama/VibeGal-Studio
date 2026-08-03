@@ -21,7 +21,7 @@ import {
 } from "./NodeEditor";
 import { isSaveKeyboardShortcut } from "./unsavedChanges";
 import { NodeEditorToolbar } from "./NodeEditorToolbar";
-import { statusError, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
+import { statusError, statusInfo, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 import type { ProjectData } from "../../lib/types";
 import { StudioI18nProvider } from "../../lib/i18n";
 
@@ -378,6 +378,9 @@ describe("NodeEditorToolbar external update entry", () => {
 
     const okHtml = renderToolbar({ status: statusOk("已保存") });
     expect(okHtml).toContain("var(--status-ok-text)");
+
+    const infoHtml = renderToolbar({ status: statusInfo("正在载入外部版本…") });
+    expect(infoHtml).toContain("var(--text-secondary)");
   });
 });
 

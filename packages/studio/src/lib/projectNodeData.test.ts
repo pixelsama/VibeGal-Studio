@@ -60,6 +60,7 @@ describe("project node caches", () => {
       relPath: "nodes/a.json",
       sayCount: 2,
       changesState: true,
+      instructionCount: 3,
     }]);
 
     const first = loadNodeCreatorSummaries(project(), 2);

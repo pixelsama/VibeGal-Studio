@@ -139,6 +139,7 @@ export function ScriptWorkspace({
   const [resolvedNodeChange, setResolvedNodeChange] = useState<ResolvedNodeChange | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [graphLocateToken, setGraphLocateToken] = useState(0);
   const [chapterScope, setChapterScope] = useState<ChapterScope>({ kind: "all" });
   const {
     graph,
@@ -753,6 +754,7 @@ export function ScriptWorkspace({
       return;
     }
     setGraphHistory(nextState);
+    setGraphLocateToken((current) => current + 1);
     void persistGraph(next);
   };
 
@@ -760,6 +762,7 @@ export function ScriptWorkspace({
     const nextState = undoGraphHistory(graphHistory);
     if (nextState === graphHistory) return;
     setGraphHistory(nextState);
+    setGraphLocateToken((current) => current + 1);
     void persistGraph(nextState.graph);
   }, [graphHistory, persistGraph]);
 
@@ -767,6 +770,7 @@ export function ScriptWorkspace({
     const nextState = redoGraphHistory(graphHistory);
     if (nextState === graphHistory) return;
     setGraphHistory(nextState);
+    setGraphLocateToken((current) => current + 1);
     void persistGraph(nextState.graph);
   }, [graphHistory, persistGraph]);
 
@@ -946,6 +950,7 @@ export function ScriptWorkspace({
                   variables={project.content.variables}
                   selectedNodeId={selectedNodeId}
                   selectedEdgeId={selectedEdgeId}
+                  locateSelectedNodeToken={graphLocateToken}
                   canUndo={graphHistory.canUndo}
                   canRedo={graphHistory.canRedo}
                   onSelect={handleSelect}

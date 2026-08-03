@@ -81,12 +81,14 @@ export function NodeEditorToolbar({
   );
 }
 
-function StatusText({ tone, children }: { tone: "warn" | "error" | "ok"; children: ReactNode }) {
+function StatusText({ tone, children }: { tone: "warn" | "error" | "ok" | "info"; children: ReactNode }) {
   const color = tone === "warn"
     ? "var(--status-warn-text)"
     : tone === "error"
       ? "var(--status-error-text)"
-      : "var(--status-ok-text)";
+      : tone === "info"
+        ? "var(--text-secondary)"
+        : "var(--status-ok-text)";
   return <span style={{ ...statusTextStyle, color }}>{children}</span>;
 }
 

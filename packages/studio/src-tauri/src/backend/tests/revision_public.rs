@@ -184,6 +184,7 @@ fn node_creator_summaries_derive_card_counts_without_returning_bodies() {
     assert_eq!(summaries.len(), 1);
     assert_eq!(summaries[0].say_count, 2);
     assert!(summaries[0].changes_state);
+    assert_eq!(summaries[0].instruction_count, Some(3));
     assert_eq!(summaries[0].rel_path, "nodes/present.json");
     let _ = fs::remove_dir_all(&root);
 }

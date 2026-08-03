@@ -37,6 +37,8 @@ interface GraphCanvasProps {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   visibleNodeIds?: ReadonlySet<string>;
+  /** Increment when a programmatic graph edit should re-locate the current selection. */
+  locateSelectedNodeToken?: number;
   canUndo?: boolean;
   canRedo?: boolean;
   onSelect: (id: string) => void;
@@ -85,6 +87,14 @@ export function filterVisibleCanvasElements<
   };
 }
 
+export function shouldLocateSelectedNode(
+  selectedNodeId: string | null,
+  lastLocatedNodeId: string | null,
+  locateRequested: boolean,
+): boolean {
+  return selectedNodeId != null && (locateRequested || selectedNodeId !== lastLocatedNodeId);
+}
+
 export function GraphCanvas({
   graph,
   graphReport,
@@ -95,6 +105,7 @@ export function GraphCanvas({
   selectedNodeId,
   selectedEdgeId,
   visibleNodeIds,
+  locateSelectedNodeToken,
   canUndo = false,
   canRedo = false,
   onSelect,
@@ -170,17 +181,24 @@ export function GraphCanvas({
     setFlowEdges(flow.edges);
   }, [flow.edges, flow.nodes]);
 
-  // 定位到选中节点：仅在选中节点变化时定位，避免拖动产生的 flowNodes 更新触发画布回弹。
+  // 定位到选中节点：使用由 graph 推导的 canonical positions，避免拖动产生的
+  // 本地 flowNodes 更新触发画布回弹；程序化布局/撤销通过 token 明确请求重新定位。
   const lastLocatedNodeIdRef = useRef<string | null>(null);
+  const lastLocateTokenRef = useRef(locateSelectedNodeToken);
   useEffect(() => {
     if (!flowInstance) return;
+    const locateRequested = locateSelectedNodeToken !== lastLocateTokenRef.current;
+    if (locateRequested) {
+      lastLocateTokenRef.current = locateSelectedNodeToken;
+      lastLocatedNodeIdRef.current = null;
+    }
     if (!selectedNodeId) {
       lastLocatedNodeIdRef.current = null;
       return;
     }
     // 同一节点已定位过则跳过，这样拖动节点（更新 flowNodes）不会再次触发 setCenter。
-    if (selectedNodeId === lastLocatedNodeIdRef.current) return;
-    const node = flowNodes.find((candidate) => candidate.id === selectedNodeId);
+    if (!shouldLocateSelectedNode(selectedNodeId, lastLocatedNodeIdRef.current, locateRequested)) return;
+    const node = flow.nodes.find((candidate) => candidate.id === selectedNodeId);
     if (!node) return; // 节点尚未载入，等下一次 flowNodes 更新重试
     lastLocatedNodeIdRef.current = selectedNodeId;
 
@@ -204,7 +222,7 @@ export function GraphCanvas({
       zoom: Math.max(flowInstance.getZoom(), 0.85),
       duration: 250,
     });
-  }, [flowInstance, flowNodes, selectedNodeId]);
+  }, [flow.nodes, flowInstance, locateSelectedNodeToken, selectedNodeId]);
 
   const handleNodesChange = (changes: NodeChange<GraphCanvasFlowNode>[]) => {
     setFlowNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current));

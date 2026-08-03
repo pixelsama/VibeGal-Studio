@@ -379,3 +379,31 @@ describe("summarizeNodeConnections", () => {
     expect(summarizeNodeConnections(loopGraph, "a")).toEqual({ incoming: 0, outgoing: 0 });
   });
 });
+
+describe("creator summary content status", () => {
+  it("marks a connected empty node as empty when only creator summaries are loaded", () => {
+    const graph: ProjectGraph = {
+      version: 1,
+      entryNodeId: "start",
+      chapters: [{ id: "chapter", title: "第一章" }],
+      nodes: [
+        { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "chapter" },
+        { id: "empty", title: "空节点", file: "nodes/empty.json", position: { x: 200, y: 0 }, chapterId: "chapter" },
+        { id: "tail", title: "尾声", file: "nodes/tail.json", position: { x: 400, y: 0 }, chapterId: "chapter" },
+      ],
+      edges: [
+        { id: "start__empty", from: "start", to: "empty" },
+        { id: "empty__tail", from: "empty", to: "tail" },
+      ],
+    };
+    const flow = mapGraphToFlow(graph, undefined, undefined, undefined, undefined, [{
+      id: "empty",
+      relPath: "nodes/empty.json",
+      sayCount: 0,
+      changesState: false,
+      instructionCount: 0,
+    }]);
+
+    expect(flow.nodes.find((node) => node.id === "empty")?.data.status).toBe("empty");
+  });
+});
