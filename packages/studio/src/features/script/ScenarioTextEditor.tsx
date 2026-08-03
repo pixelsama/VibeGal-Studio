@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useId, useMemo, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { InsertableKind } from "./instructions";
 import type { NodeEditorMode } from "./nodeEditorModel";
 import type { ScenarioCommandOption, ScenarioParameterOption } from "./scenarioCommands";
@@ -80,6 +80,7 @@ export function ScenarioTextEditor({
   onScroll: (scrollTop: number) => void;
 }) {
   const { t } = useStudioI18n();
+  const completionId = useId();
   const scenario = mode === "scenario";
   const showStarterGuide = scenario && text.trim() === "";
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
@@ -224,6 +225,7 @@ export function ScenarioTextEditor({
       )}
       {commandMenuVisible && (
         <div
+          id={`${completionId}-commands`}
           role="listbox"
           aria-label={t("script.editor.commandMenu")}
           style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
@@ -231,9 +233,11 @@ export function ScenarioTextEditor({
           {visibleCommands.map((command, index) => (
             <button
               key={command.kind}
+              id={`${completionId}-command-${index}`}
               type="button"
               role="option"
               aria-selected={index === selectedCommandIndex}
+              tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onInsertCommand(command.kind)}
               style={{
@@ -249,6 +253,7 @@ export function ScenarioTextEditor({
       )}
       {parameterMenuVisible && (
         <div
+          id={`${completionId}-parameters`}
           role="listbox"
           aria-label={t("script.editor.parameterCompletion")}
           style={{ ...commandMenuStyle, top: lineActionTop + SCENARIO_LINE_HEIGHT + 4 }}
@@ -256,9 +261,11 @@ export function ScenarioTextEditor({
           {visibleParameters.map((option, index) => (
             <button
               key={option.id}
+              id={`${completionId}-parameter-${index}`}
               type="button"
               role="option"
               aria-selected={index === selectedParameterIndex}
+              tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onInsertParameter(option.id)}
               style={{
@@ -306,6 +313,19 @@ export function ScenarioTextEditor({
         ref={textareaRef}
         value={text}
         aria-label={scenario ? t("script.editor.scenarioText") : t("script.editor.nodeJson")}
+        aria-autocomplete={scenario ? "list" : undefined}
+        aria-haspopup={scenario && (commandMenuVisible || parameterMenuVisible) ? "listbox" : undefined}
+        aria-expanded={scenario && (commandMenuVisible || parameterMenuVisible) ? true : undefined}
+        aria-controls={commandMenuVisible
+          ? `${completionId}-commands`
+          : parameterMenuVisible
+            ? `${completionId}-parameters`
+            : undefined}
+        aria-activedescendant={commandMenuVisible && visibleCommands[selectedCommandIndex]
+          ? `${completionId}-command-${selectedCommandIndex}`
+          : parameterMenuVisible && visibleParameters[selectedParameterIndex]
+            ? `${completionId}-parameter-${selectedParameterIndex}`
+            : undefined}
         wrap={scenario ? "off" : "soft"}
         onChange={(event) => {
           if (scenario) onScenarioTextChange(event.currentTarget);
@@ -344,7 +364,6 @@ const textareaStyle: CSSProperties = {
   height: "100%",
   resize: "none",
   border: "none",
-  outline: "none",
   margin: 0,
   padding: "var(--space-4)",
   background: "transparent",

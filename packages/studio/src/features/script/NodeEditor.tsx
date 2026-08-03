@@ -82,6 +82,7 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { useStudioI18n } from "../../lib/i18n";
+import { clampCompletionIndex, moveCompletionIndex } from "./completionNavigation";
 
 export {
   isWriteConflictError,
@@ -680,6 +681,7 @@ export function NodeEditor({
   );
   const parameterMenuVisible = mode === "scenario" && parameterTrigger != null && visibleParameters.length > 0;
   const commandMenuVisible = mode === "scenario"
+    && visibleCommands.length > 0
     && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
   const lineActionTop = Math.max(
     8,
@@ -699,7 +701,11 @@ export function NodeEditor({
   }, [visibleParameters.length]);
 
   useEffect(() => {
-    setCommandIndex((current) => Math.min(current, Math.max(visibleCommands.length - 1, 0)));
+    setCommandIndex(0);
+  }, [commandMenuSource, commandQuery]);
+
+  useEffect(() => {
+    setCommandIndex((current) => clampCompletionIndex(current, visibleCommands.length));
   }, [visibleCommands.length]);
 
   useEffect(() => {
@@ -990,6 +996,7 @@ export function NodeEditor({
     if (nextCommand) {
       setParameterTrigger(null);
       setCommandMenuSource("trigger");
+      setCommandIndex(0);
     } else {
       if (commandMenuSource === "trigger") setCommandMenuSource(null);
       setParameterTrigger(scenarioParameterTriggerAtCursor(textarea.value, nextOffset));
@@ -1006,6 +1013,7 @@ export function NodeEditor({
     const nextCommand = scenarioCommandTriggerAtCursor(nextText, nextOffset);
     setCommandMenuSource(nextCommand ? "trigger" : null);
     setParameterTrigger(nextCommand ? null : scenarioParameterTriggerAtCursor(nextText, nextOffset));
+    setCommandIndex(0);
     setCompletionIndex(0);
   };
 
@@ -1023,6 +1031,7 @@ export function NodeEditor({
     pendingSelectionRef.current = inserted.cursorOffset;
     setCursorOffset(inserted.cursorOffset);
     setCommandMenuSource(null);
+    setCommandIndex(0);
     applyScenarioText(inserted.text, { programmatic: true });
   };
 
@@ -1083,11 +1092,11 @@ export function NodeEditor({
       });
       return;
     }
-    if (commandMenuVisible && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    if (commandMenuVisible && visibleCommands.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
       setCommandIndex((current) => {
         const delta = event.key === "ArrowDown" ? 1 : -1;
-        return (current + delta + visibleCommands.length) % visibleCommands.length;
+        return moveCompletionIndex(current, delta, visibleCommands.length);
       });
       return;
     }
@@ -1272,6 +1281,7 @@ export function NodeEditor({
         onToggleLineCommandMenu={() => {
           setParameterTrigger(null);
           setCommandMenuSource(commandMenuSource === "line-plus" ? null : "line-plus");
+          setCommandIndex(0);
           textareaRef.current?.focus();
         }}
         onInsertCommand={handleInsertCommand}

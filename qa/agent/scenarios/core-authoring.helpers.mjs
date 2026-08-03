@@ -160,7 +160,7 @@ export async function createSuccessorFromGraphNode(nodeId = CORE_AUTHORING_SOURC
   await browser.waitUntil(async () => (await browser.$(
     `.react-flow__node[data-id="${CORE_AUTHORING_NEW_NODE_ID}"]`,
   ).isExisting()) || (await browser.$(
-    `//button[@role="option"][.//span[normalize-space()=${xpathLiteral(CORE_AUTHORING_NEW_NODE_ID)}]]`,
+    `//div[@role="list"]//button[.//span[normalize-space()=${xpathLiteral(CORE_AUTHORING_NEW_NODE_ID)}]]`,
   ).isExisting()), {
     timeout: 15_000,
     timeoutMsg: "created successor node did not appear in the Graph UI",
@@ -179,7 +179,7 @@ export async function renameSelectedNode() {
 
 export async function openNodeEditor(nodeTitle = CORE_AUTHORING_NEW_NODE_ID) {
   const option = await browser.$(
-    `//button[@role="option"][.//span[normalize-space()=${xpathLiteral(nodeTitle)}]]`,
+    `//div[@role="list"]//button[.//span[normalize-space()=${xpathLiteral(nodeTitle)}]]`,
   );
   await option.waitForClickable();
   await option.click();

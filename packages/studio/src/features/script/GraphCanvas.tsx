@@ -70,6 +70,7 @@ type GraphCanvasFlowNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
 const nodeTypes = { [NODE_TYPE]: GraphNodeView } satisfies NodeTypes;
 
 interface CanvasMenuState {
+  id: number;
   anchor: { x: number; y: number };
   items: ContextMenuItem[];
 }
@@ -120,6 +121,7 @@ export function GraphCanvas({
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
+  const menuIdRef = useRef(0);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const colorMode = useResolvedTheme();
 
@@ -246,7 +248,8 @@ export function GraphCanvas({
       });
     }
 
-    setMenu({ anchor: { x: clientX, y: clientY }, items });
+    setMenu({ id: menuIdRef.current + 1, anchor: { x: clientX, y: clientY }, items });
+    menuIdRef.current += 1;
   };
 
   // Phase 7：节点右键 → 进入 / 重命名 / 复制 / 后续 / 删除
@@ -282,7 +285,8 @@ export function GraphCanvas({
       onSelect: () => onDeleteNodes([node.id]),
     });
 
-    setMenu({ anchor: { x: clientX, y: clientY }, items });
+    setMenu({ id: menuIdRef.current + 1, anchor: { x: clientX, y: clientY }, items });
+    menuIdRef.current += 1;
   };
 
   // Spec 33 E5：适应视图上浮为常驻控件（Controls 按钮与右键菜单共用）。
@@ -433,7 +437,7 @@ export function GraphCanvas({
       </ReactFlow>
 
       {/* Phase 7：右键菜单 */}
-      {menu && <ContextMenu anchor={menu.anchor} items={menu.items} onClose={() => setMenu(null)} />}
+      {menu && <ContextMenu key={menu.id} anchor={menu.anchor} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }

@@ -80,7 +80,8 @@ describe("StoryOutline", () => {
     // 节点列表是普通 list（不再假声明 listbox 契约），选中节点用 aria-current 标记
     expect(html).toContain('role="list"');
     expect(html).not.toContain('role="listbox"');
-    expect(html).toMatch(/<button[^>]*role="listitem"[^>]*aria-current="true"[^>]*>/);
+    expect(html).toMatch(/<div[^>]*role="listitem"[^>]*aria-current="true"[^>]*>[\s\S]*?<button[^>]*>[\s\S]*?分岔/);
+    expect(html).toMatch(/<div[^>]*role="listitem"[^>]*aria-posinset="1"[^>]*aria-setsize="2"/);
   });
 
   it("offers node creation when the selected chapter is empty", () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { clampMenuPosition, MENU_HEIGHT, MENU_WIDTH } from "./canvasMenu";
+import { enabledMenuIndices, firstEnabledMenuIndex, moveMenuIndex } from "./contextMenuNavigation";
 
 export interface ContextMenuItem {
   /** 唯一 key。 */
@@ -37,8 +38,23 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
   });
   const ref = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const previousFocusRef = useRef<HTMLElement | null>(
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
   // 打开时聚焦第一个可用项，方向键在其间移动（roving tabindex）。
-  const [activeIndex, setActiveIndex] = useState(() => items.findIndex((item) => !item.disabled));
+  const [activeIndex, setActiveIndex] = useState(() => firstEnabledMenuIndex(items));
+
+  const restoreFocus = () => {
+    const previousFocus = previousFocusRef.current;
+    if (previousFocus?.isConnected && !previousFocus.hasAttribute("disabled")) previousFocus.focus();
+  };
+
+  const closeMenu = (shouldRestoreFocus: boolean) => {
+    onClose();
+    if (shouldRestoreFocus) restoreFocus();
+  };
 
   useEffect(() => {
     const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -55,10 +71,13 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(event.target as Node)) closeMenu(true);
     };
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu(true);
+      }
     };
     // 用 mousedown 而非 click，避免右键事件本身立即触发关闭
     document.addEventListener("mousedown", handlePointerDown);
@@ -74,10 +93,7 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
     itemRefs.current[activeIndex]?.focus();
   }, []);
 
-  const enabledIndices = items
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => !item.disabled)
-    .map(({ index }) => index);
+  const enabledIndices = enabledMenuIndices(items);
 
   const focusIndex = (index: number) => {
     setActiveIndex(index);
@@ -85,10 +101,8 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
   };
 
   const moveActive = (delta: 1 | -1) => {
-    if (enabledIndices.length === 0) return;
-    const currentPos = enabledIndices.indexOf(activeIndex);
-    const nextPos = currentPos === -1 ? 0 : (currentPos + delta + enabledIndices.length) % enabledIndices.length;
-    focusIndex(enabledIndices[nextPos]);
+    const nextIndex = moveMenuIndex(activeIndex, delta, items);
+    if (nextIndex >= 0) focusIndex(nextIndex);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -122,7 +136,7 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
             onClick={() => {
               if (item.disabled) return;
               item.onSelect();
-              onClose();
+              closeMenu(false);
             }}
             style={{
               color: item.disabled
