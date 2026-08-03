@@ -176,13 +176,37 @@ export function GraphCanvas({
     setFlowEdges(flow.edges);
   }, [flow.edges, flow.nodes]);
 
-  // 定位到选中节点（保留原有行为）
+  // 定位到选中节点：仅在选中节点变化时定位，避免拖动产生的 flowNodes 更新触发画布回弹。
+  const lastLocatedNodeIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!flowInstance || !selectedNodeId) return;
+    if (!flowInstance) return;
+    if (!selectedNodeId) {
+      lastLocatedNodeIdRef.current = null;
+      return;
+    }
+    // 同一节点已定位过则跳过，这样拖动节点（更新 flowNodes）不会再次触发 setCenter。
+    if (selectedNodeId === lastLocatedNodeIdRef.current) return;
     const node = flowNodes.find((candidate) => candidate.id === selectedNodeId);
-    if (!node) return;
+    if (!node) return; // 节点尚未载入，等下一次 flowNodes 更新重试
+    lastLocatedNodeIdRef.current = selectedNodeId;
 
-    void flowInstance.setCenter(node.position.x + 120, node.position.y + 48, {
+    const centerX = node.position.x + 120;
+    const centerY = node.position.y + 48;
+    // 节点已在视口内则不打扰，避免选中可见节点时画布被拽动。
+    const bounds = shellRef.current?.getBoundingClientRect();
+    if (bounds) {
+      const viewport = flowInstance.getViewport();
+      const screenX = centerX * viewport.zoom + viewport.x;
+      const screenY = centerY * viewport.zoom + viewport.y;
+      const margin = 80;
+      const inViewport =
+        screenX > margin &&
+        screenX < bounds.width - margin &&
+        screenY > margin &&
+        screenY < bounds.height - margin;
+      if (inViewport) return;
+    }
+    void flowInstance.setCenter(centerX, centerY, {
       zoom: Math.max(flowInstance.getZoom(), 0.85),
       duration: 250,
     });
