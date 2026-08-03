@@ -18,7 +18,7 @@ import {
 } from "@xyflow/react";
 import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphReport, Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
-import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
+import { mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -142,16 +142,10 @@ export function GraphCanvas({
       : nodeSummaries;
     const visibleFlow = mapGraphToFlow(visibleGraph, graphReport, visibleEntries, manifest, variables, visibleSummaries, t);
 
-    const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => {
-      return {
-        ...node,
-        selected: node.id === selectedNodeId,
-        data: {
-          ...node.data,
-          hasContent: findNodeData(nodeEntries, node.data.fileId) != null,
-        },
-      };
-    });
+    const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => ({
+      ...node,
+      selected: node.id === selectedNodeId,
+    }));
 
     const edges = visibleFlow.edges.map((edge) => {
       const suspicious = Boolean(edge.data?.suspicious);

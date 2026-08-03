@@ -12,7 +12,6 @@ export interface GraphCanvasNodeData extends Record<string, unknown> {
   summary?: string[];
   badges?: string[];
   duplicateNodeId?: boolean;
-  hasContent?: boolean;
 }
 
 type GraphNodeViewNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
@@ -25,6 +24,7 @@ const STATUS_STYLE: Record<GraphNodeStatus, { dot: string; text: string; border:
   orphan: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", labelKey: "script.graphNode.status.orphan" },
   ending: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border-ok)", labelKey: "script.graphNode.status.ending" },
   branch: { dot: "var(--status-warn)", text: "var(--status-warn-text)", border: "var(--border-warn)", labelKey: "script.graphNode.status.branch" },
+  empty: { dot: "var(--text-muted)", text: "var(--text-secondary)", border: "var(--border)", labelKey: "script.graphNode.status.empty" },
   normal: { dot: "var(--status-ok)", text: "var(--status-ok-text)", border: "var(--border)", labelKey: "script.graphNode.status.normal" },
 };
 

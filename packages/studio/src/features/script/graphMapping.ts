@@ -48,12 +48,16 @@ export function mapGraphToFlow(
     // 仅当明确提供 entries 且对应条目 data 为 null（后端确认文件缺失）时才判 missing-file。
     const entry = nodeEntries ? findNodeEntry(nodeEntries, node.file) : null;
     const hasFile = nodeEntries == null ? true : entry?.data != null;
+    // 空文件（data 为空数组）算"未编写"：有文件但没有指令，不应显示绿色"已有内容"。
+    // nodeEntries 未提供时保守视为有内容，避免误报 empty。
+    const nodeData = entry?.data;
+    const hasContent = nodeData == null ? true : !Array.isArray(nodeData) || nodeData.length > 0;
     const { incoming, outgoing } = connectionCounts.get(node.id) ?? { incoming: 0, outgoing: 0 };
     const baseStatus = deriveGraphNodeStatusFromSummary(
       graph,
       node.id,
       connectionCounts.get(node.id) ?? { incoming: 0, outgoing: 0 },
-      { hasFile, duplicateNodeIds },
+      { hasFile, hasContent, duplicateNodeIds },
     );
     const endingIds = endingIdsByNode.get(node.id) ?? [];
     const badges = [
@@ -107,6 +111,7 @@ export type GraphNodeStatus =
   | "orphan"
   | "ending"
   | "branch"
+  | "empty"
   | "normal";
 
 /** 单个节点的入/出边连接摘要。 */
@@ -118,21 +123,23 @@ export interface NodeConnectionSummary {
 /**
  * 为图里每个节点派生可视状态。
  *
- * 优先级（高 → 低）：duplicate > missing-file > entry > orphan > ending > branch > normal。
+ * 优先级（高 → 低）：duplicate > missing-file > entry > orphan > ending > branch > empty > normal。
  * - duplicate：graphReport 标记的重复 id（最严重，要先解决）。
  * - missing-file：节点文件缺失（red）。
  * - entry：等于 entryNodeId 的节点（蓝/起点徽标）。
  * - orphan：有节点存在但既无入边也无出边，且不是入口（黄）。
  * - ending：有入边、无出边（绿，终点）。
  * - branch：出边 ≥ 2（黄，分支）。
- * - normal：其余。
+ * - empty：已连接但节点文件无指令（空文件）。只覆盖 normal，不覆盖角色状态——
+ *   空的入口/终点/分支仍按角色显示，避免空文件被显示为绿色"已有内容"。
+ * - normal：其余（有内容）。
  *
  * 注意：entry 也可能同时是 orphan（单节点图）。entry 优先于 orphan，让入口徽标稳定。
  */
 export function deriveGraphNodeStatus(
   graph: ProjectGraph,
   nodeId: string,
-  options: { hasFile?: boolean; duplicateNodeIds?: Set<string> } = {},
+  options: { hasFile?: boolean; hasContent?: boolean; duplicateNodeIds?: Set<string> } = {},
 ): GraphNodeStatus {
   return deriveGraphNodeStatusFromSummary(graph, nodeId, summarizeNodeConnections(graph, nodeId), options);
 }
@@ -141,9 +148,9 @@ function deriveGraphNodeStatusFromSummary(
   graph: ProjectGraph,
   nodeId: string,
   summary: NodeConnectionSummary,
-  options: { hasFile?: boolean; duplicateNodeIds?: Set<string> } = {},
+  options: { hasFile?: boolean; hasContent?: boolean; duplicateNodeIds?: Set<string> } = {},
 ): GraphNodeStatus {
-  const { hasFile = true, duplicateNodeIds } = options;
+  const { hasFile = true, hasContent = true, duplicateNodeIds } = options;
   if (duplicateNodeIds?.has(nodeId)) return "duplicate";
   if (!hasFile) return "missing-file";
   if (nodeId === graph.entryNodeId) return "entry";
@@ -153,6 +160,8 @@ function deriveGraphNodeStatusFromSummary(
   if (summary.outgoing === 0) return "ending";
   if (graph.edges.some((edge) => edge.from === nodeId && edge.from !== edge.to && edge.mode === "choice")) return "branch";
   if (summary.outgoing >= 2) return "branch";
+  // 已连接但文件为空（无指令）：不显示绿色"已有内容"，改用中性"未编写"。
+  if (!hasContent) return "empty";
   return "normal";
 }
 
