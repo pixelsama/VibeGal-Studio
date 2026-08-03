@@ -172,9 +172,8 @@ export function StoryOutline({
         </div>
         <div
           ref={nodeListRef}
-          role="listbox"
+          role="list"
           aria-label={searching ? t("script.outline.searchResultsLabel") : t("script.outline.chapterNodes")}
-          aria-setsize={listItems.length}
           style={nodeListStyle}
           onScroll={handleListScroll}
         >
@@ -193,9 +192,7 @@ export function StoryOutline({
               <button
                 key={`${result.kind}-${index}`}
                 type="button"
-                role="option"
-                aria-posinset={index + 1}
-                aria-setsize={searchResults.length}
+                role="listitem"
                 onClick={() => {
                   if (result.kind === "edge") onSelectEdge?.(result.edgeId);
                   else if ("nodeId" in result && result.nodeId) onSelectNode(result.nodeId);
@@ -215,17 +212,14 @@ export function StoryOutline({
                 {t("script.createNode")}
               </button>
             </div>
-          ) : windowedItems.map((item, visibleIndex) => {
+          ) : windowedItems.map((item) => {
             const node = item as (typeof visibleNodes)[number];
-            const index = listWindow.start + visibleIndex;
             return (
             <button
               key={node.id}
               type="button"
-              role="option"
-              aria-selected={selectedNodeId === node.id}
-              aria-posinset={index + 1}
-              aria-setsize={visibleNodes.length}
+              role="listitem"
+              aria-current={selectedNodeId === node.id ? "true" : undefined}
               onClick={() => onSelectNode(node.id)}
               style={{
                 ...nodeButtonStyle,

@@ -63,6 +63,26 @@ describe("StoryOutline", () => {
     expect(html).not.toContain("outline:none");
   });
 
+  it("marks the selected node with aria-current in a plain list", () => {
+    const html = renderToStaticMarkup(createElement(StoryOutline, {
+      graph,
+      scope: { kind: "chapter", chapterId: "choice" },
+      selectedNodeId: "turn",
+      onScopeChange: () => {},
+      onSelectNode: () => {},
+      onCreateNode: () => {},
+      onCreateChapter: () => {},
+      onRenameChapter: () => {},
+      onMoveChapter: () => {},
+      onDeleteChapter: () => {},
+    }));
+
+    // 节点列表是普通 list（不再假声明 listbox 契约），选中节点用 aria-current 标记
+    expect(html).toContain('role="list"');
+    expect(html).not.toContain('role="listbox"');
+    expect(html).toMatch(/<button[^>]*role="listitem"[^>]*aria-current="true"[^>]*>/);
+  });
+
   it("offers node creation when the selected chapter is empty", () => {
     const emptyChapterGraph: ProjectGraph = {
       ...graph,

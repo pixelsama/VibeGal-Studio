@@ -121,6 +121,23 @@ export function ScriptWorkspace({
   const view = location.view;
   /** 剧情工作台的一级视图：剧情流程 / 故事状态 / 翻译对照。 */
   const [primaryView, setPrimaryView] = useState<"flow" | "state" | "translation">("flow");
+  const scriptTabViews = ["flow", "state", "translation"] as const;
+  const handleViewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const current = scriptTabViews.indexOf(primaryView);
+    if (current === -1) return;
+    let next: number | null = null;
+    if (event.key === "ArrowRight") next = (current + 1) % scriptTabViews.length;
+    else if (event.key === "ArrowLeft") next = (current - 1 + scriptTabViews.length) % scriptTabViews.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = scriptTabViews.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    const nextView = scriptTabViews[next];
+    setPrimaryView(nextView);
+    requestAnimationFrame(() => {
+      document.getElementById(`script-tab-${nextView}`)?.focus();
+    });
+  };
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [outlineSearchActive, setOutlineSearchActive] = useState(false);
   const blockingFullNodeData = view === "graph"
@@ -799,11 +816,14 @@ export function ScriptWorkspace({
         onBackToGraph={onOpenGraph}
       />
       {view === "graph" && (
-        <div className="gs-script-views" role="tablist" aria-label={t("script.views")}>
+        <div className="gs-script-views" role="tablist" aria-label={t("script.views")} onKeyDown={handleViewKeyDown}>
           <button
             type="button"
             role="tab"
+            id="script-tab-flow"
             aria-selected={primaryView === "flow"}
+            aria-controls="script-tabpanel"
+            tabIndex={primaryView === "flow" ? 0 : -1}
             className={primaryView === "flow" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={() => setPrimaryView("flow")}
           >
@@ -812,7 +832,10 @@ export function ScriptWorkspace({
           <button
             type="button"
             role="tab"
+            id="script-tab-state"
             aria-selected={primaryView === "state"}
+            aria-controls="script-tabpanel"
+            tabIndex={primaryView === "state" ? 0 : -1}
             className={primaryView === "state" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={() => setPrimaryView("state")}
           >
@@ -821,7 +844,10 @@ export function ScriptWorkspace({
           <button
             type="button"
             role="tab"
+            id="script-tab-translation"
             aria-selected={primaryView === "translation"}
+            aria-controls="script-tabpanel"
+            tabIndex={primaryView === "translation" ? 0 : -1}
             className={primaryView === "translation" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
             onClick={() => setPrimaryView("translation")}
           >
@@ -829,7 +855,12 @@ export function ScriptWorkspace({
           </button>
         </div>
       )}
-      <div style={contentStyle}>
+      <div
+        style={contentStyle}
+        role={view === "graph" ? "tabpanel" : undefined}
+        id={view === "graph" ? "script-tabpanel" : undefined}
+        aria-labelledby={view === "graph" ? `script-tab-${primaryView}` : undefined}
+      >
         {blockingFullNodeData && allNodeData.loading ? (
             <WorkspaceDataState message={t("script.loading.fullNodes")} />
           ) : blockingFullNodeData && allNodeData.error ? (
