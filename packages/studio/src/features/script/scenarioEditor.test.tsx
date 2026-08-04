@@ -223,6 +223,24 @@ describe("ScenarioInspector", () => {
     expect(html).toContain("加注音");
   });
 
+  it("collapses the expressive format toolbar and disambiguates the insert buttons", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("akari: 你好，旅行者。", 0),
+      manifest,
+      variables,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    // 格式工具栏默认收进折叠
+    expect(html).toContain("gs-disclosure");
+    expect(html).toContain("格式");
+    // 两个插入按钮不再重名
+    expect(html).toContain("插入状态");
+    expect(html).toContain("插入停顿");
+    expect(html).not.toContain(">插入<");
+  });
+
   it("renders player naming as a structured form and readable scenario line", () => {
     const selection = getScenarioSelection('@inputName playerName 12 "怎么称呼你？" "旅行者"', 0);
     const html = renderToStaticMarkup(createElement(ScenarioInspector, {

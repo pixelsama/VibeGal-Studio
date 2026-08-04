@@ -853,6 +853,8 @@ function ExpressiveTextField({
         <span className="gs-field__label">{label}</span>
         <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} className="gs-input" />
       </label>
+      <details className="gs-disclosure">
+        <summary>{t("script.scenario.format")}</summary>
       <div style={expressiveToolbarStyle} aria-label={t("script.scenario.expressiveTools")}>
         <label style={toolFieldStyle}>
           <span>{t("script.scenario.storyState")}</span>
@@ -867,12 +869,12 @@ function ExpressiveTextField({
             {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
           </select>
         </label>
-        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insert")}</button>
+        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insertStateAction")}</button>
         <label style={toolFieldStyle}>
           <span>{t("script.scenario.inlinePause")}</span>
           <NumberInput aria-label={t("script.scenario.inlinePauseMs")} value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
         </label>
-        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insert")}</button>
+        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insertPauseAction")}</button>
         <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>{t("script.scenario.bold")}</button>
         <label style={toolFieldStyle}>
           <span>{t("script.scenario.textColor")}</span>
@@ -898,6 +900,7 @@ function ExpressiveTextField({
         </label>
         <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>{t("script.scenario.addRuby")}</button>
       </div>
+      </details>
       <div style={mutedTextStyle}>{t("script.scenario.expressiveHint")}</div>
     </div>
   );
