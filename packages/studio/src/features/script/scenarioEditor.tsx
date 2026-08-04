@@ -855,51 +855,52 @@ function ExpressiveTextField({
       </label>
       <details className="gs-disclosure">
         <summary>{t("script.scenario.format")}</summary>
-      <div style={expressiveToolbarStyle} aria-label={t("script.scenario.expressiveTools")}>
-        <label style={toolFieldStyle}>
-          <span>{t("script.scenario.storyState")}</span>
-          <select
-            aria-label={t("script.scenario.insertState")}
-            value={currentState}
-            disabled={states.length === 0}
-            onChange={(event) => setSelectedState(event.target.value)}
-            style={toolInputStyle}
-          >
-            {states.length === 0 && <option value="">{t("script.scenario.noTextState")}</option>}
-            {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
-          </select>
-        </label>
-        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insertStateAction")}</button>
-        <label style={toolFieldStyle}>
-          <span>{t("script.scenario.inlinePause")}</span>
-          <NumberInput aria-label={t("script.scenario.inlinePauseMs")} value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
-        </label>
-        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insertPauseAction")}</button>
-        <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>{t("script.scenario.bold")}</button>
-        <label style={toolFieldStyle}>
-          <span>{t("script.scenario.textColor")}</span>
-          <select aria-label={t("script.scenario.textColor")} value={color} onChange={(event) => setColor(event.target.value)} style={toolInputStyle}>
-            <option value="#FFD166">{t("script.scenario.color.warmYellow")}</option>
-            <option value="#EF476F">{t("script.scenario.color.emphasisRed")}</option>
-            <option value="#06D6A0">{t("script.scenario.color.freshGreen")}</option>
-            <option value="#118AB2">{t("script.scenario.color.deepBlue")}</option>
-            {themeColors.map(([id, resolved]) => <option key={id} value={id}>{id} · {resolved}</option>)}
-          </select>
-        </label>
-        <button type="button" onClick={() => insert(`[color=${color}]`, "[/color]")} style={toolButtonStyle}>{t("script.scenario.colorize")}</button>
-        <label style={toolFieldStyle}>
-          <span>{t("script.scenario.ruby")}</span>
-          <input
-            aria-label={t("script.scenario.rubyReading")}
-            type="text"
-            value={ruby}
-            placeholder={t("script.scenario.readingPlaceholder")}
-            onChange={(event) => setRuby(event.target.value)}
-            style={toolInputStyle}
-          />
-        </label>
-        <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>{t("script.scenario.addRuby")}</button>
-      </div>
+        <div style={expressiveToolbarStyle} aria-label={t("script.scenario.expressiveTools")}>
+          <label style={toolFieldStyle}>
+            <span>{t("script.scenario.storyState")}</span>
+            <select
+              aria-label={t("script.scenario.insertState")}
+              value={currentState}
+              disabled={states.length === 0}
+              onChange={(event) => setSelectedState(event.target.value)}
+              className="gs-select"
+              style={toolSelectStyle}
+            >
+              {states.length === 0 && <option value="">{t("script.scenario.noTextState")}</option>}
+              {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
+            </select>
+          </label>
+          <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insertStateAction")}</button>
+          <label style={toolFieldStyle}>
+            <span>{t("script.scenario.inlinePause")}</span>
+            <NumberInput aria-label={t("script.scenario.inlinePauseMs")} value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
+          </label>
+          <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insertPauseAction")}</button>
+          <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>{t("script.scenario.bold")}</button>
+          <label style={toolFieldStyle}>
+            <span>{t("script.scenario.textColor")}</span>
+            <select aria-label={t("script.scenario.textColor")} value={color} onChange={(event) => setColor(event.target.value)} className="gs-select" style={toolSelectStyle}>
+              <option value="#FFD166">{t("script.scenario.color.warmYellow")}</option>
+              <option value="#EF476F">{t("script.scenario.color.emphasisRed")}</option>
+              <option value="#06D6A0">{t("script.scenario.color.freshGreen")}</option>
+              <option value="#118AB2">{t("script.scenario.color.deepBlue")}</option>
+              {themeColors.map(([id, resolved]) => <option key={id} value={id}>{id} · {resolved}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => insert(`[color=${color}]`, "[/color]")} style={toolButtonStyle}>{t("script.scenario.colorize")}</button>
+          <label style={toolFieldStyle}>
+            <span>{t("script.scenario.ruby")}</span>
+            <input
+              aria-label={t("script.scenario.rubyReading")}
+              type="text"
+              value={ruby}
+              placeholder={t("script.scenario.readingPlaceholder")}
+              onChange={(event) => setRuby(event.target.value)}
+              style={toolInputStyle}
+            />
+          </label>
+          <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>{t("script.scenario.addRuby")}</button>
+        </div>
       </details>
       <div style={mutedTextStyle}>{t("script.scenario.expressiveHint")}</div>
     </div>
@@ -1257,6 +1258,11 @@ const toolInputStyle: CSSProperties = {
   ...inputStyle,
   padding: "5px var(--space-2)",
   fontSize: "var(--text-sm)",
+};
+
+const toolSelectStyle: CSSProperties = {
+  ...toolInputStyle,
+  paddingRight: "var(--space-6)",
 };
 
 const toolButtonStyle: CSSProperties = {

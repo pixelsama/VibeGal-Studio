@@ -239,6 +239,9 @@ describe("ScenarioInspector", () => {
     expect(html).toContain("插入状态");
     expect(html).toContain("插入停顿");
     expect(html).not.toContain(">插入<");
+    // 工具栏内下拉同样收敛到共享 .gs-select（自绘箭头），与面板其余下拉一致
+    expect(html).toMatch(/<select(?=[^>]*gs-select)(?=[^>]*aria-label="要插入的故事状态")/);
+    expect(html).toMatch(/<select(?=[^>]*gs-select)(?=[^>]*aria-label="文字颜色")/);
   });
 
   it("renders player naming as a structured form and readable scenario line", () => {
