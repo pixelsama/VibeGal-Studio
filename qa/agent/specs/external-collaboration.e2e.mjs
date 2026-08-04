@@ -25,6 +25,7 @@ import {
   waitForJson,
   waitForTextareaValue,
   waitForWorkspaceContentVisible,
+  xpathLiteral,
 } from "../scenarios/external-collaboration.helper.mjs";
 
 const projectPath = requiredEnv("VIBEGAL_AGENT_QA_PROJECT");
@@ -80,9 +81,10 @@ async function openProjectInStudio() {
     "Trust and run project interface style",
     "剧情播放",
     "Story playback",
+    "Play story",
   ], 30_000);
   await trustCurrentRendererIfNeeded();
-  await waitForAnyBodyText(["剧情播放", "Story playback"], 30_000);
+  await waitForAnyBodyText(["剧情播放", "Story playback", "Play story"], 30_000);
   await waitForWorkspaceContentVisible();
 }
 
@@ -92,21 +94,31 @@ async function trustCurrentRendererIfNeeded() {
     "Trust and run project interface style",
   ]);
   if (await trust.isExisting()) {
-    await trust.waitForClickable();
-    await trust.click();
+    await clickButton([
+      "信任并运行项目界面风格",
+      "Trust and run project interface style",
+    ]);
   }
 }
 
 async function openScriptGraph() {
   await clickButton(["剧情", "Story"]);
   await browser.$(".react-flow").waitForExist();
-  await browser.$("[role=listbox]").waitForExist();
+  await browser.$("[role=list]").waitForExist();
 }
 
 async function openNodeEditor(nodeTitle) {
-  await clickContaining(nodeTitle);
-  await waitForAnyBodyText(["节点检查", "Node inspection", "进入编辑", "Edit node"]);
-  await clickButton(["进入编辑", "Edit node"]);
+  const option = await browser.$(
+    `//div[@role="list"]//button[.//*[normalize-space()=${xpathLiteral(nodeTitle)}] or normalize-space(.)=${xpathLiteral(nodeTitle)}]`,
+  );
+  if (await option.isExisting()) {
+    await option.waitForClickable();
+    await option.click();
+  } else {
+    await clickContaining(nodeTitle);
+  }
+  await waitForAnyBodyText(["节点检查", "Node inspection", "Properties", "进入编辑", "Edit node", "Open editor"]);
+  await clickButton(["进入编辑", "Edit node", "Open editor"]);
   await browser.$("textarea").waitForExist();
 }
 
@@ -137,7 +149,7 @@ async function exerciseExternalEdits() {
   await waitForAnyBodyText(["外部已更新，查看差异", "Updated externally · View diff"], 30_000);
 
   await clickButton(["预览", "Preview"]);
-  await waitForAnyBodyText(["剧情播放", "Story playback"], 30_000);
+  await waitForAnyBodyText(["剧情播放", "Story playback", "Play story"], 30_000);
 
   const manifestFile = path.join(projectPath, MANIFEST_PATH);
   await atomicReplaceJson(manifestFile, (manifest) => {
@@ -162,7 +174,7 @@ async function exerciseExternalEdits() {
     "Trust and run project interface style",
   ], 30_000);
   await trustCurrentRendererIfNeeded();
-  await waitForAnyBodyText(["剧情播放", "Story playback"], 30_000);
+  await waitForAnyBodyText(["剧情播放", "Story playback", "Play story"], 30_000);
 }
 
 async function exerciseUnsavedConflictProtection() {

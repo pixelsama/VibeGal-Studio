@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { clampMenuPosition, MENU_HEIGHT, MENU_WIDTH } from "./canvasMenu";
+import { enabledMenuIndices, firstEnabledMenuIndex, moveMenuIndex } from "./contextMenuNavigation";
 
 export interface ContextMenuItem {
   /** 唯一 key。 */
@@ -36,6 +37,24 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
     height: window.innerHeight,
   });
   const ref = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const previousFocusRef = useRef<HTMLElement | null>(
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+  // 打开时聚焦第一个可用项，方向键在其间移动（roving tabindex）。
+  const [activeIndex, setActiveIndex] = useState(() => firstEnabledMenuIndex(items));
+
+  const restoreFocus = () => {
+    const previousFocus = previousFocusRef.current;
+    if (previousFocus?.isConnected && !previousFocus.hasAttribute("disabled")) previousFocus.focus();
+  };
+
+  const closeMenu = (shouldRestoreFocus: boolean) => {
+    onClose();
+    if (shouldRestoreFocus) restoreFocus();
+  };
 
   useEffect(() => {
     const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -52,10 +71,13 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(event.target as Node)) closeMenu(true);
     };
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu(true);
+      }
     };
     // 用 mousedown 而非 click，避免右键事件本身立即触发关闭
     document.addEventListener("mousedown", handlePointerDown);
@@ -66,20 +88,55 @@ export function ContextMenu({ anchor, items, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
+  // 打开即聚焦首个可用菜单项，让键盘用户能立刻用方向键导航。
+  useEffect(() => {
+    itemRefs.current[activeIndex]?.focus();
+  }, []);
+
+  const enabledIndices = enabledMenuIndices(items);
+
+  const focusIndex = (index: number) => {
+    setActiveIndex(index);
+    itemRefs.current[index]?.focus();
+  };
+
+  const moveActive = (delta: 1 | -1) => {
+    const nextIndex = moveMenuIndex(activeIndex, delta, items);
+    if (nextIndex >= 0) focusIndex(nextIndex);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveActive(1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(-1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      if (enabledIndices.length > 0) focusIndex(enabledIndices[0]);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      if (enabledIndices.length > 0) focusIndex(enabledIndices[enabledIndices.length - 1]);
+    }
+  };
+
   return (
-    <div ref={ref} role="menu" className="gs-anim-pop" style={{ ...menuStyle, left: pos.x, top: pos.y }}>
-      {items.map((item) => (
+    <div ref={ref} role="menu" className="gs-anim-pop" onKeyDown={handleKeyDown} style={{ ...menuStyle, left: pos.x, top: pos.y }}>
+      {items.map((item, index) => (
         <div key={item.key}>
           {item.dividerBefore && <div style={dividerStyle} />}
           <button
             type="button"
             role="menuitem"
             disabled={item.disabled}
+            tabIndex={index === activeIndex ? 0 : -1}
+            ref={(element) => { itemRefs.current[index] = element; }}
             className="gs-menu-item"
             onClick={() => {
               if (item.disabled) return;
               item.onSelect();
-              onClose();
+              closeMenu(false);
             }}
             style={{
               color: item.disabled

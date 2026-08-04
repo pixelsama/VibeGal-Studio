@@ -8,8 +8,11 @@
 
 use clap::ValueEnum;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub(crate) enum InstallTarget {
@@ -43,13 +46,27 @@ fn resolve_cli_command() -> String {
 }
 
 fn which_on_path(name: &str) -> bool {
-    let Some(path_var) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path_var).any(|dir| {
-        let candidate = dir.join(name);
-        candidate.is_file() || dir.join(format!("{name}.exe")).is_file()
-    })
+    program_on_path(name).is_some()
+}
+
+fn program_on_path(name: &str) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidates = if cfg!(windows) {
+            vec![
+                dir.join(name),
+                dir.join(format!("{name}.exe")),
+                dir.join(format!("{name}.cmd")),
+                dir.join(format!("{name}.bat")),
+            ]
+        } else {
+            vec![dir.join(name)]
+        };
+        if let Some(candidate) = candidates.into_iter().find(|candidate| candidate.is_file()) {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn install(agent: InstallTarget, cli_command: &str) -> Result<String, String> {
@@ -88,7 +105,15 @@ fn install_via_cli(program: &str, args: &[String]) -> Result<String, String> {
             "未在 PATH 中找到 {program}。请先安装并登录 {program} CLI，再运行 vibegal-cli mcp install {program}。"
         ));
     }
-    let output = Command::new(program)
+    let mut command = if cfg!(windows) {
+        let executable = program_on_path(program).unwrap_or_else(|| PathBuf::from(program));
+        let mut command = Command::new("cmd.exe");
+        command.args(["/d", "/s", "/c"]).arg(executable);
+        command
+    } else {
+        Command::new(program)
+    };
+    let output = command
         .args(args)
         .output()
         .map_err(|error| format!("启动 {program} 失败: {error}"))?;
@@ -159,12 +184,49 @@ fn install_opencode_json(cli_command: &str) -> Result<String, String> {
     }
     let text = serde_json::to_string_pretty(&merged)
         .map_err(|error| format!("序列化 opencode 配置失败: {error}"))?;
-    std::fs::write(&path, format!("{text}\n"))
-        .map_err(|error| format!("写入 {} 失败: {error}", path.display()))?;
+    atomic_write_config(&path, &format!("{text}\n"))?;
     Ok(format!(
         "已把 VibeGal MCP server 写入 {}（mcp.vibegal）。重启 opencode 后生效。",
         path.display()
     ))
+}
+
+fn atomic_write_config(path: &Path, text: &str) -> Result<(), String> {
+    if let Ok(metadata) = std::fs::symlink_metadata(path) {
+        if metadata.file_type().is_symlink() {
+            return Err(format!("拒绝写入符号链接配置: {}", path.display()));
+        }
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("无法定位配置目录: {}", path.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("创建 {} 失败: {error}", parent.display()))?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = parent.join(format!(".{}.tmp-{}-{stamp}", path.file_name().unwrap_or_default().to_string_lossy(), std::process::id()));
+    let result = (|| -> Result<(), String> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("创建临时配置 {} 失败: {error}", temporary.display()))?;
+        file.write_all(text.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|error| format!("写入临时配置 {} 失败: {error}", temporary.display()))?;
+        if cfg!(windows) && path.exists() {
+            std::fs::remove_file(path)
+                .map_err(|error| format!("替换配置 {} 失败: {error}", path.display()))?;
+        }
+        std::fs::rename(&temporary, path)
+            .map_err(|error| format!("替换配置 {} 失败: {error}", path.display()))
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
 }
 
 #[cfg(test)]

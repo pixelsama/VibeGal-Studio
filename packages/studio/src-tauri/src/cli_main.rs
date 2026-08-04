@@ -11,7 +11,11 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "console")]
 
+// tauri-cli 会按 src/bin/ 顶层文件名发现额外二进制；CLI 入口放在 src/
+// 并显式由 Cargo.toml 声明，避免把文件名 cli.rs 误当成 target/release/cli。
+#[path = "cli/mcp.rs"]
 mod mcp;
+#[path = "cli/mcp_install.rs"]
 mod mcp_install;
 
 use clap::{Parser, Subcommand, ValueEnum};

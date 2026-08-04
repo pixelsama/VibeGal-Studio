@@ -56,6 +56,11 @@ test("Agent QA exposes deterministic quick, desktop, package, and release suites
       "empty-parent",
     ],
   );
+  parseAgentQaArgs(["--suite", "desktop", "--scenario", "core-authoring"]);
+  assert.deepEqual(
+    buildAgentQaPlan("desktop").find((step) => step.id === "desktop-authoring-loop").command,
+    ["node", "qa/agent/run-desktop-matrix.mjs"],
+  );
   assert.deepEqual(
     buildAgentQaPlan("desktop", { artifactsDir: "/tmp/agent-qa", scenario: "core-authoring" })
       .find((step) => step.id === "desktop-authoring-loop").evidence,
@@ -69,11 +74,9 @@ test("Agent QA exposes deterministic quick, desktop, package, and release suites
   );
   const desktopPlan = buildAgentQaPlan("desktop", { scenario: null });
   assert.deepEqual(desktopPlan[1].evidence, ["desktop/build.json"]);
+  assert.deepEqual(desktopPlan[2].command, ["node", "qa/agent/run-desktop-matrix.mjs"]);
   assert.deepEqual(desktopPlan[2].evidence, [
-    "desktop/scenarios.ndjson",
-    "desktop/junit/agent-qa.xml",
-    "desktop/project-before-after.json",
-    "desktop/screenshots",
+    "desktop/scenarios",
   ]);
   assert.deepEqual(
     buildAgentQaPlan("package").map((step) => step.id),

@@ -82,6 +82,8 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { useStudioI18n } from "../../lib/i18n";
+import { clampCompletionIndex, moveCompletionIndex } from "./completionNavigation";
+import { statusError, statusInfo, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 
 export {
   isWriteConflictError,
@@ -390,7 +392,7 @@ export function NodeEditor({
   const [dirty, setDirty] = useState(restoredDraft !== null);
   const [draftBaseVersion, setDraftBaseVersion] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState(restoredDraft ? t("script.editor.restoredDraft") : "");
+  const [status, setStatus] = useState<StatusMessage | null>(restoredDraft ? statusWarn(t("script.editor.restoredDraft")) : null);
   const [externalSnapshot, setExternalSnapshot] = useState<NodeFileSnapshot | null>(null);
   const [externalSnapshotError, setExternalSnapshotError] = useState<string | null>(null);
   const [externalSnapshotLoading, setExternalSnapshotLoading] = useState(false);
@@ -404,6 +406,7 @@ export function NodeEditor({
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [parameterTrigger, setParameterTrigger] = useState<ScenarioParameterTrigger | null>(null);
   const [completionIndex, setCompletionIndex] = useState(0);
+  const [commandIndex, setCommandIndex] = useState(0);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
   // 撤销历史清空属于不可逆操作：模式切换走确认对话，外部刷新/载入走 toast（Spec 33 A4）。
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -500,7 +503,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setExternalDiffOpen(false);
-    setStatus("");
+    setStatus(null);
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, nodeRevision, project.nodeRevisions]);
 
   useEffect(() => {
@@ -679,6 +682,7 @@ export function NodeEditor({
   );
   const parameterMenuVisible = mode === "scenario" && parameterTrigger != null && visibleParameters.length > 0;
   const commandMenuVisible = mode === "scenario"
+    && visibleCommands.length > 0
     && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
   const lineActionTop = Math.max(
     8,
@@ -698,6 +702,14 @@ export function NodeEditor({
   }, [visibleParameters.length]);
 
   useEffect(() => {
+    setCommandIndex(0);
+  }, [commandMenuSource, commandQuery]);
+
+  useEffect(() => {
+    setCommandIndex((current) => clampCompletionIndex(current, visibleCommands.length));
+  }, [visibleCommands.length]);
+
+  useEffect(() => {
     const offset = pendingSelectionRef.current;
     const textarea = textareaRef.current;
     if (offset == null || !textarea) return;
@@ -710,10 +722,10 @@ export function NodeEditor({
     if (!focusRequest?.jsonPath) return;
     const index = instructionIndexFromJsonPath(focusRequest.jsonPath);
     if (index == null) return;
-    setStatus(t("script.editor.issueLocation", {
+    setStatus(statusWarn(t("script.editor.issueLocation", {
       number: index + 1,
       path: focusRequest.jsonPath,
-    }));
+    })));
   }, [focusRequest, t]);
 
   const applyScenarioText = (nextText: string, options: { programmatic?: boolean; skipHistory?: boolean } = {}) => {
@@ -728,7 +740,7 @@ export function NodeEditor({
     draftVersionRef.current += 1;
     replaceText(nextText);
     setDirty(true);
-    setStatus("");
+    setStatus(null);
     const parsed = parseScenarioText(nextText);
     if (parsed.ok) {
       const reconciled = mergePendingAssignedIdentities(
@@ -760,7 +772,7 @@ export function NodeEditor({
     replaceText(nextText);
     setDiagnostics([]);
     setDirty(true);
-    setStatus("");
+    setStatus(null);
     setParameterTrigger(null);
   };
 
@@ -778,7 +790,7 @@ export function NodeEditor({
     draftVersionRef.current += 1;
     replaceText(nextText);
     setDirty(true);
-    setStatus("");
+    setStatus(null);
     const parsed = parseJsonInstructionText(nextText);
     if (parsed.ok) {
       replaceValidInstructions(mergePendingAssignedIdentities(parsed.instructions));
@@ -811,17 +823,17 @@ export function NodeEditor({
   const handleSave = async () => {
     if (hasExternalUpdate || writeConflict) {
       setExternalDiffOpen(true);
-      setStatus(t("script.editor.resolveConflictBeforeSave"));
+      setStatus(statusWarn(t("script.editor.resolveConflictBeforeSave")));
       return;
     }
     const built = buildPayload();
     if (!built.ok) {
-      setStatus(built.message);
+      setStatus(statusError(built.message));
       return;
     }
     const savedDraftVersion = draftVersionRef.current;
     setSaving(true);
-    setStatus("");
+    setStatus(null);
     try {
       if (dirty) {
         const saved = await saveNode(project.path, node.file, built.nextInstructions, loadedRevisionRef.current);
@@ -834,7 +846,7 @@ export function NodeEditor({
           setDiagnostics([]);
           replaceText(mode === "json" ? saved.serializedText : formatScenarioText(saved.instructions));
           setDirty(false);
-          setStatus(t("script.editor.saved"));
+          setStatus(statusOk(t("script.editor.saved")));
         } else {
           const merged = mergeAssignedInstructionIdentities(
             saved.instructions,
@@ -859,7 +871,7 @@ export function NodeEditor({
               assigned: saved.assigned,
             });
           }
-          setStatus(t("script.editor.savedWithDraft"));
+          setStatus(statusOk(t("script.editor.savedWithDraft")));
         }
         setExternalSnapshot(null);
         setExternalSnapshotError(null);
@@ -869,7 +881,7 @@ export function NodeEditor({
         setExternalDiffOpen(false);
         onExternalChangeResolved?.();
       }
-      if (!dirty) setStatus(t("script.editor.saved"));
+      if (!dirty) setStatus(statusOk(t("script.editor.saved")));
       onSaved();
     } catch (error) {
       const preserved = nodeEditorKeepsDraftOnWriteConflict({ text, instructions }, error);
@@ -879,9 +891,9 @@ export function NodeEditor({
           replaceInstructions(preserved.draft.instructions);
         }
         setWriteConflict(true);
-        setStatus(t("script.editor.externalConflict"));
+        setStatus(statusError(t("script.editor.externalConflict")));
       } else {
-        setStatus(t("script.editor.saveFailed", { detail: error instanceof Error ? error.message : String(error) }));
+        setStatus(statusError(t("script.editor.saveFailed", { detail: error instanceof Error ? error.message : String(error) })));
       }
     } finally {
       setSaving(false);
@@ -896,12 +908,12 @@ export function NodeEditor({
   const handleLoadExternal = () => {
     if (saving) return;
     if (!externalSnapshot) {
-      setStatus(t("script.editor.loadingExternal"));
+      setStatus(statusInfo(t("script.editor.loadingExternal")));
       void fetchExternalSnapshot();
       return;
     }
     if (externalSnapshot.state === "deleted") {
-      setStatus(t("script.editor.externalDeletedBlocked"));
+      setStatus(statusWarn(t("script.editor.externalDeletedBlocked")));
       return;
     }
     const nextJsonText = externalSnapshot.text ?? "";
@@ -926,7 +938,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setExternalDiffOpen(false);
-    setStatus(t("script.editor.loadedExternal"));
+    setStatus(statusOk(t("script.editor.loadedExternal")));
     onExternalChangeResolved?.();
   };
 
@@ -946,7 +958,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setExternalDiffOpen(false);
-    setStatus(t("script.editor.keptLocal"));
+    setStatus(statusOk(t("script.editor.keptLocal")));
     onExternalChangeResolved?.();
   };
 
@@ -964,11 +976,11 @@ export function NodeEditor({
         externalState: externalChangeSummary?.kind,
         relatedPaths: externalChangeSummary?.relatedPaths,
       }));
-      setStatus(t("script.editor.conflictCopied"));
+      setStatus(statusOk(t("script.editor.conflictCopied")));
     } catch (error) {
-      setStatus(t("script.editor.conflictCopyFailed", {
+      setStatus(statusError(t("script.editor.conflictCopyFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      }));
+      })));
     }
   };
 
@@ -985,6 +997,7 @@ export function NodeEditor({
     if (nextCommand) {
       setParameterTrigger(null);
       setCommandMenuSource("trigger");
+      setCommandIndex(0);
     } else {
       if (commandMenuSource === "trigger") setCommandMenuSource(null);
       setParameterTrigger(scenarioParameterTriggerAtCursor(textarea.value, nextOffset));
@@ -1001,6 +1014,7 @@ export function NodeEditor({
     const nextCommand = scenarioCommandTriggerAtCursor(nextText, nextOffset);
     setCommandMenuSource(nextCommand ? "trigger" : null);
     setParameterTrigger(nextCommand ? null : scenarioParameterTriggerAtCursor(nextText, nextOffset));
+    setCommandIndex(0);
     setCompletionIndex(0);
   };
 
@@ -1018,6 +1032,7 @@ export function NodeEditor({
     pendingSelectionRef.current = inserted.cursorOffset;
     setCursorOffset(inserted.cursorOffset);
     setCommandMenuSource(null);
+    setCommandIndex(0);
     applyScenarioText(inserted.text, { programmatic: true });
   };
 
@@ -1078,6 +1093,14 @@ export function NodeEditor({
       });
       return;
     }
+    if (commandMenuVisible && visibleCommands.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      setCommandIndex((current) => {
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        return moveCompletionIndex(current, delta, visibleCommands.length);
+      });
+      return;
+    }
     if (event.key === "Escape" && (commandMenuSource || parameterTrigger)) {
       event.preventDefault();
       setCommandMenuSource(null);
@@ -1091,7 +1114,7 @@ export function NodeEditor({
     }
     if ((event.key === "Enter" || event.key === "Tab") && commandMenuVisible && visibleCommands[0]) {
       event.preventDefault();
-      handleInsertCommand(visibleCommands[0].kind);
+      handleInsertCommand((visibleCommands[commandIndex] ?? visibleCommands[0]).kind);
     }
   };
 
@@ -1107,7 +1130,7 @@ export function NodeEditor({
     if (nextMode === "json") {
       const built = buildPayload();
       if (!built.ok) {
-        setStatus(built.message);
+        setStatus(statusError(built.message));
         return;
       }
       draftVersionRef.current += 1;
@@ -1118,7 +1141,7 @@ export function NodeEditor({
       replaceText(built.payload);
       replaceValidInstructions(built.nextInstructions);
       setDiagnostics([]);
-      setStatus("");
+      setStatus(null);
       return;
     }
     const parsed = parseJsonInstructionText(text);
@@ -1126,7 +1149,7 @@ export function NodeEditor({
       ? mergePendingAssignedIdentities(parsed.instructions)
       : lastValidInstructionsRef.current;
     if (mode === "json" && !parsed.ok) {
-      setStatus(t("script.editor.modeSwitchFailed", { detail: parsed.error }));
+      setStatus(statusError(t("script.editor.modeSwitchFailed", { detail: parsed.error })));
       return;
     }
     draftVersionRef.current += 1;
@@ -1135,7 +1158,7 @@ export function NodeEditor({
     replaceText(formatScenarioText(nextInstructions));
     replaceValidInstructions(nextInstructions);
     setDiagnostics([]);
-    setStatus("");
+    setStatus(null);
   };
 
   const handleToggleInspectorPane = useCallback(() => {
@@ -1251,6 +1274,7 @@ export function NodeEditor({
         lineActionTop={lineActionTop}
         commandMenuVisible={commandMenuVisible}
         visibleCommands={visibleCommands}
+        selectedCommandIndex={commandIndex}
         parameterMenuVisible={parameterMenuVisible}
         visibleParameters={visibleParameters}
         selectedParameterIndex={completionIndex}
@@ -1258,6 +1282,7 @@ export function NodeEditor({
         onToggleLineCommandMenu={() => {
           setParameterTrigger(null);
           setCommandMenuSource(commandMenuSource === "line-plus" ? null : "line-plus");
+          setCommandIndex(0);
           textareaRef.current?.focus();
         }}
         onInsertCommand={handleInsertCommand}

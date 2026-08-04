@@ -307,6 +307,44 @@ describe("deriveGraphNodeStatus", () => {
     expect(deriveGraphNodeStatus(single, "only")).toBe("entry");
   });
 
+  it("marks empty-content node as empty instead of normal", () => {
+    // middle 在 statusGraph 中是普通已连接节点（normal）
+    expect(deriveGraphNodeStatus(statusGraph, "middle", { hasContent: false })).toBe("empty");
+    expect(deriveGraphNodeStatus(statusGraph, "middle", { hasContent: true })).toBe("normal");
+    // empty 不覆盖角色状态：入口/终点/分支仍按角色显示
+    expect(deriveGraphNodeStatus(statusGraph, "prologue", { hasContent: false })).toBe("entry");
+    expect(deriveGraphNodeStatus(statusGraph, "endA", { hasContent: false })).toBe("ending");
+    expect(deriveGraphNodeStatus(statusGraph, "branch", { hasContent: false })).toBe("branch");
+  });
+
+  it("mapGraphToFlow flags empty node files as empty status", () => {
+    const graph: ProjectGraph = {
+      version: 1,
+      entryNodeId: "a",
+      nodes: [
+        { id: "a", title: "A", file: "nodes/a.json", position: { x: 0, y: 0 } },
+        { id: "b", title: "B", file: "nodes/b.json", position: { x: 1, y: 0 } },
+        { id: "c", title: "C", file: "nodes/c.json", position: { x: 2, y: 0 } },
+      ],
+      edges: [
+        { id: "a__b", from: "a", to: "b", condition: null },
+        { id: "b__c", from: "b", to: "c", condition: null },
+      ],
+    };
+    const entries: NodeEntry[] = [
+      { relPath: "nodes/a.json", data: [] },
+      { relPath: "nodes/b.json", data: [] },
+      { relPath: "nodes/c.json", data: [] },
+    ];
+    const flow = mapGraphToFlow(graph, undefined, entries);
+    // a 是入口 -> entry（empty 不覆盖）
+    expect(flow.nodes.find((n) => n.id === "a")?.data.status).toBe("entry");
+    // b 普通已连接但空文件 -> empty
+    expect(flow.nodes.find((n) => n.id === "b")?.data.status).toBe("empty");
+    // c 终点 -> ending（empty 不覆盖）
+    expect(flow.nodes.find((n) => n.id === "c")?.data.status).toBe("ending");
+  });
+
   it("collectDuplicateNodeIds reads duplicate_node_id issues", () => {
     const dups = collectDuplicateNodeIds({
       graphIssues: [
@@ -339,5 +377,33 @@ describe("summarizeNodeConnections", () => {
       edges: [{ id: "a__a", from: "a", to: "a", condition: null }],
     };
     expect(summarizeNodeConnections(loopGraph, "a")).toEqual({ incoming: 0, outgoing: 0 });
+  });
+});
+
+describe("creator summary content status", () => {
+  it("marks a connected empty node as empty when only creator summaries are loaded", () => {
+    const graph: ProjectGraph = {
+      version: 1,
+      entryNodeId: "start",
+      chapters: [{ id: "chapter", title: "第一章" }],
+      nodes: [
+        { id: "start", title: "开始", file: "nodes/start.json", position: { x: 0, y: 0 }, chapterId: "chapter" },
+        { id: "empty", title: "空节点", file: "nodes/empty.json", position: { x: 200, y: 0 }, chapterId: "chapter" },
+        { id: "tail", title: "尾声", file: "nodes/tail.json", position: { x: 400, y: 0 }, chapterId: "chapter" },
+      ],
+      edges: [
+        { id: "start__empty", from: "start", to: "empty" },
+        { id: "empty__tail", from: "empty", to: "tail" },
+      ],
+    };
+    const flow = mapGraphToFlow(graph, undefined, undefined, undefined, undefined, [{
+      id: "empty",
+      relPath: "nodes/empty.json",
+      sayCount: 0,
+      changesState: false,
+      instructionCount: 0,
+    }]);
+
+    expect(flow.nodes.find((node) => node.id === "empty")?.data.status).toBe("empty");
   });
 });

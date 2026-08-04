@@ -37,6 +37,24 @@ describe("NodeInspector graph exits", () => {
     }))).not.toThrow();
   });
 
+  it("does not suppress the keyboard focus outline on inspector inputs", () => {
+    const legacyManifest = {
+      characters: {},
+      backgrounds: {},
+      audio: { bgm: {}, sfx: {}, voice: {} },
+    } as unknown as Manifest;
+    const html = renderToStaticMarkup(createElement(NodeInspector, {
+      graph,
+      selectedNodeId: "start",
+      manifest: legacyManifest,
+      onEnter: () => {},
+      onRename: () => {},
+    }));
+
+    // 标题输入等控件不应内联 outline:none 吞掉全局 :focus-visible 焦点环
+    expect(html).not.toContain("outline:none");
+  });
+
   it("offers a create-node action in the empty state", () => {
     const html = renderToStaticMarkup(createElement(NodeInspector, {
       graph,

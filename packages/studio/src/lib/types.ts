@@ -110,6 +110,8 @@ export interface NodeCreatorSummary {
   relPath: string;
   sayCount: number;
   changesState: boolean;
+  /** 0 means a known empty instruction array; null means content could not be classified. */
+  instructionCount?: number | null;
 }
 
 export interface NodeDetail {

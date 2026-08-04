@@ -52,6 +52,40 @@ describe("ScenarioTextEditor empty guide", () => {
     expect(html).not.toContain("从模板开始");
   });
 
+  it("keeps the textarea focus ring and exposes the active completion option", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
+      mode: "scenario",
+      text: "/",
+      textareaRef: { current: null },
+      currentLine: 1,
+      implicitPauseLines: [],
+      instructionIndexByLine: [0],
+      instructionCount: 1,
+      reorderingEnabled: true,
+      lineActionTop: 16,
+      commandMenuVisible: true,
+      visibleCommands: [{ kind: "bg", label: "背景", detail: "切背景", aliases: [] }],
+      selectedCommandIndex: 0,
+      parameterMenuVisible: false,
+      visibleParameters: [],
+      selectedParameterIndex: 0,
+      inlineControls: undefined,
+      onToggleLineCommandMenu: () => {},
+      onInsertCommand: () => {},
+      onInsertParameter: () => {},
+      onInsertTemplate: () => {},
+      onScenarioTextChange: () => {},
+      onJsonTextChange: () => {},
+      onSyncCursor: () => {},
+      onKeyDown: () => {},
+      onScroll: () => {},
+    }));
+
+    expect(html).not.toContain("outline:none");
+    expect(html).toMatch(/<textarea[^>]*aria-controls="[^"]+"[^>]*aria-activedescendant="[^"]+"/);
+    expect(html).toMatch(/<button[^>]*id="[^"]+"[^>]*role="option"[^>]*tabindex="-1"/);
+  });
+
   it("keeps every starter template parseable by the scenario DSL", () => {
     for (const template of SCENARIO_STARTER_TEMPLATES) {
       const parsed = parseScenarioText(template.text);
@@ -195,11 +229,57 @@ describe("ScenarioTextEditor empty guide", () => {
     expect(html).toContain("classroom_evening");
   });
 
+  it("renders command completion with its active keyboard selection", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioTextEditor, {
+      mode: "scenario",
+      text: "/",
+      textareaRef: { current: null },
+      currentLine: 1,
+      implicitPauseLines: [],
+      instructionIndexByLine: [0],
+      instructionCount: 1,
+      reorderingEnabled: true,
+      lineActionTop: 16,
+      commandMenuVisible: true,
+      visibleCommands: [
+        { kind: "bg", label: "背景", detail: "切背景" },
+        { kind: "bgm", label: "音乐", detail: "切音乐" },
+      ],
+      selectedCommandIndex: 1,
+      parameterMenuVisible: false,
+      visibleParameters: [],
+      selectedParameterIndex: 0,
+      inlineControls: undefined,
+      onToggleLineCommandMenu: () => {},
+      onInsertCommand: () => {},
+      onInsertParameter: () => {},
+      onInsertTemplate: () => {},
+      onScenarioTextChange: () => {},
+      onJsonTextChange: () => {},
+      onSyncCursor: () => {},
+      onKeyDown: () => {},
+      onScroll: () => {},
+    }));
+
+    // 命令菜单是 listbox，第二项（音乐）被键盘选中
+    expect(html).toContain('role="listbox"');
+    expect(html).toMatch(/<button[^>]*aria-selected="true"[^>]*>[\s\S]*?音乐/);
+    // 第一项未被选中
+    expect(html).toContain('aria-selected="false"');
+  });
+
   it("renders a syntax highlight layer and disables soft wrap", () => {
     const html = renderEditor("@bg classroom fade");
 
     expect(html).toContain("data-region=\"scenario-highlight\"");
     expect(html).toContain("@bg");
     expect(html).toContain("wrap=\"off\"");
+  });
+
+  it("renders the drag handle as an icon, not a braille glyph", () => {
+    const html = renderEditor("@bg classroom fade");
+
+    expect(html).not.toContain("⠿");
+    expect(html).toContain("拖动调整指令顺序");
   });
 });

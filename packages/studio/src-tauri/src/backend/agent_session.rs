@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
+#[cfg(windows)]
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -130,18 +132,42 @@ pub(crate) struct AgentSessionRegistry {
 }
 
 /// npm 安装的 CLI 在 Windows 上是 .cmd 垫片，CreateProcess 不会按
-/// PATHEXT 解析，必须经 cmd /c 启动（Unix 直接按 PATH 查找）。
+/// PATHEXT 解析；只有 .cmd/.bat 垫片才经 cmd 启动，原生 .exe 直接执行。
 fn agent_command(name: &str) -> Command {
     #[cfg(windows)]
     {
-        let mut command = Command::new("cmd.exe");
-        command.args(["/c", name]);
-        command
+        let executable = windows_program_path(name).unwrap_or_else(|| PathBuf::from(name));
+        match executable.extension().and_then(|extension| extension.to_str()) {
+            Some("cmd") | Some("bat") => {
+                let mut command = Command::new("cmd.exe");
+                command.args(["/d", "/s", "/c"]).arg(executable);
+                command
+            }
+            _ => Command::new(executable),
+        }
     }
     #[cfg(not(windows))]
     {
         Command::new(name)
     }
+}
+
+#[cfg(windows)]
+fn windows_program_path(name: &str) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        for candidate in [
+            dir.join(name),
+            dir.join(format!("{name}.exe")),
+            dir.join(format!("{name}.cmd")),
+            dir.join(format!("{name}.bat")),
+        ] {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 fn turn_command_args(agent: AgentKind, request: &AgentTurnRequest) -> Vec<String> {
@@ -538,23 +564,38 @@ pub(crate) fn detect_agents() -> Vec<AgentAvailability> {
 }
 
 fn probe_agent_version(agent: AgentKind) -> Option<String> {
-    let child = agent_command(agent.command_name())
+    let mut child = agent_command(agent.command_name())
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    // --version 理应瞬间返回；给 10s 兜底防卡死，超时按不可用处理。
-    let (tx, rx) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let output = child.wait_with_output();
-        let _ = tx.send(output);
-    });
-    let output = rx.recv_timeout(Duration::from_secs(10)).ok()?.ok()?;
-    if !output.status.success() {
-        return None;
+    let mut stdout = child.stdout.take()?;
+    // --version 理应瞬间返回；给 10s 兜底防卡死，超时按不可用处理，
+    // 并在超时时杀掉进程，避免孤儿 CLI 在后台残留。
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut output = Vec::new();
+    loop {
+        let status = match child.try_wait() {
+            Ok(Some(status)) => status,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+            Err(_) => return None,
+        };
+        if !status.success() {
+            return None;
+        }
+        let _ = stdout.read_to_end(&mut output);
+        break;
     }
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = String::from_utf8_lossy(&output);
     let version = text.split_whitespace().last()?.to_string();
     Some(version)
 }
@@ -930,6 +971,38 @@ mod tests {
         assert!(!summary.contains('\n'));
         assert!(summary.chars().count() <= 121);
         assert!(summary.ends_with('…'));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cmd_shims_are_launched_through_cmd() {
+        let _path_guard = PATH_ENV_LOCK.lock().unwrap();
+        let root = unique_temp_dir("windows-command");
+        let bin_dir = root.join("bin");
+        let shim = write_fake_cli(&bin_dir, "codex", "", "exit /b 0");
+        let original_path = std::env::var_os("PATH").unwrap_or_default();
+        let mut paths = std::env::split_paths(&original_path).collect::<Vec<_>>();
+        paths.insert(0, bin_dir);
+        std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
+
+        let command = agent_command("codex");
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        std::env::set_var("PATH", original_path);
+        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(command.get_program(), "cmd.exe");
+        assert_eq!(
+            args,
+            vec![
+                "/d".to_string(),
+                "/s".to_string(),
+                "/c".to_string(),
+                shim.to_string_lossy().into_owned(),
+            ]
+        );
     }
 
     // ---- 端到端（假 CLI）----

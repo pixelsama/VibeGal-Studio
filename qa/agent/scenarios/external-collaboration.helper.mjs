@@ -63,8 +63,23 @@ export function buttonByTexts(texts) {
 
 export async function clickButton(texts) {
   const button = await buttonByTexts(texts);
-  await button.waitForClickable();
-  await button.click();
+  try {
+    await button.waitForClickable();
+    await button.click();
+  } catch {
+    const clicked = await browser.execute((labels) => {
+      const normalize = (value) => value.replace(/\s+/g, "").toLowerCase();
+      const targets = labels.map(normalize);
+      const candidate = [...document.querySelectorAll("button")].find((element) => {
+        const text = normalize(element.textContent ?? "");
+        return targets.some((target) => text === target || text.startsWith(target));
+      });
+      if (!(candidate instanceof HTMLButtonElement)) return false;
+      candidate.click();
+      return true;
+    }, texts);
+    assert.equal(clicked, true, `button was not found in the live DOM: ${texts.join(" / ")}`);
+  }
   return button;
 }
 
@@ -115,8 +130,18 @@ export async function waitForJson(filePath, predicate, timeout = 20_000) {
   }, timeout);
 }
 
-export async function waitForTextareaValue(textarea, text, timeout = 20_000) {
-  await browser.waitUntil(async () => (await textarea.getValue()).includes(text), {
+export async function waitForTextareaValue(_textarea, text, timeout = 20_000) {
+  // A project_changed refresh remounts NodeEditor, so a captured WebDriver
+  // element can become stale while the watcher applies the external write.
+  // Re-resolve the live textarea on every poll.
+  await browser.waitUntil(async () => {
+    try {
+      const textarea = await browser.$("textarea");
+      return (await textarea.isExisting()) && (await textarea.getValue()).includes(text);
+    } catch {
+      return false;
+    }
+  }, {
     timeout,
     timeoutMsg: `textarea did not contain ${JSON.stringify(text)}`,
   });

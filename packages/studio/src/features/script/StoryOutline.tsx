@@ -152,8 +152,10 @@ export function StoryOutline({
                 <Pencil size={12} />
               </SmallAction>
               <SmallAction
-                label={t("script.outline.delete", { title: chapter.title })}
-                disabled={chapters.length === 1 || graph.nodes.some((node) => node.chapterId === chapter.id)}
+                label={chapters.length === 1
+                  ? t("script.outline.deleteLastChapter")
+                  : t("script.outline.delete", { title: chapter.title })}
+                disabled={chapters.length === 1}
                 danger
                 onClick={() => onDeleteChapter(chapter.id)}
               >
@@ -172,9 +174,8 @@ export function StoryOutline({
         </div>
         <div
           ref={nodeListRef}
-          role="listbox"
+          role="list"
           aria-label={searching ? t("script.outline.searchResultsLabel") : t("script.outline.chapterNodes")}
-          aria-setsize={listItems.length}
           style={nodeListStyle}
           onScroll={handleListScroll}
         >
@@ -190,21 +191,26 @@ export function StoryOutline({
               const result = item as (typeof searchResults)[number];
               const index = listWindow.start + visibleIndex;
               return (
-              <button
+              <div
                 key={`${result.kind}-${index}`}
-                type="button"
-                role="option"
+                role="listitem"
+                aria-current={result.kind === "node" && result.nodeId === selectedNodeId ? "true" : undefined}
                 aria-posinset={index + 1}
                 aria-setsize={searchResults.length}
-                onClick={() => {
-                  if (result.kind === "edge") onSelectEdge?.(result.edgeId);
-                  else if ("nodeId" in result && result.nodeId) onSelectNode(result.nodeId);
-                }}
-                style={{ ...searchResultStyle, height: rowHeight - 2, boxSizing: "border-box", flexShrink: 0, overflow: "hidden" }}
+                style={{ ...listItemStyle, height: rowHeight - 2 }}
               >
-                <span style={nodeTitleStyle}>{result.label}</span>
-                <span style={searchMetaStyle}>{result.preview}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (result.kind === "edge") onSelectEdge?.(result.edgeId);
+                    else if ("nodeId" in result && result.nodeId) onSelectNode(result.nodeId);
+                  }}
+                  style={{ ...searchResultStyle, height: "100%", width: "100%", boxSizing: "border-box", overflow: "hidden" }}
+                >
+                  <span style={nodeTitleStyle}>{result.label}</span>
+                  <span style={searchMetaStyle}>{result.preview}</span>
+                </button>
+              </div>
               );
             })
           ) : visibleNodes.length === 0 ? (
@@ -219,26 +225,30 @@ export function StoryOutline({
             const node = item as (typeof visibleNodes)[number];
             const index = listWindow.start + visibleIndex;
             return (
-            <button
+            <div
               key={node.id}
-              type="button"
-              role="option"
-              aria-selected={selectedNodeId === node.id}
+              role="listitem"
+              aria-current={selectedNodeId === node.id ? "true" : undefined}
               aria-posinset={index + 1}
               aria-setsize={visibleNodes.length}
-              onClick={() => onSelectNode(node.id)}
-              style={{
-                ...nodeButtonStyle,
-                height: rowHeight - 2,
-                boxSizing: "border-box",
-                flexShrink: 0,
-                borderColor: selectedNodeId === node.id ? "var(--accent)" : "transparent",
-                background: selectedNodeId === node.id ? "var(--bg-active)" : "transparent",
-              }}
+              style={{ ...listItemStyle, height: rowHeight - 2 }}
             >
-              <span style={nodeTitleStyle}>{node.title}</span>
-              {node.id === graph.entryNodeId && <span style={badgeStyle}>{t("script.outline.entry")}</span>}
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelectNode(node.id)}
+                style={{
+                  ...nodeButtonStyle,
+                  width: "100%",
+                  height: "100%",
+                  boxSizing: "border-box",
+                  borderColor: selectedNodeId === node.id ? "var(--accent)" : "transparent",
+                  background: selectedNodeId === node.id ? "var(--bg-active)" : "transparent",
+                }}
+              >
+                <span style={nodeTitleStyle}>{node.title}</span>
+                {node.id === graph.entryNodeId && <span style={badgeStyle}>{t("script.outline.entry")}</span>}
+              </button>
+            </div>
             );
           })}
           <div aria-hidden="true" style={{ height: listWindow.paddingBottom, flexShrink: 0 }} />
@@ -276,7 +286,11 @@ function SmallAction({ label, disabled, danger, onClick, children }: {
       title={label}
       disabled={disabled}
       onClick={onClick}
-      style={{ ...smallActionStyle, color: danger ? "var(--status-error-text)" : "var(--text-muted)" }}
+      style={{
+        ...smallActionStyle,
+        color: danger ? "var(--status-error-text)" : "var(--text-muted)",
+        ...(disabled ? { opacity: 0.4, cursor: "not-allowed" } : {}),
+      }}
     >
       {children}
     </button>
@@ -298,7 +312,8 @@ const titleStyle: React.CSSProperties = { fontSize: "var(--text-lg)", fontWeight
 const hintStyle: React.CSSProperties = { marginTop: 3, fontSize: "var(--text-xs)", color: "var(--text-muted)" };
 const iconButtonStyle: React.CSSProperties = { width: 30, height: 30, display: "grid", placeItems: "center", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer" };
 const searchStyle: React.CSSProperties = { padding: "0 var(--space-3) var(--space-3)" };
-const searchInputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border-input)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", outline: "none" };
+const searchInputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border-input)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)" };
+const listItemStyle: React.CSSProperties = { flexShrink: 0, overflow: "hidden" };
 const chapterListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, padding: "0 var(--space-3) var(--space-3)", borderBottom: "1px solid var(--border)" };
 const chapterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 2 };
 const scopeButtonStyle: React.CSSProperties = { width: "100%", minHeight: 34, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: 0, borderRadius: "var(--radius-sm)", cursor: "pointer", textAlign: "left", fontSize: "var(--text-base)" };

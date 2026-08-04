@@ -122,6 +122,30 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("翻译对照");
   });
 
+  it("wires the script view tabs with roving tabindex and panel association", () => {
+    const html = renderToStaticMarkup(createElement(ScriptWorkspace, {
+      project,
+      rendererId: "default",
+      refreshKey: 0,
+      outlineCollapsed: false,
+      onOutlineCollapsedChange: () => {},
+      location: { view: "graph" },
+      onOpenGraph: () => {},
+      onOpenNode: () => {},
+      onReplaceWithGraph: () => {},
+      onSaved: () => {},
+    }));
+
+    // 默认 flow tab 在 tab 序列中（tabindex 0），其余 -1（roving tabindex）
+    expect(html).toMatch(/<button[^>]*id="script-tab-flow"[^>]*tabindex="0"[^>]*>/);
+    expect(html).toMatch(/<button[^>]*id="script-tab-state"[^>]*tabindex="-1"[^>]*>/);
+    expect(html).toMatch(/<button[^>]*id="script-tab-translation"[^>]*tabindex="-1"[^>]*>/);
+    // tab 关联面板
+    expect(html).toContain('aria-controls="script-tabpanel"');
+    expect(html).toContain('role="tabpanel"');
+    expect(html).toContain('aria-labelledby="script-tab-flow"');
+  });
+
 });
 
 describe("external node refresh retention", () => {

@@ -18,7 +18,7 @@ import {
 } from "@xyflow/react";
 import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphReport, Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
-import { findNodeData, mapGraphToFlow, NODE_TYPE } from "./graphMapping";
+import { mapGraphToFlow, NODE_TYPE } from "./graphMapping";
 import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -37,6 +37,8 @@ interface GraphCanvasProps {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   visibleNodeIds?: ReadonlySet<string>;
+  /** Increment when a programmatic graph edit should re-locate the current selection. */
+  locateSelectedNodeToken?: number;
   canUndo?: boolean;
   canRedo?: boolean;
   onSelect: (id: string) => void;
@@ -70,6 +72,7 @@ type GraphCanvasFlowNode = Node<GraphCanvasNodeData, typeof NODE_TYPE>;
 const nodeTypes = { [NODE_TYPE]: GraphNodeView } satisfies NodeTypes;
 
 interface CanvasMenuState {
+  id: number;
   anchor: { x: number; y: number };
   items: ContextMenuItem[];
 }
@@ -85,6 +88,14 @@ export function filterVisibleCanvasElements<
   };
 }
 
+export function shouldLocateSelectedNode(
+  selectedNodeId: string | null,
+  lastLocatedNodeId: string | null,
+  locateRequested: boolean,
+): boolean {
+  return selectedNodeId != null && (locateRequested || selectedNodeId !== lastLocatedNodeId);
+}
+
 export function GraphCanvas({
   graph,
   graphReport,
@@ -95,6 +106,7 @@ export function GraphCanvas({
   selectedNodeId,
   selectedEdgeId,
   visibleNodeIds,
+  locateSelectedNodeToken,
   canUndo = false,
   canRedo = false,
   onSelect,
@@ -120,6 +132,7 @@ export function GraphCanvas({
   const [flowNodes, setFlowNodes] = useState<GraphCanvasFlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
+  const menuIdRef = useRef(0);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const colorMode = useResolvedTheme();
 
@@ -142,16 +155,10 @@ export function GraphCanvas({
       : nodeSummaries;
     const visibleFlow = mapGraphToFlow(visibleGraph, graphReport, visibleEntries, manifest, variables, visibleSummaries, t);
 
-    const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => {
-      return {
-        ...node,
-        selected: node.id === selectedNodeId,
-        data: {
-          ...node.data,
-          hasContent: findNodeData(nodeEntries, node.data.fileId) != null,
-        },
-      };
-    });
+    const nodes: GraphCanvasFlowNode[] = visibleFlow.nodes.map((node) => ({
+      ...node,
+      selected: node.id === selectedNodeId,
+    }));
 
     const edges = visibleFlow.edges.map((edge) => {
       const suspicious = Boolean(edge.data?.suspicious);
@@ -176,17 +183,48 @@ export function GraphCanvas({
     setFlowEdges(flow.edges);
   }, [flow.edges, flow.nodes]);
 
-  // 定位到选中节点（保留原有行为）
+  // 定位到选中节点：使用由 graph 推导的 canonical positions，避免拖动产生的
+  // 本地 flowNodes 更新触发画布回弹；程序化布局/撤销通过 token 明确请求重新定位。
+  const lastLocatedNodeIdRef = useRef<string | null>(null);
+  const lastLocateTokenRef = useRef(locateSelectedNodeToken);
   useEffect(() => {
-    if (!flowInstance || !selectedNodeId) return;
-    const node = flowNodes.find((candidate) => candidate.id === selectedNodeId);
-    if (!node) return;
+    if (!flowInstance) return;
+    const locateRequested = locateSelectedNodeToken !== lastLocateTokenRef.current;
+    if (locateRequested) {
+      lastLocateTokenRef.current = locateSelectedNodeToken;
+      lastLocatedNodeIdRef.current = null;
+    }
+    if (!selectedNodeId) {
+      lastLocatedNodeIdRef.current = null;
+      return;
+    }
+    // 同一节点已定位过则跳过，这样拖动节点（更新 flowNodes）不会再次触发 setCenter。
+    if (!shouldLocateSelectedNode(selectedNodeId, lastLocatedNodeIdRef.current, locateRequested)) return;
+    const node = flow.nodes.find((candidate) => candidate.id === selectedNodeId);
+    if (!node) return; // 节点尚未载入，等下一次 flowNodes 更新重试
+    lastLocatedNodeIdRef.current = selectedNodeId;
 
-    void flowInstance.setCenter(node.position.x + 120, node.position.y + 48, {
+    const centerX = node.position.x + 120;
+    const centerY = node.position.y + 48;
+    // 节点已在视口内则不打扰，避免选中可见节点时画布被拽动。
+    const bounds = shellRef.current?.getBoundingClientRect();
+    if (bounds) {
+      const viewport = flowInstance.getViewport();
+      const screenX = centerX * viewport.zoom + viewport.x;
+      const screenY = centerY * viewport.zoom + viewport.y;
+      const margin = 80;
+      const inViewport =
+        screenX > margin &&
+        screenX < bounds.width - margin &&
+        screenY > margin &&
+        screenY < bounds.height - margin;
+      if (inViewport) return;
+    }
+    void flowInstance.setCenter(centerX, centerY, {
       zoom: Math.max(flowInstance.getZoom(), 0.85),
       duration: 250,
     });
-  }, [flowInstance, flowNodes, selectedNodeId]);
+  }, [flow.nodes, flowInstance, locateSelectedNodeToken, selectedNodeId]);
 
   const handleNodesChange = (changes: NodeChange<GraphCanvasFlowNode>[]) => {
     setFlowNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current));
@@ -246,7 +284,8 @@ export function GraphCanvas({
       });
     }
 
-    setMenu({ anchor: { x: clientX, y: clientY }, items });
+    setMenu({ id: menuIdRef.current + 1, anchor: { x: clientX, y: clientY }, items });
+    menuIdRef.current += 1;
   };
 
   // Phase 7：节点右键 → 进入 / 重命名 / 复制 / 后续 / 删除
@@ -282,7 +321,8 @@ export function GraphCanvas({
       onSelect: () => onDeleteNodes([node.id]),
     });
 
-    setMenu({ anchor: { x: clientX, y: clientY }, items });
+    setMenu({ id: menuIdRef.current + 1, anchor: { x: clientX, y: clientY }, items });
+    menuIdRef.current += 1;
   };
 
   // Spec 33 E5：适应视图上浮为常驻控件（Controls 按钮与右键菜单共用）。
@@ -433,7 +473,7 @@ export function GraphCanvas({
       </ReactFlow>
 
       {/* Phase 7：右键菜单 */}
-      {menu && <ContextMenu anchor={menu.anchor} items={menu.items} onClose={() => setMenu(null)} />}
+      {menu && <ContextMenu key={menu.id} anchor={menu.anchor} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }

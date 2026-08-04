@@ -9,6 +9,7 @@ import {
   reconcileGraphHistory,
 } from "./graphHistory";
 import { takePendingGraphPositionUpdates } from "./scriptWorkspaceOperations";
+import { statusError, statusOk, type StatusMessage } from "./statusMessage";
 import { useStudioI18n } from "../../lib/i18n";
 
 const EMPTY_GRAPH = {
@@ -35,7 +36,7 @@ export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: U
   const graph = graphHistory.graph;
   const [savingGraph, setSavingGraph] = useState(false);
   const [positionSavePending, setPositionSavePending] = useState(false);
-  const [graphStatus, setGraphStatus] = useState("");
+  const [graphStatus, setGraphStatus] = useState<StatusMessage | null>(null);
   const positionSaveTimerRef = useRef<number | null>(null);
   const pendingPositionUpdatesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const graphMutationQueue = useMemo(
@@ -45,7 +46,7 @@ export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: U
 
   useEffect(() => {
     setGraphHistory((current) => reconcileGraphHistory(current, incomingGraph, incomingRevisionToken));
-    setGraphStatus("");
+    setGraphStatus(null);
   }, [incomingGraph, incomingRevisionToken]);
 
   useEffect(() => {
@@ -55,18 +56,18 @@ export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: U
   const persistGraph = useCallback(
     async (next: ProjectGraph) => {
       setSavingGraph(true);
-      setGraphStatus("");
+      setGraphStatus(null);
       try {
         await graphMutationQueue.enqueue((expectedRevision) => (
           saveGraph(project.path, next, expectedRevision)
         ));
-        setGraphStatus(t("script.graph.saved"));
+        setGraphStatus(statusOk(t("script.graph.saved")));
         onSaved();
         return true;
       } catch (error) {
-        setGraphStatus(t("script.graph.saveFailed", {
+        setGraphStatus(statusError(t("script.graph.saveFailed", {
           detail: error instanceof Error ? error.message : String(error),
-        }));
+        })));
         return false;
       } finally {
         setSavingGraph(false);
@@ -79,18 +80,18 @@ export function useScriptGraphState({ project, view, onSaved, onDirtyChange }: U
     async (updates: GraphPositionPatch[]) => {
       if (updates.length === 0) return true;
       setSavingGraph(true);
-      setGraphStatus("");
+      setGraphStatus(null);
       try {
         await graphMutationQueue.enqueue((expectedRevision) => (
           saveGraphPositions(project.path, updates, expectedRevision)
         ));
-        setGraphStatus(t("script.graph.positionsSaved"));
+        setGraphStatus(statusOk(t("script.graph.positionsSaved")));
         onSaved();
         return true;
       } catch (error) {
-        setGraphStatus(t("script.graph.positionsSaveFailed", {
+        setGraphStatus(statusError(t("script.graph.positionsSaveFailed", {
           detail: error instanceof Error ? error.message : String(error),
-        }));
+        })));
         return false;
       } finally {
         setSavingGraph(false);
