@@ -44,6 +44,15 @@ describe(`Core authoring desktop chain (${phase})`, () => {
       await openScriptWorkspace();
       await createSuccessorFromGraphNode();
       await renameSelectedNode();
+      // The graph UI reflects the optimistic state before the create-node
+      // mutation and its watcher refresh have both settled. Wait for the
+      // actual node file and graph edge before mounting the editor; otherwise
+      // the create event can arrive while the editor is being authored and be
+      // mistaken for a conflicting external update.
+      await waitForProjectFiles(projectPath, ({ graph, node }) => {
+        assertCoreAuthoringGraph(graph);
+        return Array.isArray(node);
+      });
 
       const textarea = await openNodeEditor(CORE_AUTHORING_NODE_TITLE);
       await authorNodeInstructions(textarea);
