@@ -152,8 +152,10 @@ export function StoryOutline({
                 <Pencil size={12} />
               </SmallAction>
               <SmallAction
-                label={t("script.outline.delete", { title: chapter.title })}
-                disabled={chapters.length === 1 || graph.nodes.some((node) => node.chapterId === chapter.id)}
+                label={chapters.length === 1
+                  ? t("script.outline.deleteLastChapter")
+                  : t("script.outline.delete", { title: chapter.title })}
+                disabled={chapters.length === 1}
                 danger
                 onClick={() => onDeleteChapter(chapter.id)}
               >
@@ -284,7 +286,11 @@ function SmallAction({ label, disabled, danger, onClick, children }: {
       title={label}
       disabled={disabled}
       onClick={onClick}
-      style={{ ...smallActionStyle, color: danger ? "var(--status-error-text)" : "var(--text-muted)" }}
+      style={{
+        ...smallActionStyle,
+        color: danger ? "var(--status-error-text)" : "var(--text-muted)",
+        ...(disabled ? { opacity: 0.4, cursor: "not-allowed" } : {}),
+      }}
     >
       {children}
     </button>

@@ -261,6 +261,7 @@ pub(crate) fn read_node_creator_summaries(
                         instruction.get("t").and_then(serde_json::Value::as_str) == Some("set")
                     })
                 }),
+                instruction_count: instructions.map(|items| items.len()),
             }
         })
         .collect())
