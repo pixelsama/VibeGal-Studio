@@ -55,7 +55,7 @@ describe(`Core authoring desktop chain (${phase})`, () => {
       });
 
       const textarea = await openNodeEditor(CORE_AUTHORING_NODE_TITLE);
-      await authorNodeInstructions(textarea);
+      await authorNodeInstructions(textarea, projectPath);
 
       await waitForProjectFiles(projectPath, ({ graph, node }) => {
         const { edge } = assertCoreAuthoringGraph(graph);

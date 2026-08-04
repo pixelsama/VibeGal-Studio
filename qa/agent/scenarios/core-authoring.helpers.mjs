@@ -193,12 +193,43 @@ export async function openNodeEditor(nodeTitle = CORE_AUTHORING_NEW_NODE_ID) {
   return textarea;
 }
 
-export async function authorNodeInstructions(textarea) {
+export async function authorNodeInstructions(textarea, projectPath) {
   await textarea.setValue(CORE_AUTHORING_TEXT);
   await waitForAnyBodyText(["未保存", "Unsaved"]);
   const save = await buttonByTexts(["保存", "Save"]);
-  await save.waitForClickable();
+  await save.waitForExist();
+  await browser.waitUntil(async () => {
+    if (await save.isClickable()) return true;
+    await resolveInitializationExternalUpdate(projectPath);
+    return await save.isClickable();
+  }, {
+    timeout: 20_000,
+    interval: 250,
+    timeoutMsg: "node editor save remained unavailable after the initial node write settled",
+  });
   await save.click();
+}
+
+async function resolveInitializationExternalUpdate(projectPath) {
+  const updatedExternally = await browser.$(
+    `//button[contains(normalize-space(.), ${xpathLiteral("外部已更新")}) or contains(normalize-space(.), ${xpathLiteral("Updated externally")})]`,
+  );
+  if (!(await updatedExternally.isExisting())) return false;
+
+  // The only expected external event in this controlled flow is the watcher
+  // notification for the just-created empty node. Never discard a real edit:
+  // confirm that the disk version is still the empty fixture before choosing
+  // the explicit "keep local" conflict action.
+  assert.deepEqual(await readCoreAuthoringNode(projectPath), []);
+  await updatedExternally.waitForClickable();
+  await updatedExternally.click();
+
+  const keepLocal = await browser.$(
+    `//div[@data-region="external-diff-panel"]//button[normalize-space(.)=${xpathLiteral("保留我的修改")} or normalize-space(.)=${xpathLiteral("Keep my changes")}]`,
+  );
+  await keepLocal.waitForClickable({ timeout: 15_000 });
+  await keepLocal.click();
+  return true;
 }
 
 export async function verifyPreviewBranch() {
