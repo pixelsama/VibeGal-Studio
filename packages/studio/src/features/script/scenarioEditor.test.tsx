@@ -149,6 +149,20 @@ describe("ScenarioInspector", () => {
     expect(set).not.toContain("赋值方式");
   });
 
+  it("converges inspector inputs to the shared .gs-input / .gs-field styles", () => {
+    const char = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@char akari smile left", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    // 字段统一走共享 .gs-field/.gs-input；下拉额外带 .gs-select（自定义箭头）
+    expect(char).toContain("gs-field");
+    expect(char).toContain("gs-input");
+    expect(char).toContain("gs-select");
+  });
+
   it("renders compact current-line text fields for prose", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("akari(voice=akari_001): 早上好。", 0),

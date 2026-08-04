@@ -92,8 +92,8 @@ export function ResourcePicker({
   const selectValue = hasCurrentValue && !currentExists ? MISSING_OPTION_VALUE : value;
 
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{fieldLabel}</span>
+    <label className="gs-field">
+      <span className="gs-field__label">{fieldLabel}</span>
       <div style={pickerRowStyle}>
         <select
           value={selectValue}
@@ -103,7 +103,7 @@ export function ResourcePicker({
             if (next === MISSING_OPTION_VALUE) return;
             onChange(next);
           }}
-          style={selectStyle}
+          className="gs-input gs-select"
         >
           <option value="">{placeholder ?? t("assets.resource.choose", { label: fieldLabel ?? "" })}</option>
           {hasCurrentValue && !currentExists && (
@@ -121,7 +121,7 @@ export function ResourcePicker({
           disabled={disabled}
           placeholder={t("assets.resource.idPlaceholder", { label: fieldLabel ?? "" })}
           onChange={(event) => onChange(event.target.value)}
-          style={inputStyle}
+          className="gs-input"
         />
       </div>
     </label>
@@ -138,41 +138,9 @@ function resolveOptions(
   });
 }
 
-const fieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-1)",
-  minWidth: 0,
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: "var(--text-sm)",
-  color: "var(--text-secondary)",
-};
-
 const pickerRowStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 0.9fr)",
   gap: "var(--space-2)",
   minWidth: 0,
-};
-
-const selectStyle: CSSProperties = {
-  minWidth: 0,
-  padding: "7px var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-strong)",
-  background: "var(--bg-panel)",
-  color: "var(--text-primary)",
-  fontSize: "var(--text-base)",
-};
-
-const inputStyle: CSSProperties = {
-  minWidth: 0,
-  padding: "7px var(--space-2)",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border-strong)",
-  background: "var(--bg-panel)",
-  color: "var(--text-primary)",
-  fontSize: "var(--text-base)",
 };

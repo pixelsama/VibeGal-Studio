@@ -317,7 +317,7 @@ function CompactTextStatePicker({
   return (
     <label style={inlineFieldStyle}>
       <span>{label}</span>
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">
         {!states.some(([id]) => id === value) && <option value={value}>{value}</option>}
         {states.map(([id, declaration]) => (
           <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>
@@ -328,7 +328,7 @@ function CompactTextStatePicker({
 }
 
 function CompactSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
-  return <label style={inlineFieldStyle}><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+  return <label style={inlineFieldStyle}><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
 }
 
 function CompactSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -844,9 +844,9 @@ function ExpressiveTextField({
 
   return (
     <div style={expressiveFieldStyle}>
-      <label style={fieldStyle}>
-        <span style={fieldLabelStyle}>{label}</span>
-        <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
+      <label className="gs-field">
+        <span className="gs-field__label">{label}</span>
+        <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} className="gs-input" />
       </label>
       <div style={expressiveToolbarStyle} aria-label={t("script.scenario.expressiveTools")}>
         <label style={toolFieldStyle}>
@@ -913,9 +913,9 @@ function TextStateField({
 }) {
   const states = textStateOptions(variables);
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+    <label className="gs-field">
+      <span className="gs-field__label">{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">
         {!states.some(([id]) => id === value) && <option value={value}>{value}</option>}
         {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
       </select>
@@ -959,9 +959,9 @@ function registeredThemeColors(manifest: Manifest): Array<[string, string]> {
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
+    <label className="gs-field">
+      <span className="gs-field__label">{label}</span>
+      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} className="gs-input" />
     </label>
   );
 }
@@ -1066,9 +1066,9 @@ function EnumField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+    <label className="gs-field">
+      <span className="gs-field__label">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">
         {options.map((option) => (
           <option key={option} value={option}>{optionLabels?.[option] ?? option}</option>
         ))}
@@ -1209,17 +1209,6 @@ const inspectorTitleStyle: CSSProperties = {
 const inspectorBodyStyle: CSSProperties = {
   display: "grid",
   gap: "var(--space-3)",
-};
-
-const fieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-1)",
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: "var(--text-sm)",
-  color: "var(--text-secondary)",
 };
 
 const inputStyle: CSSProperties = {
