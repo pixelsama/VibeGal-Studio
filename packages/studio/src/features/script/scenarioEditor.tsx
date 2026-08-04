@@ -511,54 +511,59 @@ export function ScenarioInspector({
             value={instruction.pos ?? "center"}
             onChange={(pos) => onReplaceInstruction({ ...instruction, pos })}
           />
-          <TextField
-            label={t("script.scenario.moveFromSlot")}
-            value={instruction.moveFrom ?? ""}
-            onChange={(moveFrom) => onReplaceInstruction(withOptionalMoveFrom(instruction, moveFrom))}
-          />
-          <NumberField
-            label={t("script.scenario.field.scale")}
-            value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale}
-            min={0.1}
-            max={4}
-            step={0.1}
-            onChange={(scale) => onReplaceInstruction({ ...instruction, scale })}
-          />
-          <BooleanField
-            label={t("script.scenario.horizontalFlip")}
-            checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip}
-            onChange={(flip) => onReplaceInstruction({ ...instruction, flip })}
-          />
-          <NumberField
-            label={t("script.scenario.expressionTransitionMs")}
-            value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs}
-            min={0}
-            integer
-            onChange={(exprMs) => onReplaceInstruction({ ...instruction, exprMs })}
-          />
-          <EnumField
-            label={t("script.scenario.field.transition")}
-            value={instruction.trans ?? "fade"}
-            options={["fade", "cut", "slide"]}
-            onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
-          />
-          <NumberField
-            label={t("script.scenario.transitionDurationMs")}
-            value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms}
-            min={0}
-            integer
-            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
-          />
-          <BooleanField
-            label={t("script.scenario.clearCharacters")}
-            checked={instruction.clear ?? INSTRUCTION_DEFAULTS.char.clear}
-            onChange={(clear) => onReplaceInstruction({ ...instruction, clear })}
-          />
-          <BooleanField
-            label={t("script.scenario.removeCharacter")}
-            checked={instruction.remove ?? INSTRUCTION_DEFAULTS.char.remove}
-            onChange={(remove) => onReplaceInstruction({ ...instruction, remove })}
-          />
+          <details className="gs-disclosure">
+            <summary>{t("script.scenario.advancedOptions")}</summary>
+            <div style={{ ...inspectorBodyStyle, marginTop: "var(--space-2)" }}>
+              <TextField
+                label={t("script.scenario.moveFromSlot")}
+                value={instruction.moveFrom ?? ""}
+                onChange={(moveFrom) => onReplaceInstruction(withOptionalMoveFrom(instruction, moveFrom))}
+              />
+              <NumberField
+                label={t("script.scenario.field.scale")}
+                value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale}
+                min={0.1}
+                max={4}
+                step={0.1}
+                onChange={(scale) => onReplaceInstruction({ ...instruction, scale })}
+              />
+              <BooleanField
+                label={t("script.scenario.horizontalFlip")}
+                checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip}
+                onChange={(flip) => onReplaceInstruction({ ...instruction, flip })}
+              />
+              <NumberField
+                label={t("script.scenario.expressionTransitionMs")}
+                value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs}
+                min={0}
+                integer
+                onChange={(exprMs) => onReplaceInstruction({ ...instruction, exprMs })}
+              />
+              <EnumField
+                label={t("script.scenario.field.transition")}
+                value={instruction.trans ?? "fade"}
+                options={["fade", "cut", "slide"]}
+                onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
+              />
+              <NumberField
+                label={t("script.scenario.transitionDurationMs")}
+                value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms}
+                min={0}
+                integer
+                onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
+              />
+              <BooleanField
+                label={t("script.scenario.clearCharacters")}
+                checked={instruction.clear ?? INSTRUCTION_DEFAULTS.char.clear}
+                onChange={(clear) => onReplaceInstruction({ ...instruction, clear })}
+              />
+              <BooleanField
+                label={t("script.scenario.removeCharacter")}
+                checked={instruction.remove ?? INSTRUCTION_DEFAULTS.char.remove}
+                onChange={(remove) => onReplaceInstruction({ ...instruction, remove })}
+              />
+            </div>
+          </details>
         </InspectorPanel>
       );
     case "set":
