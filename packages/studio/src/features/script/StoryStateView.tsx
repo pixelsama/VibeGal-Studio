@@ -135,6 +135,7 @@ export function StoryStateView({
                       key={item.name}
                       type="button"
                       className={item.name === selected ? "gs-state-view__item gs-state-view__item--active" : "gs-state-view__item"}
+                      aria-current={item.name === selected ? "true" : undefined}
                       onClick={() => setSelected(item.name)}
                     >
                       <span className="gs-state-view__item-name">

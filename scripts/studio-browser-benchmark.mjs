@@ -21,8 +21,9 @@ function bilingualSelector(template, zhLabel, enLabel) {
   return [zhLabel, enLabel].map((label) => template.replaceAll("{aria}", label)).join(", ");
 }
 
-const OUTLINE_LISTBOX = bilingualSelector('[role=listbox][aria-label="{aria}"]', "章节节点", "Chapter nodes");
-const OUTLINE_OPTION = bilingualSelector('[role=listbox][aria-label="{aria}"] [role=option]', "章节节点", "Chapter nodes");
+const OUTLINE_LIST = bilingualSelector('[role=list][aria-label="{aria}"]', "章节节点", "Chapter nodes");
+const OUTLINE_ITEM = bilingualSelector('[role=list][aria-label="{aria}"] [role=listitem]', "章节节点", "Chapter nodes");
+const OUTLINE_ITEM_BUTTON = bilingualSelector('[role=list][aria-label="{aria}"] [role=listitem] button', "章节节点", "Chapter nodes");
 const ASSET_GRID = bilingualSelector('[role=grid][aria-label="{aria}"]', "资产列表", "Asset list");
 const ASSET_SEARCH_INPUT = bilingualSelector('input[aria-label="{aria}"]', "搜索资产", "Search assets");
 const SCENARIO_TEXTAREA = bilingualSelector('textarea[aria-label="{aria}"]', "剧本文本", "Script text");
@@ -144,7 +145,7 @@ export async function runStudioBrowserBenchmark({
           assetSearchSamplesMs: assetSearch.samples.map(round),
           assetSearchWarmupMs: round(assetSearch.warmupMs),
           nodeScrollFramesMs: nodeScroll.frames.map(round),
-          nodeScrollMountedOptions: nodeScroll.mountedOptions,
+          nodeScrollMountedOptions: nodeScroll.mountedItems,
           singleNodeSaveSamplesMs: save.samples.map(round),
           singleNodeSaveWarmupSamplesMs: save.warmupSamplesMs.map(round),
           assetMountedCards: assetState.mountedCards,
@@ -356,10 +357,10 @@ async function installBenchmarkBridge(cdp, data) {
 async function measureNodeListScroll(cdp) {
   // 规模基准项目节点多，章节大纲可能滞后于 .react-flow 出现：先等选项挂载，
   // 否则下方 executor 在 rAF 里对 null 操作会静默 pending（Promise 永不 settle）。
-  await waitForExpression(cdp, `document.querySelector('${OUTLINE_OPTION}')`, 15_000);
+  await waitForExpression(cdp, `document.querySelector('${OUTLINE_ITEM}')`, 15_000);
   const result = await evaluate(cdp, retainedPromise(`(resolve, reject) => {
-    const list = document.querySelector('${OUTLINE_LISTBOX}');
-    if (!list) { reject(new Error('node outline listbox not found')); return; }
+    const list = document.querySelector('${OUTLINE_LIST}');
+    if (!list) { reject(new Error('node outline list not found')); return; }
     const timer = setTimeout(() => reject(new Error('node list scroll frames did not complete within 10s')), 10_000);
     const frames = [];
     let remaining = 32;
@@ -370,7 +371,7 @@ async function measureNodeListScroll(cdp) {
       list.scrollTop = remaining % 2 ? list.scrollHeight : 0;
       list.dispatchEvent(new Event('scroll', { bubbles: true }));
       remaining -= 1;
-      if (remaining <= 0) requestAnimationFrame(() => { clearTimeout(timer); resolve({ frames: frames.slice(8), mountedOptions: list.querySelectorAll('[role=option]').length }); });
+      if (remaining <= 0) requestAnimationFrame(() => { clearTimeout(timer); resolve({ frames: frames.slice(8), mountedItems: list.querySelectorAll('[role=listitem]').length }); });
       else requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
@@ -380,9 +381,9 @@ async function measureNodeListScroll(cdp) {
 
 async function measureSingleNodeSave(cdp, sampleHeap) {
   await evaluate(cdp, `(() => {
-    const option = document.querySelector('${OUTLINE_OPTION}');
-    if (!option) throw new Error('node outline option not found');
-    option.click();
+    const item = document.querySelector('${OUTLINE_ITEM_BUTTON}');
+    if (!item) throw new Error('node outline item not found');
+    item.click();
   })()`);
   await waitForExpression(
     cdp,

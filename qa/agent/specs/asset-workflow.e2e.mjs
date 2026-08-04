@@ -207,7 +207,7 @@ async function referenceAssetInScript() {
 
 async function openPrologueNode() {
   const node = await browser.$(
-    "//div[@role='listbox']//button[@role='option'][.//*[normalize-space()='序章'] or .//*[normalize-space()='Prologue']]",
+    "//div[@role='list']//button[.//*[normalize-space()='序章'] or .//*[normalize-space()='Prologue']]",
   );
   await node.waitForClickable();
   await node.click();

@@ -82,6 +82,7 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { useStudioI18n } from "../../lib/i18n";
+import { clampCompletionIndex, moveCompletionIndex } from "./completionNavigation";
 import { statusError, statusInfo, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 
 export {
@@ -405,6 +406,7 @@ export function NodeEditor({
   const [commandMenuSource, setCommandMenuSource] = useState<CommandMenuSource | null>(null);
   const [parameterTrigger, setParameterTrigger] = useState<ScenarioParameterTrigger | null>(null);
   const [completionIndex, setCompletionIndex] = useState(0);
+  const [commandIndex, setCommandIndex] = useState(0);
   const [textareaScrollTop, setTextareaScrollTop] = useState(0);
   // 撤销历史清空属于不可逆操作：模式切换走确认对话，外部刷新/载入走 toast（Spec 33 A4）。
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -680,6 +682,7 @@ export function NodeEditor({
   );
   const parameterMenuVisible = mode === "scenario" && parameterTrigger != null && visibleParameters.length > 0;
   const commandMenuVisible = mode === "scenario"
+    && visibleCommands.length > 0
     && (commandMenuSource === "line-plus" || (commandMenuSource === "trigger" && scenarioCommandTrigger != null));
   const lineActionTop = Math.max(
     8,
@@ -697,6 +700,14 @@ export function NodeEditor({
   useEffect(() => {
     setCompletionIndex((current) => Math.min(current, Math.max(visibleParameters.length - 1, 0)));
   }, [visibleParameters.length]);
+
+  useEffect(() => {
+    setCommandIndex(0);
+  }, [commandMenuSource, commandQuery]);
+
+  useEffect(() => {
+    setCommandIndex((current) => clampCompletionIndex(current, visibleCommands.length));
+  }, [visibleCommands.length]);
 
   useEffect(() => {
     const offset = pendingSelectionRef.current;
@@ -986,6 +997,7 @@ export function NodeEditor({
     if (nextCommand) {
       setParameterTrigger(null);
       setCommandMenuSource("trigger");
+      setCommandIndex(0);
     } else {
       if (commandMenuSource === "trigger") setCommandMenuSource(null);
       setParameterTrigger(scenarioParameterTriggerAtCursor(textarea.value, nextOffset));
@@ -1002,6 +1014,7 @@ export function NodeEditor({
     const nextCommand = scenarioCommandTriggerAtCursor(nextText, nextOffset);
     setCommandMenuSource(nextCommand ? "trigger" : null);
     setParameterTrigger(nextCommand ? null : scenarioParameterTriggerAtCursor(nextText, nextOffset));
+    setCommandIndex(0);
     setCompletionIndex(0);
   };
 
@@ -1019,6 +1032,7 @@ export function NodeEditor({
     pendingSelectionRef.current = inserted.cursorOffset;
     setCursorOffset(inserted.cursorOffset);
     setCommandMenuSource(null);
+    setCommandIndex(0);
     applyScenarioText(inserted.text, { programmatic: true });
   };
 
@@ -1079,6 +1093,14 @@ export function NodeEditor({
       });
       return;
     }
+    if (commandMenuVisible && visibleCommands.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      setCommandIndex((current) => {
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        return moveCompletionIndex(current, delta, visibleCommands.length);
+      });
+      return;
+    }
     if (event.key === "Escape" && (commandMenuSource || parameterTrigger)) {
       event.preventDefault();
       setCommandMenuSource(null);
@@ -1092,7 +1114,7 @@ export function NodeEditor({
     }
     if ((event.key === "Enter" || event.key === "Tab") && commandMenuVisible && visibleCommands[0]) {
       event.preventDefault();
-      handleInsertCommand(visibleCommands[0].kind);
+      handleInsertCommand((visibleCommands[commandIndex] ?? visibleCommands[0]).kind);
     }
   };
 
@@ -1252,6 +1274,7 @@ export function NodeEditor({
         lineActionTop={lineActionTop}
         commandMenuVisible={commandMenuVisible}
         visibleCommands={visibleCommands}
+        selectedCommandIndex={commandIndex}
         parameterMenuVisible={parameterMenuVisible}
         visibleParameters={visibleParameters}
         selectedParameterIndex={completionIndex}
@@ -1259,6 +1282,7 @@ export function NodeEditor({
         onToggleLineCommandMenu={() => {
           setParameterTrigger(null);
           setCommandMenuSource(commandMenuSource === "line-plus" ? null : "line-plus");
+          setCommandIndex(0);
           textareaRef.current?.focus();
         }}
         onInsertCommand={handleInsertCommand}

@@ -245,7 +245,6 @@ const titleInputStyle: React.CSSProperties = {
   color: "var(--text-bright)",
   fontSize: "var(--text-md)",
   fontWeight: 600,
-  outline: "none",
 };
 
 const fieldRowStyle: React.CSSProperties = {

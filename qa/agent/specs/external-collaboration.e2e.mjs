@@ -104,12 +104,12 @@ async function trustCurrentRendererIfNeeded() {
 async function openScriptGraph() {
   await clickButton(["剧情", "Story"]);
   await browser.$(".react-flow").waitForExist();
-  await browser.$("[role=listbox]").waitForExist();
+  await browser.$("[role=list]").waitForExist();
 }
 
 async function openNodeEditor(nodeTitle) {
   const option = await browser.$(
-    `//button[@role="option"][.//*[normalize-space()=${xpathLiteral(nodeTitle)}] or normalize-space(.)=${xpathLiteral(nodeTitle)}]`,
+    `//div[@role="list"]//button[.//*[normalize-space()=${xpathLiteral(nodeTitle)}] or normalize-space(.)=${xpathLiteral(nodeTitle)}]`,
   );
   if (await option.isExisting()) {
     await option.waitForClickable();
