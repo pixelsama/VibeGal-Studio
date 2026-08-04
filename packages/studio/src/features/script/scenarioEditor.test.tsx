@@ -149,6 +149,36 @@ describe("ScenarioInspector", () => {
     expect(set).not.toContain("赋值方式");
   });
 
+  it("converges inspector inputs to the shared .gs-input / .gs-field styles", () => {
+    const char = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@char akari smile left", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    // 字段统一走共享 .gs-field/.gs-input；下拉额外带 .gs-select（自定义箭头）
+    expect(char).toContain("gs-field");
+    expect(char).toContain("gs-input");
+    expect(char).toContain("gs-select");
+  });
+
+  it("folds char advanced fields behind a disclosure, keeping core fields visible", () => {
+    const char = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("@char akari smile left", 0),
+      manifest,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    // 核心（角色/表情/位置）始终可见
+    expect(char).toContain("角色");
+    expect(char).toContain("位置槽");
+    // 高级项（移入/缩放/翻转/过渡/清除/移除等）收进折叠
+    expect(char).toContain("gs-disclosure");
+    expect(char).toContain("高级选项");
+  });
+
   it("renders compact current-line text fields for prose", () => {
     const say = renderToStaticMarkup(createElement(ScenarioInspector, {
       selection: getScenarioSelection("akari(voice=akari_001): 早上好。", 0),
@@ -191,6 +221,24 @@ describe("ScenarioInspector", () => {
     expect(html).toContain("文字颜色");
     expect(html).toContain("text.highlight · #FFD166");
     expect(html).toContain("加注音");
+  });
+
+  it("collapses the expressive format toolbar and disambiguates the insert buttons", () => {
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection: getScenarioSelection("akari: 你好，旅行者。", 0),
+      manifest,
+      variables,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    // 格式工具栏默认收进折叠
+    expect(html).toContain("gs-disclosure");
+    expect(html).toContain("格式");
+    // 两个插入按钮不再重名
+    expect(html).toContain("插入状态");
+    expect(html).toContain("插入停顿");
+    expect(html).not.toContain(">插入<");
   });
 
   it("renders player naming as a structured form and readable scenario line", () => {

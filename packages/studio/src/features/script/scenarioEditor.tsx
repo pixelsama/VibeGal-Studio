@@ -317,7 +317,7 @@ function CompactTextStatePicker({
   return (
     <label style={inlineFieldStyle}>
       <span>{label}</span>
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">
         {!states.some(([id]) => id === value) && <option value={value}>{value}</option>}
         {states.map(([id, declaration]) => (
           <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>
@@ -328,7 +328,7 @@ function CompactTextStatePicker({
 }
 
 function CompactSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
-  return <label style={inlineFieldStyle}><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+  return <label style={inlineFieldStyle}><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
 }
 
 function CompactSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -511,54 +511,59 @@ export function ScenarioInspector({
             value={instruction.pos ?? "center"}
             onChange={(pos) => onReplaceInstruction({ ...instruction, pos })}
           />
-          <TextField
-            label={t("script.scenario.moveFromSlot")}
-            value={instruction.moveFrom ?? ""}
-            onChange={(moveFrom) => onReplaceInstruction(withOptionalMoveFrom(instruction, moveFrom))}
-          />
-          <NumberField
-            label={t("script.scenario.field.scale")}
-            value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale}
-            min={0.1}
-            max={4}
-            step={0.1}
-            onChange={(scale) => onReplaceInstruction({ ...instruction, scale })}
-          />
-          <BooleanField
-            label={t("script.scenario.horizontalFlip")}
-            checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip}
-            onChange={(flip) => onReplaceInstruction({ ...instruction, flip })}
-          />
-          <NumberField
-            label={t("script.scenario.expressionTransitionMs")}
-            value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs}
-            min={0}
-            integer
-            onChange={(exprMs) => onReplaceInstruction({ ...instruction, exprMs })}
-          />
-          <EnumField
-            label={t("script.scenario.field.transition")}
-            value={instruction.trans ?? "fade"}
-            options={["fade", "cut", "slide"]}
-            onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
-          />
-          <NumberField
-            label={t("script.scenario.transitionDurationMs")}
-            value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms}
-            min={0}
-            integer
-            onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
-          />
-          <BooleanField
-            label={t("script.scenario.clearCharacters")}
-            checked={instruction.clear ?? INSTRUCTION_DEFAULTS.char.clear}
-            onChange={(clear) => onReplaceInstruction({ ...instruction, clear })}
-          />
-          <BooleanField
-            label={t("script.scenario.removeCharacter")}
-            checked={instruction.remove ?? INSTRUCTION_DEFAULTS.char.remove}
-            onChange={(remove) => onReplaceInstruction({ ...instruction, remove })}
-          />
+          <details className="gs-disclosure">
+            <summary>{t("script.scenario.advancedOptions")}</summary>
+            <div style={{ ...inspectorBodyStyle, marginTop: "var(--space-2)" }}>
+              <TextField
+                label={t("script.scenario.moveFromSlot")}
+                value={instruction.moveFrom ?? ""}
+                onChange={(moveFrom) => onReplaceInstruction(withOptionalMoveFrom(instruction, moveFrom))}
+              />
+              <NumberField
+                label={t("script.scenario.field.scale")}
+                value={instruction.scale ?? INSTRUCTION_DEFAULTS.char.scale}
+                min={0.1}
+                max={4}
+                step={0.1}
+                onChange={(scale) => onReplaceInstruction({ ...instruction, scale })}
+              />
+              <BooleanField
+                label={t("script.scenario.horizontalFlip")}
+                checked={instruction.flip ?? INSTRUCTION_DEFAULTS.char.flip}
+                onChange={(flip) => onReplaceInstruction({ ...instruction, flip })}
+              />
+              <NumberField
+                label={t("script.scenario.expressionTransitionMs")}
+                value={instruction.exprMs ?? INSTRUCTION_DEFAULTS.char.exprMs}
+                min={0}
+                integer
+                onChange={(exprMs) => onReplaceInstruction({ ...instruction, exprMs })}
+              />
+              <EnumField
+                label={t("script.scenario.field.transition")}
+                value={instruction.trans ?? "fade"}
+                options={["fade", "cut", "slide"]}
+                onChange={(trans) => onReplaceInstruction({ ...instruction, trans: trans as "fade" | "cut" | "slide" })}
+              />
+              <NumberField
+                label={t("script.scenario.transitionDurationMs")}
+                value={instruction.ms ?? INSTRUCTION_DEFAULTS.char.ms}
+                min={0}
+                integer
+                onChange={(ms) => onReplaceInstruction({ ...instruction, ms })}
+              />
+              <BooleanField
+                label={t("script.scenario.clearCharacters")}
+                checked={instruction.clear ?? INSTRUCTION_DEFAULTS.char.clear}
+                onChange={(clear) => onReplaceInstruction({ ...instruction, clear })}
+              />
+              <BooleanField
+                label={t("script.scenario.removeCharacter")}
+                checked={instruction.remove ?? INSTRUCTION_DEFAULTS.char.remove}
+                onChange={(remove) => onReplaceInstruction({ ...instruction, remove })}
+              />
+            </div>
+          </details>
         </InspectorPanel>
       );
     case "set":
@@ -844,10 +849,12 @@ function ExpressiveTextField({
 
   return (
     <div style={expressiveFieldStyle}>
-      <label style={fieldStyle}>
-        <span style={fieldLabelStyle}>{label}</span>
-        <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
+      <label className="gs-field">
+        <span className="gs-field__label">{label}</span>
+        <input ref={inputRef} type="text" value={value} onChange={(event) => onChange(event.target.value)} className="gs-input" />
       </label>
+      <details className="gs-disclosure">
+        <summary>{t("script.scenario.format")}</summary>
       <div style={expressiveToolbarStyle} aria-label={t("script.scenario.expressiveTools")}>
         <label style={toolFieldStyle}>
           <span>{t("script.scenario.storyState")}</span>
@@ -862,12 +869,12 @@ function ExpressiveTextField({
             {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
           </select>
         </label>
-        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insert")}</button>
+        <button type="button" disabled={!currentState} onClick={() => insert(`{${currentState}}`)} style={toolButtonStyle}>{t("script.scenario.insertStateAction")}</button>
         <label style={toolFieldStyle}>
           <span>{t("script.scenario.inlinePause")}</span>
           <NumberInput aria-label={t("script.scenario.inlinePauseMs")} value={pauseMs} min={0} onChange={(next) => setPauseMs(Math.max(0, Math.round(next)))} />
         </label>
-        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insert")}</button>
+        <button type="button" onClick={() => insert(`[pause=${pauseMs}]`)} style={toolButtonStyle}>{t("script.scenario.insertPauseAction")}</button>
         <button type="button" onClick={() => insert("[b]", "[/b]")} style={toolButtonStyle}>{t("script.scenario.bold")}</button>
         <label style={toolFieldStyle}>
           <span>{t("script.scenario.textColor")}</span>
@@ -893,6 +900,7 @@ function ExpressiveTextField({
         </label>
         <button type="button" disabled={!ruby.trim()} onClick={() => insert(`[ruby=${ruby.trim()}]`, "[/ruby]")} style={toolButtonStyle}>{t("script.scenario.addRuby")}</button>
       </div>
+      </details>
       <div style={mutedTextStyle}>{t("script.scenario.expressiveHint")}</div>
     </div>
   );
@@ -913,9 +921,9 @@ function TextStateField({
 }) {
   const states = textStateOptions(variables);
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+    <label className="gs-field">
+      <span className="gs-field__label">{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">
         {!states.some(([id]) => id === value) && <option value={value}>{value}</option>}
         {states.map(([id, declaration]) => <option key={id} value={id}>{variableLabel(id, declaration, manifest)}</option>)}
       </select>
@@ -959,9 +967,9 @@ function registeredThemeColors(manifest: Manifest): Array<[string, string]> {
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} />
+    <label className="gs-field">
+      <span className="gs-field__label">{label}</span>
+      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} className="gs-input" />
     </label>
   );
 }
@@ -1066,9 +1074,9 @@ function EnumField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle}>
+    <label className="gs-field">
+      <span className="gs-field__label">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="gs-input gs-select">
         {options.map((option) => (
           <option key={option} value={option}>{optionLabels?.[option] ?? option}</option>
         ))}
@@ -1209,17 +1217,6 @@ const inspectorTitleStyle: CSSProperties = {
 const inspectorBodyStyle: CSSProperties = {
   display: "grid",
   gap: "var(--space-3)",
-};
-
-const fieldStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-1)",
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: "var(--text-sm)",
-  color: "var(--text-secondary)",
 };
 
 const inputStyle: CSSProperties = {

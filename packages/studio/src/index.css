@@ -1354,6 +1354,13 @@ select:focus-visible {
   cursor: pointer;
 }
 
+/* ── 通用折叠（char 高级字段、表达文本格式工具等次要控件的收起开关） ── */
+.gs-disclosure > summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
 /* ══ 脚本工作台一级视图切换（features/script/ScriptWorkspace.tsx）═════════ */
 
 .gs-script-views {
