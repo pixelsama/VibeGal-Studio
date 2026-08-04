@@ -111,6 +111,7 @@ describe("creatorNodeSummary", () => {
       relPath: "nodes/ending.json",
       sayCount: 2,
       changesState: true,
+      instructionCount: 3,
     }];
     expect(creatorNodeSummary("ending", "nodes/ending.json", undefined, manifest, summaries)).toEqual([
       "2 句台词",

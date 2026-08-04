@@ -82,6 +82,7 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { useStudioI18n } from "../../lib/i18n";
+import { statusError, statusInfo, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 
 export {
   isWriteConflictError,
@@ -390,7 +391,7 @@ export function NodeEditor({
   const [dirty, setDirty] = useState(restoredDraft !== null);
   const [draftBaseVersion, setDraftBaseVersion] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState(restoredDraft ? t("script.editor.restoredDraft") : "");
+  const [status, setStatus] = useState<StatusMessage | null>(restoredDraft ? statusWarn(t("script.editor.restoredDraft")) : null);
   const [externalSnapshot, setExternalSnapshot] = useState<NodeFileSnapshot | null>(null);
   const [externalSnapshotError, setExternalSnapshotError] = useState<string | null>(null);
   const [externalSnapshotLoading, setExternalSnapshotLoading] = useState(false);
@@ -500,7 +501,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setExternalDiffOpen(false);
-    setStatus("");
+    setStatus(null);
   }, [dirty, incomingInstructions, incomingJsonText, incomingScenarioText, mode, node.file, nodeRevision, project.nodeRevisions]);
 
   useEffect(() => {
@@ -710,10 +711,10 @@ export function NodeEditor({
     if (!focusRequest?.jsonPath) return;
     const index = instructionIndexFromJsonPath(focusRequest.jsonPath);
     if (index == null) return;
-    setStatus(t("script.editor.issueLocation", {
+    setStatus(statusWarn(t("script.editor.issueLocation", {
       number: index + 1,
       path: focusRequest.jsonPath,
-    }));
+    })));
   }, [focusRequest, t]);
 
   const applyScenarioText = (nextText: string, options: { programmatic?: boolean; skipHistory?: boolean } = {}) => {
@@ -728,7 +729,7 @@ export function NodeEditor({
     draftVersionRef.current += 1;
     replaceText(nextText);
     setDirty(true);
-    setStatus("");
+    setStatus(null);
     const parsed = parseScenarioText(nextText);
     if (parsed.ok) {
       const reconciled = mergePendingAssignedIdentities(
@@ -760,7 +761,7 @@ export function NodeEditor({
     replaceText(nextText);
     setDiagnostics([]);
     setDirty(true);
-    setStatus("");
+    setStatus(null);
     setParameterTrigger(null);
   };
 
@@ -778,7 +779,7 @@ export function NodeEditor({
     draftVersionRef.current += 1;
     replaceText(nextText);
     setDirty(true);
-    setStatus("");
+    setStatus(null);
     const parsed = parseJsonInstructionText(nextText);
     if (parsed.ok) {
       replaceValidInstructions(mergePendingAssignedIdentities(parsed.instructions));
@@ -811,17 +812,17 @@ export function NodeEditor({
   const handleSave = async () => {
     if (hasExternalUpdate || writeConflict) {
       setExternalDiffOpen(true);
-      setStatus(t("script.editor.resolveConflictBeforeSave"));
+      setStatus(statusWarn(t("script.editor.resolveConflictBeforeSave")));
       return;
     }
     const built = buildPayload();
     if (!built.ok) {
-      setStatus(built.message);
+      setStatus(statusError(built.message));
       return;
     }
     const savedDraftVersion = draftVersionRef.current;
     setSaving(true);
-    setStatus("");
+    setStatus(null);
     try {
       if (dirty) {
         const saved = await saveNode(project.path, node.file, built.nextInstructions, loadedRevisionRef.current);
@@ -834,7 +835,7 @@ export function NodeEditor({
           setDiagnostics([]);
           replaceText(mode === "json" ? saved.serializedText : formatScenarioText(saved.instructions));
           setDirty(false);
-          setStatus(t("script.editor.saved"));
+          setStatus(statusOk(t("script.editor.saved")));
         } else {
           const merged = mergeAssignedInstructionIdentities(
             saved.instructions,
@@ -859,7 +860,7 @@ export function NodeEditor({
               assigned: saved.assigned,
             });
           }
-          setStatus(t("script.editor.savedWithDraft"));
+          setStatus(statusOk(t("script.editor.savedWithDraft")));
         }
         setExternalSnapshot(null);
         setExternalSnapshotError(null);
@@ -869,7 +870,7 @@ export function NodeEditor({
         setExternalDiffOpen(false);
         onExternalChangeResolved?.();
       }
-      if (!dirty) setStatus(t("script.editor.saved"));
+      if (!dirty) setStatus(statusOk(t("script.editor.saved")));
       onSaved();
     } catch (error) {
       const preserved = nodeEditorKeepsDraftOnWriteConflict({ text, instructions }, error);
@@ -879,9 +880,9 @@ export function NodeEditor({
           replaceInstructions(preserved.draft.instructions);
         }
         setWriteConflict(true);
-        setStatus(t("script.editor.externalConflict"));
+        setStatus(statusError(t("script.editor.externalConflict")));
       } else {
-        setStatus(t("script.editor.saveFailed", { detail: error instanceof Error ? error.message : String(error) }));
+        setStatus(statusError(t("script.editor.saveFailed", { detail: error instanceof Error ? error.message : String(error) })));
       }
     } finally {
       setSaving(false);
@@ -896,12 +897,12 @@ export function NodeEditor({
   const handleLoadExternal = () => {
     if (saving) return;
     if (!externalSnapshot) {
-      setStatus(t("script.editor.loadingExternal"));
+      setStatus(statusInfo(t("script.editor.loadingExternal")));
       void fetchExternalSnapshot();
       return;
     }
     if (externalSnapshot.state === "deleted") {
-      setStatus(t("script.editor.externalDeletedBlocked"));
+      setStatus(statusWarn(t("script.editor.externalDeletedBlocked")));
       return;
     }
     const nextJsonText = externalSnapshot.text ?? "";
@@ -926,7 +927,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setExternalDiffOpen(false);
-    setStatus(t("script.editor.loadedExternal"));
+    setStatus(statusOk(t("script.editor.loadedExternal")));
     onExternalChangeResolved?.();
   };
 
@@ -946,7 +947,7 @@ export function NodeEditor({
     setHasExternalUpdate(false);
     setWriteConflict(false);
     setExternalDiffOpen(false);
-    setStatus(t("script.editor.keptLocal"));
+    setStatus(statusOk(t("script.editor.keptLocal")));
     onExternalChangeResolved?.();
   };
 
@@ -964,11 +965,11 @@ export function NodeEditor({
         externalState: externalChangeSummary?.kind,
         relatedPaths: externalChangeSummary?.relatedPaths,
       }));
-      setStatus(t("script.editor.conflictCopied"));
+      setStatus(statusOk(t("script.editor.conflictCopied")));
     } catch (error) {
-      setStatus(t("script.editor.conflictCopyFailed", {
+      setStatus(statusError(t("script.editor.conflictCopyFailed", {
         detail: error instanceof Error ? error.message : String(error),
-      }));
+      })));
     }
   };
 
@@ -1107,7 +1108,7 @@ export function NodeEditor({
     if (nextMode === "json") {
       const built = buildPayload();
       if (!built.ok) {
-        setStatus(built.message);
+        setStatus(statusError(built.message));
         return;
       }
       draftVersionRef.current += 1;
@@ -1118,7 +1119,7 @@ export function NodeEditor({
       replaceText(built.payload);
       replaceValidInstructions(built.nextInstructions);
       setDiagnostics([]);
-      setStatus("");
+      setStatus(null);
       return;
     }
     const parsed = parseJsonInstructionText(text);
@@ -1126,7 +1127,7 @@ export function NodeEditor({
       ? mergePendingAssignedIdentities(parsed.instructions)
       : lastValidInstructionsRef.current;
     if (mode === "json" && !parsed.ok) {
-      setStatus(t("script.editor.modeSwitchFailed", { detail: parsed.error }));
+      setStatus(statusError(t("script.editor.modeSwitchFailed", { detail: parsed.error })));
       return;
     }
     draftVersionRef.current += 1;
@@ -1135,7 +1136,7 @@ export function NodeEditor({
     replaceText(formatScenarioText(nextInstructions));
     replaceValidInstructions(nextInstructions);
     setDiagnostics([]);
-    setStatus("");
+    setStatus(null);
   };
 
   const handleToggleInspectorPane = useCallback(() => {

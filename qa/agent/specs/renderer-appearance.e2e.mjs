@@ -169,8 +169,7 @@ async function trustCurrentRenderer({ expectedPrompt }) {
   const prompted = await trust.isExisting();
   if (expectedPrompt) assert.equal(prompted, true, "a new project renderer should require an explicit trust action");
   if (prompted) {
-    await trust.waitForClickable();
-    await trust.click();
+    await clickTrustAction(trust);
   }
   await waitForAnyBodyText(startButtonLabels, 20_000);
 }
@@ -287,6 +286,23 @@ async function clickButton(texts) {
   const button = await buttonByTexts(texts);
   await button.waitForClickable();
   await button.click();
+}
+
+async function clickTrustAction(trust) {
+  // Edge on the Windows runner can report the visible button as clickable but
+  // drop WebDriver's native click before React receives it. Dispatching the
+  // same bubbling click from the live DOM keeps the test on the real trust
+  // action while avoiding a platform-specific coordinate/bridge failure.
+  const clicked = await browser.execute((labels) => {
+    const candidate = [...document.querySelectorAll("button")]
+      .find((element) => labels.includes(element.textContent?.trim() ?? ""));
+    if (!(candidate instanceof HTMLButtonElement)) return false;
+    candidate.click();
+    return true;
+  }, trustButtonLabels);
+  if (clicked) return;
+  await trust.waitForClickable();
+  await trust.click();
 }
 
 async function clickContaining(text) {

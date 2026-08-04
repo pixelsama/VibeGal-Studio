@@ -66,4 +66,45 @@ describe("StoryOutline", () => {
     expect(html).toContain("节点用来承载剧情内容");
     expect(html).toContain(">新建节点</button>");
   });
+
+  it("keeps delete enabled for a chapter that still contains nodes", () => {
+    // graph 有两个章节且都含节点；以前含节点即禁用（点了没反应），现在应可点，
+    // 交由 handleDeleteChapter 的 moveNodesFirst 提示反馈。
+    const html = renderToStaticMarkup(createElement(StoryOutline, {
+      graph,
+      scope: { kind: "all" },
+      selectedNodeId: null,
+      onScopeChange: () => {},
+      onSelectNode: () => {},
+      onCreateNode: () => {},
+      onCreateChapter: () => {},
+      onRenameChapter: () => {},
+      onMoveChapter: () => {},
+      onDeleteChapter: () => {},
+    }));
+
+    const deleteButton = html.match(/<button[^>]*aria-label="删除章节 序章"[^>]*>/);
+    expect(deleteButton).toBeTruthy();
+    expect(deleteButton![0]).not.toContain('disabled=""');
+  });
+
+  it("disables delete and relabels it when there is only one chapter", () => {
+    const single: ProjectGraph = { ...graph, chapters: [graph.chapters[0]] };
+    const html = renderToStaticMarkup(createElement(StoryOutline, {
+      graph: single,
+      scope: { kind: "all" },
+      selectedNodeId: null,
+      onScopeChange: () => {},
+      onSelectNode: () => {},
+      onCreateNode: () => {},
+      onCreateChapter: () => {},
+      onRenameChapter: () => {},
+      onMoveChapter: () => {},
+      onDeleteChapter: () => {},
+    }));
+
+    const deleteButton = html.match(/<button[^>]*aria-label="至少保留一个章节"[^>]*>/);
+    expect(deleteButton).toBeTruthy();
+    expect(deleteButton![0]).toContain('disabled=""');
+  });
 });
