@@ -250,15 +250,50 @@ async function assertAssetGridShowsStoryReference() {
 }
 
 async function assertPreviewShowsImportedBackground() {
-  const start = await browser.$('[data-title-action="start"]');
-  if (await start.isExisting()) {
+  let screen = null;
+  await browser.waitUntil(async () => {
+    screen = await readVisiblePreviewScreen();
+    return screen === "title" || screen === "story";
+  }, {
+    timeout: 20_000,
+    interval: 250,
+    timeoutMsg: "preview renderer did not expose a visible title or story stage",
+  });
+  if (screen === "title") {
+    await browser.waitUntil(async () => await browser.execute(() => {
+      const isVisible = (element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0
+          && style.visibility !== "hidden"
+          && style.display !== "none";
+      };
+      return [...document.querySelectorAll('[data-title-action="start"]')]
+        .some((element) => isVisible(element) && element instanceof HTMLButtonElement && !element.disabled);
+    }), {
+      timeout: 15_000,
+      interval: 250,
+      timeoutMsg: "preview title screen did not expose an enabled start button",
+    });
     await browser.execute(() => {
-      const button = document.querySelector('[data-title-action="start"]');
+      const isVisible = (element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0
+          && style.visibility !== "hidden"
+          && style.display !== "none";
+      };
+      const button = [...document.querySelectorAll('[data-title-action="start"]')]
+        .find((element) => isVisible(element));
       if (!(button instanceof HTMLButtonElement)) throw new Error("title start button was not found");
       if (button.disabled) throw new Error("title start button is disabled");
       button.click();
     });
-    await browser.$('[data-player-stage][data-player-screen="story"]').waitForExist({ timeout: 15_000 });
+    await browser.waitUntil(async () => (await readVisiblePreviewScreen()) === "story", {
+      timeout: 15_000,
+      interval: 250,
+      timeoutMsg: "preview title screen did not transition to story",
+    });
   }
   // The prologue begins with a transition, then the imported background. Keep
   // stepping until the semantic runtime output appears so WebKit/Edge do not
@@ -297,6 +332,21 @@ async function assertPreviewShowsImportedBackground() {
     }));
     throw new Error(`${error instanceof Error ? error.message : String(error)}; DOM=${JSON.stringify(diagnostic)}`);
   }
+}
+
+async function readVisiblePreviewScreen() {
+  return browser.execute(() => {
+    const isVisible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0
+        && style.visibility !== "hidden"
+        && style.display !== "none";
+    };
+    const stage = [...document.querySelectorAll("[data-player-stage]")]
+      .find((element) => isVisible(element));
+    return stage?.getAttribute("data-player-screen") ?? null;
+  });
 }
 
 async function waitForNodeToPersistReference() {
