@@ -817,51 +817,53 @@ export function ScriptWorkspace({
 
   return (
     <div style={containerStyle}>
-      <Breadcrumb
-        view={view}
-        selectedNodeTitle={selectedNode?.title ?? null}
-        onBackToGraph={onOpenGraph}
-      />
-      {view === "graph" && (
-        <div className="gs-script-views" role="tablist" aria-label={t("script.views")} onKeyDown={handleViewKeyDown}>
-          <button
-            type="button"
-            role="tab"
-            id="script-tab-flow"
-            aria-selected={primaryView === "flow"}
-            aria-controls="script-tabpanel"
-            tabIndex={primaryView === "flow" ? 0 : -1}
-            className={primaryView === "flow" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
-            onClick={() => setPrimaryView("flow")}
-          >
-            {t("script.view.flow")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="script-tab-state"
-            aria-selected={primaryView === "state"}
-            aria-controls="script-tabpanel"
-            tabIndex={primaryView === "state" ? 0 : -1}
-            className={primaryView === "state" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
-            onClick={() => setPrimaryView("state")}
-          >
-            {t("script.view.state")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="script-tab-translation"
-            aria-selected={primaryView === "translation"}
-            aria-controls="script-tabpanel"
-            tabIndex={primaryView === "translation" ? 0 : -1}
-            className={primaryView === "translation" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
-            onClick={() => setPrimaryView("translation")}
-          >
-            {t("script.view.translation")}
-          </button>
-        </div>
-      )}
+      <div className="gs-script-header">
+        <Breadcrumb
+          view={view}
+          selectedNodeTitle={selectedNode?.title ?? null}
+          onBackToGraph={onOpenGraph}
+        />
+        {view === "graph" && (
+          <div className="gs-script-views" role="tablist" aria-label={t("script.views")} onKeyDown={handleViewKeyDown}>
+            <button
+              type="button"
+              role="tab"
+              id="script-tab-flow"
+              aria-selected={primaryView === "flow"}
+              aria-controls="script-tabpanel"
+              tabIndex={primaryView === "flow" ? 0 : -1}
+              className={primaryView === "flow" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
+              onClick={() => setPrimaryView("flow")}
+            >
+              {t("script.view.flow")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="script-tab-state"
+              aria-selected={primaryView === "state"}
+              aria-controls="script-tabpanel"
+              tabIndex={primaryView === "state" ? 0 : -1}
+              className={primaryView === "state" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
+              onClick={() => setPrimaryView("state")}
+            >
+              {t("script.view.state")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="script-tab-translation"
+              aria-selected={primaryView === "translation"}
+              aria-controls="script-tabpanel"
+              tabIndex={primaryView === "translation" ? 0 : -1}
+              className={primaryView === "translation" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
+              onClick={() => setPrimaryView("translation")}
+            >
+              {t("script.view.translation")}
+            </button>
+          </div>
+        )}
+      </div>
       <div
         style={contentStyle}
         role={view === "graph" ? "tabpanel" : undefined}

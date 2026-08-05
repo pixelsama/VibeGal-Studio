@@ -31,9 +31,6 @@ const containerStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "var(--space-2)",
-  padding: "var(--space-2) var(--space-4)",
-  borderBottom: "1px solid var(--border)",
-  background: "var(--bg-app)",
 };
 
 const rootLabelStyle: React.CSSProperties = {
