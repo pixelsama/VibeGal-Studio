@@ -5,7 +5,6 @@ import {
   graphFocusTargetFromIssue,
   projectIssueSourceLabel,
   shouldConfirmUnsavedNavigation,
-  shouldStartWindowDrag,
   workspaceTitle,
   workTitleTooltip,
 } from "./Workspace";
@@ -15,10 +14,6 @@ import type { ProjectData } from "./lib/types";
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ startDragging: vi.fn() }),
 }));
 
 vi.mock("./features/preview/Preview", () => ({
@@ -57,30 +52,6 @@ vi.mock("./features/common/StatusPanel", () => ({
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-function targetWithClosest(result: Element | null): EventTarget {
-  return {
-    closest: () => result,
-  } as unknown as EventTarget;
-}
-
-describe("shouldStartWindowDrag", () => {
-  it("starts dragging when the primary button presses a non-interactive title bar area", () => {
-    expect(shouldStartWindowDrag({ button: 0, target: targetWithClosest(null) })).toBe(true);
-  });
-
-  it("does not start dragging from interactive controls", () => {
-    expect(shouldStartWindowDrag({ button: 0, target: targetWithClosest({} as Element) })).toBe(false);
-  });
-
-  it("does not start dragging from non-primary mouse buttons", () => {
-    expect(shouldStartWindowDrag({ button: 1, target: targetWithClosest(null) })).toBe(false);
-  });
-
-  it("allows dragging when the event target has no closest helper", () => {
-    expect(shouldStartWindowDrag({ button: 0, target: {} as EventTarget })).toBe(true);
-  });
 });
 
 describe("workspace unsaved navigation", () => {
@@ -157,6 +128,23 @@ const project: ProjectData = {
 };
 
 describe("Workspace renderer chrome", () => {
+  it("uses Tauri's built-in deep title-bar drag region", () => {
+    const html = renderToStaticMarkup(createElement(Workspace, {
+      project,
+      location: { type: "workspace", workspace: "render" },
+      canGoBack: false,
+      canGoForward: false,
+      onBack: () => {},
+      onForward: () => {},
+      onNavigate: () => {},
+      onReplaceLocation: () => {},
+      onProjectChanged: () => {},
+      onOpenSettings: () => {},
+    }));
+
+    expect(html).toContain('data-tauri-drag-region="deep"');
+  });
+
   it("顶栏以「界面风格」选择器作为渲染层唯一切换入口（Spec 19 §4.2）", () => {
     const html = renderToStaticMarkup(createElement(Workspace, {
       project,

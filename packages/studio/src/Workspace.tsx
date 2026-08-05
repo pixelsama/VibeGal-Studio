@@ -12,7 +12,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bot, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
 import type {
   GraphIssueFocusRequest,
@@ -75,7 +74,6 @@ interface Props {
 }
 
 type SyncState = "synced" | "syncing" | "error";
-type WindowDragMouseEvent = Pick<React.MouseEvent<HTMLElement>, "button" | "target">;
 
 export function graphFocusTargetFromIssue(
   issue: { source?: string; nodeId?: string; edgeId?: string; file?: string; jsonPath?: string },
@@ -146,16 +144,6 @@ export function projectIssueSourceLabel(source: string, t?: StudioTranslator): s
   if (source === "manifest") return "资源登记表";
   return source;
 }
-
-const windowDragIgnoreSelector = [
-  "a",
-  "button",
-  "input",
-  "select",
-  "textarea",
-  "[role='button']",
-  "[data-window-drag='ignore']",
-].join(",");
 
 export function Workspace({
   project,
@@ -408,14 +396,6 @@ export function Workspace({
     navigateWithGuard({ type: "workspace", workspace: "render" });
   }, [navigateWithGuard, updateBlankProjectGuide]);
 
-  const handleTitleBarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (!shouldStartWindowDrag(event)) return;
-
-    void getCurrentWindow().startDragging().catch((e) => {
-      console.warn("启动窗口拖拽失败:", e);
-    });
-  }, []);
-
   const backendReport = fullReport ?? project.projectReport ?? { projectIssues: [] };
   const report = useMemo(() => ({
     ...backendReport,
@@ -520,7 +500,7 @@ export function Workspace({
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
       {/* 标题栏（自定义拖拽区，整行可拖动窗口） */}
-      <header data-tauri-drag-region onMouseDown={handleTitleBarMouseDown} style={titleBarStyle}>
+      <header data-tauri-drag-region="deep" style={titleBarStyle}>
         {/* 左侧：返回 / 前进（紧邻红绿灯右侧，padding-left 已为红绿灯留出避让） */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)", flexShrink: 0 }}>
           <IconButton onClick={() => runWithUnsavedChangesGuard(onBack)} disabled={!canGoBack} title={t("nav.back")} aria-label={t("nav.back")}>
@@ -533,7 +513,7 @@ export function Workspace({
         </div>
 
         {/* 中间：工作台切换；参与同一行布局，避免与右侧项目控件重叠 */}
-        <div data-tauri-drag-region style={centerGroupStyle}>
+        <div style={centerGroupStyle}>
           <TabBtn active={workspace === "render"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "render" })}>{t("workspace.render")}</TabBtn>
           <TabBtn active={workspace === "script"} onClick={() => navigateWithGuard({ type: "script-graph" })}>{t("workspace.script")}</TabBtn>
           <TabBtn active={workspace === "assets"} onClick={() => navigateWithGuard({ type: "workspace", workspace: "assets" })}>{t("workspace.assets")}</TabBtn>
@@ -718,20 +698,8 @@ export function Workspace({
   );
 }
 
-export function shouldStartWindowDrag(event: WindowDragMouseEvent): boolean {
-  if (event.button !== 0) return false;
-
-  const target = event.target;
-  if (!target || !hasClosest(target)) return true;
-  return target.closest(windowDragIgnoreSelector) === null;
-}
-
 export function shouldConfirmUnsavedNavigation(hasUnsavedChanges: boolean): boolean {
   return hasUnsavedChanges;
-}
-
-function hasClosest(target: EventTarget): target is EventTarget & { closest: (selector: string) => Element | null } {
-  return typeof (target as { closest?: unknown }).closest === "function";
 }
 
 function SyncIndicator({ state, onRetry }: { state: SyncState; onRetry: () => void }) {

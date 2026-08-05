@@ -16,3 +16,18 @@ test("Tauri binary entrypoints stay outside src/bin auto-discovery", () => {
   assert.equal(existsSync(path.join(tauriRoot, "src/cli_main.rs")), true);
   assert.equal(existsSync(path.join(tauriRoot, "src/player_tauri_main.rs")), true);
 });
+
+test("main window capability allows title-bar dragging", () => {
+  const capability = JSON.parse(
+    readFileSync(path.join(tauriRoot, "capabilities/default.json"), "utf8"),
+  );
+
+  assert.ok(
+    capability.permissions.includes("core:window:allow-start-dragging"),
+    "main window must explicitly allow the start_dragging command",
+  );
+  assert.ok(
+    capability.permissions.includes("core:window:allow-internal-toggle-maximize"),
+    "main window must allow Tauri's built-in double-click maximize command",
+  );
+});
