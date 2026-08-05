@@ -2,7 +2,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Manifest, ProjectGraph } from "../../lib/types";
-import { commitConditionDraft, moveEdge, moveEdgeById, NodeInspector, orderDefaultAutoEdgeLast } from "./NodeInspector";
+import {
+  commitConditionDraft,
+  moveEdge,
+  moveEdgeById,
+  NodeInspector,
+  orderDefaultAutoEdgeLast,
+  replaceEdgeCondition,
+} from "./NodeInspector";
 import { StudioI18nProvider } from "../../lib/i18n";
 
 const graph: ProjectGraph = {
@@ -186,6 +193,39 @@ describe("NodeInspector graph exits", () => {
     expect(commitConditionDraft("affection >")).toEqual({ ok: false, message: expect.any(String) });
     expect(commitConditionDraft("affection >= 3")).toEqual({ ok: true, condition: "affection >= 3" });
     expect(commitConditionDraft("   ")).toEqual({ ok: true, condition: null });
+  });
+
+  it("replaces a raw auto condition without changing unrelated exits", () => {
+    const next = replaceEdgeCondition(graph.edges, "start__left", "score >= 3 && route == \"stay\"");
+    expect(next).toEqual([
+      { ...graph.edges[0], condition: "score >= 3 && route == \"stay\"", mode: "auto", label: null },
+      graph.edges[1],
+    ]);
+  });
+
+  it("connects the raw expression editor hook through the real inspector", () => {
+    const legacyManifest = {
+      characters: {},
+      backgrounds: {},
+      audio: { bgm: {}, sfx: {}, voice: {} },
+    } as unknown as Manifest;
+    const rawGraph: ProjectGraph = {
+      ...graph,
+      edges: [
+        { ...graph.edges[0], mode: "auto", label: null, condition: "score + 1 >= route" },
+        { ...graph.edges[1], mode: "auto", label: null, condition: null },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(NodeInspector, {
+      graph: rawGraph,
+      selectedNodeId: "start",
+      manifest: legacyManifest,
+      onEnter: () => {},
+      onRename: () => {},
+      onUpdateOutgoingEdges: () => {},
+    }));
+
+    expect(html).toContain("编辑表达式");
   });
 
   it("uses the same ordering model for drag and keeps the default auto edge last", () => {

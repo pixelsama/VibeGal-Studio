@@ -94,7 +94,7 @@ describe("ConditionEditor", () => {
   it("keeps an unrepresentable expression as-is rather than mangling it", () => {
     const html = render("affection_yuki + 1 >= trust");
     expect(html).toContain("gs-condition--raw");
-    expect(html).toContain("这条判断用了表达式写法");
+    expect(html).toContain("这条判断用了复杂表达式");
   });
 
   it("explains that an empty condition is the fallback branch", () => {

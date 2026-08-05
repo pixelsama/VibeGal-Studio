@@ -39,8 +39,19 @@ const autoEdges: GraphEdge[] = [
   { id: "start__normal", from: "start", to: "normal", mode: "auto", label: null, condition: null },
 ];
 
-const render = (edges: GraphEdge[], trialValues = defaults) => renderToStaticMarkup(createElement(BranchRules, {
-  graph, nodeId: "start", edges, sources, onChange: () => {}, trialValues, onTrialChange: () => {},
+const render = (
+  edges: GraphEdge[],
+  trialValues = defaults,
+  onEditExpression?: (edge: GraphEdge) => void,
+) => renderToStaticMarkup(createElement(BranchRules, {
+  graph,
+  nodeId: "start",
+  edges,
+  sources,
+  onChange: () => {},
+  onEditExpression,
+  trialValues,
+  onTrialChange: () => {},
 }));
 
 describe("BranchRules", () => {
@@ -105,6 +116,18 @@ describe("BranchRules", () => {
     expect(html).not.toContain("按故事状态自动分流");
   });
 
+  it("offers an expression editing entry point for raw conditions", () => {
+    const html = render(
+      [
+        { ...autoEdges[0], condition: "affection + 1 >= trust" },
+        autoEdges[1],
+      ],
+      defaults,
+      () => {},
+    );
+    expect(html).toContain("编辑表达式");
+  });
+
   it("keeps generated choice labels independent from the Studio locale", () => {
     const untitledGraph: ProjectGraph = {
       ...graph,
@@ -143,8 +166,8 @@ describe("evaluateBranchOutcomes", () => {
       { ...autoEdges[0], condition: "affection >= 30" },
     ];
     const outcomes = evaluateBranchOutcomes(shadowed, defaults);
-    expect(outcomes[1].problem).toContain("这条永远走不到");
-    expect(outcomes[1].problem).toContain("第 1 条不带条件");
+    expect(outcomes[1].problem?.message).toContain("这条永远走不到");
+    expect(outcomes[1].problem?.message).toContain("第 1 条不带条件");
     // 挡住别人的那一条自己没问题。
     expect(outcomes[0].problem).toBeNull();
   });
@@ -166,7 +189,23 @@ describe("evaluateBranchOutcomes", () => {
       [{ ...autoEdges[0], condition: "affection >= \"x\"" }],
       defaults,
     );
-    expect(outcomes[0].problem).toContain("无法计算");
+    expect(outcomes[0].problem?.message).toContain("无法计算");
+    expect(outcomes[0].problem?.severity).toBe("error");
+  });
+
+  it("keeps structural problems as warnings while evaluation failures are errors", () => {
+    const shadowed: GraphEdge[] = [
+      { ...autoEdges[1], condition: null },
+      { ...autoEdges[0], condition: "affection >= 30" },
+    ];
+    const outcomes = evaluateBranchOutcomes(shadowed, defaults);
+    expect(outcomes[1].problem?.severity).toBe("warn");
+    expect(render([
+      { ...autoEdges[0], condition: "affection >= \"x\"" },
+      autoEdges[1],
+    ])).toContain(
+      'data-severity="error"',
+    );
   });
 
   it("does not report 未知变量 for story experience or system state", () => {

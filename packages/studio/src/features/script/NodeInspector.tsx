@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 import type { GraphEdge, Manifest, NodeEntry, NodeSummary, ProjectGraph } from "../../lib/types";
 import { findNode, findNodeData } from "./graphMapping";
-import { parseGraphCondition } from "./graphCondition";
+import { conditionDraftError } from "./graphCondition";
 import type { VariableRegistry } from "@vibegal/engine";
 import { BranchRules, moveEdge, moveEdgeById, normalizeEdge, orderDefaultAutoEdgeLast } from "./BranchRules";
 import { collectStateSources, stateSourceDefaults } from "./storyState";
 import { useStudioI18n } from "../../lib/i18n";
 import { Button } from "../common/Button";
+import { PromptDialog } from "../common/Dialogs";
 
 // 排序模型迁到 BranchRules，这里重新导出以保持既有调用方与测试的入口不变。
 export { moveEdge, moveEdgeById, orderDefaultAutoEdgeLast };
@@ -21,8 +22,16 @@ export function commitConditionDraft(source: string):
   | { ok: false; message: string } {
   const condition = source.trim();
   if (!condition) return { ok: true, condition: null };
-  const parsed = parseGraphCondition(condition);
-  return parsed.ok ? { ok: true, condition } : { ok: false, message: parsed.error };
+  const error = conditionDraftError(condition);
+  return error ? { ok: false, message: error } : { ok: true, condition };
+}
+
+/** 更新一个自动出口的原始表达式，并保持兜底出口在最后。 */
+export function replaceEdgeCondition(edges: GraphEdge[], edgeId: string, source: string): GraphEdge[] {
+  const condition = source.trim() || null;
+  return orderDefaultAutoEdgeLast(edges.map((edge) => edge.id === edgeId
+    ? normalizeEdge({ ...edge, mode: "auto", label: null, condition })
+    : edge));
 }
 
 interface NodeInspectorProps {
@@ -69,6 +78,7 @@ export function NodeInspector({
   const node = findNode(graph, selectedNodeId);
   const [title, setTitle] = useState(node?.title ?? "");
   const [trialValues, setTrialValues] = useState<Record<string, string | number | boolean | null>>({});
+  const [expressionPrompt, setExpressionPrompt] = useState<{ nodeId: string; edgeId: string; source: string } | null>(null);
 
   // 剧情经历与系统状态也要进试算环境，否则引用它们的条件会被误报成「未知变量」。
   const sources = useMemo(
@@ -156,6 +166,9 @@ export function NodeInspector({
             registry={variables}
             disabled={saving || !onUpdateOutgoingEdges}
             onChange={(edges) => onUpdateOutgoingEdges?.(node.id, edges)}
+            onEditExpression={!saving && onUpdateOutgoingEdges
+              ? (edge) => setExpressionPrompt({ nodeId: node.id, edgeId: edge.id, source: edge.condition ?? "" })
+              : undefined}
             trialValues={{ ...defaults, ...trialValues }}
             onTrialChange={setTrialValues}
           />
@@ -181,6 +194,27 @@ export function NodeInspector({
           </button>
         )}
       </div>
+
+      {expressionPrompt?.nodeId === node.id && (
+        <PromptDialog
+          title={t("script.condition.editExpression")}
+          label={t("script.condition.expressionLabel")}
+          initialValue={expressionPrompt.source}
+          allowUnchanged
+          allowEmpty
+          confirmLabel={t("script.condition.applyExpression")}
+          validate={conditionDraftError}
+          onConfirm={(source) => {
+            const committed = commitConditionDraft(source);
+            if (!committed.ok) return;
+            onUpdateOutgoingEdges?.(
+              node.id,
+              replaceEdgeCondition(outgoingEdges, expressionPrompt.edgeId, committed.condition ?? ""),
+            );
+          }}
+          onClose={() => setExpressionPrompt(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1317,6 +1317,13 @@ select:focus-visible {
   line-height: 1.6;
   color: var(--status-warn-text);
 }
+.gs-branch__problem--error {
+  color: var(--status-error-text);
+}
+.gs-branch__problem-label {
+  flex: none;
+  font-weight: 700;
+}
 .gs-branch__winner {
   margin: 0;
   font-size: var(--text-sm);

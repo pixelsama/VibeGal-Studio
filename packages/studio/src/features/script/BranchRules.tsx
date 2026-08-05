@@ -31,6 +31,8 @@ export interface BranchRulesProps {
   registry?: VariableRegistry;
   disabled?: boolean;
   onChange: (edges: GraphEdge[]) => void;
+  /** 表达式无法句子化时，交给宿主打开高级表达式编辑器。 */
+  onEditExpression?: (edge: GraphEdge) => void;
   /** 试算值；与预览调试会话共用同一份，避免 Inspector 与预览各有一套。 */
   trialValues: Record<string, string | number | boolean | null>;
   onTrialChange: (values: Record<string, string | number | boolean | null>) => void;
@@ -44,6 +46,7 @@ export function BranchRules({
   registry,
   disabled,
   onChange,
+  onEditExpression,
   trialValues,
   onTrialChange,
 }: BranchRulesProps) {
@@ -157,6 +160,7 @@ export function BranchRules({
                   source={edge.condition ?? ""}
                   sources={sources}
                   disabled={disabled}
+                  onEditExpression={!disabled && onEditExpression ? () => onEditExpression(edge) : undefined}
                   onChange={(condition) => updateEdge(edge.id, { mode: "auto", label: null, condition: condition || null })}
                 />
               )}
@@ -169,9 +173,16 @@ export function BranchRules({
               />
 
               {outcome?.problem && (
-                <p className="gs-branch__problem">
+                <p
+                  className={`gs-branch__problem gs-branch__problem--${outcome.problem.severity}`}
+                  data-severity={outcome.problem.severity}
+                  role="alert"
+                >
                   <TriangleAlert size={14} aria-hidden="true" />
-                  {outcome.problem}
+                  <strong className="gs-branch__problem-label">
+                    {outcome.problem.severity === "error" ? t("status.severity.error") : t("status.severity.warning")}
+                  </strong>
+                  {outcome.problem.message}
                 </p>
               )}
               {outcome?.winner && <p className="gs-branch__winner">{t("script.branch.winner")}</p>}
@@ -181,8 +192,9 @@ export function BranchRules({
       </ol>
 
       {mode === "auto" && !edges.some((edge) => !edge.condition?.trim()) && !disabled && (
-        <p className="gs-branch__problem">
+        <p className="gs-branch__problem gs-branch__problem--warn" data-severity="warn" role="alert">
           <TriangleAlert size={14} aria-hidden="true" />
+          <strong className="gs-branch__problem-label">{t("status.severity.warning")}</strong>
           {t("script.branch.noFallback")}
         </p>
       )}
@@ -200,7 +212,12 @@ export interface BranchOutcome {
   /** 按试算值，这条是实际胜出的分支。 */
   winner: boolean;
   /** 需要作者处理的问题；null 表示这条没问题。 */
-  problem: string | null;
+  problem: BranchProblem | null;
+}
+
+export interface BranchProblem {
+  message: string;
+  severity: "error" | "warn";
 }
 
 /**
@@ -228,12 +245,18 @@ export function evaluateBranchOutcomes(
     if (!result.ok) {
       return {
         winner: false,
-        problem: t("script.branch.evaluationFailed", { detail: result.message }),
+        problem: {
+          message: t("script.branch.evaluationFailed", { detail: result.message }),
+          severity: "error",
+        },
       };
     }
 
     const problem = unreachableFrom != null
-      ? t("script.branch.unreachable", { number: unreachableFrom + 1 })
+      ? {
+        message: t("script.branch.unreachable", { number: unreachableFrom + 1 }),
+        severity: "warn" as const,
+      }
       : null;
 
     if (unreachableFrom == null && alwaysTrue(edge.condition)) unreachableFrom = index;

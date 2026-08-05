@@ -11,6 +11,7 @@ import { Plus, Search } from "lucide-react";
 import { variableKind, type Manifest, type VariableDeclaration, type VariableKind, type VariableRegistry } from "@vibegal/engine";
 import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { Button } from "../common/Button";
+import { ConfirmDialog } from "../common/Dialogs";
 import { EmptyState } from "../common/EmptyState";
 import { StateCard, NewStateForm, registerInferredVariable } from "./StoryStatePanel";
 import { analyzeGraphVariables, type VariableEntry } from "./variableAnalysis";
@@ -62,6 +63,7 @@ export function StoryStateView({
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ name: string; label: string; count: number } | null>(null);
 
   const usageByName = useMemo(
     () => new Map(analysis.variables.map((entry) => [entry.name, entry])),
@@ -93,7 +95,22 @@ export function StoryStateView({
   const remove = (name: string) => {
     const variables = { ...effectiveRegistry.variables };
     delete variables[name];
+    setPendingRemoval(null);
     onChange?.({ ...effectiveRegistry, variables });
+  };
+
+  const requestRemove = (name: string) => {
+    const usage = usageByName.get(name);
+    if (!shouldConfirmStateRemoval(usage)) {
+      remove(name);
+      return;
+    }
+    const declaration = effectiveRegistry.variables[name];
+    setPendingRemoval({
+      name,
+      label: variableLabel(name, declaration, manifest),
+      count: stateReferenceCount(usage),
+    });
   };
 
   const isEmpty = items.length === 0 && undeclared.length === 0 && !query.trim();
@@ -206,7 +223,7 @@ export function StoryStateView({
               editable={Boolean(onChange)}
               onChange={(next) => update(selected, next)}
               onRename={onRename}
-              onRemove={() => remove(selected)}
+              onRemove={() => requestRemove(selected)}
               t={t}
             />
             <StateUsage
@@ -225,15 +242,32 @@ export function StoryStateView({
           <p className="gs-story-state__empty">{t("script.stateView.noMatches")}</p>
         )}
       </div>
+      {pendingRemoval && effectiveRegistry.variables[pendingRemoval.name] && (
+        <ConfirmDialog
+          message={t("script.state.deleteConfirm", { title: pendingRemoval.label, count: pendingRemoval.count })}
+          confirmLabel={t("script.state.delete")}
+          danger
+          onConfirm={() => remove(pendingRemoval.name)}
+          onClose={() => setPendingRemoval(null)}
+        />
+      )}
     </div>
   );
+}
+
+export function stateReferenceCount(usage?: Pick<VariableEntry, "writes" | "reads">): number {
+  return (usage?.writes.length ?? 0) + (usage?.reads.length ?? 0);
+}
+
+export function shouldConfirmStateRemoval(usage?: Pick<VariableEntry, "writes" | "reads">): boolean {
+  return stateReferenceCount(usage) > 0;
 }
 
 /**
  * 「在故事里」—— 这一块是本页面存在的理由。
  * 每条都能点开到真正该改的位置，而不是只报个计数。
  */
-function StateUsage({
+export function StateUsage({
   name,
   declaration,
   usage,
@@ -268,7 +302,15 @@ function StateUsage({
       {issues.length > 0 && (
         <div className="gs-state-usage__issues">
           {issues.map((issue) => (
-            <p key={issue.code} className="gs-branch__problem">
+            <p
+              key={issue.code}
+              className={`gs-branch__problem gs-branch__problem--${issue.severity}`}
+              data-severity={issue.severity}
+              role="alert"
+            >
+              <strong className="gs-branch__problem-label">
+                {issue.severity === "error" ? t("status.severity.error") : t("status.severity.warning")}
+              </strong>
               {issue.message}
               {issue.fix && <span className="gs-state-usage__fix">{issue.fix}</span>}
             </p>

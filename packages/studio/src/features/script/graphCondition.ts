@@ -21,6 +21,14 @@ export function parseGraphCondition(source: string): { ok: true; ast: GraphCondi
   }
 }
 
+/** 返回表达式草稿的校验错误；空串是合法的兜底条件。 */
+export function conditionDraftError(source: string): string | null {
+  const condition = source.trim();
+  if (!condition) return null;
+  const parsed = parseGraphCondition(condition);
+  return parsed.ok ? null : parsed.error;
+}
+
 export function collectConditionVariables(ast: GraphConditionAst): string[] {
   return collectExpressionReads(ast);
 }
