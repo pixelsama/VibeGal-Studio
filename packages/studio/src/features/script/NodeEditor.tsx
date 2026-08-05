@@ -1222,6 +1222,7 @@ export function NodeEditor({
         saving={saving}
         canSave={canSave}
         status={status}
+        mode={mode}
         onModeToggle={requestModeToggle}
         onOpenExternalDiff={() => setExternalDiffOpen(true)}
         onCopyConflict={handleCopyConflict}

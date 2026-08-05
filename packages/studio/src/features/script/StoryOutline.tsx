@@ -118,6 +118,7 @@ export function StoryOutline({
 
       <div style={searchStyle}>
         <input
+          className="gs-input"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t("script.outline.searchPlaceholder")}

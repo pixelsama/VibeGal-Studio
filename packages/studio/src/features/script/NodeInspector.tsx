@@ -119,6 +119,7 @@ export function NodeInspector({
           <label style={titleFieldStyle}>
             <span style={fieldLabelStyle}>{t("script.node.title")}</span>
             <input
+              className="gs-input"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               onBlur={() => {
@@ -145,6 +146,7 @@ export function NodeInspector({
             <label style={titleFieldStyle}>
               <span style={fieldLabelStyle}>{t("script.nodeInspector.chapter")}</span>
               <select
+                className="gs-input"
                 value={node.chapterId}
                 onChange={(event) => onSetChapter?.(node.id, event.target.value)}
                 disabled={saving || !onSetChapter}

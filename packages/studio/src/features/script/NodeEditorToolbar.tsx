@@ -17,6 +17,7 @@ export function NodeEditorToolbar({
   saving,
   canSave,
   status,
+  mode,
   onModeToggle,
   onOpenExternalDiff,
   onCopyConflict,
@@ -32,6 +33,7 @@ export function NodeEditorToolbar({
   saving: boolean;
   canSave: boolean;
   status: StatusMessage | null;
+  mode: NodeEditorMode;
   onModeToggle: (mode: NodeEditorMode) => void;
   onOpenExternalDiff: () => void;
   onCopyConflict: () => void;
@@ -45,8 +47,8 @@ export function NodeEditorToolbar({
         <div style={metaStyle}>{file}</div>
       </div>
       <div style={toolbarSpacerStyle} />
-      <Button onClick={() => onModeToggle("scenario")} disabled={saving} style={modeButtonStyle}>{t("script.editor.mode.scenario")}</Button>
-      <Button onClick={() => onModeToggle("json")} disabled={saving} style={modeButtonStyle}>{t("script.editor.mode.json")}</Button>
+      <Button onClick={() => onModeToggle("scenario")} disabled={saving} aria-pressed={mode === "scenario"} style={{ ...modeButtonStyle, ...(mode === "scenario" ? modeActiveStyle : null) }}>{t("script.editor.mode.scenario")}</Button>
+      <Button onClick={() => onModeToggle("json")} disabled={saving} aria-pressed={mode === "json"} style={{ ...modeButtonStyle, ...(mode === "json" ? modeActiveStyle : null) }}>{t("script.editor.mode.json")}</Button>
       {dirty && <StatusText tone="warn">{t("script.editor.unsaved")}</StatusText>}
       {diagnosticsCount > 0 && <StatusText tone="error">{t("script.editor.problems", { count: diagnosticsCount })}</StatusText>}
       {hasExternalUpdate && !writeConflict && (
@@ -133,6 +135,12 @@ const modeButtonStyle: CSSProperties = {
   fontSize: "var(--text-sm)",
   color: "var(--text-secondary)",
   padding: "var(--space-2)",
+};
+
+/* 激活的模式按钮：accent 色字 + 下边框，与 .gs-tab--active 节奏一致。 */
+const modeActiveStyle: CSSProperties = {
+  color: "var(--accent-bright)",
+  borderColor: "var(--accent)",
 };
 
 const warnButtonStyle: CSSProperties = {

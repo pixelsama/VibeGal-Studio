@@ -41,10 +41,18 @@ export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onS
   return (
     <div className="gs-coverage">
       <div className="gs-coverage__stats">
-        <Stat label={t("script.coverage.totalNodes")} value={coverage.totalNodes} />
-        <Stat label={t("script.coverage.reachable")} value={coverage.reachableNodes} />
-        <Stat label={t("script.coverage.endingNodes")} value={coverage.endingNodes} />
-        <Stat label={t("script.coverage.orphanNodes")} value={coverage.orphanNodes} />
+        <Stat label={t("script.coverage.totalNodes")} value={coverage.totalNodes} tone="neutral" />
+        <Stat
+          label={t("script.coverage.reachable")}
+          value={coverage.reachableNodes}
+          tone={coverage.reachableNodes < coverage.totalNodes ? "warn" : "ok"}
+        />
+        <Stat label={t("script.coverage.endingNodes")} value={coverage.endingNodes} tone="neutral" />
+        <Stat
+          label={t("script.coverage.orphanNodes")}
+          value={coverage.orphanNodes}
+          tone={coverage.orphanNodes > 0 ? "error" : "ok"}
+        />
       </div>
 
       {endingMatrix && endingMatrix.rows.length > 0 && (
@@ -86,9 +94,11 @@ export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onS
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+type StatTone = "neutral" | "ok" | "warn" | "error";
+
+function Stat({ label, value, tone = "neutral" }: { label: string; value: number; tone?: StatTone }) {
   return (
-    <div className="gs-coverage__stat">
+    <div className={`gs-coverage__stat${tone !== "neutral" ? ` gs-coverage__stat--${tone}` : ""}`}>
       <div className="gs-coverage__stat-value">{value}</div>
       <div className="gs-coverage__stat-label">{label}</div>
     </div>

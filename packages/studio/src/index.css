@@ -25,6 +25,9 @@
   --text-dim: #6a7280;
   --text-on-accent: #ffffff;
 
+  /* 字体栈：等宽统一引用，避免各组件各写一套 SF Mono / SFMono-Regular 拼写。 */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   /* 强调：主强调承载提交/创建等动作，次强调只承载当前位置和选中态。 */
   --accent: #3a6ea5;
   --accent-bright: #9fc8e3;
@@ -410,6 +413,12 @@ textarea,
 [role="button"] {
   transition: background-color 120ms ease, border-color 120ms ease,
     color 120ms ease, opacity 120ms ease;
+}
+
+/* ── 兜底禁用态：未迁移到 .gs-btn 的内联 button 至少能看出不可用 ── */
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ── 可点击列表行（工作区项目列表等）：hover/focus 由全局类承担 ── */
@@ -1548,6 +1557,24 @@ select:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-inset);
+}
+.gs-coverage__stat--ok {
+  border-color: var(--border-ok);
+}
+.gs-coverage__stat--ok .gs-coverage__stat-value {
+  color: var(--status-ok-text);
+}
+.gs-coverage__stat--warn {
+  border-color: var(--border-warn);
+}
+.gs-coverage__stat--warn .gs-coverage__stat-value {
+  color: var(--status-warn-text);
+}
+.gs-coverage__stat--error {
+  border-color: var(--border-error);
+}
+.gs-coverage__stat--error .gs-coverage__stat-value {
+  color: var(--status-error-text);
 }
 .gs-coverage__stat-value {
   font-size: var(--text-lg);
