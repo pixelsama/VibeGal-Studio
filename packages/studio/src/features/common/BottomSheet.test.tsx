@@ -32,7 +32,7 @@ describe("BottomSheet", () => {
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("Runtime");
     // 折叠后只剩标题栏高度，内容区沉到底并隐藏
-    expect(html).toContain("height:33px");
+    expect(html).toContain("height:32px");
     expect(html).toContain("visibility:hidden");
   });
 });

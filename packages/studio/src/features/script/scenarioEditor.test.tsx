@@ -102,6 +102,7 @@ describe("ScenarioInlineControls", () => {
     expect(character).toContain("表情过渡");
     expect(character).toContain("清场");
     expect(character).toContain("退场");
+    expect(character).toContain("flex-wrap:wrap");
     expect(state).toContain("改变故事状态");
     expect(state).toContain("拿到钥匙");
     expect(inputName).toContain("玩家命名");

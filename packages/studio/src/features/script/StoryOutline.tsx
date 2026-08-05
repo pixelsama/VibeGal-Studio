@@ -46,7 +46,7 @@ export function StoryOutline({
 }: StoryOutlineProps) {
   const { t } = useStudioI18n();
   const [query, setQuery] = useState("");
-  const [listViewport, setListViewport] = useState({ scrollTop: 0, height: 480 });
+  const [listViewport, setListViewport] = useState({ scrollTop: 0, height: STORY_OUTLINE_DEFAULT_VIEWPORT_HEIGHT });
   const nodeListRef = useRef<HTMLDivElement | null>(null);
   const chapters = graph.chapters;
   const chapterCounts = useMemo(() => {
@@ -68,7 +68,7 @@ export function StoryOutline({
     return () => onSearchActiveChange?.(false);
   }, [onSearchActiveChange, searching]);
   const listItems = searching ? searchResults : visibleNodes;
-  const rowHeight = searching ? 72 : 38;
+  const rowHeight = searching ? STORY_OUTLINE_SEARCH_ROW_HEIGHT : STORY_OUTLINE_NODE_ROW_HEIGHT;
   const listWindow = fixedListWindow(listItems.length, listViewport.scrollTop, listViewport.height, rowHeight);
   const windowedItems = listItems.slice(listWindow.start, listWindow.end);
 
@@ -87,8 +87,8 @@ export function StoryOutline({
     const index = visibleNodes.findIndex((node) => node.id === selectedNodeId);
     const list = nodeListRef.current;
     if (index < 0 || !list) return;
-    const top = index * 38;
-    if (top < list.scrollTop || top + 38 > list.scrollTop + list.clientHeight) {
+    const top = index * STORY_OUTLINE_NODE_ROW_HEIGHT;
+    if (top < list.scrollTop || top + STORY_OUTLINE_NODE_ROW_HEIGHT > list.scrollTop + list.clientHeight) {
       list.scrollTo({ top: Math.max(0, top - list.clientHeight / 2), behavior: "smooth" });
     }
   }, [searching, selectedNodeId, visibleNodes]);
@@ -198,7 +198,7 @@ export function StoryOutline({
                 aria-current={result.kind === "node" && result.nodeId === selectedNodeId ? "true" : undefined}
                 aria-posinset={index + 1}
                 aria-setsize={searchResults.length}
-                style={{ ...listItemStyle, height: rowHeight - 2 }}
+                style={{ ...listItemStyle, height: rowHeight - STORY_OUTLINE_ROW_GAP }}
               >
                 <button
                   type="button"
@@ -232,7 +232,7 @@ export function StoryOutline({
               aria-current={selectedNodeId === node.id ? "true" : undefined}
               aria-posinset={index + 1}
               aria-setsize={visibleNodes.length}
-              style={{ ...listItemStyle, height: rowHeight - 2 }}
+              style={{ ...listItemStyle, height: rowHeight - STORY_OUTLINE_ROW_GAP }}
             >
               <button
                 type="button"
@@ -307,25 +307,31 @@ function scopeLabel(
   return graph.chapters.find((chapter) => chapter.id === scope.chapterId)?.title ?? t("script.chapter");
 }
 
+const STORY_OUTLINE_DEFAULT_VIEWPORT_HEIGHT = 480;
+const STORY_OUTLINE_NODE_ROW_HEIGHT = 38;
+const STORY_OUTLINE_SEARCH_ROW_HEIGHT = 72;
+// The virtualizer receives the full row pitch; the CSS gap is the remainder after each item.
+const STORY_OUTLINE_ROW_GAP = 4;
+
 const panelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 };
 const headingStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-4)" };
 const titleStyle: React.CSSProperties = { fontSize: "var(--text-lg)", fontWeight: 700, color: "var(--text-bright)" };
-const hintStyle: React.CSSProperties = { marginTop: 3, fontSize: "var(--text-xs)", color: "var(--text-muted)" };
-const iconButtonStyle: React.CSSProperties = { width: 30, height: 30, display: "grid", placeItems: "center", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer" };
+const hintStyle: React.CSSProperties = { marginTop: "var(--space-1)", fontSize: "var(--text-xs)", color: "var(--text-muted)" };
+const iconButtonStyle: React.CSSProperties = { width: "var(--control-lg)", height: "var(--control-lg)", display: "grid", placeItems: "center", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer" };
 const searchStyle: React.CSSProperties = { padding: "0 var(--space-3) var(--space-3)" };
 const searchInputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border-input)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)" };
 const listItemStyle: React.CSSProperties = { flexShrink: 0, overflow: "hidden" };
-const chapterListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, padding: "0 var(--space-3) var(--space-3)", borderBottom: "1px solid var(--border)" };
-const chapterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 2 };
-const scopeButtonStyle: React.CSSProperties = { width: "100%", minHeight: 34, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: 0, borderRadius: "var(--radius-sm)", cursor: "pointer", textAlign: "left", fontSize: "var(--text-base)" };
-const countStyle: React.CSSProperties = { minWidth: 22, padding: "1px 6px", borderRadius: "var(--radius-pill)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: "var(--text-xs)", textAlign: "center" };
-const chapterActionsStyle: React.CSSProperties = { display: "flex", gap: 1 };
-const smallActionStyle: React.CSSProperties = { width: 22, height: 22, display: "grid", placeItems: "center", border: 0, background: "transparent", borderRadius: 4, cursor: "pointer" };
+const chapterListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-1)", padding: "0 var(--space-3) var(--space-3)", borderBottom: "1px solid var(--border)" };
+const chapterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "var(--space-1)" };
+const scopeButtonStyle: React.CSSProperties = { width: "100%", minHeight: "var(--control-lg)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: 0, borderRadius: "var(--radius-sm)", cursor: "pointer", textAlign: "left", fontSize: "var(--text-base)" };
+const countStyle: React.CSSProperties = { minWidth: "var(--control-sm)", padding: "1px 6px", borderRadius: "var(--radius-pill)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: "var(--text-xs)", textAlign: "center" };
+const chapterActionsStyle: React.CSSProperties = { display: "flex", gap: "var(--space-1)" };
+const smallActionStyle: React.CSSProperties = { width: "var(--control-sm)", height: "var(--control-sm)", display: "grid", placeItems: "center", border: 0, background: "transparent", borderRadius: "var(--radius-sm)", cursor: "pointer" };
 const nodeSectionStyle: React.CSSProperties = { display: "flex", flexDirection: "column", minHeight: 0, flex: 1, padding: "var(--space-3)" };
 const nodeHeadingStyle: React.CSSProperties = { padding: "var(--space-1) var(--space-2) var(--space-2)", color: "var(--text-muted)", fontSize: "var(--text-xs)" };
-const nodeListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", minHeight: 0, flex: 1 };
+const nodeListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-1)", overflowY: "auto", minHeight: 0, flex: 1 };
 const nodeButtonStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: "1px solid transparent", borderRadius: "var(--radius-sm)", color: "var(--text-primary)", cursor: "pointer", textAlign: "left" };
-const searchResultStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer", textAlign: "left" };
+const searchResultStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-1)", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer", textAlign: "left" };
 const searchMetaStyle: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--text-xs)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const nodeTitleStyle: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const badgeStyle: React.CSSProperties = { padding: "1px 6px", borderRadius: "var(--radius-pill)", background: "var(--bg-accent-soft)", color: "var(--accent-bright)", fontSize: "var(--text-xs)" };

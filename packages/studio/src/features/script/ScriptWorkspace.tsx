@@ -906,7 +906,7 @@ export function ScriptWorkspace({
             onSelectEdge={(edgeId) => { setPrimaryView("flow"); handleSelectEdge(edgeId); }}
           />
         ) : view === "graph" ? (
-          <div style={graphLayoutStyle}>
+          <div className="gs-graph-layout" style={graphLayoutStyle}>
             <div style={outlinePaneStyle}>
               <CollapsibleSidebar
                 title={t("script.sidebar.story")}
@@ -1004,7 +1004,7 @@ export function ScriptWorkspace({
                 />
               </div>
             </div>
-            <div style={inspectorPaneStyle}>
+            <div className="gs-graph-layout__inspector" style={inspectorPaneStyle}>
               <div style={inspectorContentStyle}>
                 <NodeInspector
                   graph={graph}
@@ -1207,6 +1207,7 @@ const canvasColumnStyle: React.CSSProperties = {
 
 const toolbarStyle: React.CSSProperties = {
   display: "flex",
+  flexWrap: "wrap",
   alignItems: "center",
   gap: "var(--space-2)",
   minHeight: 48,

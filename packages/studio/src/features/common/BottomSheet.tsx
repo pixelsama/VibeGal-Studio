@@ -54,7 +54,7 @@ export function BottomSheet({
   );
 }
 
-const BOTTOM_SHEET_BAR_HEIGHT = 33;
+const BOTTOM_SHEET_BAR_HEIGHT = 32;
 
 const sheetStyle: CSSProperties = {
   flex: "0 0 auto",

@@ -96,6 +96,7 @@ function StatusText({ tone, children }: { tone: "warn" | "error" | "ok" | "info"
 
 const toolbarStyle: CSSProperties = {
   display: "flex",
+  flexWrap: "wrap",
   alignItems: "center",
   gap: "var(--space-3)",
   padding: "var(--space-2) var(--space-4)",
@@ -108,12 +109,16 @@ const titleGroupStyle: CSSProperties = {
   flexDirection: "column",
   gap: "var(--space-1)",
   minWidth: 0,
+  overflow: "hidden",
 };
 
 const titleStyle: CSSProperties = {
   fontSize: "var(--text-md)",
   fontWeight: 600,
   color: "var(--text-bright)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const metaStyle: CSSProperties = {

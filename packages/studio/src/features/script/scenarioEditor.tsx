@@ -122,6 +122,7 @@ export function ScenarioNodeLayout({
   return (
     <div
       ref={rootRef}
+      className="gs-node-editor-layout"
       data-node-view-layout="editor-preview-inspector"
       data-node-inspector-state={inspectorCollapsed ? "collapsed" : "expanded"}
       style={{
@@ -1103,6 +1104,8 @@ const inlinePanelStyle: CSSProperties = {
   display: "flex",
   alignItems: "flex-end",
   gap: "var(--space-2)",
+  width: "100%",
+  minWidth: 0,
   maxWidth: "100%",
 };
 
@@ -1116,10 +1119,12 @@ const inlineTitleStyle: CSSProperties = {
 
 const inlineFieldsStyle: CSSProperties = {
   display: "flex",
+  flex: "1 1 auto",
+  flexWrap: "wrap",
   alignItems: "flex-end",
   gap: "var(--space-2)",
+  minWidth: 0,
   maxWidth: "100%",
-  overflowX: "auto",
 };
 
 const inlineFieldStyle: CSSProperties = {

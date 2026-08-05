@@ -136,8 +136,8 @@
   --text-bright: #1a2230;
   --text-primary: #2a3340;
   --text-secondary: #5a6573;
-  --text-muted: #828c9a;
-  --text-dim: #a0a8b4;
+  --text-muted: #5c6675;
+  --text-dim: #5a6573;
   --text-on-accent: #ffffff;
 
   --accent: #2a6db0;
@@ -565,6 +565,23 @@ button:disabled {
   }
   .gs-settings-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 三栏布局响应式：窄窗收起 inspector，画布/编辑器占满 ── */
+@media (max-width: 820px) {
+  .gs-graph-layout {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+  }
+  .gs-graph-layout__inspector {
+    display: none;
+  }
+  .gs-node-editor-layout {
+    grid-template-columns: minmax(0, 1fr) 0px 0px !important;
+  }
+  .gs-node-editor-layout [data-region="node-preview"],
+  .gs-node-editor-layout [data-region="scenario-inspector"] {
+    display: none;
   }
 }
 
