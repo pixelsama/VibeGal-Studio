@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Manifest, VariableRegistry } from "@vibegal/engine";
-import type { ProjectGraph } from "../../lib/types";
+import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { resolveCatalogMessage } from "../../lib/i18n";
 import {
   bandThreshold,
@@ -40,9 +40,28 @@ const graph: ProjectGraph = {
     { id: "stay", title: "留下", file: "nodes/stay.json", chapterId: "c1", position: { x: 200, y: 0 } },
   ],
   edges: [
-    { id: "rooftop__stay", from: "rooftop", to: "stay", mode: "choice", label: "陪她留下", condition: null },
+    { id: "rooftop__stay", from: "rooftop", to: "stay", condition: null },
   ],
 };
+
+// Spec 35 Phase 3：chose.* 来源从节点 choice 指令派生（chose.<choiceId>.<optionIndex>）。
+const nodes: NodeEntry[] = [
+  {
+    relPath: "nodes/rooftop.json",
+    data: [
+      { t: "narrate", text: "你站在天台上。" },
+      {
+        t: "choice",
+        id: "rooftop_choice",
+        prompt: null,
+        options: [
+          { text: "陪她留下", to: "stay" },
+          { text: "独自离开", to: "leave" },
+        ],
+      },
+    ],
+  },
+];
 
 describe("variableLabel", () => {
   it("prefixes the owning character so two meters never read the same", () => {
@@ -55,7 +74,7 @@ describe("variableLabel", () => {
 });
 
 describe("collectStateSources", () => {
-  const sources = collectStateSources({ registry, graph, manifest });
+  const sources = collectStateSources({ registry, graph, manifest, nodes });
   const byName = new Map(sources.map((source) => [source.name, source]));
 
   it("groups declared variables by what they are used for", () => {
@@ -65,7 +84,7 @@ describe("collectStateSources", () => {
   });
 
   it("offers每个选择支 as a story experience nobody had to declare", () => {
-    const chose = byName.get("chose.rooftop__stay");
+    const chose = byName.get("chose.rooftop_choice.0");
     expect(chose?.label).toBe("在「天台·夜」选了「陪她留下」");
     expect(chose?.group).toBe("剧情经历");
     expect(chose?.readonly).toBe(true);
@@ -84,13 +103,14 @@ describe("collectStateSources", () => {
       registry,
       graph,
       manifest,
+      nodes,
       t: (key, params) => resolveCatalogMessage("en", key, params),
     });
     const englishByName = new Map(english.map((source) => [source.name, source]));
 
-    expect(englishByName.get("chose.rooftop__stay")?.label)
+    expect(englishByName.get("chose.rooftop_choice.0")?.label)
       .toBe("Chose “陪她留下” at “天台·夜”");
-    expect(englishByName.get("chose.rooftop__stay")?.group).toBe("Story experience");
+    expect(englishByName.get("chose.rooftop_choice.0")?.group).toBe("Story experience");
     expect(englishByName.get("system.playthroughCount")?.label).toBe("Completed playthroughs");
     expect(englishByName.get("affection_yuki")?.label).toBe("雪 · 好感度");
   });
@@ -98,8 +118,8 @@ describe("collectStateSources", () => {
 
 describe("stateSourceDefaults", () => {
   it("covers read-only namespaces so a preview never reports 未知变量", () => {
-    const defaults = stateSourceDefaults(collectStateSources({ registry, graph, manifest }));
-    expect(defaults["chose.rooftop__stay"]).toBe(false);
+    const defaults = stateSourceDefaults(collectStateSources({ registry, graph, manifest, nodes }));
+    expect(defaults["chose.rooftop_choice.0"]).toBe(false);
     expect(defaults["seen.stay"]).toBe(false);
     expect(defaults["system.playthroughCount"]).toBe(0);
     expect(defaults.affection_yuki).toBe(0);
@@ -162,12 +182,12 @@ describe("formatConditionSentence", () => {
 });
 
 describe("operatorsForSource", () => {
-  const sources = collectStateSources({ registry, graph, manifest });
+  const sources = collectStateSources({ registry, graph, manifest, nodes });
   const find = (name: string) => sources.find((source) => source.name === name);
 
   it("offers only 已发生/还没发生 for flags and story experience", () => {
     expect(operatorsForSource(find("has_key"))).toEqual(["happened", "notHappened"]);
-    expect(operatorsForSource(find("chose.rooftop__stay"))).toEqual(["happened", "notHappened"]);
+    expect(operatorsForSource(find("chose.rooftop_choice.0"))).toEqual(["happened", "notHappened"]);
   });
 
   it("offers thresholds for meters and playthrough count", () => {
@@ -181,7 +201,7 @@ describe("operatorsForSource", () => {
 });
 
 describe("defaultClause", () => {
-  const sources = collectStateSources({ registry, graph, manifest });
+  const sources = collectStateSources({ registry, graph, manifest, nodes });
   const find = (name: string) => sources.find((source) => source.name === name);
 
   it("starts a state clause on its first declared option rather than an empty string", () => {

@@ -13,8 +13,8 @@ const graph: ProjectGraph = {
     { id: "plain", title: "普通", file: "nodes/plain.json", chapterId: "c1", position: { x: 200, y: 80 } },
   ],
   edges: [
-    { id: "start__love", from: "start", to: "love", mode: "auto", label: null, condition: "affection >= 60" },
-    { id: "start__plain", from: "start", to: "plain", mode: "auto", label: null, condition: null },
+    { id: "start__love", from: "start", to: "love", condition: "affection >= 60" },
+    { id: "start__plain", from: "start", to: "plain", condition: null },
   ],
 };
 
@@ -25,8 +25,22 @@ const registry: VariableRegistry = {
   },
 };
 
+// Spec 35 Phase 3：chose.<choiceId>.<optionIndex> 从节点 choice 指令派生。
 const nodes: NodeEntry[] = [
-  { relPath: "nodes/start.json", data: [] },
+  {
+    relPath: "nodes/start.json",
+    data: [
+      {
+        t: "choice",
+        id: "start_choice",
+        prompt: null,
+        options: [
+          { text: "告白", to: "love" },
+          { text: "沉默", to: "plain" },
+        ],
+      },
+    ],
+  },
   { relPath: "nodes/love.json", data: [] },
   { relPath: "nodes/plain.json", data: [] },
 ] as unknown as NodeEntry[];
@@ -66,7 +80,7 @@ describe("collectDanglingExperienceIssues", () => {
   it("catches a condition that still references a deleted choice", () => {
     const dangling: ProjectGraph = {
       ...graph,
-      edges: [{ ...graph.edges[0], condition: "chose.start__deleted" }, graph.edges[1]],
+      edges: [{ ...graph.edges[0], condition: "chose.deleted_choice.0" }, graph.edges[1]],
     };
     const issues = collectDanglingExperienceIssues(dangling, nodes);
     expect(issues).toHaveLength(1);
@@ -86,7 +100,7 @@ describe("collectDanglingExperienceIssues", () => {
   it("stays quiet when the referenced choice and node still exist", () => {
     const valid: ProjectGraph = {
       ...graph,
-      edges: [{ ...graph.edges[0], condition: "chose.start__love && seen.plain" }, graph.edges[1]],
+      edges: [{ ...graph.edges[0], condition: "chose.start_choice.0 && seen.plain" }, graph.edges[1]],
     };
     expect(collectDanglingExperienceIssues(valid, nodes)).toEqual([]);
   });

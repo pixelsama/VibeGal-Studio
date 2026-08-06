@@ -119,6 +119,9 @@ interface NodeEditorProps {
   outgoingEdges?: GraphEdge[];
   /** 出口边的条件/effects 编辑回写（走 ScriptWorkspace 的 replaceOutgoingEdges 管线）。 */
   onUpdateOutgoingEdges?: (edges: GraphEdge[]) => void;
+  /** Spec 35 Phase 3：出口试算值的会话覆盖（提升到 ScriptWorkspace，避免 NodeEditor remount 丢失）。 */
+  trialOverrides?: Record<string, string | number | boolean | null>;
+  onTrialChange?: (values: Record<string, string | number | boolean | null>) => void;
   onSaved: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onExternalChangeResolved?: () => void;
@@ -348,6 +351,8 @@ export function NodeEditor({
   focusRequest,
   outgoingEdges,
   onUpdateOutgoingEdges,
+  trialOverrides,
+  onTrialChange,
   onSaved,
   onDirtyChange,
   onExternalChangeResolved,
@@ -659,14 +664,15 @@ export function NodeEditor({
 
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
   const scenarioFrameMap = useMemo(() => mapScenarioFrames(text), [text]);
-  // Spec 35 Phase 2：出口路由区块的试算来源（与 NodeInspector 同一套）。
+  // Spec 35 Phase 2：出口路由区块的试算来源。
   const exitStateSources = useMemo(
     () => collectStateSources({
       registry: project.content.variables,
       graph: project.graph,
       manifest: project.content.manifest,
+      nodes: project.nodes,
     }),
-    [project.content.variables, project.graph, project.content.manifest],
+    [project.content.variables, project.graph, project.content.manifest, project.nodes],
   );
   const exitTrialDefaults = useMemo(() => stateSourceDefaults(exitStateSources), [exitStateSources]);
   const [previewStartIndex, setPreviewStartIndex] = useState<number | null>(null);
@@ -1360,11 +1366,8 @@ export function NodeEditor({
           edges={outgoingEdges}
           sources={exitStateSources}
           registry={project.content.variables}
-          trialValues={exitTrialDefaults}
-          onTrialChange={() => {
-            // Spec 35 Phase 2：试算值暂不持久化（与 NodeInspector/BranchRules 一致，
-            // 试算是会话内调试状态；Phase 3 整合时再统一管理）。
-          }}
+          trialValues={{ ...exitTrialDefaults, ...(trialOverrides ?? {}) }}
+          onTrialChange={onTrialChange ?? (() => {})}
           onChange={onUpdateOutgoingEdges}
         />
       )}

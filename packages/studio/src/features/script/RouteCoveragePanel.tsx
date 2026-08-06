@@ -28,7 +28,7 @@ export interface RouteCoveragePanelProps {
 
 export function RouteCoveragePanel({ graph, nodeEntries, manifest, registry, onSelectNode }: RouteCoveragePanelProps) {
   const { t } = useStudioI18n();
-  const coverage = useMemo(() => buildRouteCoverage(graph), [graph]);
+  const coverage = useMemo(() => buildRouteCoverage(graph, nodeEntries), [graph, nodeEntries]);
   const endingMatrix = useMemo(
     () => manifest ? analyzeEndingRouteMatrix({ graph, nodes: nodeEntries, manifest, variables: registry }) : null,
     [graph, nodeEntries, manifest, registry],

@@ -55,15 +55,12 @@ export function connectNodes(
   graph: ProjectGraph,
   from: string,
   to: string,
-  options: Partial<Pick<GraphEdge, "mode" | "label" | "condition">> = {},
+  options: Partial<Pick<GraphEdge, "condition">> = {},
 ): ProjectGraph {
   const existing = graph.edges.some((edge) => edge.from === from && edge.to === to);
   if (existing) return graph;
-  const currentOutgoing = graph.edges.filter((edge) => edge.from === from);
-  const inheritedMode = options.mode ?? currentOutgoing[0]?.mode ?? "linear";
-  const nextMode = currentOutgoing.length > 0 && inheritedMode === "linear" ? "choice" : inheritedMode;
 
-  const next = {
+  return {
     ...graph,
     edges: [
       ...graph.edges,
@@ -71,15 +68,10 @@ export function connectNodes(
         id: generateEdgeId(graph, from, to),
         from,
         to,
-        mode: nextMode,
-        label: options.label ?? defaultEdgeLabel(graph, to, nextMode),
         condition: options.condition ?? null,
       }),
     ],
   };
-  return currentOutgoing.length > 0 && nextMode === "choice"
-    ? normalizeOutgoingChoiceLabels(next, from)
-    : next;
 }
 
 export function getNodeOutgoingEdges(graph: ProjectGraph, nodeId: string): GraphEdge[] {
@@ -101,8 +93,6 @@ export function replaceNodeOutgoingEdges(graph: ProjectGraph, nodeId: string, ou
 export function normalizeGraphEdge(edge: GraphEdge): GraphEdge {
   return {
     ...edge,
-    mode: edge.mode ?? "linear",
-    label: edge.label ?? null,
     condition: edge.condition ?? null,
   };
 }
@@ -217,27 +207,6 @@ function uniqueEdgeId(base: string, occupied: Set<string>): string {
   let index = 2;
   while (occupied.has(`${base}_${index}`)) index += 1;
   return `${base}_${index}`;
-}
-
-function normalizeOutgoingChoiceLabels(graph: ProjectGraph, from: string): ProjectGraph {
-  return {
-    ...graph,
-    edges: graph.edges.map((edge) => {
-      if (edge.from !== from) return edge;
-      return normalizeGraphEdge({
-        ...edge,
-        mode: "choice",
-        label: edge.label?.trim() || defaultEdgeLabel(graph, edge.to, "choice"),
-        condition: null,
-      });
-    }),
-  };
-}
-
-function defaultEdgeLabel(graph: ProjectGraph, to: string, mode: GraphEdge["mode"]): string | null {
-  if (mode !== "choice") return null;
-  const target = graph.nodes.find((node) => node.id === to);
-  return target?.title || to || "选项";
 }
 
 export function generateNodeId(graph: ProjectGraph, base: string): string {

@@ -26,7 +26,7 @@ export type GraphCommand =
     kind: "connect";
     from: string;
     to: string;
-    options?: Partial<Pick<GraphEdge, "mode" | "label" | "condition">>;
+    options?: Partial<Pick<GraphEdge, "condition">>;
   }
   | { kind: "removeEdge"; edgeId: string }
   | { kind: "renameNode"; nodeId: string; title: string }

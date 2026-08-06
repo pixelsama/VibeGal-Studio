@@ -9,7 +9,7 @@
  *
  * 只编辑 condition / effects，不碰 mode / label（出口的增删在图视图）。
  * condition 编辑复用 ConditionEditor，试算复用 StateTrial，赢家高亮复用
- * BranchRules 导出的 evaluateBranchOutcomes / orderDefaultAutoEdgeLast。
+ * branchEdgeModel 导出的 evaluateBranchOutcomes / orderDefaultAutoEdgeLast。
  */
 import { ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import type { VariableRegistry } from "@vibegal/engine";
@@ -19,20 +19,12 @@ import { useStudioI18n } from "../../lib/i18n";
 import { ConditionEditor } from "./ConditionEditor";
 import { EdgeEffectsEditor } from "./EdgeEffectsEditor";
 import { StateTrial } from "./StateTrial";
-// 复用 BranchRules 导出的纯函数（不引入 mode/label 语义）。
-export {
-  evaluateBranchOutcomes,
-  moveEdge,
-  moveEdgeById,
-  orderDefaultAutoEdgeLast,
-  targetTitle,
-} from "./BranchRules";
 import {
   evaluateBranchOutcomes,
   moveEdge,
   orderDefaultAutoEdgeLast,
   targetTitle,
-} from "./BranchRules";
+} from "./branchEdgeModel";
 import type { StateSource } from "./storyState";
 
 export interface ExitRoutingBlockProps {
@@ -88,7 +80,6 @@ export function ExitRoutingBlock({
   const fallbackIndex = ordered.findIndex((edge) => !edge.condition?.trim());
 
   const updateEdge = (id: string, patch: Partial<GraphEdge>) => {
-    // 保留原 edge 的 mode/label（Phase 1 妥协：Studio 手写 GraphEdge 仍带这两个字段）。
     const next = ordered.map((edge) => (edge.id === id ? { ...edge, ...patch } : edge));
     onChange(orderDefaultAutoEdgeLast(next));
   };

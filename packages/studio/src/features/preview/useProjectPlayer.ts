@@ -140,9 +140,10 @@ export function resolveAutoRoutePreview(
   nodeId: string,
   initialVars: PreviewInitialVars = {},
 ): AutoRoutePreviewResult {
+  // Spec 35 Phase 3：mode 无关，镜像 decideGraphRoute（0=终点，1=直达，>1=首个命中者）。
   const outgoing = graph.edges.filter((edge) => edge.from === nodeId);
   if (outgoing.length === 0) return { kind: "end" };
-  if (!outgoing.every((edge) => (edge.mode ?? "linear") === "auto")) return { kind: "not_auto" };
+  if (outgoing.length === 1) return { kind: "target", edgeId: outgoing[0].id, nodeId: outgoing[0].to };
   const edge = outgoing.find((candidate) => evaluatePreviewCondition(candidate.condition, initialVars));
   return edge ? { kind: "target", edgeId: edge.id, nodeId: edge.to } : { kind: "no_match" };
 }

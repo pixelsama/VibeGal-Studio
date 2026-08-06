@@ -33,8 +33,8 @@ const project: ProjectData = {
       { id: "fallback", title: "Fallback", file: "nodes/fallback.json", position: { x: 360, y: 180 } },
     ],
     edges: [
-      { id: "start__locked", from: "start", to: "locked", mode: "auto", label: null, condition: "has_key == true" },
-      { id: "start__fallback", from: "start", to: "fallback", mode: "auto", label: null, condition: null },
+      { id: "start__locked", from: "start", to: "locked", condition: "has_key == true" },
+      { id: "start__fallback", from: "start", to: "fallback", condition: null },
     ],
   },
   nodes: [

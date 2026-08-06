@@ -20,8 +20,8 @@ const baseGraph: ProjectGraph = {
     { id: "ending", title: "Ending", file: "nodes/ending.json", position: { x: 480, y: 0 }, chapterId: "opening" },
   ],
   edges: [
-    { id: "start__middle", from: "start", to: "middle", mode: "linear", label: null, condition: null },
-    { id: "middle__ending", from: "middle", to: "ending", mode: "linear", label: null, condition: null },
+    { id: "start__middle", from: "start", to: "middle", condition: null },
+    { id: "middle__ending", from: "middle", to: "ending", condition: null },
   ],
 };
 

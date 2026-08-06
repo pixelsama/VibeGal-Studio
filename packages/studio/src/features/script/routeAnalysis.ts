@@ -22,8 +22,8 @@ export function analyzeEndingRoutes(input: {
 export function analyzeEndingRouteMatrix(input: Parameters<typeof analyzeEndingRoutes>[0]): EndingRouteMatrix {
   const columns = [
     { id: "entry", title: "入口", startNodeId: input.graph.entryNodeId },
-    ...input.graph.edges.filter((edge) => (edge.mode ?? "linear") === "choice")
-      .map((edge) => ({ id: `choice:${edge.id}`, title: edge.label?.trim() || edge.id, startNodeId: edge.to })),
+    // Spec 35 Phase 3：路由矩阵列从节点 choice 指令的 options 派生，不再读 edge.mode/label。
+    ...collectChoiceOptionColumns(input.graph, input.nodes),
   ];
   const results = columns.map((column) => analyzeEndingRoutesFrom(input, column.startNodeId));
   return {
@@ -80,6 +80,9 @@ function analyzeEndingRoutesFrom(input: Parameters<typeof analyzeEndingRoutes>[0
       if (instruction.t === "completeEnding" && !found.has(instruction.endingId)) found.set(instruction.endingId, current.path);
     }
     const outgoing = input.graph.edges.filter((edge) => edge.from === current.nodeId);
+    // Spec 35 Phase 3：出口类型从节点指令派生。节点有 choice 指令 -> 玩家选择
+    // （所有选项可达）；否则多条出口 -> 条件分流（首个命中者走）。
+    const hasChoiceInstruction = (instructions.get(current.nodeId) ?? []).some((instr) => instr.t === "choice");
     // 出口效果在进入目标节点前生效，静态推演必须同样建模，否则结局可达矩阵会
     // 漏掉「靠选项加分才够格」的路线。
     const varsAfter = (edge: ProjectGraph["edges"][number]) => {
@@ -96,7 +99,7 @@ function analyzeEndingRoutesFrom(input: Parameters<typeof analyzeEndingRoutes>[0
       }
       return next;
     };
-    if (outgoing.every((edge) => (edge.mode ?? "linear") === "auto")) {
+    if (!hasChoiceInstruction && outgoing.length > 1) {
       let matched = false;
       for (const edge of outgoing) {
         const result = evaluateGraphConditionResult(edge.condition, vars);
@@ -119,6 +122,44 @@ function analyzeEndingRoutesFrom(input: Parameters<typeof analyzeEndingRoutes>[0
 }
 
 function seenHasNode(seen: Set<string>, nodeId: string) { return [...seen].some((key) => key.startsWith(`${nodeId}:`)); }
+
+/** 从节点 choice 指令的 options 构建路由矩阵列。 */
+function collectChoiceOptionColumns(graph: ProjectGraph, nodes?: NodeEntry[]): Array<{ id: string; title: string; startNodeId: string }> {
+  if (!nodes) return [];
+  const nodeByFile = new Map(graph.nodes.map((node) => [node.file, node.id]));
+  const columns: Array<{ id: string; title: string; startNodeId: string }> = [];
+  for (const entry of nodes) {
+    const nodeId = nodeByFile.get(entry.relPath);
+    if (!nodeId || !Array.isArray(entry.data)) continue;
+    for (const choice of collectChoiceInstructions(entry.data as Instruction[])) {
+      choice.options.forEach((option, index) => {
+        if (!option.to) return;
+        columns.push({
+          id: `choice:${choice.id ?? nodeId}:${index}`,
+          title: option.text || option.to,
+          startNodeId: option.to,
+        });
+      });
+    }
+  }
+  return columns;
+}
+
+function collectChoiceInstructions(instructions: Instruction[]): Extract<Instruction, { t: "choice" }>[] {
+  const results: Extract<Instruction, { t: "choice" }>[] = [];
+  for (const instr of instructions) {
+    if (instr.t === "choice") {
+      results.push(instr);
+      for (const opt of instr.options) {
+        if (opt.body) results.push(...collectChoiceInstructions(opt.body));
+      }
+    } else if (instr.t === "if") {
+      results.push(...collectChoiceInstructions(instr.then));
+      if (instr.else) results.push(...collectChoiceInstructions(instr.else));
+    }
+  }
+  return results;
+}
 
 function structurallyReachable(graph: ProjectGraph, startNodeId: string): Set<string> {
   const seen = new Set<string>();

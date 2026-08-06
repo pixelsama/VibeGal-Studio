@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createInitialState, type Manifest, type StateWriteEvent, type VariableRegistry } from "@vibegal/engine";
-import type { ProjectGraph } from "../../lib/types";
+import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { StoryInspection, describeChange, describeNextBranch } from "./StoryInspection";
 import { collectStateSources } from "../script/storyState";
 import { resolveCatalogMessage, StudioI18nProvider } from "../../lib/i18n";
@@ -32,8 +32,8 @@ const graph: ProjectGraph = {
     { id: "plain", title: "普通结局", file: "nodes/plain.json", chapterId: "c1", position: { x: 200, y: 90 } },
   ],
   edges: [
-    { id: "rooftop__yuki", from: "rooftop", to: "yuki", mode: "auto", label: null, condition: "affection >= 30 && has_key" },
-    { id: "rooftop__plain", from: "rooftop", to: "plain", mode: "auto", label: null, condition: null },
+    { id: "rooftop__yuki", from: "rooftop", to: "yuki", condition: "affection >= 30 && has_key" },
+    { id: "rooftop__plain", from: "rooftop", to: "plain", condition: null },
   ],
 };
 
@@ -155,13 +155,35 @@ describe("describeNextBranch", () => {
     expect(describeNextBranch(graph, "yuki", {}, sources).kind).toBe("end");
     const choiceGraph: ProjectGraph = {
       ...graph,
-      edges: [{ ...graph.edges[0], mode: "choice", condition: null, label: "留下" }],
+      edges: [
+        { id: "rooftop__a", from: "rooftop", to: "a", condition: null },
+        { id: "rooftop__b", from: "rooftop", to: "b", condition: null },
+      ],
     };
-    expect(describeNextBranch(choiceGraph, "rooftop", {}, sources).kind).toBe("choice");
+    const choiceNodes: NodeEntry[] = [
+      {
+        relPath: "nodes/rooftop.json",
+        data: [
+          {
+            t: "choice",
+            id: "rc",
+            prompt: null,
+            options: [{ text: "A", to: "a" }, { text: "B", to: "b" }],
+          },
+        ],
+      },
+    ];
+    expect(describeNextBranch(choiceGraph, "rooftop", {}, sources, undefined, choiceNodes).kind).toBe("choice");
   });
 
   it("warns when nothing matches and there is no fallback", () => {
-    const stuck: ProjectGraph = { ...graph, edges: [graph.edges[0]] };
+    const stuck: ProjectGraph = {
+      ...graph,
+      edges: [
+        graph.edges[0],
+        { id: "rooftop__plain", from: "rooftop", to: "plain", condition: "affection >= 90" },
+      ],
+    };
     const branch = describeNextBranch(stuck, "rooftop", { affection: 0, has_key: false }, sources);
     if (branch.kind !== "auto") throw new Error("expected auto");
     expect(branch.winnerNodeId).toBeNull();

@@ -11,9 +11,9 @@
  * 3. **没有输入框**。要改就去故事里改，或者带着当前值重新试演。
  */
 import { ArrowRight, X } from "lucide-react";
-import { evaluateGraphConditionResult, variableKind, type Manifest, type StateWriteEvent, type VariableRegistry } from "@vibegal/engine";
+import { evaluateGraphConditionResult, variableKind, type Instruction, type Manifest, type StateWriteEvent, type VariableRegistry } from "@vibegal/engine";
 import type { NovelState } from "@vibegal/engine";
-import type { ProjectGraph } from "../../lib/types";
+import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { Button, IconButton } from "../common/Button";
 import { describeCondition } from "../script/ConditionEditor";
 import {
@@ -33,13 +33,14 @@ export interface StoryInspectionProps {
   graph?: ProjectGraph | null;
   registry?: VariableRegistry;
   manifest?: Manifest;
+  nodes?: NodeEntry[];
   stateWrites: StateWriteEvent[];
   currentNodeId: string | null;
   onClose: () => void;
   /** 跳到改变它的那条指令。 */
   onOpenNode?: (nodeId: string, instructionIndex?: number) => void;
   onSelectEdge?: (edgeId: string) => void;
-  /** 把当前实际值预填进试演假设 —— 只读面板的逃生口。 */
+  /** 把当前实际值预填进试演假设 -- 只读面板的逃生口。 */
   onReplayWithCurrentValues?: () => void;
 }
 
@@ -48,6 +49,7 @@ export function StoryInspection({
   graph,
   registry,
   manifest,
+  nodes,
   stateWrites,
   currentNodeId,
   onClose,
@@ -56,7 +58,7 @@ export function StoryInspection({
   onReplayWithCurrentValues,
 }: StoryInspectionProps) {
   const { t } = useStudioI18n();
-  const sources = collectStateSources({ registry, graph: graph ?? undefined, manifest, t });
+  const sources = collectStateSources({ registry, graph: graph ?? undefined, manifest, nodes, t });
   const byName = new Map(sources.map((source) => [source.name, source]));
   const nodeTitle = (nodeId?: string | null) =>
     graph?.nodes.find((node) => node.id === nodeId)?.title || nodeId || t("preview.inspection.unknownNode");
@@ -66,7 +68,7 @@ export function StoryInspection({
   for (const event of stateWrites) latestByVariable.set(event.variable, event);
 
   const changed = [...latestByVariable.values()].reverse();
-  const branch = describeNextBranch(graph, currentNodeId, state.vars, byName, t);
+  const branch = describeNextBranch(graph, currentNodeId, state.vars, byName, t, nodes);
 
   return (
     <aside className="gs-inspection">
@@ -179,11 +181,14 @@ export function describeNextBranch(
   vars: Record<string, string | number | boolean | null>,
   byName: Map<string, StateSource>,
   t: StudioTranslator = translateZhCN,
+  nodeEntries?: NodeEntry[],
 ): NextBranch {
   const outgoing = (graph?.edges ?? []).filter((edge) => edge.from === currentNodeId);
   if (outgoing.length === 0) return { kind: "end" };
-  if (outgoing.some((edge) => (edge.mode ?? "linear") === "choice")) return { kind: "choice" };
-  if (outgoing.every((edge) => (edge.mode ?? "linear") === "linear")) {
+  // Spec 35 Phase 3：出口类型从节点指令派生，不读 edge.mode。
+  const hasChoiceInstruction = nodeHasChoiceInstruction(graph, currentNodeId, nodeEntries);
+  if (hasChoiceInstruction) return { kind: "choice" };
+  if (outgoing.length === 1) {
     return { kind: "linear", toNodeId: outgoing[0].to };
   }
 
@@ -219,6 +224,34 @@ export function describeNextBranch(
       : [];
 
   return { kind: "auto", clauses, winnerNodeId: winner?.toNodeId ?? null, edgeId: explained.id };
+}
+
+/** 检查节点指令树是否含 choice 指令（递归进入 if.then/else、choice option body）。 */
+function nodeHasChoiceInstruction(
+  graph: ProjectGraph | null | undefined,
+  nodeId: string | null,
+  nodeEntries?: NodeEntry[],
+): boolean {
+  if (!graph || !nodeId || !nodeEntries) return false;
+  const node = graph.nodes.find((n) => n.id === nodeId);
+  if (!node) return false;
+  const entry = nodeEntries.find((e) => e.relPath === node.file);
+  if (!entry?.data || !Array.isArray(entry.data)) return false;
+  return scanForChoice(entry.data as Instruction[]);
+}
+
+function scanForChoice(instructions: Instruction[]): boolean {
+  for (const instr of instructions) {
+    if (instr.t === "choice") {
+      if (instr.options.some((opt) => opt.body && scanForChoice(opt.body))) return true;
+      return true;
+    }
+    if (instr.t === "if") {
+      if (scanForChoice(instr.then)) return true;
+      if (instr.else && scanForChoice(instr.else)) return true;
+    }
+  }
+  return false;
 }
 
 /** 单个子句的表达式，用于独立求值出 ✓/✗。 */

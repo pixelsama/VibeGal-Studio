@@ -65,9 +65,10 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
       registry: project.content.variables,
       graph: project.graph ?? undefined,
       manifest: project.content.manifest,
+      nodes: project.nodes,
       t,
     }),
-    [project.content.variables, project.graph, project.content.manifest, t],
+    [project.content.variables, project.graph, project.content.manifest, project.nodes, t],
   );
   const trialDefaults = useMemo(() => stateSourceDefaults(trialSources), [trialSources]);
   const activeFixtureScene = fixtureScenes.find((scene) => scene.id === fixtureSceneId) ?? fixtureScenes[0] ?? null;
@@ -224,6 +225,7 @@ function LoadedPreview({ project, rendererId, initialPreviewMode = "story", onOp
             graph={project.graph}
             registry={project.content.variables}
             manifest={project.content.manifest}
+            nodes={project.nodes}
             stateWrites={player.stateWrites}
             currentNodeId={player.currentNodeId}
             onClose={() => setInspecting(false)}

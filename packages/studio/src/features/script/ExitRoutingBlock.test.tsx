@@ -2,7 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { GraphEdge, ProjectGraph } from "../../lib/types";
-import { ExitRoutingBlock, orderDefaultAutoEdgeLast } from "./ExitRoutingBlock";
+import { ExitRoutingBlock } from "./ExitRoutingBlock";
+import { orderDefaultAutoEdgeLast } from "./branchEdgeModel";
 import { StudioI18nProvider } from "../../lib/i18n";
 
 const graph: ProjectGraph = {

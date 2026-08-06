@@ -345,7 +345,7 @@ narrate  你跑向了火光的方向。
 >
 > Phase 1 严格只动引擎/契约层，为了让前端能继续编译、把高风险编辑器子系统推迟到后续 Phase，留下了以下过渡状态。每一条都标了清理 Phase：
 >
-> 1. **Studio 手写 `GraphEdge` interface 仍保留可选 `mode?`/`label?`**（`packages/studio/src/lib/types.ts`）。契约的 `GraphEdgeData`（z.infer）已去字段，但 Studio 用自己的手写 interface；前端各处 `edge.mode`/`edge.label` 读取点（`BranchRules`、`graphEditing`、`graphMapping`、`graphCreatorLanguage`、`projectSearch`、`routeAnalysis`、`variableAnalysis`、`storyState`、`StoryInspection`、`useProjectPlayer` 等）暂未清理。→ **Phase 3 清理**（与「移除 BranchRules / 图视图去 mode」一并做）。
+> 1. ~~**Studio 手写 `GraphEdge` interface 仍保留可选 `mode?`/`label?`**~~ **已清理（Phase 3）**：`GraphEdge` 已删除 `mode?`/`label?`；所有 `edge.mode`/`edge.label` 读取点已清理。出口类型由 `deriveEdgeKind` 从节点 choice 指令 + 出口数量派生。`chose.*` 来源迁移为 `chose.<choiceInstructionId>.<optionIndex>`（与引擎 Phase 1 对齐）。`BranchRules.tsx`/`NodeInspector.tsx` 已删除，纯函数迁入 `branchEdgeModel.ts`。
 > 2. ~~**choice/if 在场景文本编辑器里走 `@instruction {json}` 逃生路径**~~ **已清理（Phase 2）**：`parseScenarioText`/`formatScenarioText` 现为缩进感知，choice/if 渲染为可读缩进树（`@effects`/`@to` 标记）；`@instruction {json}` 仅在无法可读表达时回退。
 > 3. **`seekToInstruction` / checkpoint 恢复只覆盖节点根帧**：嵌套在 `if.then`/`choice.options[].body` 里的停点（say/narrate/wait/pause/inputName/choice）目前不能被 save/restore 精确定位回嵌套帧；`isStoryPointInstruction`（contracts `validation.ts`）与 `seekToInstruction`（`graphPlayer.ts`）只扫节点顶层。→ **Phase 4 清理**（与「choice 中断点 save/restore 完整化」一并做）。当前降级表现：嵌套帧内可正常演出，但调试/预览的 playhead 与 checkpoint 不深入嵌套。
 > 4. ~~**`ScenarioInlineControls` / `ScenarioInspector` 对 choice/if 回退到原始 `t` 标题**~~ **已清理（Phase 2）**：`inlineInstructionTitle` 给 choice/if 返回 i18n key；`ScenarioInspector` 补 choice（prompt + options）/if（condition）结构化编辑器；`ScenarioInlineControls` 补 choice/if 紧凑提示。
@@ -362,16 +362,20 @@ narrate  你跑向了火光的方向。
 
 > **Phase 2 实施时的妥协（务必在对应 Phase 清理，勿忘）**
 >
-> 1. **出口区块的试算值（`trialValues`）不持久化**：NodeEditor 挂载的 `ExitRoutingBlock` 用 `stateSourceDefaults` 作为初始试算值，`onTrialChange` 为空操作。NodeInspector/BranchRules 原有的会话内试算状态没有迁移过来。→ **Phase 3 清理**（与「移除 NodeInspector/BranchRules、出口区块成为唯一试算入口」一并做）。
+> 1. ~~**出口区块的试算值（`trialValues`）不持久化**~~ **已清理（Phase 3）**：试算覆盖值提升到 `ScriptWorkspace` 按 `nodeId` 持久化（`trialOverridesByNode`），透传给 `NodeEditor`→`ExitRoutingBlock`；`onTrialChange` 不再是空操作，`ExitRoutingBlock` 成为唯一试算入口（`NodeInspector`/`BranchRules` 已删除）。
 > 2. **嵌套指令的预览起跑仍只到顶层**：`lastValidInstructions` 保持顶层扁平，预览 `previewStartIndex` 用顶层下标；选中嵌套 body 内行会高亮父块、预览从父块起跑，但 playhead 不深入嵌套帧。→ **Phase 4 清理**（与 Phase 1 妥协 3 的 `seekToInstruction` 递归一并做）。
 
-### Phase 3 — 属性面板移除 + 图视图简化
+### Phase 3 - 属性面板移除 + 图视图简化
 
-- 移除 NodeInspector、BranchRules。
-- 图视图简化（去 mode/label 标注，右键菜单补全）。
-- 三列布局改两列。
-- 更新所有测试。
-- **清理 Phase 1 妥协 1**：删除 Studio 手写 `GraphEdge` 的 `mode?`/`label?`，清理所有 `edge.mode`/`edge.label` 读取点（改从 choice 指令 / 出口 condition 派生）。
+**已实施。** 交付内容：
+
+- 删除 `NodeInspector.tsx`、`BranchRules.tsx`；纯函数（`evaluateBranchOutcomes`/`moveEdge`/`moveEdgeById`/`orderDefaultAutoEdgeLast`/`targetTitle`）迁入 `branchEdgeModel.ts`，新增 `deriveEdgeKind` 从节点 choice 指令 + 出口数量派生出口类型。
+- 图视图三列 -> 两列（outline | canvas），删除 `.gs-graph-layout__inspector` 列及相关 CSS/样式。`ScriptWorkspace` 的 `graphLayoutStyle` 改为 `auto minmax(0, 1fr)`。
+- 图视图去 mode/label 标注：`mapGraphToFlow` 不再给边设置 `label`/`data.mode`；`creatorEdgeLabel` 删除；边只表示「可以通往」。
+- 右键菜单补全：`handleNodeContextMenu` 新增「移动到章节」（每章一项，当前章节标记禁用）+ 结局管理全套（登记/编辑标题/注销/插入完成指令，已注册结局按 endingId 逐项列出）。新增 `onSetChapter`/`onEditEnding`/`onUnregisterEnding`/`onInsertEndingCompletion` props 从 `ScriptWorkspace` 透传。
+- **清理 Phase 1 妥协 1**：删除 `GraphEdge` 的 `mode?`/`label?`，清理所有 `edge.mode`/`edge.label` 读取点（`graphEditing`/`graphMapping`/`graphCreatorLanguage`/`projectSearch`/`routeAnalysis`/`variableAnalysis`/`storyState`/`storyStateIssues`/`StoryInspection`/`useProjectPlayer`）。`chose.*` 来源迁移为 `chose.<choiceInstructionId>.<optionIndex>`（`collectStateSources` 从节点 choice 指令派生，`collectDanglingExperienceIssues` 同步更新）。
+- **清理 Phase 2 妥协 1**：出口试算值（`trialValues`）提升到 `ScriptWorkspace` 按 `nodeId` 持久化（`trialOverridesByNode`），透传给 `NodeEditor`->`ExitRoutingBlock`；`onTrialChange` 不再是空操作，`ExitRoutingBlock` 成为唯一试算入口。
+- 所有测试更新（1144 studio + 63 contracts + 271 engine + 260 Rust 全通过）。
 
 ### Phase 4 — 收尾
 

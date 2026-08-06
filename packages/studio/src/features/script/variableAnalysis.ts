@@ -1,4 +1,4 @@
-import type { VariableRegistry } from "@vibegal/engine";
+import type { Instruction, VariableRegistry } from "@vibegal/engine";
 import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { parseGraphCondition, collectConditionVariables } from "./graphCondition";
 
@@ -174,7 +174,7 @@ export interface AutoBranchCoverage {
   endingNodeIds: string[];
 }
 
-export function buildRouteCoverage(graph: ProjectGraph): RouteCoverageSummary {
+export function buildRouteCoverage(graph: ProjectGraph, nodes?: NodeEntry[]): RouteCoverageSummary {
   const reachable = collectReachableNodeIds(graph);
   const outgoingCounts = new Map<string, number>();
   const incomingCounts = new Map<string, number>();
@@ -194,39 +194,85 @@ export function buildRouteCoverage(graph: ProjectGraph): RouteCoverageSummary {
   const endingsReachableFrom = (nodeId: string) =>
     collectEndingIdsFromNode(nodeId, outgoingByNode, endingNodeSet, edgeEndingCache);
 
+  // Spec 35 Phase 3：choiceBranches 从节点 choice 指令的 options 派生，
+  // autoBranches = 多出口且无 choice 指令的节点的 outgoing edges。
+  const choiceOptionEdges = collectChoiceOptionEdges(graph, nodes);
+  const choiceNodeEdges = new Set(choiceOptionEdges.map((e) => e.edgeId));
   return {
     totalNodes: graph.nodes.length,
     reachableNodes: reachable.size,
     endingNodes: endingNodeIds.length,
     orphanNodes: graph.nodes.filter((node) => (incomingCounts.get(node.id) ?? 0) === 0 && (outgoingCounts.get(node.id) ?? 0) === 0).length,
-    choiceBranches: graph.edges
-      .filter((edge) => (edge.mode ?? "linear") === "choice")
-      .map((edge) => {
-        const endingNodeIds = endingsReachableFrom(edge.to);
-        return {
-          edgeId: edge.id,
-          fromNodeId: edge.from,
-          toNodeId: edge.to,
-          label: edge.label?.trim() || edge.to,
-          reachesEnding: endingNodeIds.length > 0,
-          endingNodeIds,
-        };
-      }),
+    choiceBranches: choiceOptionEdges.map((entry) => {
+      const endingIds = endingsReachableFrom(entry.toNodeId);
+      return {
+        edgeId: entry.edgeId,
+        fromNodeId: entry.fromNodeId,
+        toNodeId: entry.toNodeId,
+        label: entry.label,
+        reachesEnding: endingIds.length > 0,
+        endingNodeIds: endingIds,
+      };
+    }),
     autoBranches: graph.edges
-      .filter((edge) => (edge.mode ?? "linear") === "auto")
+      .filter((edge) => !choiceNodeEdges.has(edge.id) && (outgoingCounts.get(edge.from) ?? 0) > 1)
       .map((edge) => {
-        const endingNodeIds = endingsReachableFrom(edge.to);
+        const endingIds = endingsReachableFrom(edge.to);
         return {
           edgeId: edge.id,
           fromNodeId: edge.from,
           toNodeId: edge.to,
           condition: edge.condition,
           conditionState: classifyAutoCondition(edge.condition),
-          reachesEnding: endingNodeIds.length > 0,
-          endingNodeIds,
+          reachesEnding: endingIds.length > 0,
+          endingNodeIds: endingIds,
         };
       }),
   };
+}
+
+/** 从节点 choice 指令的 options 收集 choice 分支信息（用于 RouteCoverage）。 */
+function collectChoiceOptionEdges(graph: ProjectGraph, nodes?: NodeEntry[]): Array<{
+  edgeId: string; fromNodeId: string; toNodeId: string; label: string;
+}> {
+  if (!nodes) return [];
+  const nodeByFile = new Map(graph.nodes.map((node) => [node.file, node.id]));
+  const nodeTitle = new Map(graph.nodes.map((node) => [node.id, node.title || node.id]));
+  const results: Array<{ edgeId: string; fromNodeId: string; toNodeId: string; label: string }> = [];
+  for (const entry of nodes) {
+    const nodeId = nodeByFile.get(entry.relPath);
+    if (!nodeId || !Array.isArray(entry.data)) continue;
+    for (const choice of collectChoiceInstructions(entry.data as Instruction[])) {
+      choice.options.forEach((option, index) => {
+        if (!option.to) return;
+        // 匹配 graph edge：同一节点下 to 相同的边。
+        const edge = graph.edges.find((e) => e.from === nodeId && e.to === option.to);
+        results.push({
+          edgeId: edge?.id ?? `${choice.id ?? nodeId}:${index}`,
+          fromNodeId: nodeId,
+          toNodeId: option.to,
+          label: option.text || nodeTitle.get(option.to) || option.to,
+        });
+      });
+    }
+  }
+  return results;
+}
+
+function collectChoiceInstructions(instructions: Instruction[]): Extract<Instruction, { t: "choice" }>[] {
+  const results: Extract<Instruction, { t: "choice" }>[] = [];
+  for (const instr of instructions) {
+    if (instr.t === "choice") {
+      results.push(instr);
+      for (const opt of instr.options) {
+        if (opt.body) results.push(...collectChoiceInstructions(opt.body));
+      }
+    } else if (instr.t === "if") {
+      results.push(...collectChoiceInstructions(instr.then));
+      if (instr.else) results.push(...collectChoiceInstructions(instr.else));
+    }
+  }
+  return results;
 }
 
 function collectEndingIdsFromNode(
