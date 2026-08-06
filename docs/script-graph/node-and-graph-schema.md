@@ -59,8 +59,6 @@ renderers/
       "id": "prologue__ending",
       "from": "prologue",
       "to": "ending",
-      "mode": "linear",
-      "label": null,
       "condition": null
     }
   ]
@@ -83,16 +81,15 @@ renderers/
 | `chapterId` | node | 必需的章节归属，必须引用 `chapters[].id`。 |
 | `id` | edge | 边稳定标识，推荐 `<from>__<to>`。 |
 | `from` / `to` | edge | 起点和终点节点 id。 |
-| `mode` | edge | `linear` / `choice` / `auto`。旧图缺省按 `linear` 处理。 |
-| `label` | edge | `choice` 出口展示给玩家的选项文本；其他模式通常为 `null`。 |
-| `condition` | edge | `auto` 出口条件表达式；空值表示默认分支。 |
+| `condition` | edge | 可选条件表达式。当节点有多条出边时按顺序求值，首个命中胜出；`null`/空字符串表示默认回退边。 |
+| `effects` | edge | 可选 `set` 指令数组，沿该边切换节点时落地为 `state.vars`，供后续 `if` 指令或下游出边 `condition` 使用。 |
+
+> **Spec 35 起：** edge 已不再有 `mode` / `label` 字段。玩家可见的选项与条件分支改由节点文件内的 `choice` / `if` 指令承担（见下方「节点文件」）。完整 JSON Schema 见 `.galstudio/schemas/graph.json` 与 `docs/script-graph/schemas/graph.json`。
 
 出口规则：
 
-- `linear`：同一节点最多一条 outgoing edge。
-- `choice`：同一节点所有 outgoing edges 都必须是 `choice`，且每条 edge 必须有非空 `label`。
-- `auto`：同一节点所有 outgoing edges 都必须是 `auto`，表达式按顺序匹配；建议保留一条 `condition: null` 的默认边。
-- 同一节点的 outgoing edges 不能混用 `linear` / `choice` / `auto`。
+- **0 条 outgoing = 终端/结局节点；1 条 outgoing = 线性后继；2 条以上 = 按出边 `condition` 顺序求值，首个命中胜出，`condition` 为 `null`/空的边是默认回退边。**
+- 出边只承载结构与条件求值；分支体验（玩家选择、`if` 分支、嵌套）都写在节点指令数组内，详见「节点文件」一节。
 - 删除章节时应保留节点和边，只移除对应节点的 `chapterId`。
 - 章节不是旧 `content/meta.json` 的 `chapters`，也不会创建 `content/chapters/` 文件。
 
@@ -125,9 +122,11 @@ renderers/
 | `effect` | 舞台效果 | `type`, `intensity`, `ms` |
 | `transition` | 转场 | `type`, `ms` |
 | `pause` | 纯画面剧情帧停点，等待玩家下一次推进 | 无 |
-| `set` | 设置剧情变量，供自动出口条件使用 | `key`, `value` |
+| `set` | 设置剧情变量，供节点内 `if` 指令或出边 `condition` 判断 | `key`, `value` |
+| `choice` | 玩家可见选项（Spec 35 起为合法节点内指令）。`options[].to` 跳转到目标节点；`options[].body` 为内联 `Instruction[]` 反应段，执行完后合并回主指令流。带 `id` 的 `choice` 会把玩家选择记入 `chose.<choiceInstructionId>.<optionIndex>` | `id`, `prompt`, `options[]` |
+| `if` | 条件分支（Spec 35 起为合法节点内指令）。`condition` 为真走 `then`，否则走 `else`；两个分支都是 `Instruction[]`，执行完后合并回主指令流。可与 `choice` 互相嵌套 | `id`, `condition`, `then`, `else` |
 
-`choice` 不再是合法节点指令；分支选项必须写在 `content/graph.json` 的 outgoing edges 上。
+`choice` 与 `if` 是合法的节点内指令：分支体验写在节点指令数组内，graph 出边只承载结构与条件求值（见上文「出口规则」）。`choice` / `if` / `say` / `narrate` / `wait` / `pause` 等停点指令可带 story-point `id`，Phase 4 的存档/读档据此精确恢复到嵌套分支内部的具体停点。
 
 `manifest.json` 中定义角色、背景和音频资源 id。剧本指令应引用这些 id，而不是直接写资源路径。
 
@@ -158,8 +157,8 @@ DSL 规则：
 - `角色ID: 文本` 编译为 `say`；普通文本行编译为 `narrate`。
 - 只有舞台命令、没有文本/等待的帧会自动补一个 `{ "t": "pause" }`，用于停在纯画面状态等待玩家继续。
 - `@wait 800` 是时间等待，计时结束后自动继续；`@pause` 是玩家停点，不会自动继续。
-- `@set key value` 设置剧情变量；`value` 可为字符串、数字、布尔值或 `null`。
-- `@choice` 和 `- 文本 -> nodeId` 在节点文本中非法；请在 Graph 视图节点出口或 `graph.json` outgoing edges 中配置分支。
+- `@set key value` 设置剧情变量；`value` 可为字符串、数字、布尔值或 `null`。变量供节点内 `if` 指令或出边 `condition` 判断。
+- 节点内的 `choice` / `if` 分支指令以 JSON 形式写在 `Instruction[]` 中（见上方指令表）；当前 Scenario DSL 文本投影尚未为 `choice` / `if` 提供专属语法，需要嵌套分支时请直接编辑 `content/nodes/*.json`。
 - V1 不支持 `@layout`、相对坐标或 renderer layout override；精细布局属于后续能力。
 
 ## meta.json
@@ -186,7 +185,7 @@ DSL 规则：
 
 1. 写入 `content/nodes/<id>.json`，内容必须是 `Instruction[]`。
 2. 更新 `content/graph.json` 的 `nodes`，加入 `{ "id", "title", "file", "position" }`。
-3. 如需接入流程，更新 `edges`，加入 `{ "id", "from", "to", "mode": "linear", "label": null, "condition": null }`。
+3. 如需接入流程，更新 `edges`，加入 `{ "id", "from", "to", "condition": null }`（Spec 35 起边无 `mode`/`label`；可选 `condition` 表达式与 `effects` `set` 指令数组）。
 4. 保存文件。VibeGal-Studio 会自动热重载并展示最新图。
 
 修改节点剧情：
@@ -203,7 +202,7 @@ DSL 规则：
 调整流程：
 
 1. 修改 `content/graph.json` 的 `edges`。
-2. 玩家选择使用 `mode: "choice"` + `label`；自动路由使用 `mode: "auto"` + `condition`。
+2. **玩家可见的选项与条件分支写在节点文件的 `choice` / `if` 指令里**（Spec 35），而不是出边的 `mode`/`label`。graph 出边只在节点有多条后继时按 `condition` 顺序求值（首个命中胜出，`condition` 为 `null`/空为默认回退边）；可选 `effects` 沿边落地 `set` 状态变更。
 
 ## Revision 与协作安全
 

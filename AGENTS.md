@@ -6,6 +6,8 @@ VibeGal-Studio is a data-driven galgame project editor and live viewer. A projec
 
 The script source of truth is graph-first: `content/graph.json` describes the flow, and each graph node points at a `content/nodes/*.json` file containing an `Instruction[]`. Linear stories are represented as linear graph nodes and edges. Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized; they should surface as project issues instead of silently driving the UI.
 
+Branching lives inside node instructions, not on graph edges. The `choice` instruction (`options[].to` to jump, or `options[].body` for an inline reaction that merges back) drives player-visible selections; the `if` instruction (`then`/`else` arrays that merge back) drives condition branches. Graph edges are pure structure — `id`/`from`/`to` plus an optional `condition` (first match wins at runtime, null/empty = fallback) and optional `effects`; they carry no `mode` or `label`. `chose.<choiceInstructionId>.<optionIndex>` tracks player picks (only for `choice` instructions with an `id`).
+
 Authoring chapters live only in `content/graph.json` organization metadata (`chapters[]` and `nodes[].chapterId`). Every graph has at least one chapter and every node belongs to exactly one declared chapter. Chapters filter the Studio canvas but do not alter runtime traversal or revive legacy chapter files.
 
 New/initialized projects should include root `AGENTS.md`, `.galstudio/README.md`, and `.galstudio/schemas/*.json` so an external Agent can operate from the project directory without knowing where the VibeGal-Studio source repository lives.

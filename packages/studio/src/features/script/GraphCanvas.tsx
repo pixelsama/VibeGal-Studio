@@ -176,13 +176,30 @@ export function GraphCanvas({
     const edges = visibleFlow.edges.map((edge) => {
       const suspicious = Boolean(edge.data?.suspicious);
       const selected = edge.id === selectedEdgeId;
+      const edgeKind = edge.data?.kind as string | undefined;
+      const choiceOptions = edge.data?.choiceOptions as string[] | undefined;
+      const isChoiceEdge = edgeKind === "choice";
+      // choice 边：显示选项文案（多个选项用「/」分隔，最多 3 个）。
+      const choiceLabel = isChoiceEdge && choiceOptions && choiceOptions.length > 0
+        ? choiceOptions.slice(0, 3).join(" / ") + (choiceOptions.length > 3 ? ` +${choiceOptions.length - 3}` : "")
+        : undefined;
       return {
         ...edge,
         selected,
         animated: suspicious,
+        label: choiceLabel,
+        labelStyle: {
+          fontSize: 11,
+          fontWeight: 500,
+          fill: "var(--text-secondary)",
+        },
+        labelBgStyle: {
+          fill: "var(--surface)",
+          fillOpacity: 0.9,
+        },
         style: {
-          stroke: suspicious ? "var(--status-error)" : selected ? "var(--accent-bright)" : "var(--accent)",
-          strokeWidth: suspicious || selected ? 2.5 : 1.5,
+          stroke: suspicious ? "var(--status-error)" : selected ? "var(--accent-bright)" : isChoiceEdge ? "var(--accent-secondary, var(--accent))" : "var(--accent)",
+          strokeWidth: suspicious || selected ? 2.5 : isChoiceEdge ? 2 : 1.5,
           strokeDasharray: suspicious ? "6 4" : undefined,
         },
       };

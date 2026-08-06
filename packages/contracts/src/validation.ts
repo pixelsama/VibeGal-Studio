@@ -95,10 +95,7 @@ function validateChapterCheckpoints(
 
     if (checkpoint.instructionId) {
       const instructions = nodes.get(checkpoint.nodeId);
-      const found = instructions?.some((instruction, instructionIndex) => (
-        isStoryPointInstruction(instruction)
-        && (instruction.id ?? `index:${instructionIndex}`) === checkpoint.instructionId
-      )) ?? false;
+      const found = instructions ? storyPointExistsInTree(instructions, checkpoint.instructionId) : false;
       if (!found) {
         issues.push(issue(
           "checkpoint_story_point_missing",
@@ -200,6 +197,50 @@ function isStoryPointInstruction(
     || instruction.t === "inputName"
     || instruction.t === "completeEnding"
     || instruction.t === "choice";
+}
+
+/**
+ * Spec 35 Phase 4：在节点指令树（含 if.then/else、choice.options[].body）里
+ * 检查 checkpoint 停点是否存在。
+ *
+ * 根帧：匹配 `instr.id` 或 `index:<N>`。
+ * 嵌套帧：**仅匹配显式 `instr.id`**（index:N 在不同帧间有歧义，不支持）。
+ */
+function storyPointExistsInTree(instructions: Chapter, instructionId: string): boolean {
+  const isRootFallback = instructionId.startsWith("index:");
+  for (let i = 0; i < instructions.length; i += 1) {
+    const instr = instructions[i];
+    if (isStoryPointInstruction(instr) && (instr.id ?? `index:${i}`) === instructionId) {
+      return true;
+    }
+    if (isRootFallback) continue;
+    if (instr.t === "if") {
+      if (scanBranchForStoryPoint(instr.then, instructionId)) return true;
+      if (instr.else && scanBranchForStoryPoint(instr.else, instructionId)) return true;
+    } else if (instr.t === "choice") {
+      for (const option of instr.options) {
+        if (option.body && scanBranchForStoryPoint(option.body, instructionId)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function scanBranchForStoryPoint(branch: Chapter, instructionId: string): boolean {
+  for (const instr of branch) {
+    if (isStoryPointInstruction(instr) && instr.id === instructionId) {
+      return true;
+    }
+    if (instr.t === "if") {
+      if (scanBranchForStoryPoint(instr.then, instructionId)) return true;
+      if (instr.else && scanBranchForStoryPoint(instr.else, instructionId)) return true;
+    } else if (instr.t === "choice") {
+      for (const option of instr.options) {
+        if (option.body && scanBranchForStoryPoint(option.body, instructionId)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 const MAX_CONTRACT_ISSUES = 64;

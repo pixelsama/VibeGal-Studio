@@ -3,6 +3,7 @@ import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphIssue, GraphReport, GraphNode, Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
 import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 import { creatorNodeSummary } from "./graphCreatorLanguage";
+import { buildEdgeChoiceAnnotations, type EdgeChoiceAnnotation } from "./branchEdgeModel";
 
 export const NODE_TYPE = "galNode";
 
@@ -87,16 +88,22 @@ export function mapGraphToFlow(
     };
   });
   // Spec 35 Phase 3：边不再标注 mode/label，只表示「可以通往」。
-  const edges: Edge[] = graph.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.from,
-    target: edge.to,
-    type: "smoothstep",
-    data: {
-      condition: edge.condition,
-      ...(suspiciousEdgeIds.has(edge.id) ? { suspicious: true } : {}),
-    },
-  }));
+  // Spec 35 Phase 4：choice 边附上选项文案标注（从节点 choice 指令派生）。
+  const edgeAnnotations = buildEdgeChoiceAnnotations(graph, nodeEntries, t);
+  const edges: Edge[] = graph.edges.map((edge) => {
+    const annotation: EdgeChoiceAnnotation | undefined = edgeAnnotations.get(edge.id);
+    return {
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      type: "smoothstep",
+      data: {
+        condition: edge.condition,
+        ...(suspiciousEdgeIds.has(edge.id) ? { suspicious: true } : {}),
+        ...(annotation ? { kind: annotation.kind, choiceOptions: annotation.options } : {}),
+      },
+    };
+  });
 
   return { nodes, edges };
 }

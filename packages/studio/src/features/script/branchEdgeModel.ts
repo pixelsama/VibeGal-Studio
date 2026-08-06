@@ -17,6 +17,96 @@ import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 export type EdgeKind = "choice" | "auto" | "linear";
 
 /**
+ * 图视图边上的 choice 选项标注（Spec 35 Phase 4）。
+ *
+ * 一条图边可能对应多个 choice 选项（多个选项指向同一目标节点）。
+ * `options` 为空表示该边不是 choice 边。
+ */
+export interface EdgeChoiceAnnotation {
+  /** 边类型。 */
+  kind: EdgeKind;
+  /** 匹配到该边的 choice 选项文案列表（choice 边才有）。 */
+  options: string[];
+}
+
+/**
+ * 为图里每条边构建 choice 选项标注。
+ *
+ * 遍历每个节点的指令树，找到 `choice` 指令的每个有 `to` 的 option，
+ * 按 `from === nodeId && to === option.to` 匹配到对应的图边。
+ * 同一条边可能被多个 option 命中（多选项指向同一节点）。
+ *
+ * @returns `Map<edgeId, EdgeChoiceAnnotation>`
+ */
+export function buildEdgeChoiceAnnotations(
+  graph: ProjectGraph,
+  nodes: NodeEntry[] | undefined,
+  _t: StudioTranslator = translateZhCN,
+): Map<string, EdgeChoiceAnnotation> {
+  const annotations = new Map<string, EdgeChoiceAnnotation>();
+  if (!nodes) return annotations;
+
+  // 先收集每条边的 choice 选项文案。
+  const edgeOptions = new Map<string, string[]>();
+  // 记录哪些边的源节点有 choice 指令（用于区分 choice vs auto）。
+  const choiceEdgeIds = new Set<string>();
+
+  for (const node of graph.nodes) {
+    const entry = nodes.find((e) => e.relPath === node.file);
+    if (!entry?.data || !Array.isArray(entry.data)) continue;
+    const nodeTitle = new Map(graph.nodes.map((n) => [n.id, n.title]));
+    for (const choiceInstr of collectChoiceInstructions(entry.data as Instruction[])) {
+      for (const option of choiceInstr.options) {
+        if (!option.to) continue;
+        const edge = graph.edges.find((e) => e.from === node.id && e.to === option.to);
+        if (!edge) continue;
+        choiceEdgeIds.add(edge.id);
+        const label = option.text || nodeTitle.get(option.to) || option.to;
+        const list = edgeOptions.get(edge.id) ?? [];
+        list.push(label);
+        edgeOptions.set(edge.id, list);
+      }
+    }
+  }
+
+  // 构建标注。
+  for (const edge of graph.edges) {
+    const outgoing = graph.edges.filter((e) => e.from === edge.from);
+    const kind: EdgeKind = choiceEdgeIds.has(edge.id)
+      ? "choice"
+      : outgoing.length > 1 ? "auto" : "linear";
+    const options = edgeOptions.get(edge.id) ?? [];
+    if (kind === "choice" || options.length > 0) {
+      annotations.set(edge.id, { kind, options });
+    } else if (kind === "auto") {
+      annotations.set(edge.id, { kind, options: [] });
+    }
+    // linear 边不标注（减少视觉噪音）。
+  }
+  return annotations;
+}
+
+/** 递归收集节点指令树里的所有 choice 指令（进入 if.then/else、choice.body）。 */
+function collectChoiceInstructions(instructions: Instruction[]): Extract<Instruction, { t: "choice" }>[] {
+  const results: Extract<Instruction, { t: "choice" }>[] = [];
+  const scan = (list: Instruction[]) => {
+    for (const instr of list) {
+      if (instr.t === "choice") {
+        results.push(instr);
+        for (const opt of instr.options) {
+          if (opt.body) scan(opt.body);
+        }
+      } else if (instr.t === "if") {
+        scan(instr.then);
+        if (instr.else) scan(instr.else);
+      }
+    }
+  };
+  scan(instructions);
+  return results;
+}
+
+/**
  * 从节点指令树 + 出口数量派生单条边的类型。
  *
  * - 若源节点的指令树含 `choice` 指令且某 option 的 `to === edge.to` -> `"choice"`。

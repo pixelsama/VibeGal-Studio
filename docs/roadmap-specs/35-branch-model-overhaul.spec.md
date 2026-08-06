@@ -347,7 +347,7 @@ narrate  你跑向了火光的方向。
 >
 > 1. ~~**Studio 手写 `GraphEdge` interface 仍保留可选 `mode?`/`label?`**~~ **已清理（Phase 3）**：`GraphEdge` 已删除 `mode?`/`label?`；所有 `edge.mode`/`edge.label` 读取点已清理。出口类型由 `deriveEdgeKind` 从节点 choice 指令 + 出口数量派生。`chose.*` 来源迁移为 `chose.<choiceInstructionId>.<optionIndex>`（与引擎 Phase 1 对齐）。`BranchRules.tsx`/`NodeInspector.tsx` 已删除，纯函数迁入 `branchEdgeModel.ts`。
 > 2. ~~**choice/if 在场景文本编辑器里走 `@instruction {json}` 逃生路径**~~ **已清理（Phase 2）**：`parseScenarioText`/`formatScenarioText` 现为缩进感知，choice/if 渲染为可读缩进树（`@effects`/`@to` 标记）；`@instruction {json}` 仅在无法可读表达时回退。
-> 3. **`seekToInstruction` / checkpoint 恢复只覆盖节点根帧**：嵌套在 `if.then`/`choice.options[].body` 里的停点（say/narrate/wait/pause/inputName/choice）目前不能被 save/restore 精确定位回嵌套帧；`isStoryPointInstruction`（contracts `validation.ts`）与 `seekToInstruction`（`graphPlayer.ts`）只扫节点顶层。→ **Phase 4 清理**（与「choice 中断点 save/restore 完整化」一并做）。当前降级表现：嵌套帧内可正常演出，但调试/预览的 playhead 与 checkpoint 不深入嵌套。
+> 3. ~~**`seekToInstruction` / checkpoint 恢复只覆盖节点根帧**~~ **已清理（Phase 4）**：`seekToInstruction` 与 `applyStoryPoint` 现在递归进入 `if.then`/`choice.options[].body`——重放时按条件求值/决策日志重放命中的分支与选项 effects+body，停点定位用 `findStoryPointInTree` 递归扫描节点指令树。contracts 的 `validateChapterCheckpoints` 同步递归。嵌套帧停点可被 save/restore/rollback/startDebugSession 精确定位；`setCurrentLocale`/`currentNameInputOrigin` 也递归查找。
 > 4. ~~**`ScenarioInlineControls` / `ScenarioInspector` 对 choice/if 回退到原始 `t` 标题**~~ **已清理（Phase 2）**：`inlineInstructionTitle` 给 choice/if 返回 i18n key；`ScenarioInspector` 补 choice（prompt + options）/if（condition）结构化编辑器；`ScenarioInlineControls` 补 choice/if 紧凑提示。
 
 ### Phase 2 — 编辑器层：NodeEditor 出口区块 + choice/if 编辑器
@@ -363,7 +363,7 @@ narrate  你跑向了火光的方向。
 > **Phase 2 实施时的妥协（务必在对应 Phase 清理，勿忘）**
 >
 > 1. ~~**出口区块的试算值（`trialValues`）不持久化**~~ **已清理（Phase 3）**：试算覆盖值提升到 `ScriptWorkspace` 按 `nodeId` 持久化（`trialOverridesByNode`），透传给 `NodeEditor`→`ExitRoutingBlock`；`onTrialChange` 不再是空操作，`ExitRoutingBlock` 成为唯一试算入口（`NodeInspector`/`BranchRules` 已删除）。
-> 2. **嵌套指令的预览起跑仍只到顶层**：`lastValidInstructions` 保持顶层扁平，预览 `previewStartIndex` 用顶层下标；选中嵌套 body 内行会高亮父块、预览从父块起跑，但 playhead 不深入嵌套帧。→ **Phase 4 清理**（与 Phase 1 妥协 3 的 `seekToInstruction` 递归一并做）。
+> 2. ~~**嵌套指令的预览起跑仍只到顶层**~~ **已清理（Phase 4）**：`seekToInstruction` 递归重放 if/choice 分支后，嵌套帧内的停点可被精确定位；预览起跑与 checkpoint 恢复深入嵌套帧。`lastValidInstructions` 保持顶层扁平（Scenario DSL 行映射语义不变），但 playhead 通过递归 seek 进入嵌套。
 
 ### Phase 3 - 属性面板移除 + 图视图简化
 
@@ -379,9 +379,13 @@ narrate  你跑向了火光的方向。
 
 ### Phase 4 — 收尾
 
-- 图视图从节点指令中提取 choice 选项的 `to` 连线做可视化标注。
-- 文档更新（AGENTS.md、.galstudio/ schemas、创作者文档）。
-- **清理 Phase 1 妥协 3**：让 `seekToInstruction`/checkpoint 恢复递归进入 `if.then`/`choice.body`，使嵌套帧内的停点可被 save/restore 精确定位（`isStoryPointInstruction` 与 `getInstructionStoryPointId` 改为递归扫描节点指令树）。
+**已实施。** 交付内容：
+
+- 图视图 choice 选项 `to` 可视化标注：`buildEdgeChoiceAnnotations` 从节点 choice 指令派生每条边的选项文案（多选项指向同一节点时合并显示），`mapGraphToFlow` 把 `kind`/`choiceOptions` 附到 `edge.data`，`GraphCanvas` 给 choice 边渲染选项文案标签 + 加粗描边。
+- 文档更新：根 `AGENTS.md`、`templates.rs`（`PROJECT_AGENTS_MD`/`PROJECT_README_MD`）、`examples/sample-novel/AGENTS.md`/`.galstudio/README.md`、`docs/project-wiki.md`、`docs/script-graph/overview.md`、`docs/script-graph/node-and-graph-schema.md`、`docs/vocabulary.md` 全部反映新分支模型（choice/if 节点内指令、边无 mode/label、`chose.<choiceId>.<optionIndex>`）。
+- **清理 Phase 1 妥协 3**：`seekToInstruction` 重放递归进入 `if.then`/`choice.body`（if 按条件求值、choice 按决策日志重放选中选项的 effects+body）；`applyStoryPoint` 用 `findStoryPointInTree` 递归定位嵌套停点并重建 `frames` 栈；`setCurrentLocale`/`currentNameInputOrigin` 递归查找。contracts `validateChapterCheckpoints` 同步递归扫描（`storyPointExistsInTree`）。嵌套帧停点现在可被 save/restore/rollback/startDebugSession 精确定位。
+- **清理 Phase 2 妥协 2**：预览起跑与 checkpoint 恢复深入嵌套帧（`seekToInstruction` 递归重放后 playhead 定位到嵌套停点）。
+- 所有测试更新（1149 studio + 66 contracts + 280 engine）。
 
 ## 9 非目标
 

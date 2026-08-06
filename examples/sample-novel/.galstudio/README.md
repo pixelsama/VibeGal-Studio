@@ -76,7 +76,8 @@ akari: 今天也很安静呢。
 ```
 
 Blank lines split story frames. Stage-only frames become `{ "t": "pause" }`, a player-input stop distinct from timed `{ "t": "wait" }`.
-Choices and automatic branches are configured on the selected node's outgoing graph edges, not inside the node text.
+
+Branching lives inside node instructions. Use the `choice` instruction for player-visible options (each option can `to` a target node or run an inline `body` that merges back) and the `if` instruction for condition-driven branches (`then`/`else` arrays that merge back). Graph edges are pure structure — `from`/`to` plus an optional `condition` (first match wins, null = fallback) and optional `effects`; they carry no `mode` or `label`.
 
 ## Schemas
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphEdge, NodeEntry, ProjectGraph } from "../../lib/types";
 import {
+  buildEdgeChoiceAnnotations,
   deriveEdgeKind,
   evaluateBranchOutcomes,
   moveEdge,
@@ -205,5 +206,102 @@ describe("targetTitle", () => {
 
   it("falls back to the node id when the target node is missing", () => {
     expect(targetTitle(graph, "missing")).toBe("missing");
+  });
+});
+
+// ── buildEdgeChoiceAnnotations (Phase 4) ───────────────────────────────
+
+describe("buildEdgeChoiceAnnotations", () => {
+  const choiceGraph: ProjectGraph = {
+    version: 1,
+    entryNodeId: "start",
+    chapters: [{ id: "c1", title: "第一章" }],
+    nodes: [
+      { id: "start", title: "天台", file: "nodes/start.json", chapterId: "c1", position: { x: 0, y: 0 } },
+      { id: "left", title: "左边", file: "nodes/left.json", chapterId: "c1", position: { x: 200, y: 0 } },
+      { id: "right", title: "右边", file: "nodes/right.json", chapterId: "c1", position: { x: 200, y: 80 } },
+      { id: "merge", title: "合流", file: "nodes/merge.json", chapterId: "c1", position: { x: 400, y: 40 } },
+    ],
+    edges: [
+      { id: "e_left", from: "start", to: "left", condition: null },
+      { id: "e_right", from: "start", to: "right", condition: null },
+      { id: "e_merge", from: "left", to: "merge", condition: null },
+    ],
+  };
+
+  const choiceNodes: NodeEntry[] = [
+    {
+      relPath: "nodes/start.json",
+      data: [
+        { t: "choice", id: "branch", options: [
+          { text: "去左边", to: "left" },
+          { text: "去右边", to: "right" },
+        ] },
+      ],
+    },
+    { relPath: "nodes/left.json", data: [{ t: "narrate", id: "l1", text: "左" }] },
+    { relPath: "nodes/right.json", data: [{ t: "narrate", id: "r1", text: "右" }] },
+    { relPath: "nodes/merge.json", data: [{ t: "narrate", id: "m1", text: "合流" }] },
+  ];
+
+  it("annotates choice edges with option text", () => {
+    const annotations = buildEdgeChoiceAnnotations(choiceGraph, choiceNodes);
+    expect(annotations.get("e_left")).toEqual({ kind: "choice", options: ["去左边"] });
+    expect(annotations.get("e_right")).toEqual({ kind: "choice", options: ["去右边"] });
+  });
+
+  it("does not annotate linear edges", () => {
+    const annotations = buildEdgeChoiceAnnotations(choiceGraph, choiceNodes);
+    expect(annotations.has("e_merge")).toBe(false);
+  });
+
+  it("collects multiple options targeting the same node", () => {
+    const multiGraph: ProjectGraph = {
+      ...choiceGraph,
+      edges: [{ id: "e_both", from: "start", to: "left", condition: null }],
+    };
+    const multiNodes: NodeEntry[] = [
+      {
+        relPath: "nodes/start.json",
+        data: [
+          { t: "choice", id: "branch", options: [
+            { text: "选项A", to: "left" },
+            { text: "选项B", to: "left" },
+          ] },
+        ],
+      },
+      { relPath: "nodes/left.json", data: [] },
+      { relPath: "nodes/right.json", data: [] },
+      { relPath: "nodes/merge.json", data: [] },
+    ];
+    const annotations = buildEdgeChoiceAnnotations(multiGraph, multiNodes);
+    expect(annotations.get("e_both")).toEqual({ kind: "choice", options: ["选项A", "选项B"] });
+  });
+
+  it("finds choice instructions nested inside if-then branches", () => {
+    const nestedGraph: ProjectGraph = {
+      ...choiceGraph,
+      edges: [{ id: "e_nested", from: "start", to: "left", condition: null }],
+    };
+    const nestedNodes: NodeEntry[] = [
+      {
+        relPath: "nodes/start.json",
+        data: [
+          { t: "if", condition: "true", then: [
+            { t: "choice", id: "inner", options: [{ text: "嵌套选项", to: "left" }] },
+          ] },
+        ],
+      },
+      { relPath: "nodes/left.json", data: [] },
+      { relPath: "nodes/right.json", data: [] },
+      { relPath: "nodes/merge.json", data: [] },
+    ];
+    const annotations = buildEdgeChoiceAnnotations(nestedGraph, nestedNodes);
+    expect(annotations.get("e_nested")).toEqual({ kind: "choice", options: ["嵌套选项"] });
+  });
+
+  it("returns an empty map when nodeEntries is undefined", () => {
+    const annotations = buildEdgeChoiceAnnotations(choiceGraph, undefined);
+    expect(annotations.size).toBe(0);
   });
 });
