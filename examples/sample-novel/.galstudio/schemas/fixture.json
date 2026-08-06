@@ -65,6 +65,21 @@
               "expr": {
                 "type": "string"
               },
+              "scale": {
+                "type": "number"
+              },
+              "flip": {
+                "type": "boolean"
+              },
+              "moveFrom": {
+                "type": "string"
+              },
+              "exprMs": {
+                "type": "number"
+              },
+              "ms": {
+                "type": "number"
+              },
               "changeId": {
                 "type": "number"
               },
@@ -107,6 +122,10 @@
               "id",
               "pos",
               "expr",
+              "scale",
+              "flip",
+              "exprMs",
+              "ms",
               "changeId",
               "justEntered",
               "prevExpr",
@@ -213,11 +232,15 @@
                       },
                       "to": {
                         "type": "string"
+                      },
+                      "optionIndex": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
                       }
                     },
                     "required": [
-                      "text",
-                      "to"
+                      "text"
                     ]
                   }
                 }

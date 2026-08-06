@@ -5,7 +5,7 @@ import type { GraphRouteValue } from "./graphRouting";
 import type { NovelState } from "./state";
 import { createInitialState } from "./state";
 import { applyInstruction, advanceTyping, revealFully, buildInitialState, evaluateAssignmentExpression, RuntimeAssignmentError, type InterpreterDeps } from "./interpreter";
-import { decideGraphRoute } from "./graphRouting";
+import { decideGraphRoute, evaluateGraphConditionResult } from "./graphRouting";
 import { runtimeEffectFromInstruction, type RuntimeEffectHandler } from "./runtimeEffect";
 import {
   RuntimeSnapshotSchema,
@@ -79,7 +79,42 @@ export interface DebugSessionOptions {
 }
 
 type Listener = (state: NovelState) => void;
-type StableInstruction = Extract<Instruction, { t: "say" | "narrate" | "wait" | "pause" | "inputName" }>;
+type StableInstruction = Extract<Instruction, { t: "say" | "narrate" | "wait" | "pause" | "inputName" | "choice" }>;
+
+/**
+ * Spec 35：嵌套指令执行帧。
+ *
+ * 节点的顶层指令序列是根帧（隐式，不在 frameStack 里，由 currentNodeId +
+ * instructionsByNodeId 提供 this.ip 指向它）。遇到 `if` 的 then/else 或
+ * `choice` 选项的 body 时压一个子帧，跑完弹回父帧续跑。
+ *
+ * 根帧的语义保持不变：this.ip 仍是节点级进度，seekToInstruction / 进度条 /
+ * checkpoint 只看根帧。嵌套在 if/choice body 里的指令可正常演出，但 Phase 1
+ * 不支持把 checkpoint 停点设在嵌套帧内。
+ */
+interface InstructionFrame {
+  instructions: readonly Instruction[];
+  /** 压帧时父帧（this.ip）停在哪：弹帧时恢复 this.ip = resumeIp。 */
+  resumeIp: number;
+  /**
+   * 该帧的来源描述，用于 trace 归因（StateWriteEvent 里记的是根帧 index；
+   * choice 选项 effect 还会带 choiceInstructionId / optionIndex）。
+   */
+  origin: { kind: "if-then" } | { kind: "if-else" } | { kind: "choice-body"; choiceInstructionId?: string; optionIndex: number };
+}
+
+/**
+ * Spec 35：玩家面对 choice 指令时挂起的待选上下文。
+ *
+ * choose() 在 resume 时按 kind 分流：
+ * - instruction：选项来自节点内 choice 指令，resume 后跑 option.effects/body。
+ * - node：选项来自图出口（旧路径，Phase 1 后图路由不再产生 choice，保留兼容）。
+ */
+interface PendingChoiceContext {
+  kind: "instruction";
+  choiceInstructionId?: string;
+  options: Array<{ optionIndex: number; text: string; to?: string }>;
+}
 
 export class GraphNovelPlayer {
   private deps: GraphPlayerDeps;
@@ -100,6 +135,15 @@ export class GraphNovelPlayer {
    */
   private varsAtNodeEntry: Record<string, GraphRouteValue> = {};
   private ip = 0;
+  /**
+   * Spec 35：嵌套帧栈。空 = 当前在节点根帧（this.ip 指向根帧）；
+   * 非空 = 顶层帧是当前执行位，跑完弹回栈顶父帧。
+   */
+  private frames: InstructionFrame[] = [];
+  /** Spec 35：choice 指令挂起时的待选上下文，choose() resume 时消费。 */
+  private pendingChoice: PendingChoiceContext | null = null;
+  /** Spec 35：嵌套深度保护，独立于图路由深度。 */
+  private static readonly MAX_INSTRUCTION_DEPTH = 32;
   private state: NovelState;
   private listeners = new Set<Listener>();
   private backlog: BacklogEntry[] = [];
@@ -166,6 +210,8 @@ export class GraphNovelPlayer {
     this.pendingChoiceCheckpoint = false;
     this.suppressStableCheckpoints = false;
     this.ip = 0;
+    this.frames = [];
+    this.pendingChoice = null;
     const total = this.currentInstructions().length;
     this.state = buildInitialState(0, total);
     this.state.vars = this.initialEffectiveVariables();
@@ -527,23 +573,148 @@ export class GraphNovelPlayer {
     this.stepNext(0);
   }
 
-  choose(toNodeId: string) {
-    if (!this.state.choice?.choices.some((choice) => choice.to === toNodeId)) return;
+  /**
+   * Spec 35：玩家选了一个选项。
+   *
+   * 优先按 `optionIndex` 解析（choice 指令来源）；若 `toNodeId` 命中某个选项的
+   * `to`，也可解析。两种来源分流：
+   * - instruction：选项来自节点内 choice 指令。跑 option.effects → 若有 body 压帧
+   *   续跑；若 option.to 存在则跳目标节点；都没有则回到 choice 指令之后合流。
+   * - node：选项来自图出口（Phase 1 后图路由不再产生 choice，保留兼容）。
+   */
+  choose(toNodeId?: string, optionIndex?: number) {
+    const ctx = this.pendingChoice;
+    const choices = this.state.choice?.choices ?? [];
+    if (!choices.length) return;
+
+    let resolved: { kind: "instruction"; optionIndex: number; to?: string } | { kind: "node"; to: string } | null = null;
+
+    if (ctx?.kind === "instruction") {
+      // 优先用 optionIndex，其次用 toNodeId 反查。
+      const idx = optionIndex != null
+        ? optionIndex
+        : (toNodeId != null ? ctx.options.findIndex((opt) => opt.to === toNodeId) : -1);
+      if (idx >= 0 && idx < ctx.options.length) {
+        const opt = ctx.options[idx];
+        resolved = { kind: "instruction", optionIndex: idx, to: opt.to };
+      }
+    } else {
+      // 旧路径：图出口直连。按 toNodeId 匹配 state.choice.choices。
+      if (toNodeId && choices.some((c) => c.to === toNodeId)) {
+        resolved = { kind: "node", to: toNodeId };
+      }
+    }
+    if (!resolved) return;
+
     this.clearAuto();
+    this.pendingChoice = null;
+    this.state = { ...this.state, choice: null };
     const fromNodeId = this.currentNodeId;
+
+    if (resolved.kind === "instruction") {
+      const choiceInstr = this.findChoiceInstructionById(ctx!.choiceInstructionId);
+      const option = choiceInstr?.options[resolved.optionIndex];
+      if (fromNodeId) {
+        this.decisions.push({
+          type: "choice",
+          fromNodeId,
+          toNodeId: resolved.to ?? fromNodeId,
+          choiceInstructionId: ctx!.choiceInstructionId,
+          optionIndex: resolved.optionIndex,
+        });
+        this.syncExperienceToState();
+      }
+      // option.effects 在 body 之前执行（body 能看到已更新的变量）。
+      if (option && !this.applyChoiceOptionEffects(option, ctx!.choiceInstructionId, resolved.optionIndex)) return;
+
+      // Spec 35：choice 的 checkpoint 已在 presentChoiceInstruction 时发出，
+      // 这里不再重复标记 pendingChoiceCheckpoint（避免目标节点再发一次）。
+      if (resolved.to) {
+        this.jumpToNode(resolved.to);
+        this.stepNext(0);
+      } else if (option?.body && option.body.length > 0) {
+        // 有 body 无 to：压帧跑反应演出，跑完回到 choice 指令之后。
+        // this.ip 已是 choice 指令之后的位置（presentChoiceInstruction 前已 ip += 1）。
+        this.frames.push({
+          instructions: option.body,
+          resumeIp: this.ip,
+          origin: { kind: "choice-body", choiceInstructionId: ctx!.choiceInstructionId, optionIndex: resolved.optionIndex },
+        });
+        this.ip = 0;
+        this.stepNext(0);
+      } else {
+        // 既无 body 也无 to：直接回到 choice 指令之后续跑指令序列（合流）。
+        this.stepNext(0);
+      }
+      return;
+    }
+
+    // ── node 来源（图出口直连，兼容旧路径）──
     const edge = fromNodeId
-      ? this.graph?.edges.find((candidate) => candidate.from === fromNodeId && candidate.to === toNodeId && candidate.mode === "choice")
+      ? this.graph?.edges.find((candidate) => candidate.from === fromNodeId && candidate.to === resolved.to)
       : null;
     if (fromNodeId && edge) {
-      this.decisions.push({ type: "choice", fromNodeId, toNodeId, edgeId: edge.id });
+      this.decisions.push({ type: "choice", fromNodeId, toNodeId: resolved.to, edgeId: edge.id });
       this.syncExperienceToState();
-      // 「选了这个选项之后」的状态改变：目标节点可能有多个入口，放在节点里会误伤
-      // 所有进入者，所以挂在出口上。
       if (!this.applyEdgeEffects(edge)) return;
     }
     this.pendingChoiceCheckpoint = true;
-    this.jumpToNode(toNodeId);
+    this.jumpToNode(resolved.to);
     this.stepNext(0);
+  }
+
+  /** 在当前节点的指令序列（含嵌套）里按 id 找回 choice 指令，用于读取选项 effects/body。 */
+  private findChoiceInstructionById(choiceInstructionId?: string): Extract<Instruction, { t: "choice" }> | null {
+    if (!choiceInstructionId || !this.currentNodeId) return null;
+    const root = this.instructionsByNodeId.get(this.currentNodeId) ?? [];
+    const search = (list: readonly Instruction[]): Extract<Instruction, { t: "choice" }> | null => {
+      for (const instr of list) {
+        if (instr.t === "choice") {
+          if (instr.id === choiceInstructionId) return instr;
+          for (const opt of instr.options) {
+            if (opt.body) {
+              const nested = search(opt.body);
+              if (nested) return nested;
+            }
+          }
+        } else if (instr.t === "if") {
+          const inThen = search(instr.then);
+          if (inThen) return inThen;
+          if (instr.else) {
+            const inElse = search(instr.else);
+            if (inElse) return inElse;
+          }
+        }
+      }
+      return null;
+    };
+    return search(root);
+  }
+
+  /**
+   * 应用 choice 选项的 effects（在 body 之前执行）。
+   * 返回 false 表示赋值失败并已停在错误上。
+   */
+  private applyChoiceOptionEffects(
+    option: Extract<Instruction, { t: "choice" }>["options"][number],
+    choiceInstructionId: string | undefined,
+    optionIndex: number,
+  ): boolean {
+    if (!this.currentNodeId) return true;
+    for (const effect of option.effects ?? []) {
+      try {
+        this.state = this.applyRuntimeInstruction(this.state, effect, undefined, {
+          nodeId: this.currentNodeId,
+          choiceInstructionId,
+          optionIndex,
+        });
+      } catch (error) {
+        this.stopOnAssignmentError(error, this.ip);
+        return false;
+      }
+    }
+    if ((option.effects?.length ?? 0) > 0) this.emit();
+    return true;
   }
 
   submitName(value: string): boolean {
@@ -658,6 +829,9 @@ export class GraphNovelPlayer {
     this.currentStableKind = null;
     this.pendingVoiceId = undefined;
     this.routeError = null;
+    // Spec 35：seek 只在根帧定位，清掉嵌套帧与待选上下文。
+    this.frames = [];
+    this.pendingChoice = null;
 
     if (lastStable && this.currentNodeId) {
       const instructionId = getInstructionStoryPointId(lastStable.instruction, lastStable.index);
@@ -720,6 +894,9 @@ export class GraphNovelPlayer {
   }
 
   private currentInstructions(): Instruction[] {
+    // Spec 35：嵌套帧优先；没有帧时回到节点根帧。
+    const top = this.frames.at(-1);
+    if (top) return [...top.instructions];
     if (!this.currentNodeId) return [];
     return this.instructionsByNodeId.get(this.currentNodeId) ?? [];
   }
@@ -732,6 +909,9 @@ export class GraphNovelPlayer {
     this.currentReadKey = null;
     this.currentStableKind = null;
     this.ip = 0;
+    // Spec 35：进入新节点清空嵌套帧与待选上下文，从根帧重新开始。
+    this.frames = [];
+    this.pendingChoice = null;
     this.state = {
       ...this.state,
       speaker: null,
@@ -775,30 +955,142 @@ export class GraphNovelPlayer {
       this.state = { ...this.state, sprites: this.state.sprites.filter((sprite) => !sprite.leaving) };
     }
 
-    const instructions = this.currentInstructions();
-    while (this.ip < instructions.length) {
+    // Spec 35：循环到「当前帧」用完。帧用完时弹回父帧续跑；根帧用完才路由。
+    while (true) {
+      const instructions = this.currentInstructions();
+      if (this.ip >= instructions.length) {
+        // 当前帧跑完。如果嵌在子帧里，弹回父帧续跑（恢复父帧的 this.ip）；
+        // 否则走图路由。
+        if (this.frames.length > 0) {
+          const frame = this.frames.pop()!;
+          this.ip = frame.resumeIp;
+          continue;
+        }
+        this.resolveRoute(routeDepth);
+        return;
+      }
+
       const index = this.ip;
       const instr = instructions[index];
       this.ip += 1;
+
+      // ── Spec 35：if / choice 是控制流指令，不经过 applyRuntimeInstruction ──
+      if (instr.t === "if") {
+        if (!this.pushConditionalFrame(instr.then, instr.else, { kind: instr.condition ? "if-then" : "if-then" }, routeDepth, instr.condition)) {
+          return; // 条件求值出错或超深，已停。
+        }
+        continue;
+      }
+      if (instr.t === "choice") {
+        this.presentChoiceInstruction(instr, routeDepth);
+        return; // choice 挂起等玩家，afterStep 已由 presentChoiceInstruction 处理。
+      }
+
       if (instr.t === "inputName") {
         this.nameInputOrigins.set(this.storyPointKey(instr.id ?? `index:${index}`), this.state.vars[instr.key]);
       }
       try {
-        this.state = this.applyRuntimeInstruction(this.state, instr, index);
+        this.state = this.applyRuntimeInstruction(this.state, instr, this.isRootFrame() ? index : undefined, this.currentFrameOrigin());
       } catch (error) {
         if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id ?? `index:${index}`));
         this.stopOnAssignmentError(error, index);
         return;
       }
       this.trackInstructionSideEffects(instr);
-      if (this.emitRuntimeEffect(instr, index, routeDepth)) return;
-      this.state.flags.progress.current = this.ip;
+      if (this.emitRuntimeEffect(instr, this.isRootFrame() ? index : undefined, routeDepth)) return;
+      if (this.isRootFrame()) this.state.flags.progress.current = this.ip;
       this.emit();
 
       if (this.afterStep(instr, index)) return;
     }
+  }
 
-    this.resolveRoute(routeDepth);
+  private isRootFrame(): boolean {
+    return this.frames.length === 0;
+  }
+
+  private currentFrameOrigin(): { nodeId: string; edgeId: string } | { nodeId: string; choiceInstructionId?: string; optionIndex: number } | undefined {
+    const top = this.frames.at(-1);
+    if (!top) return undefined;
+    if (top.origin.kind === "choice-body" && this.currentNodeId) {
+      return { nodeId: this.currentNodeId, choiceInstructionId: top.origin.choiceInstructionId, optionIndex: top.origin.optionIndex };
+    }
+    // if-then / if-else 帧没有出口归因，用根帧 index 即可（applyRuntimeInstruction 传 undefined）。
+    return undefined;
+  }
+
+  /**
+   * Spec 35：求 if 条件并把命中的分支压成子帧。
+   * condition 为空字符串时也走 then（与 expression 引擎「空条件=真」一致）。
+   * 返回 false 表示求值出错或超深，已停。
+   */
+  private pushConditionalFrame(
+    thenBranch: readonly Instruction[],
+    elseBranch: readonly Instruction[] | undefined,
+    _origin: { kind: "if-then" },
+    routeDepth: number,
+    condition: string,
+  ): boolean {
+    if (this.frames.length >= GraphNovelPlayer.MAX_INSTRUCTION_DEPTH) {
+      this.routeError = "instruction_depth_exceeded";
+      this.clearAuto();
+      this.stopSkip();
+      return false;
+    }
+    const result = evaluateGraphConditionResult(condition, this.state.vars);
+    if (!result.ok) {
+      console.warn(`[graph-player] if 条件无效：${result.message}`);
+      this.routeError = `if 条件无效：${result.message}`;
+      this.clearAuto();
+      this.stopSkip();
+      return false;
+    }
+    const branch = result.value ? thenBranch : (elseBranch ?? []);
+    if (branch.length === 0) return true; // 命中的分支为空 = 直接合流，不压帧
+    // 压帧：当前 this.ip 已经是 if 之后的位置（调用前已 ip += 1），存为 resumeIp；
+    // 子帧从 0 起步。
+    this.frames.push({ instructions: branch, resumeIp: this.ip, origin: { kind: "if-then" } });
+    this.ip = 0;
+    void routeDepth;
+    return true;
+  }
+
+  /**
+   * Spec 35：呈现 choice 指令的选项，挂起等玩家选择。
+   */
+  private presentChoiceInstruction(instr: Extract<Instruction, { t: "choice" }>, _routeDepth: number) {
+    this.pendingChoice = {
+      kind: "instruction",
+      choiceInstructionId: instr.id,
+      options: instr.options.map((option, optionIndex) => ({
+        optionIndex,
+        text: option.text,
+        to: option.to,
+      })),
+    };
+    this.state = {
+      ...this.state,
+      speaker: null,
+      dialogue: null,
+      narration: null,
+      choice: {
+        choices: instr.options.map((option, optionIndex) => ({
+          text: option.text,
+          to: option.to,
+          optionIndex,
+        })),
+      },
+      currentCueMs: null,
+    };
+    // choice 是 storyPoint（带 id 时）—— 在中断处登记并发 choice checkpoint，
+    // 便于 save/restore 在「玩家面对选项」这一刻停住。
+    if (instr.id && this.currentNodeId) {
+      this.pendingChoiceCheckpoint = true;
+      this.updateCurrentStoryPoint(instr, this.ip - 1);
+    }
+    this.clearAuto();
+    this.stopSkip();
+    this.emit();
   }
 
   private resolveRoute(routeDepth: number) {
@@ -826,19 +1118,6 @@ export class GraphNovelPlayer {
         this.clearAuto();
         this.stopSkip();
         return;
-      case "choice":
-        this.state = {
-          ...this.state,
-          speaker: null,
-          dialogue: null,
-          narration: null,
-          choice: { choices: decision.choices },
-          currentCueMs: null,
-        };
-        this.clearAuto();
-        this.stopSkip();
-        this.emit();
-        return;
       case "target":
         this.followEdge(decision.edge, routeDepth);
         return;
@@ -853,10 +1132,11 @@ export class GraphNovelPlayer {
       this.stopSkip();
       return;
     }
-    if (edge.mode === "auto") {
-      this.decisions.push({ type: "auto", fromNodeId: edge.from, toNodeId: edge.to, edgeId: edge.id });
-      this.syncExperienceToState();
-    }
+    // Spec 35：所有多出口都是条件路由（旧 auto 语义）；linear/单出口直接走。
+    // 一律记一条 auto 决策（条件路由），让 seen.* 更新；线性单出口也记，保持
+    // 「离开节点即记账」的语义。
+    this.decisions.push({ type: "auto", fromNodeId: edge.from, toNodeId: edge.to, edgeId: edge.id });
+    this.syncExperienceToState();
     if (!this.applyEdgeEffects(edge)) return;
     this.jumpToNode(edge.to);
     this.stepNext(routeDepth + 1);
@@ -1040,15 +1320,17 @@ export class GraphNovelPlayer {
   }
 
   /**
-   * @param instructionIndex 当前指令在节点里的下标；给状态写入 trace 用。
+   * @param instructionIndex 当前指令在节点根帧里的下标；给状态写入 trace 用。
    *   重放（seekToInstruction）传 undefined，此时不记 trace —— 重放会把同一批
    *   指令再跑一遍，记下来会让「发生过的状态变化」出现重复条目。
+   *   Spec 35：嵌套在 if/choice body 里的指令也传 undefined（trace 只在根帧记账）。
+   * @param origin 出口效果 / choice 选项效果的归因；普通节点内指令不传。
    */
   private applyRuntimeInstruction(
     state: NovelState,
     instr: Instruction,
     instructionIndex?: number,
-    origin?: { nodeId: string; edgeId: string },
+    origin?: { nodeId: string; edgeId: string } | { nodeId: string; choiceInstructionId?: string; optionIndex: number },
   ): NovelState {
     if (instr.t === "say" || instr.t === "narrate") {
       const localized = this.localizedInstruction(instr);
@@ -1082,7 +1364,7 @@ export class GraphNovelPlayer {
     } catch (error) {
       throw new RuntimeAssignmentError(error instanceof Error ? error.message : String(error));
     }
-    if (origin) this.recordEdgeStateWrite(instr.key, state.vars[instr.key] ?? null, value, origin);
+    if (origin) this.recordExitOrChoiceStateWrite(instr.key, state.vars[instr.key] ?? null, value, origin);
     else if (instructionIndex != null) this.recordStateWrite(instr.key, state.vars[instr.key] ?? null, value, instructionIndex);
     if ((declaration?.scope ?? "run") === "global") {
       if (!instr.id) throw new Error(`global set ${instr.key} 缺少稳定 id`);
@@ -1091,22 +1373,34 @@ export class GraphNovelPlayer {
     return { ...state, vars: { ...state.vars, [instr.key]: value } };
   }
 
-  /** 出口效果的写入：归属到出口本身，检查面板才能说「因为选了这个选项」。 */
-  private recordEdgeStateWrite(
+  /** 出口效果 / choice 选项效果的写入：归属到出口或选项，检查面板才能说「因为选了这个选项」。 */
+  private recordExitOrChoiceStateWrite(
     variable: string,
     from: GraphRouteValue,
     to: GraphRouteValue,
-    origin: { nodeId: string; edgeId: string },
+    origin: { nodeId: string; edgeId: string } | { nodeId: string; choiceInstructionId?: string; optionIndex: number },
   ) {
     if (from === to) return;
-    this.stateWrites.push({
-      variable,
-      from,
-      to,
-      nodeId: origin.nodeId,
-      edgeId: origin.edgeId,
-      decisionIndex: this.decisions.length,
-    });
+    if ("edgeId" in origin) {
+      this.stateWrites.push({
+        variable,
+        from,
+        to,
+        nodeId: origin.nodeId,
+        edgeId: origin.edgeId,
+        decisionIndex: this.decisions.length,
+      });
+    } else {
+      this.stateWrites.push({
+        variable,
+        from,
+        to,
+        nodeId: origin.nodeId,
+        choiceInstructionId: origin.choiceInstructionId,
+        optionIndex: origin.optionIndex,
+        decisionIndex: this.decisions.length,
+      });
+    }
   }
 
   /** 值没变就不记：作者关心的是「哪里改了它」，不是「哪里碰过它」。 */
@@ -1159,7 +1453,14 @@ export class GraphNovelPlayer {
 
   /** chose./seen. 由决策日志实时派生，不落盘，因此回滚与读档天然一致。 */
   private currentExperience() {
-    return storyExperienceVariables(this.graph, this.decisions);
+    // Spec 35：chose.* 从节点内 choice 指令派生，需要节点内容。
+    const nodeEntries = this.graph
+      ? this.graph.nodes.map((node) => ({
+          id: node.id,
+          instructions: this.instructionsByNodeId.get(node.id) ?? [],
+        }))
+      : [];
+    return storyExperienceVariables(this.graph, nodeEntries, this.decisions);
   }
 
   private refreshPersistentVariableView() {
@@ -1634,6 +1935,7 @@ function getInstructionStoryPointId(instr: Instruction, index: number): string |
     case "pause":
     case "inputName":
     case "completeEnding":
+    case "choice": // Spec 35：choice 是玩家中断点，带 id 时作为 story-point。
       return instr.id ?? (index >= 0 ? `index:${index}` : null);
     default:
       return null;
@@ -1650,7 +1952,8 @@ function isStableInstruction(instr: Instruction): instr is StableInstruction {
     || instr.t === "narrate"
     || instr.t === "wait"
     || instr.t === "pause"
-    || instr.t === "inputName";
+    || instr.t === "inputName"
+    || instr.t === "choice";
 }
 
 function readKeyId(key: ReadTextKey): string {

@@ -33,25 +33,40 @@ fn validate_node_contents_flags_unknown_instruction_type() {
 }
 
 #[test]
-fn validate_node_contents_rejects_choice_instruction() {
+fn validate_node_contents_accepts_choice_and_if_instructions() {
+    // Spec 35：choice / if 是受支持的节点内指令（含嵌套 body）。
     let graph = one_node_graph();
     let nodes = vec![node_entry(
         "nodes/start.json",
         serde_json::json!([
-            {
-                "t": "choice",
-                "choices": [{ "text": "留下", "to": "stay" }]
-            }
+            { "t": "choice", "id": "branch", "options": [
+                { "text": "留下", "to": "stay", "effects": [{ "t": "set", "key": "route", "value": "stay" }] }
+            ] },
+            { "t": "if", "condition": "route == \"stay\"", "then": [{ "t": "narrate", "text": "留下。" }] }
         ]),
     )];
 
     let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
 
+    assert!(
+        issues.is_empty(),
+        "choice/if with nested bodies should be valid, got: {issues:?}"
+    );
+}
+
+#[test]
+fn validate_node_contents_rejects_choice_with_empty_options() {
+    let graph = one_node_graph();
+    let nodes = vec![node_entry(
+        "nodes/start.json",
+        serde_json::json!([{ "t": "choice", "options": [] }]),
+    )];
+
+    let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].code, "choice_instruction_not_supported");
     assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
     assert_eq!(issues[0].file.as_deref(), Some("content/nodes/start.json"));
-    assert_eq!(issues[0].json_path.as_deref(), Some("$[0].t"));
     assert_eq!(issues[0].node_id.as_deref(), Some("start"));
 }
 

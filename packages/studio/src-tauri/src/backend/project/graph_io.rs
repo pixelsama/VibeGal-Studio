@@ -221,15 +221,6 @@ fn project_graph_from_valid_json(
                         .as_str()
                         .expect("validated graph edge to")
                         .to_string(),
-                    mode: edge
-                        .get("mode")
-                        .and_then(serde_json::Value::as_str)
-                        .expect("graph projection has defaulted edge mode")
-                        .to_string(),
-                    label: edge
-                        .get("label")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_string),
                     condition: edge
                         .get("condition")
                         .and_then(serde_json::Value::as_str)

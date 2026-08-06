@@ -82,13 +82,17 @@ export const DecisionLogEventSchema = z.discriminatedUnion("type", [
     type: z.literal("choice"),
     fromNodeId: z.string().min(1),
     toNodeId: z.string().min(1),
-    edgeId: z.string().min(1),
+    // Spec 35：choice 决策现在主要由节点内 choice 指令产生；choiceInstructionId +
+    // optionIndex 是新主键。edgeId 保留为可选，仅图出口直连（极少见）时使用。
+    choiceInstructionId: z.string().min(1).optional(),
+    optionIndex: z.number().int().nonnegative().optional(),
+    edgeId: z.string().min(1).optional(),
   }),
   z.strictObject({
     type: z.literal("auto"),
     fromNodeId: z.string().min(1),
     toNodeId: z.string().min(1),
-    edgeId: z.string().min(1),
+    edgeId: z.string().min(1).optional(),
   }),
   z.strictObject({ type: z.literal("checkpoint"), snapshot: RuntimeSnapshotSchema }),
 ]);

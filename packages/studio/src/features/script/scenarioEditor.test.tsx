@@ -55,14 +55,15 @@ describe("scenario editor helpers", () => {
     )).toBe("@bg classroom fade\nakari: 今天也很安静。");
   });
 
-  it("marks legacy choice blocks invalid because branches live in node exits", () => {
+  it("treats @choice as an unknown command now that choices are node instructions", () => {
+    // Spec 35：@choice 的旧拒绝已移除（choice 重新成为节点内指令）；
+    // 残留的 @choice 现在只是未知命令。
     const text = `@choice
-- 开门 -> open_door
-- 装作没听见 -> ignore`;
-    const selection = getScenarioSelection(text, text.indexOf("装作"));
+- 开门 -> open_door`;
+    const selection = getScenarioSelection(text, 0);
 
     expect(selection.kind).toBe("invalid");
-    expect(selection.message).toContain("分支选项已移到流程图出口");
+    expect(selection.message).toContain("未知命令");
   });
 });
 

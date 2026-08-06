@@ -198,7 +198,8 @@ function isStoryPointInstruction(
     || instruction.t === "wait"
     || instruction.t === "pause"
     || instruction.t === "inputName"
-    || instruction.t === "completeEnding";
+    || instruction.t === "completeEnding"
+    || instruction.t === "choice";
 }
 
 const MAX_CONTRACT_ISSUES = 64;
@@ -239,10 +240,6 @@ function validateNodeFile(input: unknown): ContractInputIssue[] {
     const instructionType = instruction.t;
     if (typeof instructionType !== "string") {
       issues.push(issue("instruction_unknown_type", `${basePath}.t`, "指令缺少有效的 t 类型"));
-      return;
-    }
-    if (instructionType === "choice") {
-      issues.push(issue("choice_instruction_not_supported", `${basePath}.t`, "choice 指令已废弃且不受支持"));
       return;
     }
     if (!Object.prototype.hasOwnProperty.call(instructionPolicies, instructionType)) {

@@ -73,10 +73,17 @@ describe("contract validation corpus", () => {
   });
 
   it("keeps instruction policies aligned with every generated discriminator", () => {
+    // Spec 35: choice/if 的 body/then/else 内嵌 Instruction[]，使 InstructionSchema
+    // 成为自递归类型。Zod 4 的 z.toJSONSchema 因此把指令联合抽到 $defs.<key>
+    // 并用 $ref 引用，而不再是 nodeFile.items.oneOf 的扁平数组。
     const nodeSchema = buildJsonSchema("nodeFile") as {
-      items: { oneOf: Array<{ properties: { t: { const: string } } }> };
+      items: { $ref?: string };
+      $defs?: Record<string, { oneOf: Array<{ properties: { t: { const: string } } }> }>;
     };
-    const discriminators = nodeSchema.items.oneOf
+    const defKey = (nodeSchema.items.$ref ?? "").split("/").pop()!;
+    const union = nodeSchema.$defs?.[defKey]?.oneOf;
+    expect(Array.isArray(union)).toBe(true);
+    const discriminators = union!
       .map((branch) => branch.properties.t.const)
       .sort();
 

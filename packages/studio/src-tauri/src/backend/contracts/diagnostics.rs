@@ -144,11 +144,26 @@ fn validator(kind: ContractSchemaKind) -> &'static jsonschema::Validator {
 
 fn node_validators() -> &'static std::collections::HashMap<String, jsonschema::Validator> {
     NODE_VALIDATORS.get_or_init(|| {
+        // Spec 35：choice/if 内嵌 Instruction[]，节点 schema 成为自递归类型，
+        // 每个 branch 里会出现 "$ref": "#/$defs/<key>"。逐分支编译时这些 $ref 需要
+        // 根 schema 的 $defs 上下文才能解析。把根 $defs 注入到每个分支副本里。
+        let root_schema = schema(ContractSchemaKind::NodeFile);
+        let root_defs = root_schema.get("$defs").cloned();
         super::instruction_types()
             .map(|instruction_type| {
                 let branch = instruction_branch(instruction_type)
                     .expect("instruction type was collected from its branch");
-                (instruction_type.to_string(), compile(branch))
+                let standalone = match root_defs.clone() {
+                    Some(defs) => {
+                        let mut obj = branch.clone();
+                        if let Some(obj_map) = obj.as_object_mut() {
+                            obj_map.insert("$defs".to_string(), defs);
+                        }
+                        obj
+                    }
+                    None => branch.clone(),
+                };
+                (instruction_type.to_string(), compile(&standalone))
             })
             .collect()
     })

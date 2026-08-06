@@ -3,11 +3,17 @@ use serde_json::Value;
 /// Apply JSON Schema object-property defaults to an in-memory clone only.
 /// The caller owns the clone; raw disk JSON is never mutated or replaced.
 pub(crate) fn apply_schema_defaults(value: &mut Value, schema: &Value) {
-    apply_schema_defaults_inner(value, schema);
+    apply_schema_defaults_inner(value, schema, schema);
     normalize_locale_tags(value);
 }
 
-fn apply_schema_defaults_inner(value: &mut Value, schema: &Value) {
+/// Spec 35：choice/if 内嵌 Instruction[] 使节点 schema 成为自递归类型，
+/// items 与嵌套字段通过 "$ref": "#/$defs/<key>" 引用联合。apply 时需要根 schema
+/// 来解引用 $ref，所以内部函数多带一个 `root` 参数。
+fn apply_schema_defaults_inner(value: &mut Value, schema: &Value, root: &Value) {
+    // 解引用 $ref 到根 $defs，拿到真正的子 schema 后再继续。
+    let schema = resolve_ref(schema, root);
+
     for keyword in ["allOf", "oneOf", "anyOf"] {
         let Some(branches) = schema.get(keyword).and_then(Value::as_array) else {
             continue;
@@ -22,7 +28,7 @@ fn apply_schema_defaults_inner(value: &mut Value, schema: &Value) {
                 .collect()
         };
         for branch in matching {
-            apply_schema_defaults_inner(value, branch);
+            apply_schema_defaults_inner(value, branch, root);
         }
     }
 
@@ -36,7 +42,7 @@ fn apply_schema_defaults_inner(value: &mut Value, schema: &Value) {
                     }
                 }
                 if let Some(child) = object.get_mut(name) {
-                    apply_schema_defaults_inner(child, property_schema);
+                    apply_schema_defaults_inner(child, property_schema, root);
                 }
             }
         }
@@ -49,7 +55,7 @@ fn apply_schema_defaults_inner(value: &mut Value, schema: &Value) {
             let object = value.as_object_mut().expect("checked object");
             for (name, child) in object {
                 if !properties.is_some_and(|known| known.contains_key(name)) {
-                    apply_schema_defaults_inner(child, additional);
+                    apply_schema_defaults_inner(child, additional, root);
                 }
             }
         }
@@ -58,14 +64,32 @@ fn apply_schema_defaults_inner(value: &mut Value, schema: &Value) {
     if let (Some(items), Some(array)) = (schema.get("items"), value.as_array_mut()) {
         if let Some(tuple_items) = items.as_array() {
             for (child, item_schema) in array.iter_mut().zip(tuple_items) {
-                apply_schema_defaults_inner(child, item_schema);
+                apply_schema_defaults_inner(child, item_schema, root);
             }
         } else {
             for child in array {
-                apply_schema_defaults_inner(child, items);
+                apply_schema_defaults_inner(child, items, root);
             }
         }
     }
+}
+
+/// 把 "$ref": "#/$defs/<key>" 形态的 schema 解引用到根 $defs 里的目标；
+/// 非 $ref 或解析失败时原样返回。
+fn resolve_ref<'a>(schema: &'a Value, root: &'a Value) -> &'a Value {
+    let Some(ref_path) = schema.get("$ref").and_then(Value::as_str) else {
+        return schema;
+    };
+    // 仅支持本地指针 "#/$defs/<...>"。
+    let Some(suffix) = ref_path.strip_prefix("#/") else {
+        return schema;
+    };
+    let mut current = root;
+    for segment in suffix.split('/') {
+        let next = current.get(segment).unwrap_or(schema);
+        current = next;
+    }
+    current
 }
 
 fn normalize_locale_tags(value: &mut Value) {

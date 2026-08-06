@@ -132,143 +132,72 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
             });
         }
 
-        if !matches!(edge.mode.as_str(), "linear" | "choice" | "auto") {
-            issues.push(GraphIssue {
-                severity: GraphIssueSeverity::Error,
-                code: "edge_invalid_mode".to_string(),
-                message: format!("边 {} 的 mode 必须是 linear、choice 或 auto", edge.id),
-                file: Some("content/graph.json".to_string()),
-                json_path: Some(format!("$.edges[{index}].mode")),
-                node_id: None,
-                edge_id: Some(edge.id.clone()),
-            });
-        }
-        if edge.mode == "choice"
-            && edge
-                .label
-                .as_deref()
-                .map(|label| label.trim().is_empty())
-                .unwrap_or(true)
-        {
-            issues.push(GraphIssue {
-                severity: GraphIssueSeverity::Error,
-                code: "choice_edge_missing_label".to_string(),
-                message: format!("玩家选择边 {} 需要非空 label", edge.id),
-                file: Some("content/graph.json".to_string()),
-                json_path: Some(format!("$.edges[{index}].label")),
-                node_id: Some(edge.from.clone()),
-                edge_id: Some(edge.id.clone()),
-            });
-        }
-        if edge.mode == "auto" {
-            if let Some(condition) = edge.condition.as_deref().filter(|value| !value.trim().is_empty()) {
-                if let Err(message) = super::expression::parse_expression(condition) {
-                    issues.push(GraphIssue {
-                        severity: GraphIssueSeverity::Error,
-                        code: "invalid_edge_condition".to_string(),
-                        message,
-                        file: Some("content/graph.json".to_string()),
-                        json_path: Some(format!("$.edges[{index}].condition")),
-                        node_id: Some(edge.from.clone()),
-                        edge_id: Some(edge.id.clone()),
-                    });
-                }
+        // Spec 35：边不再有 mode/label；条件路由对所有带非空 condition 的出口求值。
+        // 校验 condition 表达式语法（空 condition = 兜底，合法）。
+        if let Some(condition) = edge.condition.as_deref().filter(|value| !value.trim().is_empty()) {
+            if let Err(message) = super::expression::parse_expression(condition) {
+                issues.push(GraphIssue {
+                    severity: GraphIssueSeverity::Error,
+                    code: "invalid_edge_condition".to_string(),
+                    message,
+                    file: Some("content/graph.json".to_string()),
+                    json_path: Some(format!("$.edges[{index}].condition")),
+                    node_id: Some(edge.from.clone()),
+                    edge_id: Some(edge.id.clone()),
+                });
             }
         }
     }
 
+    // Spec 35：路由规则简化为「出口数量 + condition」。多条出口时按声明顺序求 condition，
+    // 空条件（null/空串）= 兜底边，引擎求值时排到最后。校验：
+    //   - 至多一条兜底边（auto_multiple_default_edges）
+    //   - 兜底边应位于最后（auto_default_edge_not_last）
+    //   - 多条出口且无兜底边 = 可能无路可走（auto_missing_default_edge，warn）
     for (node_id, outgoing) in &outgoing_edges {
-        let modes = outgoing
+        if outgoing.len() <= 1 {
+            continue; // 0 条 = 结束；1 条 = 直接走，无需校验路由规则。
+        }
+        let default_edges = outgoing
             .iter()
-            .map(|(_, edge)| edge.mode.as_str())
-            .collect::<HashSet<_>>();
-        if modes.len() > 1 {
+            .filter(|(_, edge)| {
+                edge.condition
+                    .as_deref()
+                    .map(|condition| condition.trim().is_empty())
+                    .unwrap_or(true)
+            })
+            .count();
+        if default_edges > 1 {
             issues.push(GraphIssue {
                 severity: GraphIssueSeverity::Error,
-                code: "mixed_outgoing_modes".to_string(),
-                message: format!("节点 {} 的出口不能混用 linear、choice 和 auto", node_id),
+                code: "auto_multiple_default_edges".to_string(),
+                message: format!("节点 {} 的多条出口最多只能有一条兜底边（空 condition）", node_id),
                 file: Some("content/graph.json".to_string()),
                 json_path: Some("$.edges".to_string()),
                 node_id: Some(node_id.clone()),
                 edge_id: None,
             });
-            continue;
-        }
-
-        let mode = outgoing
-            .first()
-            .map(|(_, edge)| edge.mode.as_str())
-            .unwrap_or("linear");
-        if mode == "linear" && outgoing.len() > 1 {
+        } else if default_edges == 1 && outgoing.last().is_some_and(|(_, edge)| edge.condition.as_deref().is_some_and(|value| !value.trim().is_empty())) {
+            let (edge_index, edge) = outgoing.iter().find(|(_, edge)| edge.condition.as_deref().map(str::trim).unwrap_or("").is_empty()).unwrap();
             issues.push(GraphIssue {
                 severity: GraphIssueSeverity::Error,
-                code: "linear_node_multiple_outgoing".to_string(),
-                message: format!("线性节点 {} 最多只能有一条 outgoing edge", node_id),
+                code: "auto_default_edge_not_last".to_string(),
+                message: format!("节点 {node_id} 的兜底出口（空 condition）必须位于最后"),
+                file: Some("content/graph.json".to_string()),
+                json_path: Some(format!("$.edges[{edge_index}]")),
+                node_id: Some(node_id.clone()),
+                edge_id: Some(edge.id.clone()),
+            });
+        } else if default_edges == 0 {
+            issues.push(GraphIssue {
+                severity: GraphIssueSeverity::Warn,
+                code: "auto_missing_default_edge".to_string(),
+                message: format!("节点 {} 的多条出口没有兜底边，可能无路可走", node_id),
                 file: Some("content/graph.json".to_string()),
                 json_path: Some("$.edges".to_string()),
                 node_id: Some(node_id.clone()),
                 edge_id: None,
             });
-        }
-        if mode == "choice" {
-            let mut labels = HashSet::new();
-            for (edge_index, edge) in outgoing {
-                let label = edge.label.as_deref().unwrap_or("").trim();
-                if !label.is_empty() && !labels.insert(label.to_string()) {
-                    issues.push(GraphIssue {
-                        severity: GraphIssueSeverity::Warn,
-                        code: "duplicate_choice_label".to_string(),
-                        message: format!("节点 {} 有重复选项文本：{}", node_id, label),
-                        file: Some("content/graph.json".to_string()),
-                        json_path: Some(format!("$.edges[{edge_index}].label")),
-                        node_id: Some(node_id.clone()),
-                        edge_id: Some(edge.id.clone()),
-                    });
-                }
-            }
-        }
-        if mode == "auto" {
-            let default_edges = outgoing
-                .iter()
-                .filter(|(_, edge)| {
-                    edge.condition
-                        .as_deref()
-                        .map(|condition| condition.trim().is_empty())
-                        .unwrap_or(true)
-                })
-                .count();
-            if default_edges > 1 {
-                issues.push(GraphIssue {
-                    severity: GraphIssueSeverity::Error,
-                    code: "auto_multiple_default_edges".to_string(),
-                    message: format!("节点 {} 的自动出口最多只能有一条默认边", node_id),
-                    file: Some("content/graph.json".to_string()),
-                    json_path: Some("$.edges".to_string()),
-                    node_id: Some(node_id.clone()),
-                    edge_id: None,
-                });
-            } else if default_edges == 1 && outgoing.last().is_some_and(|(_, edge)| edge.condition.as_deref().is_some_and(|value| !value.trim().is_empty())) {
-                let (edge_index, edge) = outgoing.iter().find(|(_, edge)| edge.condition.as_deref().map(str::trim).unwrap_or("").is_empty()).unwrap();
-                issues.push(GraphIssue {
-                    severity: GraphIssueSeverity::Error,
-                    code: "auto_default_edge_not_last".to_string(),
-                    message: format!("节点 {node_id} 的默认自动边必须位于最后"),
-                    file: Some("content/graph.json".to_string()),
-                    json_path: Some(format!("$.edges[{edge_index}]")),
-                    node_id: Some(node_id.clone()),
-                    edge_id: Some(edge.id.clone()),
-                });
-            } else if outgoing.len() > 1 && default_edges == 0 {
-                issues.push(GraphIssue {
-                    severity: GraphIssueSeverity::Warn,
-                    code: "auto_missing_default_edge".to_string(),
-                    message: format!("节点 {} 的自动出口没有默认边，可能无路可走", node_id),
-                    file: Some("content/graph.json".to_string()),
-                    json_path: Some("$.edges".to_string()),
-                    node_id: Some(node_id.clone()),
-                    edge_id: None,
-                });
-            }
         }
     }
 

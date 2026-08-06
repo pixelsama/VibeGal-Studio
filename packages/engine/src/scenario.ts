@@ -315,9 +315,6 @@ export function parseScenarioText(text: string): ScenarioParseResult {
 export function parseScenarioLine(line: string): ParsedLine {
   const trimmed = line.trim();
   if (trimmed.length === 0) return { ok: true, instruction: null };
-  if (trimmed === "@choice" || /^-\s*.+\s*->\s*\S+/.test(trimmed)) {
-    return { ok: false, message: "分支选项已移到流程图出口，请在流程图中配置。" };
-  }
 
   if (trimmed.startsWith("@")) {
     if (trimmed === "@continue") {
@@ -525,6 +522,11 @@ export function formatScenarioText(instructions: Instruction[]): string {
 
 export function formatScenarioInstruction(instruction: Instruction): string {
   const projectedInstruction = withoutStoryPointId(instruction);
+  // Spec 35：choice / if 含嵌套 Instruction[]，行式 DSL 无法可读表达，直接走
+  // @instruction {json} 逃生路径。缩进树文本编辑属于 Phase 2。
+  if (projectedInstruction.t === "choice" || projectedInstruction.t === "if") {
+    return `@instruction ${stringifyScenarioJson(projectedInstruction)}`;
+  }
   const readable = formatReadableScenarioInstruction(projectedInstruction);
   const reparsed = parseScenarioLine(readable);
   if (reparsed.ok && reparsed.instruction && instructionsAreEquivalent(reparsed.instruction, projectedInstruction)) {
@@ -660,6 +662,11 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
       ]);
     case "pause":
       return "@pause";
+    case "choice":
+    case "if":
+      // Spec 35：choice/if 由 formatScenarioInstruction 提前走 @instruction {json}
+      // 逃生路径，不会走到这里。保留分支仅为穷尽性编译检查。
+      return `@instruction ${stringifyScenarioJson(instruction)}`;
   }
 }
 

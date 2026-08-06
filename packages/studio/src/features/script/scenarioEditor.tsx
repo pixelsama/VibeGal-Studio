@@ -340,6 +340,7 @@ function inlineInstructionTitle(
   instruction: Instruction,
   t: StudioTranslator = translateZhCN,
 ): string {
+  // Spec 35：choice/if 暂无内联控件（结构化编辑属 Phase 2），这里只回退到原始 t。
   const key = ({
     say: "script.scenario.instruction.say",
     narrate: "script.scenario.instruction.narrate",
@@ -358,6 +359,8 @@ function inlineInstructionTitle(
     pause: "script.scenario.instruction.pause",
     unlock: "script.scenario.instruction.unlock",
     completeEnding: "script.scenario.instruction.completeEnding",
+    choice: undefined,
+    if: undefined,
   } as const)[instruction.t];
   return key ? t(key) : instruction.t;
 }
