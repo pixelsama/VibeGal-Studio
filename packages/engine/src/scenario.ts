@@ -13,8 +13,11 @@ export type ScenarioParseResult =
   | { ok: false; instructions: Instruction[]; diagnostics: ScenarioDiagnostic[] };
 
 type ParsedLine =
-  | { ok: true; instruction: Instruction | null; suppressesImplicitPause?: boolean }
+  | { ok: true; instruction: Instruction | null; suppressesImplicitPause?: boolean; block?: BlockHeaderKind }
   | { ok: false; message: string };
+
+/** 块头种类：choice / if / else。供单行解析器标记块头（不构成指令）。 */
+type BlockHeaderKind = "choice" | "if" | "else";
 
 /**
  * 剧本行里的「参数尾巴」。
@@ -258,10 +261,380 @@ function parseCharCommand(parts: string[]): ParsedLine {
   };
 }
 
+// ── Spec 35 Phase 2：缩进树解析 ──────────────────────────────────────────
+//
+// choice / if 含嵌套 Instruction[]，行式 DSL 必须感知缩进才能可读表达。
+// 设计：
+// - `parseScenarioText` 仍是顶层入口（帧语义 + 顶层指令序列），但识别
+//   `choice` / `if` / `else` 块头，递归收集缩进的 body / then / else。
+// - 帧语义（空行 = 隐式 pause）只作用于**顶层指令序列**；option body /
+//   if 分支内不注入隐式 pause（紧凑反应演出）。
+// - `@instruction {json}` 逃生路径保留：任何无法用可读语法表达的 choice/if
+//   仍可走 JSON（round-trip 不变）。
+// - `parseScenarioLine` 保持单行叶子指令语义（被 scenarioFrames /
+//   scenarioHighlight 按行调用），不感知缩进。
+
+/** 行首缩进的「展开宽度」：tab = 4，空格原值，其余 = 0。 */
+function indentWidth(raw: string): number {
+  let width = 0;
+  for (const ch of raw) {
+    if (ch === " ") width += 1;
+    else if (ch === "\t") width += 4;
+    else break;
+  }
+  return width;
+}
+
+interface RawLine {
+  /** 0 起始下标。 */
+  index: number;
+  raw: string;
+  text: string;
+  indent: number;
+  blank: boolean;
+}
+
+function splitRawLines(text: string): RawLine[] {
+  return text.replace(/\r\n/g, "\n").split("\n").map((raw, index) => {
+    const textPart = raw.trim();
+    return { index, raw, text: textPart, indent: indentWidth(raw), blank: textPart.length === 0 };
+  });
+}
+
+interface BlockHeader {
+  kind: "choice" | "if" | "else";
+  /** 块头行 `choice`/`if`/`else` 关键字之后的剩余文本（condition / prompt / id）。 */
+  tail: string;
+}
+
+/** 识别 choice / if / else 块头。非块头行返回 null。 */
+function parseBlockHeader(text: string): BlockHeader | null {
+  // choice / if / else 必须是行的第一个词；后续是 tail。
+  const match = text.match(/^(choice|if|else)(?:\s+(.*))?$/);
+  if (!match) return null;
+  return { kind: match[1] as BlockHeader["kind"], tail: (match[2] ?? "").trim() };
+}
+
+/** choice / if 块头 tail 里可选的 `#id` 前缀；返回 [id, rest]。 */
+function takeInstructionIdFromTail(tail: string): { id?: string; rest: string } {
+  const match = tail.match(/^#(\S+)(?:\s+(.*))?$/);
+  if (!match) return { rest: tail };
+  return { id: match[1], rest: (match[2] ?? "").trim() };
+}
+
+/** option 行 / option body 内的 `@to <nodeId>` 标记，可内联在 option 行尾或独占一行。 */
+const TO_TOKEN_RE = /@to\s+(\S+)/;
+
+/** 从一段文本里抽取并剔除 `@to <id>`；返回 [剩余文本, to]。 */
+function extractInlineTo(text: string): { text: string; to?: string } {
+  const match = text.match(TO_TOKEN_RE);
+  if (!match) return { text };
+  const to = match[1];
+  const cleaned = text.replace(TO_TOKEN_RE, "").trim();
+  return { text: cleaned, to };
+}
+
+interface BlockParseAccumulator {
+  diagnostics: ScenarioDiagnostic[];
+}
+
+/**
+ * 从 `start`（含）起收集所有缩进严格大于 `parentIndent` 的连续行（跳过块内空行，
+ * 但空行不终止块——块在「缩进 ≤ parentIndent 的非空行」处终止）。
+ * 返回 [收集到的子行, 消费到的下一行下标（不含）]。
+ */
+function collectIndentedBlock(lines: RawLine[], start: number, parentIndent: number): {
+  children: RawLine[];
+  next: number;
+} {
+  const children: RawLine[] = [];
+  let i = start;
+  // 块在遇到缩进 ≤ parentIndent 的非空行时结束；中间的空行归属于块内（被跳过）。
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.blank) {
+      i += 1;
+      continue;
+    }
+    if (line.indent <= parentIndent) break;
+    children.push(line);
+    i += 1;
+  }
+  return { children, next: i };
+}
+
+/** 把一组同级行解析成 Instruction[]（叶子指令）；不处理帧/pause。 */
+function parseLeafLines(children: RawLine[], acc: BlockParseAccumulator): Instruction[] {
+  const out: Instruction[] = [];
+  for (const child of children) {
+    const parsed = parseScenarioLine(child.text);
+    if (!parsed.ok) {
+      acc.diagnostics.push({ line: child.index + 1, message: parsed.message });
+      continue;
+    }
+    if (parsed.instruction) out.push(parsed.instruction);
+  }
+  return out;
+}
+
+/**
+ * 把一组同级行解析成 Instruction[]，支持嵌套 choice / if 块。
+ * `lines` 是完整原始行数组；`children` 是待解析的子行（带原始 .index）。
+ */
+function parseChildInstructions(
+  lines: RawLine[],
+  children: RawLine[],
+  acc: BlockParseAccumulator,
+): Instruction[] {
+  const out: Instruction[] = [];
+  let ci = 0;
+  while (ci < children.length) {
+    const child = children[ci];
+    const header = parseBlockHeader(child.text);
+    if (header?.kind === "choice") {
+      const { instruction, next } = parseChoiceBlock(lines, child, acc);
+      if (instruction) out.push(instruction);
+      ci = findChildIndex(children, next);
+      continue;
+    }
+    if (header?.kind === "if") {
+      const { instruction, next } = parseIfBlock(lines, child, acc);
+      if (instruction) out.push(instruction);
+      ci = findChildIndex(children, next);
+      continue;
+    }
+    if (header?.kind === "else") {
+      acc.diagnostics.push({ line: child.index + 1, message: "else 必须跟在 if 之后。" });
+      ci += 1;
+      continue;
+    }
+    const parsed = parseScenarioLine(child.text);
+    if (!parsed.ok) {
+      acc.diagnostics.push({ line: child.index + 1, message: parsed.message });
+    } else if (parsed.instruction) {
+      out.push(parsed.instruction);
+    }
+    ci += 1;
+  }
+  return out;
+}
+
+interface ChoiceOptionBlock {
+  /** option 标题行（裸文本，可能内联 @to）。 */
+  header: RawLine;
+  /** option 标题行之下、缩进更深的子行（body 指令 + 可能的独占 @to 行）。 */
+  children: RawLine[];
+}
+
+/**
+ * 把 choice 的子行序列切成若干 option 块：每个 option 由一条缩进最浅的非空行
+ * （option 标题）开头，其后所有缩进更深的行归为该 option 的 body。
+ */
+function splitChoiceOptions(children: RawLine[]): { blocks: ChoiceOptionBlock[]; diagnostics: ScenarioDiagnostic[] } {
+  const blocks: ChoiceOptionBlock[] = [];
+  const diagnostics: ScenarioDiagnostic[] = [];
+  if (children.length === 0) {
+    diagnostics.push({ line: 0, message: "choice 需要至少一个选项。" });
+    return { blocks, diagnostics };
+  }
+  const optionIndent = children[0].indent;
+  let i = 0;
+  while (i < children.length) {
+    const header = children[i];
+    // option 标题行：缩进最浅（== optionIndent）。更深的行是上一个 option 的 body。
+    if (header.indent < optionIndent) {
+      diagnostics.push({ line: header.index + 1, message: "choice 选项缩进不一致。" });
+      i += 1;
+      continue;
+    }
+    if (header.indent > optionIndent) {
+      // 没有 option 标题就出现了更深的行——归到上一个 option（容错）。
+      if (blocks.length > 0) {
+        blocks[blocks.length - 1].children.push(header);
+      } else {
+        diagnostics.push({ line: header.index + 1, message: "choice 选项内容缺少选项标题。" });
+      }
+      i += 1;
+      continue;
+    }
+    const block: ChoiceOptionBlock = { header, children: [] };
+    i += 1;
+    while (i < children.length && children[i].indent > optionIndent) {
+      block.children.push(children[i]);
+      i += 1;
+    }
+    blocks.push(block);
+  }
+  return { blocks, diagnostics };
+}
+
+/**
+ * 从 option 子行里抽取 `@to`、`@effects` 块、body 指令。
+ * body 指令支持嵌套 choice / if（递归）。`lines` 始终是完整原始行数组，
+ * `block.children` 是该 option 的子行（带原始 .index）。
+ */
+function parseOptionChildren(
+  lines: RawLine[],
+  block: ChoiceOptionBlock,
+  acc: BlockParseAccumulator,
+): { to?: string; effects?: Instruction[]; body: Instruction[] } {
+  const children = block.children;
+  let to: string | undefined;
+  let effects: Instruction[] | undefined;
+  const body: Instruction[] = [];
+  // cursor 是 children 数组的本地下标；用 child.index 投影回 lines 全局下标。
+  let ci = 0;
+  while (ci < children.length) {
+    const child = children[ci];
+    // 独占的 @to 行
+    const toMatch = child.text.match(/^@to\s+(\S+)$/);
+    if (toMatch) {
+      to = toMatch[1];
+      ci += 1;
+      continue;
+    }
+    // @effects 块：`@effects` 行 + 缩进的 SetInstruction 子行
+    if (child.text === "@effects") {
+      const effectChildren: RawLine[] = [];
+      ci += 1;
+      while (ci < children.length && children[ci].indent > child.indent) {
+        effectChildren.push(children[ci]);
+        ci += 1;
+      }
+      effects = parseLeafLines(effectChildren, acc);
+      continue;
+    }
+    // 嵌套 choice / if 块（在完整 lines 数组上递归）
+    const header = parseBlockHeader(child.text);
+    if (header?.kind === "choice") {
+      const { instruction, next } = parseChoiceBlock(lines, child, acc);
+      if (instruction) body.push(instruction);
+      // next 是 lines 全局下标；投影回 children 本地下标。
+      ci = findChildIndex(children, next);
+      continue;
+    }
+    if (header?.kind === "if") {
+      const { instruction, next } = parseIfBlock(lines, child, acc);
+      if (instruction) body.push(instruction);
+      ci = findChildIndex(children, next);
+      continue;
+    }
+    // 叶子指令行
+    const parsed = parseScenarioLine(child.text);
+    if (!parsed.ok) {
+      acc.diagnostics.push({ line: child.index + 1, message: parsed.message });
+    } else if (parsed.instruction) {
+      body.push(parsed.instruction);
+    }
+    ci += 1;
+  }
+  return { to, effects, body };
+}
+
+/** 把全局行下标 `globalIndex` 投影到 children 本地下标（找不到则末尾）。 */
+function findChildIndex(children: RawLine[], globalIndex: number): number {
+  for (let k = 0; k < children.length; k += 1) {
+    if (children[k].index >= globalIndex) return k;
+  }
+  return children.length;
+}
+
+interface ChoiceOptionLike {
+  text: string;
+  to?: string;
+  body?: Instruction[];
+  effects?: Instruction[];
+}
+
+/** 递归解析 choice 块。`lines` 是完整原始行数组；返回 next 为全局行下标。 */
+function parseChoiceBlock(
+  lines: RawLine[],
+  headerLine: RawLine,
+  acc: BlockParseAccumulator,
+): { instruction: Instruction | null; next: number } {
+  const header = parseBlockHeader(headerLine.text)!;
+  const { id, rest: promptRest } = takeInstructionIdFromTail(header.tail);
+  const prompt = promptRest.length > 0 ? promptRest : null;
+  const { children, next } = collectIndentedBlock(lines, headerLine.index + 1, headerLine.indent);
+  const { blocks, diagnostics } = splitChoiceOptions(children);
+  for (const d of diagnostics) acc.diagnostics.push(d);
+  const options = blocks.map((block) => {
+    const { to: inlineTo, text: optionText } = extractInlineTo(block.header.text);
+    const parsed = parseOptionChildren(lines, block, acc);
+    const to = inlineTo ?? parsed.to;
+    return pruneUndefined({
+      text: optionText,
+      to,
+      effects: parsed.effects,
+      body: parsed.body.length > 0 ? parsed.body : undefined,
+    }) as ChoiceOptionLike;
+  });
+  if (options.length === 0) {
+    acc.diagnostics.push({ line: headerLine.index + 1, message: "choice 需要至少一个选项。" });
+    return { instruction: null, next };
+  }
+  const instruction = pruneUndefined({
+    t: "choice" as const,
+    id,
+    prompt,
+    options,
+  }) as Instruction;
+  return { instruction, next };
+}
+
+/** 递归解析 if 块（含可选 else）。返回 [instruction, 消费到的下一行下标]。 */
+function parseIfBlock(
+  lines: RawLine[],
+  headerLine: RawLine,
+  acc: BlockParseAccumulator,
+): { instruction: Instruction | null; next: number } {
+  const header = parseBlockHeader(headerLine.text)!;
+  const { id, rest: conditionRest } = takeInstructionIdFromTail(header.tail);
+  const condition = conditionRest;
+  if (!condition) {
+    acc.diagnostics.push({ line: headerLine.index + 1, message: "if 需要条件表达式。" });
+  }
+  const thenChildren: RawLine[] = [];
+  let i = headerLine.index + 1;
+  // then 分支：缩进 > headerIndent 的连续行
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.blank) { i += 1; continue; }
+    if (line.indent <= headerLine.indent) break;
+    thenChildren.push(line);
+    i += 1;
+  }
+  // 可选 else：与 header 同级的 `else` 行
+  let elseChildren: RawLine[] | null = null;
+  if (i < lines.length && lines[i].indent === headerLine.indent && parseBlockHeader(lines[i].text)?.kind === "else") {
+    i += 1;
+    elseChildren = [];
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.blank) { i += 1; continue; }
+      if (line.indent <= headerLine.indent) break;
+      elseChildren.push(line);
+      i += 1;
+    }
+  }
+  const then = parseChildInstructions(lines, thenChildren, acc);
+  const elseBranch = elseChildren ? parseChildInstructions(lines, elseChildren, acc) : undefined;
+  if (!condition) return { instruction: null, next: i };
+  const instruction = pruneUndefined({
+    t: "if" as const,
+    id,
+    condition,
+    then,
+    else: elseBranch,
+  }) as Instruction;
+  return { instruction, next: i };
+}
+
 export function parseScenarioText(text: string): ScenarioParseResult {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const lines = splitRawLines(text);
   const instructions: Instruction[] = [];
   const diagnostics: ScenarioDiagnostic[] = [];
+  const acc: BlockParseAccumulator = { diagnostics };
   let frameHasBlockingInstruction = false;
   let frameHasAnyInstruction = false;
   let frameSuppressesImplicitPause = false;
@@ -277,17 +650,45 @@ export function parseScenarioText(text: string): ScenarioParseResult {
   };
 
   while (index < lines.length) {
-    const raw = lines[index];
+    const line = lines[index];
     const lineNumber = index + 1;
-    const line = raw.trim();
 
-    if (line.length === 0) {
+    if (line.blank) {
       finishFrame();
       index += 1;
       continue;
     }
 
-    const parsed = parseScenarioLine(line);
+    // 顶层不允许裸 else（没有 if 配对）。
+    const header = parseBlockHeader(line.text);
+    if (header?.kind === "else") {
+      diagnostics.push({ line: lineNumber, message: "else 必须跟在 if 之后。" });
+      index += 1;
+      continue;
+    }
+
+    if (header?.kind === "choice") {
+      const { instruction, next } = parseChoiceBlock(lines, line, acc);
+      if (instruction) {
+        instructions.push(instruction);
+        frameHasAnyInstruction = true;
+        // choice 不是 blocking 指令（presentChoice 由运行时处理）。
+      }
+      index = next;
+      continue;
+    }
+
+    if (header?.kind === "if") {
+      const { instruction, next } = parseIfBlock(lines, line, acc);
+      if (instruction) {
+        instructions.push(instruction);
+        frameHasAnyInstruction = true;
+      }
+      index = next;
+      continue;
+    }
+
+    const parsed = parseScenarioLine(line.text);
     if (parsed.ok) {
       if (parsed.suppressesImplicitPause) {
         frameSuppressesImplicitPause = true;
@@ -306,15 +707,81 @@ export function parseScenarioText(text: string): ScenarioParseResult {
   }
 
   finishFrame();
+  // acc.diagnostics 与 diagnostics 同一引用，块辅助函数已直接写入主数组。
 
   return diagnostics.length === 0
     ? { ok: true, instructions, diagnostics: [] }
     : { ok: false, instructions, diagnostics };
 }
 
+/**
+ * Spec 35 Phase 2：定位光标行所属的 choice / if 块头指令。
+ *
+ * studio 的 `getScenarioSelection` 在光标落在块头行（choice / if / else）上时
+ * 调用此函数取得完整指令。返回 null 表示该行不是块头或解析失败。
+ */
+export function findScenarioBlockHeaderAtLine(text: string, lineNumber: number): {
+  instruction: Instruction;
+  kind: "choice" | "if";
+  startLine: number;
+  endLine: number;
+  topIndex: number;
+} | null {
+  const lines = splitRawLines(text);
+  const target = lines.find((line) => line.index + 1 === lineNumber);
+  if (!target) return null;
+  const header = parseBlockHeader(target.text);
+  if (!header || header.kind === "else") return null;
+  // 计算该块头是第几条顶层指令（顶层 = 缩进 0 的指令/块头；空行不算）。
+  let topIndex = -1;
+  for (const line of lines) {
+    if (line.blank) continue;
+    if (line.indent === 0 && !line.text.startsWith("@continue")) {
+      // @to 不可能出现在顶层；@effects 也不行。只有真指令/块头算顶层。
+      topIndex += 1;
+    }
+    if (line.index === target.index) break;
+  }
+  const result = parseScenarioText(text);
+  const instruction = result.instructions[topIndex];
+  if (!instruction || instruction.t !== header.kind) return null;
+  const range = blockLineRange(lines, target);
+  if (!range) return null;
+  return { instruction, kind: header.kind, ...range, topIndex };
+}
+
+/** 计算块头指令占据的行范围（块头行到该块最后一个子行）。 */
+function blockLineRange(lines: RawLine[], headerLine: RawLine): { startLine: number; endLine: number } | null {
+  const startLine = headerLine.index + 1;
+  let endLine = startLine;
+  const isIfBlock = parseBlockHeader(headerLine.text)?.kind === "if";
+  for (let i = headerLine.index + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.blank) continue;
+    if (line.indent <= headerLine.indent) {
+      // if 块的 else 行与 header 同缩进，仍属于该块。
+      if (isIfBlock && line.indent === headerLine.indent && parseBlockHeader(line.text)?.kind === "else") {
+        endLine = i + 1;
+        continue;
+      }
+      break;
+    }
+    endLine = i + 1;
+  }
+  return { startLine, endLine };
+}
+
 export function parseScenarioLine(line: string): ParsedLine {
   const trimmed = line.trim();
   if (trimmed.length === 0) return { ok: true, instruction: null };
+
+  // Spec 35 Phase 2：choice / if / else 是缩进块头，单行解析时不构成指令。
+  // 块的嵌套结构由 parseScenarioText 的缩进感知逻辑处理；这里只标记种类，
+  // 让 scenarioFrames / scenarioHighlight 不把块头误读成 narrate。
+  const blockHeader = parseBlockHeader(trimmed);
+  if (blockHeader) {
+    return { ok: true, instruction: null, block: blockHeader.kind };
+  }
 
   if (trimmed.startsWith("@")) {
     if (trimmed === "@continue") {
@@ -522,14 +989,17 @@ export function formatScenarioText(instructions: Instruction[]): string {
 
 export function formatScenarioInstruction(instruction: Instruction): string {
   const projectedInstruction = withoutStoryPointId(instruction);
-  // Spec 35：choice / if 含嵌套 Instruction[]，行式 DSL 无法可读表达，直接走
-  // @instruction {json} 逃生路径。缩进树文本编辑属于 Phase 2。
-  if (projectedInstruction.t === "choice" || projectedInstruction.t === "if") {
-    return `@instruction ${stringifyScenarioJson(projectedInstruction)}`;
-  }
-  const readable = formatReadableScenarioInstruction(projectedInstruction);
-  const reparsed = parseScenarioLine(readable);
-  if (reparsed.ok && reparsed.instruction && instructionsAreEquivalent(reparsed.instruction, projectedInstruction)) {
+  // Spec 35 Phase 2：choice / if 用缩进树可读表达。先尝试缩进树格式，再 round-trip
+  // 校验；无法表达（如 option 文本含换行）时回退到 @instruction {json}。
+  const readable = formatReadableScenarioInstructionBlock(projectedInstruction, 0);
+  const reparsed = parseScenarioText(readable);
+  // 顶层帧可能给非阻塞尾部注入隐式 pause，故只比较首条指令。
+  const reparsedFirst = reparsed.instructions[0];
+  if (
+    reparsed.ok
+    && reparsedFirst
+    && instructionsAreEquivalent(reparsedFirst, projectedInstruction)
+  ) {
     return readable;
   }
   return `@instruction ${stringifyScenarioJson(projectedInstruction)}`;
@@ -564,6 +1034,78 @@ function joinSpeakerOptions(expr: string | undefined, voice: string | undefined,
     msToken(ms),
   ].filter((token): token is string => token != null && token !== "");
   return options.length === 0 ? "" : `(${options.join(", ")})`;
+}
+
+/** 缩进单元（与解析器对齐：tab=4）。 */
+const SCENARIO_INDENT_UNIT = "    ";
+
+/**
+ * 可读缩进树格式化（递归）。返回的字符串已含 `depth` 层缩进。
+ * 叶子指令单行带前缀；choice / if 块头在 `depth`，子行在 `depth+1`（或
+ * choice option body 在 `depth+2`）。
+ */
+function formatReadableScenarioInstructionBlock(instruction: Instruction, depth: number): string {
+  if (instruction.t === "choice") {
+    return formatChoiceBlock(instruction, depth);
+  }
+  if (instruction.t === "if") {
+    return formatIfBlock(instruction, depth);
+  }
+  // 叶子指令：单行，带 depth 层缩进。
+  return indentPrefix(depth) + formatReadableScenarioInstruction(instruction);
+}
+
+function formatChoiceBlock(instruction: Extract<Instruction, { t: "choice" }>, depth: number): string {
+  const headerParts = ["choice"];
+  if (instruction.id) headerParts.push(`#${instruction.id}`);
+  if (instruction.prompt) headerParts.push(instruction.prompt);
+  const lines: string[] = [indentPrefix(depth) + joinTokens(headerParts)];
+  for (const option of instruction.options) {
+    const optionParts = [option.text];
+    if (option.to != null && (!option.body || option.body.length === 0)) {
+      optionParts.push(`@to ${option.to}`);
+    }
+    lines.push(indentPrefix(depth + 1) + joinTokens(optionParts));
+    // effects 在 body 之前（与运行时语义一致）；用 @effects 块头标记，便于解析时
+    // 与 body 区分（两者都可能含 set 指令）。
+    if (option.effects && option.effects.length > 0) {
+      lines.push(`${indentPrefix(depth + 2)}@effects`);
+      for (const effect of option.effects) {
+        lines.push(...formatReadableScenarioInstructionBlock(effect, depth + 3).split("\n"));
+      }
+    }
+    if (option.body) {
+      for (const bodyInstr of option.body) {
+        lines.push(...formatReadableScenarioInstructionBlock(bodyInstr, depth + 2).split("\n"));
+      }
+    }
+    if (option.to != null && option.body && option.body.length > 0) {
+      lines.push(`${indentPrefix(depth + 2)}@to ${option.to}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function formatIfBlock(instruction: Extract<Instruction, { t: "if" }>, depth: number): string {
+  const headerParts = ["if"];
+  if (instruction.id) headerParts.push(`#${instruction.id}`);
+  headerParts.push(instruction.condition);
+  const lines: string[] = [indentPrefix(depth) + joinTokens(headerParts)];
+  for (const thenInstr of instruction.then) {
+    lines.push(...formatReadableScenarioInstructionBlock(thenInstr, depth + 1).split("\n"));
+  }
+  if (instruction.else && instruction.else.length > 0) {
+    lines.push(indentPrefix(depth) + "else");
+    for (const elseInstr of instruction.else) {
+      lines.push(...formatReadableScenarioInstructionBlock(elseInstr, depth + 1).split("\n"));
+    }
+  }
+  return lines.join("\n");
+}
+
+/** `depth` 层缩进的前缀字符串。 */
+function indentPrefix(depth: number): string {
+  return depth <= 0 ? "" : SCENARIO_INDENT_UNIT.repeat(depth);
 }
 
 function formatReadableScenarioInstruction(instruction: Instruction): string {
@@ -664,9 +1206,9 @@ function formatReadableScenarioInstruction(instruction: Instruction): string {
       return "@pause";
     case "choice":
     case "if":
-      // Spec 35：choice/if 由 formatScenarioInstruction 提前走 @instruction {json}
-      // 逃生路径，不会走到这里。保留分支仅为穷尽性编译检查。
-      return `@instruction ${stringifyScenarioJson(instruction)}`;
+      // Spec 35 Phase 2：choice/if 由 formatReadableScenarioInstructionBlock 处理
+      // （缩进树）。这里不会被单行 formatter 调用到，保留分支仅为穷尽性编译检查。
+      return formatReadableScenarioInstructionBlock(instruction, 0);
   }
 }
 

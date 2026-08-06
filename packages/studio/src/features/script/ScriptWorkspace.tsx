@@ -1046,6 +1046,8 @@ export function ScriptWorkspace({
                 nodeRevision={editorDetail.revision}
                 externalChange={activeNodeChange}
                 focusRequest={localFocus ?? focusRequest}
+                outgoingEdges={graph.edges.filter((edge) => edge.from === editorNode.id)}
+                onUpdateOutgoingEdges={(edges) => handleUpdateOutgoingEdges(editorNode.id, edges)}
                 onSaved={onSaved}
                 onDirtyChange={handleNodeDirtyChange}
                 onExternalChangeResolved={handleExternalChangeResolved}

@@ -65,6 +65,58 @@ describe("scenario editor helpers", () => {
     expect(selection.kind).toBe("invalid");
     expect(selection.message).toContain("未知命令");
   });
+
+  it("selects a choice block header and exposes the full instruction with a path", () => {
+    const text = [
+      "@bg room",
+      "hero: 开场。",
+      "",
+      "choice",
+      "    去看看  @to approach",
+      "    留在原地  @to shore",
+      "@continue",
+    ].join("\n");
+    // cursor on the "choice" line (line 4)
+    const choiceLineStart = text.indexOf("choice");
+    const selection = getScenarioSelection(text, choiceLineStart);
+
+    expect(selection.kind).toBe("choice");
+    expect(selection.startLine).toBe(4);
+    expect(selection.endLine).toBe(6);
+    expect(selection.instruction?.t).toBe("choice");
+    expect(selection.path).toEqual([2]); // bg=0, say=1, choice=2
+  });
+
+  it("selects an if block header and exposes the full instruction", () => {
+    const text = [
+      "if affection >= 60",
+      "    yuki: 我也一起去！",
+      "else",
+      "    yuki: 小心点。",
+      "@continue",
+    ].join("\n");
+    const ifLineStart = text.indexOf("if affection");
+    const selection = getScenarioSelection(text, ifLineStart);
+
+    expect(selection.kind).toBe("if");
+    expect(selection.startLine).toBe(1);
+    expect(selection.endLine).toBe(4);
+    expect(selection.instruction?.t).toBe("if");
+  });
+
+  it("treats an else line as empty (no standalone instruction)", () => {
+    const text = [
+      "if affection >= 60",
+      "    yuki: 我也一起去！",
+      "else",
+      "    yuki: 小心点。",
+      "@continue",
+    ].join("\n");
+    const elseLineStart = text.indexOf("else");
+    const selection = getScenarioSelection(text, elseLineStart);
+
+    expect(selection.kind).toBe("empty");
+  });
 });
 
 describe("ScenarioInlineControls", () => {
@@ -545,6 +597,48 @@ describe("ScenarioInspector", () => {
     // 空闲态不再重复外层 BottomSheet 栏的"节点摘要"标题
     expect(html).not.toContain("节点摘要");
     expect(html).toContain("测试诊断");
+  });
+
+  // Spec 35 Phase 2：choice / if 结构化编辑器
+  it("renders a choice editor with options when a choice block header is selected", () => {
+    const text = [
+      "choice",
+      "    去看看  @to approach",
+      "    留在原地  @to shore",
+      "@continue",
+    ].join("\n");
+    const selection = getScenarioSelection(text, 0);
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection,
+      manifest,
+      variables,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(html).toContain("选项引导文案");
+    expect(html).toContain("去看看");
+    expect(html).toContain("留在原地");
+    expect(html).toContain("添加选项");
+  });
+
+  it("renders an if condition editor when an if block header is selected", () => {
+    const text = [
+      "if affection >= 60",
+      "    yuki: 我也一起去！",
+      "@continue",
+    ].join("\n");
+    const selection = getScenarioSelection(text, 0);
+    const html = renderToStaticMarkup(createElement(ScenarioInspector, {
+      selection,
+      manifest,
+      variables,
+      diagnostics: [],
+      onReplaceInstruction: () => {},
+    }));
+
+    expect(html).toContain("条件分支");
+    expect(html).toContain("affection");
   });
 });
 
