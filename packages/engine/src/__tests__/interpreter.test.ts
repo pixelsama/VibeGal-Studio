@@ -169,13 +169,31 @@ describe("applyInstruction: narrate", () => {
 });
 
 describe("set instruction", () => {
-  it("schema_rejects_choice_instruction", () => {
+  it("schema_accepts_choice_and_if_with_nested_bodies", () => {
+    // Spec 35：choice / if 重新成为受支持的指令（带嵌套 Instruction[]）。
     expect(() =>
       InstructionSchema.parse({
         t: "choice",
-        choices: [{ text: "留下", to: "stay" }],
+        id: "c1",
+        options: [{ text: "留下", to: "stay" }],
       }),
-    ).toThrow();
+    ).not.toThrow();
+    expect(() =>
+      InstructionSchema.parse({
+        t: "if",
+        condition: "affection >= 60",
+        then: [{ t: "narrate", text: "她笑了。" }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("applyInstruction_choice_and_if_leave_state_unchanged", () => {
+    // Spec 35：choice/if 是控制流，纯状态机不改 state（嵌套执行在 GraphNovelPlayer）。
+    const before = buildInitialState();
+    const afterChoice = applyInstruction(before, { t: "choice", options: [{ text: "x" }] }, deps);
+    expect(afterChoice).toBe(before);
+    const afterIf = applyInstruction(before, { t: "if", condition: "true", then: [{ t: "narrate", text: "y" }] }, deps);
+    expect(afterIf).toBe(before);
   });
 
   it("applyInstruction_set_updates_runtime_vars", () => {

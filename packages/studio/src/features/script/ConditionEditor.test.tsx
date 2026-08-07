@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Manifest, VariableRegistry } from "@vibegal/engine";
-import type { ProjectGraph } from "../../lib/types";
+import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { StudioI18nProvider } from "../../lib/i18n";
 import { ConditionEditor, describeCondition } from "./ConditionEditor";
 import { collectStateSources } from "./storyState";
@@ -37,10 +37,25 @@ const graph: ProjectGraph = {
     { id: "rooftop", title: "天台·夜", file: "nodes/rooftop.json", chapterId: "c1", position: { x: 0, y: 0 } },
     { id: "stay", title: "留下", file: "nodes/stay.json", chapterId: "c1", position: { x: 200, y: 0 } },
   ],
-  edges: [{ id: "rooftop__stay", from: "rooftop", to: "stay", mode: "choice", label: "陪她留下", condition: null }],
+  edges: [{ id: "rooftop__stay", from: "rooftop", to: "stay", condition: null }],
 };
 
-const sources = collectStateSources({ registry, graph, manifest });
+// Spec 35 Phase 3：chose.* 从节点 choice 指令派生。
+const nodes: NodeEntry[] = [
+  {
+    relPath: "nodes/rooftop.json",
+    data: [
+      {
+        t: "choice",
+        id: "rooftop_choice",
+        prompt: null,
+        options: [{ text: "陪她留下", to: "stay" }],
+      },
+    ],
+  },
+];
+
+const sources = collectStateSources({ registry, graph, manifest, nodes });
 const render = (source: string) => renderToStaticMarkup(createElement(ConditionEditor, {
   source, sources, onChange: () => {},
 }));
@@ -86,7 +101,7 @@ describe("ConditionEditor", () => {
   });
 
   it("offers story experience nobody declared", () => {
-    const html = render("chose.rooftop__stay");
+    const html = render("chose.rooftop_choice.0");
     expect(html).toContain("在「天台·夜」选了「陪她留下」");
     expect(html).toContain("剧情经历");
   });
@@ -94,7 +109,7 @@ describe("ConditionEditor", () => {
   it("keeps an unrepresentable expression as-is rather than mangling it", () => {
     const html = render("affection_yuki + 1 >= trust");
     expect(html).toContain("gs-condition--raw");
-    expect(html).toContain("这条判断用了表达式写法");
+    expect(html).toContain("这条判断用了复杂表达式");
   });
 
   it("explains that an empty condition is the fallback branch", () => {

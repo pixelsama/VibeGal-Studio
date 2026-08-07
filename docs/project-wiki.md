@@ -56,8 +56,8 @@ The script source of truth is graph-first:
 - `content/graph.json` describes story flow.
 - Each graph node points to one `content/nodes/*.json` file.
 - Each node file is an `Instruction[]`.
-- Linear stories are represented as graph nodes connected by `linear` edges.
-- Branches are represented by graph outgoing edges, not inline `choice` instructions.
+- Linear stories are represented as graph nodes connected by linear edges.
+- Branches are represented by node-internal `choice` and `if` instructions; graph edges are pure structural connections.
 
 Legacy `content/meta.json` `chapters` entries and `content/chapters/` are not loaded or synthesized.
 They should surface as project issues so the project can be explicitly migrated.
@@ -204,7 +204,7 @@ Current instruction types:
 
 Important current limitations:
 
-- No inline `choice` instruction; graph edges own branching.
+- `choice` and `if` are valid node-internal instructions that own branching; graph edges are pure structural connections.
 - No arbitrary script execution, HTML, CSS, or expression calls from project text.
 - Runtime text supports scalar interpolation and bounded `[pause]`, `[color]`, `[ruby]`, and `[b]` markup only.
 - No Live2D/Spine, shader, particle, bone, physics, or arbitrary animation-script contract.
@@ -249,21 +249,20 @@ There are two player classes:
 The graph player is the current product direction. It:
 
 - starts at `graph.entryNodeId`,
-- executes node instructions frame by frame,
-- follows `linear` edges,
-- exposes `state.choice` for `choice` edges,
-- evaluates `auto` edges against `state.vars`,
+- executes node instructions frame by frame, including node-internal `choice` and `if` branching,
+- routes exits by edge count: 0 outgoing = terminal, 1 outgoing = linear advance, 2+ outgoing = first condition match wins (null/empty condition = fallback),
+- applies an edge's `effects` on traversal before the target node starts,
 - stops at text, wait, pause, choice, or graph end.
 
 ### 4.5 Graph Routing
 
 `packages/engine/src/graphRouting.ts` implements lightweight edge routing.
 
-Edge modes:
+Edges are pure structural connections (`id`, `from`, `to`, optional `condition`, optional `effects`); there is no `mode` or `label` field. Routing is decided by outgoing-edge count:
 
-- `linear`: one outgoing edge maximum.
-- `choice`: player-visible choices.
-- `auto`: first condition match wins.
+- 0 outgoing edges: terminal node.
+- 1 outgoing edge: linear advance.
+- 2+ outgoing edges: condition routes — first match wins; a null/empty `condition` is the fallback. Player-visible branching itself lives in node-internal `choice` and `if` instructions.
 
 Current condition syntax:
 
@@ -398,8 +397,6 @@ Narrative flow graph:
       "id": "prologue__ending",
       "from": "prologue",
       "to": "ending",
-      "mode": "linear",
-      "label": null,
       "condition": null
     }
   ]
@@ -414,9 +411,9 @@ Graph rules:
 - `node.chapterId` assigns an editorial/runtime chapter.
 - The entry chapter may start with empty state; every other safely jumpable chapter needs an explicit `chapters[].checkpoint`.
 - A checkpoint node must exist in that chapter and may target a stable story-point id; checkpoint background/sprite/BGM references must exist in the manifest.
-- Outgoing edges from one node must use one mode only.
-- `choice` edges require labels.
-- `auto` edges evaluate in order; a null/empty condition is a default branch.
+- Nodes route by outgoing-edge count: 0 = terminal, 1 = linear, 2+ = condition routes (first match wins; one edge may carry a null/empty `condition` as the fallback).
+- Edges carry only `id`, `from`, `to`, optional `condition`, and optional `effects`; there is no `mode` or `label` field.
+- Player-visible branching lives in node-internal `choice` and `if` instructions, not on edges.
 - Replays come from `manifest.unlocks.replay` and run in an isolated player that does not mutate current playthrough state, save slots, unlocks, global variables, or endings.
 
 #### Exit Effects
@@ -428,7 +425,6 @@ the story took *that* exit, applied before the target node starts.
 {
   "id": "awakening__approach",
   "from": "awakening", "to": "approach",
-  "mode": "choice", "label": "去看看那片火光",
   "effects": [{ "t": "set", "key": "resolve", "expr": "resolve + 4" }]
 }
 ```
@@ -497,7 +493,7 @@ Three prefixes are owned by the runtime and may not be declared or written:
 | Prefix | Meaning |
 | --- | --- |
 | `system.` | Runtime facts: `system.playthroughCount`, `system.lastEndingId`. |
-| `chose.` | `chose.<edgeId>` — true once the player picked that choice. |
+| `chose.` | `chose.<choiceInstructionId>.<optionIndex>` — true once the player picked that choice option. |
 | `seen.` | `seen.<nodeId>` — true once the player reached that node. |
 
 `chose.*` and `seen.*` are derived from the decision log rather than stored, so a
@@ -539,7 +535,7 @@ Important rules:
 - Plain text becomes `narrate`.
 - A stage-only frame gets an automatic `pause`.
 - `@wait` is timed; `@pause` waits for player advance.
-- `@choice` is invalid because choices live in graph edges.
+- `@choice` is valid as a node-internal instruction; choices live inside node instructions, not on graph edges.
 
 ## 7. Renderer Contract
 
@@ -668,7 +664,6 @@ Important components/utilities:
 - `ScriptWorkspace.tsx`: coordinates graph view and node editor.
 - `GraphCanvas.tsx`: React Flow canvas.
 - `GraphNodeView.tsx`: graph node UI.
-- `NodeInspector.tsx`: node and edge properties.
 - `NodeEditor.tsx`: node content editing.
 - `ScenarioTextEditor.tsx`: text DSL editor.
 - `InstructionBlock.tsx`: block-style instruction editing.
@@ -918,7 +913,7 @@ Rust backend validates:
 - dangling edges,
 - duplicate ids,
 - invalid entry node,
-- graph edge mode rules,
+- graph routing rules (0/1/many exits, first-match-wins conditions, single fallback),
 - node contents,
 - asset/manifest consistency,
 - manifest/meta structure.

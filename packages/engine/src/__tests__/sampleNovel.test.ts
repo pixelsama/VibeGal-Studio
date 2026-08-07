@@ -96,8 +96,9 @@ describe("sample novel", () => {
   it("reaches the guardian ending through the exit effects and the auto branch", () => {
     const player = play();
     advanceUntilChoiceOrEnd(player);
-    player.choose("approach");
-    // 出口效果：决心 +4，走向改为「护卫」。
+    // Spec 35：选项 0 = 去看看那片火光 → approach。
+    player.choose(undefined, 0);
+    // 选项效果：决心 +4，走向改为「护卫」。
     expect(player.state.vars.resolve).toBe(4);
     expect(player.state.vars.route).toBe("protector");
     advanceUntilChoiceOrEnd(player);
@@ -110,7 +111,8 @@ describe("sample novel", () => {
   it("reaches the adrift ending when the player stays put", () => {
     const player = play();
     advanceUntilChoiceOrEnd(player);
-    player.choose("shore");
+    // Spec 35：选项 1 = 留在原地 → shore。
+    player.choose(undefined, 1);
     // 决心被钳制在下限 0，不会变成 -1。
     expect(player.state.vars.resolve).toBe(0);
     advanceUntilChoiceOrEnd(player);
@@ -118,13 +120,14 @@ describe("sample novel", () => {
     player.dispose();
   });
 
-  it("attributes each change to the exit or instruction that made it", () => {
+  it("attributes each change to the choice option or instruction that made it", () => {
     const player = play();
     advanceUntilChoiceOrEnd(player);
-    player.choose("approach");
+    player.choose(undefined, 0);
     advanceUntilChoiceOrEnd(player);
     const writes = player.getStateWrites();
-    expect(writes.find((w) => w.variable === "resolve")).toMatchObject({ edgeId: "awakening__approach", to: 4 });
+    // Spec 35：决心改变归因到 choice 选项（choiceInstructionId + optionIndex）。
+    expect(writes.find((w) => w.variable === "resolve")).toMatchObject({ choiceInstructionId: "awakening_choice", optionIndex: 0, to: 4 });
     expect(writes.find((w) => w.variable === "knows_the_fire")).toMatchObject({ nodeId: "approach", to: true });
     player.dispose();
   });

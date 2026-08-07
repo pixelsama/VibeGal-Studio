@@ -83,8 +83,6 @@ export function searchProject(input: ProjectSearchInput, query: string): Project
       edge.id,
       edge.from,
       edge.to,
-      edge.mode ?? "linear",
-      edge.label ?? "",
       edge.condition ?? "",
     ], {
       kind: "edge",
@@ -92,7 +90,7 @@ export function searchProject(input: ProjectSearchInput, query: string): Project
       nodeId: edge.from,
       file: "content/graph.json",
       jsonPath: `$.edges[${index}]`,
-      label: edge.label || edge.id,
+      label: edge.id,
       preview: `${edge.from} -> ${edge.to} ${edge.condition ?? ""}`,
     });
   });

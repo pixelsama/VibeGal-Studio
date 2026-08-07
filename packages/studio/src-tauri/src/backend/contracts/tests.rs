@@ -218,11 +218,19 @@ fn every_generated_instruction_has_well_formed_policy_metadata() {
         );
     }
 
+    // Spec 35：节点 schema 自递归后，指令联合抽到 $defs.<key>.oneOf，items 用 $ref 引用。
+    let node_schema = schema(ContractSchemaKind::NodeFile);
+    let branches = node_schema["items"]["oneOf"]
+        .as_array()
+        .or_else(|| {
+            // 递归形态：items.$ref → $defs.<key>.oneOf
+            let ref_path = node_schema["items"]["$ref"].as_str()?;
+            let key = ref_path.rsplit('/').next()?;
+            node_schema["$defs"][key]["oneOf"].as_array()
+        })
+        .expect("node branches");
     assert_eq!(
-        schema(ContractSchemaKind::NodeFile)["items"]["oneOf"]
-            .as_array()
-            .expect("node branches")
-            .len(),
+        branches.len(),
         instruction_types().count(),
         "instruction tags must be unique and no branch may be silently dropped"
     );

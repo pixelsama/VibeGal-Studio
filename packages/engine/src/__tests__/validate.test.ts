@@ -309,6 +309,28 @@ describe("runtime instruction identity", () => {
       }),
     ]);
   });
+
+  it("validates nested resource references and duplicate story-point ids", () => {
+    const chapter = [{
+      t: "if",
+      condition: "true",
+      then: [
+        { t: "say", id: "same", who: "ghost", text: "缺失角色" },
+        { t: "choice", id: "nested", options: [{
+          text: "继续",
+          body: [{ t: "narrate", id: "same", text: "重复停点" }],
+        }] },
+      ],
+    }];
+    const referenceIssues = validateReferences(chapter, ManifestSchema.parse(manifest), "nodes/start.json");
+    expect(referenceIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "missing_character_ref", jsonPath: "$[0].then[0].who" }),
+    ]));
+    const identityIssues = validateChapter(chapter, "nodes/start.json");
+    expect(identityIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "instruction_id_duplicate" }),
+    ]));
+  });
 });
 
 describe("shared node validation contract", () => {

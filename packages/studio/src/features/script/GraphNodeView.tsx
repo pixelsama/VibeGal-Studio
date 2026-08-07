@@ -68,7 +68,7 @@ export function GraphNodeView({ data, selected }: NodeProps<GraphNodeViewNode>) 
 const nodeStyle: React.CSSProperties = {
   minWidth: 220,
   maxWidth: 260,
-  padding: "14px var(--space-4)",
+  padding: "var(--space-3) var(--space-4)",
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
   background: "var(--bg-panel)",

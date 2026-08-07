@@ -45,7 +45,13 @@ export type UnlockKind = "cg" | "music" | "replay" | "ending" | "endings";
 
 export interface RuntimeControls {
   advance(): void;
-  choose(toNodeId: string): void;
+  /**
+   * Spec 35：玩家选择一个选项。
+   * - 图出口来源：传 toNodeId（目标节点）。
+   * - 节点内 choice 指令来源：传 optionIndex（选了第几个选项）；toNodeId 可空。
+   * 渲染层通常从 state.choice.choices[i] 同时拿到 to 与 optionIndex，一并传回。
+   */
+  choose(toNodeId?: string, optionIndex?: number): void;
   submitName(value: string): boolean | void;
   setAutoPlay(on: boolean): void;
   setSkipMode(mode: SkipMode): void;

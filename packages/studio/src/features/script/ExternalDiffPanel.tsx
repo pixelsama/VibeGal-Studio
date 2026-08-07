@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "../common/Button";
+import { ConfirmDialog } from "../common/Dialogs";
 import { summarizeDiff, type DiffRow } from "./externalDiff";
 import {
   useStudioI18n,
@@ -43,6 +45,7 @@ export function ExternalDiffPanel({
 }) {
   const { t } = useStudioI18n();
   const diffSummary = rows ? summarizeDiff(rows) : null;
+  const [confirmLoadExternal, setConfirmLoadExternal] = useState(false);
   return (
     <div data-region="external-diff-panel" style={panelStyle}>
       <div style={headerStyle}>
@@ -100,16 +103,18 @@ export function ExternalDiffPanel({
       <div style={actionsStyle}>
         <Button
           variant="primary"
-          onClick={onLoadExternal}
-          disabled={saving || loading || Boolean(error) || summary.externalState !== "present"}
-        >
-          {t("script.externalDiff.loadExternal")}
-        </Button>
-        <Button
           onClick={onKeepLocal}
           disabled={saving || loading || Boolean(error)}
         >
           {t("script.externalDiff.keepLocal")}
+        </Button>
+        <Button
+          variant="danger"
+          onClick={() => setConfirmLoadExternal(true)}
+          aria-haspopup="dialog"
+          disabled={saving || loading || Boolean(error) || summary.externalState !== "present"}
+        >
+          {t("script.externalDiff.loadExternal")}
         </Button>
         <Button
           onClick={onCopyConflict}
@@ -123,6 +128,17 @@ export function ExternalDiffPanel({
           </Button>
         )}
       </div>
+      {confirmLoadExternal && (
+        <ConfirmDialog
+          message={writeConflict
+            ? t("script.externalDiff.loadExternalConfirmConflict")
+            : t("script.externalDiff.loadExternalConfirm")}
+          confirmLabel={t("script.externalDiff.loadExternal")}
+          danger
+          onConfirm={onLoadExternal}
+          onClose={() => setConfirmLoadExternal(false)}
+        />
+      )}
     </div>
   );
 }

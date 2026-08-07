@@ -93,6 +93,10 @@ interface PromptDialogProps {
   cancelLabel?: string;
   /** 允许提交与初值相同的值（默认 false）。 */
   allowUnchanged?: boolean;
+  /** 允许提交空值（默认 false；表达式编辑可用来恢复兜底分支）。 */
+  allowEmpty?: boolean;
+  /** 返回错误文案时阻止提交；必须是纯校验函数。 */
+  validate?: (value: string) => string | null | undefined;
   onConfirm: (value: string) => void;
   onClose: () => void;
 }
@@ -104,6 +108,8 @@ export function PromptDialog({
   confirmLabel,
   cancelLabel,
   allowUnchanged = false,
+  allowEmpty = false,
+  validate,
   onConfirm,
   onClose,
 }: PromptDialogProps) {
@@ -119,7 +125,10 @@ export function PromptDialog({
   }, []);
 
   const trimmed = value.trim();
-  const canSubmit = trimmed.length > 0 && (allowUnchanged || trimmed !== initialValue.trim());
+  const validationError = validate?.(value) ?? null;
+  const canSubmit = (allowEmpty || trimmed.length > 0)
+    && (allowUnchanged || trimmed !== initialValue.trim())
+    && !validationError;
 
   return (
     <Overlay onClose={onClose}>
@@ -130,6 +139,7 @@ export function PromptDialog({
           ref={inputRef}
           value={value}
           data-dialog-initial-focus="true"
+          aria-invalid={validationError ? true : undefined}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && canSubmit) {
@@ -137,8 +147,9 @@ export function PromptDialog({
               onClose();
             }
           }}
-          style={promptInputStyle}
+          style={{ ...promptInputStyle, ...(validationError ? promptInputInvalidStyle : null) }}
         />
+        {validationError && <div role="alert" style={promptErrorStyle}>{validationError}</div>}
         <div style={dialogActionsStyle}>
           <Button variant="secondary" onClick={onClose}>
             {resolvedCancelLabel}
@@ -363,6 +374,18 @@ const promptInputStyle: React.CSSProperties = {
   color: "var(--text-bright)",
   fontSize: "var(--text-md)",
   marginBottom: 18,
+};
+
+const promptInputInvalidStyle: React.CSSProperties = {
+  borderColor: "var(--border-error)",
+};
+
+const promptErrorStyle: React.CSSProperties = {
+  marginTop: -12,
+  marginBottom: 18,
+  color: "var(--status-error-text)",
+  fontSize: "var(--text-sm)",
+  lineHeight: 1.5,
 };
 
 const dialogActionsStyle: React.CSSProperties = {

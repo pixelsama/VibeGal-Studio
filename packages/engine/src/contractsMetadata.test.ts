@@ -11,6 +11,8 @@ describe("contracts diagnostic metadata", () => {
       expect.objectContaining({ kind: "registry", missingCode: "missing_background_ref" }),
     ]);
     expect(instructionPolicies.say.storyPoint).toBe(true);
-    expect(contractDiagnostics.choice_instruction_not_supported.severity).toBe("error");
+    // Spec 35：choice 是玩家中断点（storyPoint），if 是纯控制流。
+    expect(instructionPolicies.choice.storyPoint).toBe(true);
+    expect(instructionPolicies.if).toEqual({});
   });
 });

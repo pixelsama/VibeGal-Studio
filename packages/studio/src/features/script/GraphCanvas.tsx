@@ -23,6 +23,7 @@ import { useResolvedTheme } from "../../lib/theme";
 import { GraphNodeView, type GraphCanvasNodeData } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { flowPositionFromClientPoint, flowPositionFromViewportCenter } from "./canvasMenu";
+import { endingsForNode } from "./endingRegistry";
 import { EmptyState } from "../common/EmptyState";
 import { Button } from "../common/Button";
 import { useStudioI18n } from "../../lib/i18n";
@@ -61,6 +62,14 @@ interface GraphCanvasProps {
   /** Phase 7：节点右键 - 设为入口。 */
   onSetEntry?: (id: string) => void;
   onManageEnding?: (id: string) => void;
+  /** Spec 35 Phase 3：节点右键 - 移动到章节（每章一项）。 */
+  onSetChapter?: (id: string, chapterId: string) => void;
+  /** Spec 35 Phase 3：节点右键 - 编辑结局标题。 */
+  onEditEnding?: (endingId: string) => void;
+  /** Spec 35 Phase 3：节点右键 - 注销结局。 */
+  onUnregisterEnding?: (endingId: string) => void;
+  /** Spec 35 Phase 3：节点右键 - 插入结局完成指令。 */
+  onInsertEndingCompletion?: (nodeId: string, endingId: string) => void;
   /** Phase 7：空白右键 - 自动排布。 */
   onAutoLayout?: () => void;
   /** Spec 33 E6：唤出快捷键与命令帮助（画布右键菜单入口）。 */
@@ -124,6 +133,10 @@ export function GraphCanvas({
   onRenameNode,
   onSetEntry,
   onManageEnding,
+  onSetChapter,
+  onEditEnding,
+  onUnregisterEnding,
+  onInsertEndingCompletion,
   onAutoLayout,
   onOpenShortcutsHelp,
 }: GraphCanvasProps) {
@@ -163,13 +176,30 @@ export function GraphCanvas({
     const edges = visibleFlow.edges.map((edge) => {
       const suspicious = Boolean(edge.data?.suspicious);
       const selected = edge.id === selectedEdgeId;
+      const edgeKind = edge.data?.kind as string | undefined;
+      const choiceOptions = edge.data?.choiceOptions as string[] | undefined;
+      const isChoiceEdge = edgeKind === "choice";
+      // choice 边：显示选项文案（多个选项用「/」分隔，最多 3 个）。
+      const choiceLabel = isChoiceEdge && choiceOptions && choiceOptions.length > 0
+        ? choiceOptions.slice(0, 3).join(" / ") + (choiceOptions.length > 3 ? ` +${choiceOptions.length - 3}` : "")
+        : undefined;
       return {
         ...edge,
         selected,
         animated: suspicious,
+        label: choiceLabel,
+        labelStyle: {
+          fontSize: 11,
+          fontWeight: 500,
+          fill: "var(--text-secondary)",
+        },
+        labelBgStyle: {
+          fill: "var(--surface)",
+          fillOpacity: 0.9,
+        },
         style: {
-          stroke: suspicious ? "var(--status-error)" : selected ? "var(--accent-bright)" : "var(--accent)",
-          strokeWidth: suspicious || selected ? 2.5 : 1.5,
+          stroke: suspicious ? "var(--status-error)" : selected ? "var(--accent-bright)" : isChoiceEdge ? "var(--accent-secondary, var(--accent))" : "var(--accent)",
+          strokeWidth: suspicious || selected ? 2.5 : isChoiceEdge ? 2 : 1.5,
           strokeDasharray: suspicious ? "6 4" : undefined,
         },
       };
@@ -309,9 +339,38 @@ export function GraphCanvas({
     if (onSetEntry && node.id !== graph.entryNodeId) {
       items.push({ key: "set-entry", label: t("script.nodeInspector.setEntry"), onSelect: () => onSetEntry(node.id) });
     }
+    if (onSetChapter && graph.chapters.length > 0) {
+      const currentNode = graph.nodes.find((n) => n.id === node.id);
+      const currentChapterId = currentNode?.chapterId;
+      for (const chapter of graph.chapters) {
+        const isCurrent = currentChapterId === chapter.id;
+        items.push({
+          key: `set-chapter-${chapter.id}`,
+          label: isCurrent ? t("script.canvas.currentChapter", { title: chapter.title || chapter.id }) : t("script.canvas.moveToChapterItem", { title: chapter.title || chapter.id }),
+          disabled: isCurrent,
+          onSelect: () => onSetChapter(node.id, chapter.id),
+        });
+      }
+    }
+    // Spec 35 Phase 3：结局管理从 NodeInspector 迁移到右键菜单。
+    const linked = manifest ? endingsForNode(manifest, node.id) : [];
     if (onManageEnding) {
-      const registered = Object.values(manifest?.unlocks?.endings ?? {}).some((ending) => ending.nodeId === node.id);
-      items.push({ key: "ending", label: registered ? t("script.canvas.manageEnding") : t("script.canvas.registerEnding"), onSelect: () => onManageEnding(node.id) });
+      items.push({
+        key: "ending-register",
+        label: linked.length > 0 ? t("script.canvas.manageEnding") : t("script.canvas.registerEnding"),
+        onSelect: () => onManageEnding(node.id),
+      });
+    }
+    for (const [endingId] of linked) {
+      if (onEditEnding) {
+        items.push({ key: `ending-edit-${endingId}`, label: t("script.canvas.editEndingTitle", { id: endingId }), onSelect: () => onEditEnding(endingId) });
+      }
+      if (onInsertEndingCompletion) {
+        items.push({ key: `ending-insert-${endingId}`, label: t("script.canvas.insertCompletion", { id: endingId }), onSelect: () => onInsertEndingCompletion(node.id, endingId) });
+      }
+      if (onUnregisterEnding) {
+        items.push({ key: `ending-unregister-${endingId}`, label: t("script.canvas.unregisterEnding", { id: endingId }), danger: true, onSelect: () => onUnregisterEnding(endingId) });
+      }
     }
     items.push({
       key: "delete",

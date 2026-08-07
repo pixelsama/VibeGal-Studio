@@ -1,27 +1,6 @@
-import type { Instruction, VariableRegistry } from "@vibegal/engine";
-import type { Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
+import type { Instruction } from "@vibegal/engine";
+import type { Manifest, NodeCreatorSummary, NodeEntry } from "../../lib/types";
 import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
-import { describeCondition } from "./ConditionEditor";
-import { collectStateSources } from "./storyState";
-
-export function creatorEdgeLabel(
-  edge: { mode?: string; label?: string | null; condition?: string | null },
-  options: { graph: ProjectGraph; variables?: VariableRegistry; manifest?: Manifest; t?: StudioTranslator },
-): string | undefined {
-  const t = options.t ?? translateZhCN;
-  const mode = edge.mode ?? "linear";
-  if (mode === "choice") return edge.label?.trim() || t("script.graph.choiceFallback");
-  if (mode !== "auto") return undefined;
-
-  const condition = edge.condition?.trim() ?? "";
-  if (!condition) return t("script.graph.otherwise");
-  const sources = collectStateSources({
-    registry: options.variables,
-    graph: options.graph,
-    manifest: options.manifest,
-  });
-  return describeCondition(condition, sources, t);
-}
 
 export function creatorNodeSummary(
   nodeId: string,

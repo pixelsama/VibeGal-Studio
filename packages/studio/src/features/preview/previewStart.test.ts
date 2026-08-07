@@ -33,8 +33,8 @@ const project: ProjectData = {
       { id: "fallback", title: "Fallback", file: "nodes/fallback.json", position: { x: 360, y: 180 } },
     ],
     edges: [
-      { id: "start__locked", from: "start", to: "locked", mode: "auto", label: null, condition: "has_key == true" },
-      { id: "start__fallback", from: "start", to: "fallback", mode: "auto", label: null, condition: null },
+      { id: "start__locked", from: "start", to: "locked", condition: "has_key == true" },
+      { id: "start__fallback", from: "start", to: "fallback", condition: null },
     ],
   },
   nodes: [
@@ -90,6 +90,22 @@ describe("preview start helpers", () => {
     expect(resolveAutoRoutePreview(graph, "start", { score: -1, blocked: false })).toEqual({
       kind: "target",
       edgeId: "start__locked",
+      nodeId: "locked",
+    });
+  });
+
+  it("evaluates a fallback after conditional exits regardless of declaration order", () => {
+    const graph = {
+      ...project.graph!,
+      edges: [
+        { id: "fallback-first", from: "start", to: "fallback", condition: null },
+        { id: "conditional", from: "start", to: "locked", condition: "has_key == true" },
+      ],
+    };
+
+    expect(resolveAutoRoutePreview(graph, "start", { has_key: true })).toEqual({
+      kind: "target",
+      edgeId: "conditional",
       nodeId: "locked",
     });
   });

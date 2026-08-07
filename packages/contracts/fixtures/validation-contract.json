@@ -19,7 +19,12 @@
         { "t": "unlock", "kind": "cg", "id": "ending" },
         { "t": "showCg", "id": "ending" },
         { "t": "playVideo", "id": "opening" },
-        { "t": "completeEnding", "id": "complete-ending", "endingId": "ending" }
+        { "t": "completeEnding", "id": "complete-ending", "endingId": "ending" },
+        { "t": "choice", "id": "branch-1", "prompt": "怎么办？", "options": [
+          { "text": "冲过去", "effects": [{ "t": "set", "key": "resolve", "expr": "resolve + 1" }], "body": [{ "t": "narrate", "id": "branch-1-a", "text": "你冲了过去。" }] },
+          { "text": "等等看", "to": "wait_node" }
+        ] },
+        { "t": "if", "condition": "resolve >= 3", "then": [{ "t": "narrate", "id": "branch-1-cond", "text": "决心足够。" }], "else": [{ "t": "narrate", "id": "branch-1-else", "text": "再想想。" }] }
       ],
       "issues": []
     },
@@ -52,10 +57,10 @@
       ]
     },
     {
-      "id": "node.invalid.deprecated-choice",
-      "input": [{ "t": "choice" }],
+      "id": "node.invalid.choice-empty-options",
+      "input": [{ "t": "choice", "options": [] }],
       "issues": [
-        { "code": "choice_instruction_not_supported", "severity": "error", "source": "node", "jsonPath": "$[0].t" }
+        { "code": "instruction_invalid_field", "severity": "error", "source": "node", "jsonPath": "$[0].options" }
       ]
     },
     {
@@ -246,16 +251,16 @@
       ]
     },
     {
-      "id": "graph.invalid.edge-mode-enum",
+      "id": "graph.invalid.edge-missing-id",
       "schema": "graph",
       "input": {
         "entryNodeId": "",
         "chapters": [{ "id": "chapter_1", "title": "第一章" }],
         "nodes": [],
-        "edges": [{ "id": "a-b", "from": "a", "to": "b", "mode": "manual" }]
+        "edges": [{ "from": "a", "to": "b" }]
       },
       "issues": [
-        { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.edges[0].mode" }
+        { "code": "graph_invalid_structure", "severity": "error", "source": "graph", "jsonPath": "$.edges[0].id" }
       ]
     }
   ],

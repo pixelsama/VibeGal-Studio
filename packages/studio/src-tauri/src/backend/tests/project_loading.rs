@@ -388,8 +388,7 @@ fn graph_projection_uses_contract_defaults_without_rewriting_raw_json() {
     assert_eq!(graph.nodes[0].title, "start");
     assert_eq!(graph.nodes[0].position.x, 0.0);
     assert_eq!(graph.nodes[0].position.y, 0.0);
-    assert_eq!(graph.edges[0].mode, "linear");
-    assert_eq!(graph.edges[0].label, None);
+    // Spec 35：边已无 mode/label，只保留 condition。
     assert_eq!(graph.edges[0].condition, None);
     assert_eq!(fs::read(&graph_path).unwrap(), before);
     let _ = fs::remove_dir_all(&root);
@@ -549,20 +548,22 @@ fn open_project_includes_graph_report() {
 }
 
 #[test]
-fn open_project_reports_non_string_edge_mode() {
-    let root = unique_temp_dir("graph-report-invalid-mode");
+fn open_project_reports_invalid_edge_condition() {
+    // Spec 35：边不再有 mode；condition 表达式语法错误应报 graph 问题。
+    let root = unique_temp_dir("graph-report-invalid-condition");
     let project = root.join("project");
     write_graph_project(
         &project,
         serde_json::json!({
             "version": 1,
             "entryNodeId": "start",
+            "chapters": [{ "id": "chapter_1", "title": "第一章" }],
             "nodes": [
-                { "id": "start", "title": "Start", "file": "nodes/start.json", "position": { "x": 0, "y": 0 } },
-                { "id": "ending", "title": "Ending", "file": "nodes/ending.json", "position": { "x": 260, "y": 0 } }
+                { "id": "start", "title": "Start", "file": "nodes/start.json", "chapterId": "chapter_1", "position": { "x": 0, "y": 0 } },
+                { "id": "ending", "title": "Ending", "file": "nodes/ending.json", "chapterId": "chapter_1", "position": { "x": 260, "y": 0 } }
             ],
             "edges": [
-                { "id": "start__ending", "from": "start", "to": "ending", "mode": 7 }
+                { "id": "start__ending", "from": "start", "to": "ending", "condition": "resolve >" }
             ]
         }),
         &[
@@ -577,11 +578,11 @@ fn open_project_reports_non_string_edge_mode() {
     let issue = report
         .graph_issues
         .iter()
-        .find(|issue| issue.code == "graph_invalid_structure")
-        .expect("non-string edge mode should be reported as a contract error");
+        .find(|issue| issue.code == "invalid_edge_condition")
+        .expect("invalid edge condition should be reported");
     assert_eq!(issue.severity, GraphIssueSeverity::Error);
-    assert_eq!(issue.edge_id, None);
-    assert_eq!(issue.json_path.as_deref(), Some("$.edges[0].mode"));
+    assert_eq!(issue.edge_id.as_deref(), Some("start__ending"));
+    assert_eq!(issue.json_path.as_deref(), Some("$.edges[0].condition"));
     let _ = fs::remove_dir_all(&root);
 }
 

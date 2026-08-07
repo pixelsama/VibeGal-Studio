@@ -76,7 +76,7 @@ import type { ComponentType, ReactNode } from "react";
 
   export type BgmInstr = { t: "bgm"; id: string; fade: number; loop: boolean; };
 
-  export type Chapter = ({ t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; } | { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; scale: number; flip: boolean; exprMs: number; moveFrom?: string | undefined; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; textKey?: string | undefined; voice?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; textKey?: string | undefined; ms?: number | undefined; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "inputName"; key: string; prompt: string; maxLength: number; id?: string | undefined; default?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; } | { t: "completeEnding"; id: string; endingId: string; })[];
+  export type Chapter = Instruction[];
 
   export type ChapterCheckpoint = { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; };
 
@@ -97,6 +97,10 @@ import type { ComponentType, ReactNode } from "react";
 
   export type CharacterSpriteRef = string | { atlas: string; clip: string; fallback: string; };
 
+  export type ChoiceInstr = { t: "choice"; options: { text: string; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; body?: Instruction[] | undefined; to?: string | undefined; }[]; id?: string | undefined; prompt?: string | null | undefined; };
+
+  export type ChoiceOption = { text: string; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; body?: Instruction[] | undefined; to?: string | undefined; };
+
   export type CompleteEndingInstr = { t: "completeEnding"; id: string; endingId: string; };
 
   export interface DebugService {
@@ -105,13 +109,13 @@ import type { ComponentType, ReactNode } from "react";
     jumpTo(point: StoryPointId): void;
   }
 
-  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; };
+  export type DecisionLogEvent = { type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; choiceInstructionId?: string | undefined; optionIndex?: number | undefined; edgeId?: string | undefined; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId?: string | undefined; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; varsAtNodeEntry?: Record<string, string | number | boolean | null> | undefined; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; };
 
-  export type DistributionConfig = { version: string; productName?: string | undefined; icon?: string | undefined; viewport?: { mode: "fit" | "fill" | "responsive"; width: number; height: number; } | undefined; updates?: { channel: string; } | { channel: string; endpoint: string; publicKey: string; } | undefined; };
+  export type DistributionConfig = { version: string; productName?: string | undefined; icon?: string | undefined; viewport?: { mode: "fill" | "fit" | "responsive"; width: number; height: number; } | undefined; updates?: { channel: string; } | { channel: string; endpoint: string; publicKey: string; } | undefined; };
 
   export type DistributionUpdates = { channel: string; } | { channel: string; endpoint: string; publicKey: string; };
 
-  export type DistributionViewport = { mode: "fit" | "fill" | "responsive"; width: number; height: number; };
+  export type DistributionViewport = { mode: "fill" | "fit" | "responsive"; width: number; height: number; };
 
   export type EffectInstr = { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; };
 
@@ -127,7 +131,7 @@ import type { ComponentType, ReactNode } from "react";
 
   export type GraphChapterData = { id: string; title: string; checkpoint?: { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; } | undefined; };
 
-  export type GraphEdgeData = { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; };
+  export type GraphEdgeData = { id: string; from: string; to: string; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; };
 
   export type GraphNodeData = { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; };
 
@@ -138,6 +142,8 @@ import type { ComponentType, ReactNode } from "react";
     replayVoice(entryId: string): void;
     rollbackTo(entryId: string): void | RuntimeRestoreResult | Promise<void | RuntimeRestoreResult>;
   }
+
+  export type IfInstr = { t: "if"; condition: string; then: Instruction[]; id?: string | undefined; else?: Instruction[] | undefined; };
 
   export interface InMemoryRuntimeServicesOptions {
     projectId?: string;
@@ -175,9 +181,9 @@ import type { ComponentType, ReactNode } from "react";
 
   export type InputNameInstr = { t: "inputName"; key: string; prompt: string; maxLength: number; id?: string | undefined; default?: string | undefined; };
 
-  export type Instruction = { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; } | { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; scale: number; flip: boolean; exprMs: number; moveFrom?: string | undefined; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; textKey?: string | undefined; voice?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; textKey?: string | undefined; ms?: number | undefined; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "inputName"; key: string; prompt: string; maxLength: number; id?: string | undefined; default?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; } | { t: "completeEnding"; id: string; endingId: string; };
+  export type Instruction = { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; } | { t: "bg"; id: string; trans: "fade" | "cut" | "dissolve"; ms: number; } | { t: "bgm"; id: string; fade: number; loop: boolean; } | { t: "sfx"; id: string; } | { t: "voice"; id: string; } | { t: "char"; id: string; pos: string; expr: string; trans: "fade" | "cut" | "slide"; ms: number; clear: boolean; remove: boolean; scale: number; flip: boolean; exprMs: number; moveFrom?: string | undefined; } | { t: "say"; who: string; expr: string; text: string; id?: string | undefined; textKey?: string | undefined; voice?: string | undefined; ms?: number | undefined; } | { t: "narrate"; text: string; id?: string | undefined; textKey?: string | undefined; ms?: number | undefined; } | { t: "wait"; ms: number; id?: string | undefined; } | { t: "effect"; type: "shake" | "flash" | "blur"; intensity: number; ms: number; } | { t: "transition"; type: "fade_in" | "fade_out" | "white_in" | "white_out" | "black"; ms: number; } | { t: "pause"; id?: string | undefined; } | { t: "inputName"; key: string; prompt: string; maxLength: number; id?: string | undefined; default?: string | undefined; } | { t: "unlock"; kind: "cg" | "music" | "replay" | "endings"; id: string; } | { t: "showCg"; id: string; } | { t: "playVideo"; id: string; skippable?: boolean | undefined; } | { t: "completeEnding"; id: string; endingId: string; } | { t: "choice"; id?: string | undefined; prompt?: string | null | undefined; options: { text: string; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; body?: Instruction[] | undefined; to?: string | undefined; }[]; } | { t: "if"; id?: string | undefined; condition: string; then: Instruction[]; else?: Instruction[] | undefined; };
 
-  export type InstructionType = "pause" | "bg" | "bgm" | "sfx" | "voice" | "char" | "say" | "narrate" | "set" | "wait" | "effect" | "transition" | "inputName" | "unlock" | "showCg" | "playVideo" | "completeEnding";
+  export type InstructionType = "pause" | "bg" | "bgm" | "sfx" | "voice" | "char" | "say" | "narrate" | "set" | "wait" | "effect" | "transition" | "inputName" | "unlock" | "showCg" | "playVideo" | "completeEnding" | "choice" | "if";
 
   export interface InterpolatedText {
     text: string;
@@ -195,7 +201,7 @@ import type { ComponentType, ReactNode } from "react";
     skipVideo(): void;
   }
 
-  export type Meta = { title: string; typingSpeedCps: number; autoAdvanceMs: number; chapterGapMs: number; stage: { width: number; height: number; }; locale?: { default: string; available: string[]; } | undefined; distribution?: { version: string; productName?: string | undefined; icon?: string | undefined; viewport?: { mode: "fit" | "fill" | "responsive"; width: number; height: number; } | undefined; updates?: { channel: string; } | { channel: string; endpoint: string; publicKey: string; } | undefined; } | undefined; };
+  export type Meta = { title: string; typingSpeedCps: number; autoAdvanceMs: number; chapterGapMs: number; stage: { width: number; height: number; }; locale?: { default: string; available: string[]; } | undefined; distribution?: { version: string; productName?: string | undefined; icon?: string | undefined; viewport?: { mode: "fill" | "fit" | "responsive"; width: number; height: number; } | undefined; updates?: { channel: string; } | { channel: string; endpoint: string; publicKey: string; } | undefined; } | undefined; };
 
   export type NarrateInstr = { t: "narrate"; text: string; id?: string | undefined; textKey?: string | undefined; ms?: number | undefined; };
 
@@ -223,9 +229,15 @@ import type { ComponentType, ReactNode } from "react";
     /** 阻塞式玩家命名请求；提交前播放器不能继续推进。 */
     nameInput: PendingNameInput | null;
 
-    /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。 */
+    /**
+     * 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。
+     *
+     * Spec 35：选项可能来自节点内 choice 指令（optionIndex 标记第几个，to 可空
+     * = 选了不跳转、继续走指令序列），也可能来自图出口（必带 to）。渲染层按 text
+     * 渲染、回传 choose(to?, optionIndex?)。
+     */
     choice: {
-      choices: { text: string; to: string }[];
+      choices: Array<{ text: string; to?: string; optionIndex?: number }>;
     } | null;
 
     /** 待播放特效 / 转场（组件消费） */
@@ -299,7 +311,7 @@ import type { ComponentType, ReactNode } from "react";
     subscribe(listener: () => void): () => void;
   }
 
-  export type ProjectGraphData = { version: number; entryNodeId: string; chapters: { id: string; title: string; checkpoint?: { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; } | undefined; }[]; nodes: { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; mode: "linear" | "choice" | "auto"; label: string | null; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; }[]; };
+  export type ProjectGraphData = { version: number; entryNodeId: string; chapters: { id: string; title: string; checkpoint?: { nodeId: string; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; instructionId?: string | null | undefined; } | undefined; }[]; nodes: { id: string; file: string; position: { x: number; y: number; }; chapterId: string; title?: string | undefined; }[]; edges: { id: string; from: string; to: string; condition: string | null; effects?: { t: "set"; key: string; id?: string | undefined; value?: string | number | boolean | null | undefined; expr?: string | undefined; }[] | undefined; }[]; };
 
   export const RENDERER_CONTRACT_VERSION: 1;
 
@@ -398,7 +410,13 @@ import type { ComponentType, ReactNode } from "react";
 
   export interface RuntimeControls {
     advance(): void;
-    choose(toNodeId: string): void;
+    /**
+     * Spec 35：玩家选择一个选项。
+     * - 图出口来源：传 toNodeId（目标节点）。
+     * - 节点内 choice 指令来源：传 optionIndex（选了第几个选项）；toNodeId 可空。
+     * 渲染层通常从 state.choice.choices[i] 同时拿到 to 与 optionIndex，一并传回。
+     */
+    choose(toNodeId?: string, optionIndex?: number): void;
     submitName(value: string): boolean | void;
     setAutoPlay(on: boolean): void;
     setSkipMode(mode: SkipMode): void;
@@ -466,7 +484,7 @@ import type { ComponentType, ReactNode } from "react";
     updateSettings(patch: Partial<RuntimeSettingsRecord>): Promise<void>;
   }
 
-  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; };
+  export type RuntimeSnapshot = { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; varsAtNodeEntry?: Record<string, string | number | boolean | null> | undefined; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; };
 
   export interface RuntimeStatusNotice {
     id: number;
@@ -541,7 +559,7 @@ import type { ComponentType, ReactNode } from "react";
     autoSave(reason: "node" | "choice" | "manual" | "ending"): Promise<void>;
   }
 
-  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId: string; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; thumbnail?: string | undefined; } | undefined; };
+  export type SaveSlotRecord = { schemaVersion: 2; projectId: string; createdAt: string; updatedAt: string; position: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; decisions: ({ type: "start"; nodeId: string; } | { type: "choice"; fromNodeId: string; toNodeId: string; choiceInstructionId?: string | undefined; optionIndex?: number | undefined; edgeId?: string | undefined; } | { type: "auto"; fromNodeId: string; toNodeId: string; edgeId?: string | undefined; } | { type: "checkpoint"; snapshot: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; varsAtNodeEntry?: Record<string, string | number | boolean | null> | undefined; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; })[]; checkpoint: { playthroughId: string; currentNodeId: string; currentStoryPoint: { nodeId: string; instructionId: string; } | null; vars: Record<string, string | number | boolean | null>; background: string | null; sprites: { id: string; pos: string; expr: string; scale: number; flip: boolean; }[]; bgm: { id: string; loop: boolean; } | null; varsAtNodeEntry?: Record<string, string | number | boolean | null> | undefined; nameInputOrigin?: { instructionId: string; key: string; value?: string | number | boolean | null | undefined; } | undefined; }; label?: string | undefined; preview?: { text?: string | undefined; tokens?: { type: "text"; text: string; bold?: boolean | undefined; color?: string | undefined; ruby?: string | undefined; }[] | undefined; background?: string | null | undefined; thumbnail?: string | undefined; } | undefined; };
 
   export interface SaveSlotSummary {
     slotId: string;

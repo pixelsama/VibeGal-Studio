@@ -72,7 +72,13 @@ export const NovelStateSchema = z.object({
   narration: TypewriterTextSchema.nullable(),
   choice: z
     .object({
-      choices: z.array(z.object({ text: z.string(), to: z.string() })),
+      // Spec 35: 选项可能来自节点内 choice 指令（带 optionIndex、可选 to），
+      // 也可能来自图出口（必带 to）。fixture 快照两种形态都允许。
+      choices: z.array(z.object({
+        text: z.string(),
+        to: z.string().optional(),
+        optionIndex: z.number().int().nonnegative().optional(),
+      })),
     })
     .nullable(),
   effects: z.array(FixturePendingEffectSchema),

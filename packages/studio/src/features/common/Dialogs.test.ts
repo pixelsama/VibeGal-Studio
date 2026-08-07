@@ -66,4 +66,34 @@ describe("PromptDialog allowUnchanged", () => {
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>确认<\/button>/);
     expect(html).toMatch(/<button[^>]*>确认<\/button>/);
   });
+
+  it("shows validation feedback and disables confirm for an invalid value", () => {
+    const html = renderToStaticMarkup(createElement(PromptDialog, {
+      title: "编辑表达式",
+      initialValue: "score >",
+      allowUnchanged: true,
+      validate: () => "表达式无效",
+      confirmLabel: "应用",
+      onConfirm: () => {},
+      onClose: () => {},
+    }));
+
+    expect(html).toContain("表达式无效");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>应用<\/button>/);
+  });
+
+  it("can opt into an empty value for a fallback-style edit", () => {
+    const html = renderToStaticMarkup(createElement(PromptDialog, {
+      title: "编辑表达式",
+      initialValue: "",
+      allowUnchanged: true,
+      allowEmpty: true,
+      confirmLabel: "应用",
+      onConfirm: () => {},
+      onClose: () => {},
+    }));
+
+    expect(html).toMatch(/<button[^>]*>应用<\/button>/);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>应用<\/button>/);
+  });
 });

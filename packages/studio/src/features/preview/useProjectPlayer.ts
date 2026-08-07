@@ -140,11 +140,23 @@ export function resolveAutoRoutePreview(
   nodeId: string,
   initialVars: PreviewInitialVars = {},
 ): AutoRoutePreviewResult {
+  // Spec 35 Phase 3：mode 无关，镜像 decideGraphRoute（0=终点，1=直达，>1=首个命中者）。
   const outgoing = graph.edges.filter((edge) => edge.from === nodeId);
   if (outgoing.length === 0) return { kind: "end" };
-  if (!outgoing.every((edge) => (edge.mode ?? "linear") === "auto")) return { kind: "not_auto" };
-  const edge = outgoing.find((candidate) => evaluatePreviewCondition(candidate.condition, initialVars));
+  if (outgoing.length === 1) return { kind: "target", edgeId: outgoing[0].id, nodeId: outgoing[0].to };
+  const edge = orderPreviewRouteEdges(outgoing).find((candidate) => evaluatePreviewCondition(candidate.condition, initialVars));
   return edge ? { kind: "target", edgeId: edge.id, nodeId: edge.to } : { kind: "no_match" };
+}
+
+function orderPreviewRouteEdges(edges: ProjectGraph["edges"]): ProjectGraph["edges"] {
+  return edges
+    .map((edge, index) => ({ edge, index }))
+    .sort((left, right) => {
+      const leftFallback = left.edge.condition?.trim() ? 0 : 1;
+      const rightFallback = right.edge.condition?.trim() ? 0 : 1;
+      return leftFallback - rightFallback || left.index - right.index;
+    })
+    .map(({ edge }) => edge);
 }
 
 function evaluatePreviewCondition(condition: string | null | undefined, vars: PreviewInitialVars): boolean {
@@ -325,7 +337,7 @@ export function useProjectPlayer(project: ProjectData): ProjectPlayerResult {
   }, [project]);
 
   const advance = useCallback(() => playerRef.current?.advance(), []);
-  const choose = useCallback((toNodeId: string) => playerRef.current?.choose(toNodeId), []);
+  const choose = useCallback((toNodeId?: string, optionIndex?: number) => playerRef.current?.choose(toNodeId, optionIndex), []);
   const restart = useCallback(() => {
     if (replayPlayerRef.current) exitPreviewReplay();
     else primaryPlayerRef.current?.restart();

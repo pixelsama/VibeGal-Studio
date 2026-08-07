@@ -62,7 +62,8 @@ export interface WebRuntimePlayer {
   subscribe(listener: (state: NovelState) => void): () => void;
   advance(): void;
   submitName(value: string): boolean | void;
-  choose(toNodeId: string): void;
+  // Spec 35：选项来源可能是节点内 choice 指令（optionIndex）或图出口（toNodeId）。
+  choose(toNodeId?: string, optionIndex?: number): void;
   restart(): void;
   toggleAuto(): void;
   toggleRecording(): void;
@@ -541,7 +542,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
   const controls: RuntimeControls = {
     advance: () => activePlayer.advance(),
     submitName: (value) => activePlayer.submitName(value),
-    choose: (toNodeId) => activePlayer.choose(toNodeId),
+    choose: (toNodeId, optionIndex) => activePlayer.choose(toNodeId, optionIndex),
     setAutoPlay: (on) => activePlayer.setAutoPlay(on),
     setSkipMode: (mode) => activePlayer.setSkipMode(mode),
     rollbackTo: (point) => activePlayer.jumpToStoryPoint(point),
@@ -629,7 +630,7 @@ export function createWebRuntimePlayer(options: WebRuntimePlayerOptions): WebRun
     },
     advance: () => activePlayer.advance(),
     submitName: (value) => activePlayer.submitName(value),
-    choose: (toNodeId) => activePlayer.choose(toNodeId),
+    choose: (toNodeId, optionIndex) => activePlayer.choose(toNodeId, optionIndex),
     restart: () => controls.restart(),
     toggleAuto: () => activePlayer.setAutoPlay(!activePlayer.getState().flags.isAutoPlay),
     toggleRecording: () => activePlayer.setRecording(!activePlayer.getState().flags.isRecording),
@@ -665,7 +666,8 @@ export async function runWebRuntimeBehaviorSmoke(
     const choice = runtime.getState().choice?.choices[0];
     if (choice) {
       const beforeChoice = JSON.stringify(runtime.getState());
-      runtime.choose(choice.to);
+      // Spec 35：选项的 to 现在可空（合流型选项）；冒烟测试优先用 to，缺省用 optionIndex。
+      runtime.choose(choice.to, choice.optionIndex);
       branch = JSON.stringify(runtime.getState()) === beforeChoice ? "not-present" : "chosen";
       advanced = JSON.stringify(runtime.getState()) !== before;
       break;

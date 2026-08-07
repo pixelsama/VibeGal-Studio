@@ -19,7 +19,6 @@ import { StoryStateView } from "./StoryStateView";
 import { TranslationComparison } from "./TranslationComparison";
 import { assignInstructionTextKey } from "./translationModel";
 import { RouteCoveragePanel } from "./RouteCoveragePanel";
-import { NodeInspector } from "./NodeInspector";
 import {
   NodeEditor,
   nodeExternalChange as resolveNodeExternalChange,
@@ -153,6 +152,9 @@ export function ScriptWorkspace({
   const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
   const [retainedNodeEditor, setRetainedNodeEditor] = useState<RetainedNodeEditor | null>(null);
   const [nodeEditorDirty, setNodeEditorDirty] = useState(false);
+  // Spec 35 Phase 3：出口试算值按节点 id 持久化在 ScriptWorkspace，避免 NodeEditor
+  // 因文件 revision 变更 remount 时丢失试算输入。
+  const [trialOverridesByNode, setTrialOverridesByNode] = useState<Record<string, Record<string, string | number | boolean | null>>>({});
   const [resolvedNodeChange, setResolvedNodeChange] = useState<ResolvedNodeChange | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -396,13 +398,6 @@ export function ScriptWorkspace({
     } finally {
       setSavingGraph(false);
     }
-  };
-
-  const handleRenameNode = (id: string, title: string) => {
-    const nextState = applyGraphCommand(graphHistory, { kind: "renameNode", nodeId: id, title });
-    if (nextState === graphHistory) return;
-    setGraphHistory(nextState);
-    void persistGraph(nextState.graph);
   };
 
   const handleSetNodeChapter = (id: string, chapterId: string) => {
@@ -817,51 +812,53 @@ export function ScriptWorkspace({
 
   return (
     <div style={containerStyle}>
-      <Breadcrumb
-        view={view}
-        selectedNodeTitle={selectedNode?.title ?? null}
-        onBackToGraph={onOpenGraph}
-      />
-      {view === "graph" && (
-        <div className="gs-script-views" role="tablist" aria-label={t("script.views")} onKeyDown={handleViewKeyDown}>
-          <button
-            type="button"
-            role="tab"
-            id="script-tab-flow"
-            aria-selected={primaryView === "flow"}
-            aria-controls="script-tabpanel"
-            tabIndex={primaryView === "flow" ? 0 : -1}
-            className={primaryView === "flow" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
-            onClick={() => setPrimaryView("flow")}
-          >
-            {t("script.view.flow")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="script-tab-state"
-            aria-selected={primaryView === "state"}
-            aria-controls="script-tabpanel"
-            tabIndex={primaryView === "state" ? 0 : -1}
-            className={primaryView === "state" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
-            onClick={() => setPrimaryView("state")}
-          >
-            {t("script.view.state")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="script-tab-translation"
-            aria-selected={primaryView === "translation"}
-            aria-controls="script-tabpanel"
-            tabIndex={primaryView === "translation" ? 0 : -1}
-            className={primaryView === "translation" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
-            onClick={() => setPrimaryView("translation")}
-          >
-            {t("script.view.translation")}
-          </button>
-        </div>
-      )}
+      <div className="gs-script-header">
+        <Breadcrumb
+          view={view}
+          selectedNodeTitle={selectedNode?.title ?? null}
+          onBackToGraph={onOpenGraph}
+        />
+        {view === "graph" && (
+          <div className="gs-script-views" role="tablist" aria-label={t("script.views")} onKeyDown={handleViewKeyDown}>
+            <button
+              type="button"
+              role="tab"
+              id="script-tab-flow"
+              aria-selected={primaryView === "flow"}
+              aria-controls="script-tabpanel"
+              tabIndex={primaryView === "flow" ? 0 : -1}
+              className={primaryView === "flow" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
+              onClick={() => setPrimaryView("flow")}
+            >
+              {t("script.view.flow")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="script-tab-state"
+              aria-selected={primaryView === "state"}
+              aria-controls="script-tabpanel"
+              tabIndex={primaryView === "state" ? 0 : -1}
+              className={primaryView === "state" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
+              onClick={() => setPrimaryView("state")}
+            >
+              {t("script.view.state")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="script-tab-translation"
+              aria-selected={primaryView === "translation"}
+              aria-controls="script-tabpanel"
+              tabIndex={primaryView === "translation" ? 0 : -1}
+              className={primaryView === "translation" ? "gs-tab gs-tab--pane gs-tab--active" : "gs-tab gs-tab--pane"}
+              onClick={() => setPrimaryView("translation")}
+            >
+              {t("script.view.translation")}
+            </button>
+          </div>
+        )}
+      </div>
       <div
         style={contentStyle}
         role={view === "graph" ? "tabpanel" : undefined}
@@ -906,7 +903,7 @@ export function ScriptWorkspace({
             onSelectEdge={(edgeId) => { setPrimaryView("flow"); handleSelectEdge(edgeId); }}
           />
         ) : view === "graph" ? (
-          <div style={graphLayoutStyle}>
+          <div className="gs-graph-layout" style={graphLayoutStyle}>
             <div style={outlinePaneStyle}>
               <CollapsibleSidebar
                 title={t("script.sidebar.story")}
@@ -999,30 +996,12 @@ export function ScriptWorkspace({
                   onRenameNode={handleRenameNodeDialog}
                   onSetEntry={handleSetEntry}
                   onManageEnding={handleManageEnding}
-                  onAutoLayout={handleAutoLayout}
-                  onOpenShortcutsHelp={onOpenShortcutsHelp}
-                />
-              </div>
-            </div>
-            <div style={inspectorPaneStyle}>
-              <div style={inspectorContentStyle}>
-                <NodeInspector
-                  graph={graph}
-                  nodeSummaries={project.nodeSummaries}
-                  selectedNodeId={selectedNodeId}
-                  onEnter={handleEnter}
-                  onRename={handleRenameNode}
                   onSetChapter={handleSetNodeChapter}
-                  onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
-                  onSetEntry={handleSetEntry}
-                  onCreateNode={() => void handleCreateNode()}
-                  saving={savingGraph}
-                  variables={project.content.variables}
-                  manifest={project.content.manifest}
-                  onRegisterEnding={handleManageEnding}
                   onEditEnding={handleEditEnding}
                   onUnregisterEnding={handleUnregisterEnding}
                   onInsertEndingCompletion={handleInsertEndingCompletion}
+                  onAutoLayout={handleAutoLayout}
+                  onOpenShortcutsHelp={onOpenShortcutsHelp}
                 />
               </div>
             </div>
@@ -1044,6 +1023,10 @@ export function ScriptWorkspace({
                 nodeRevision={editorDetail.revision}
                 externalChange={activeNodeChange}
                 focusRequest={localFocus ?? focusRequest}
+                outgoingEdges={graph.edges.filter((edge) => edge.from === editorNode.id)}
+                onUpdateOutgoingEdges={(edges) => handleUpdateOutgoingEdges(editorNode.id, edges)}
+                trialOverrides={trialOverridesByNode[editorNode.id]}
+                onTrialChange={(values) => setTrialOverridesByNode((prev) => ({ ...prev, [editorNode.id]: values }))}
                 onSaved={onSaved}
                 onDirtyChange={handleNodeDirtyChange}
                 onExternalChangeResolved={handleExternalChangeResolved}
@@ -1183,7 +1166,7 @@ const scopeIndicatorStyle: React.CSSProperties = {
 
 const graphLayoutStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "auto minmax(0, 1fr) minmax(280px, 340px)",
+  gridTemplateColumns: "auto minmax(0, 1fr)",
   width: "100%",
   height: "100%",
 };
@@ -1207,6 +1190,7 @@ const canvasColumnStyle: React.CSSProperties = {
 
 const toolbarStyle: React.CSSProperties = {
   display: "flex",
+  flexWrap: "wrap",
   alignItems: "center",
   gap: "var(--space-2)",
   minHeight: 48,
@@ -1221,17 +1205,4 @@ const toolbarSpacerStyle: React.CSSProperties = {
 
 const statusTextStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
-};
-
-const inspectorPaneStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minWidth: 0,
-  overflow: "hidden",
-  borderLeft: "1px solid var(--border)",
-};
-
-const inspectorContentStyle: React.CSSProperties = {
-  minHeight: 0,
-  flex: 1,
 };

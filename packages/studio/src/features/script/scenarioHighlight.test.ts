@@ -50,4 +50,21 @@ describe("highlightScenarioLine", () => {
     expect(highlightScenarioLine("")).toEqual([]);
     expect(highlightScenarioLine("   ")).toEqual([]);
   });
+
+  // Spec 35 Phase 2：choice / if / else 块头 + @to / @effects 标记行高亮
+  it("highlights choice / if / else block headers as commands", () => {
+    expect(highlightScenarioLine("choice")).toEqual([{ kind: "command", text: "choice" }]);
+    expect(highlightScenarioLine("choice 你打算怎么办？")).toEqual([
+      { kind: "command", text: "choice 你打算怎么办？" },
+    ]);
+    expect(highlightScenarioLine("if affection >= 60")).toEqual([
+      { kind: "command", text: "if affection >= 60" },
+    ]);
+    expect(highlightScenarioLine("else")).toEqual([{ kind: "command", text: "else" }]);
+  });
+
+  it("highlights @to and @effects marker lines as commands", () => {
+    expect(highlightScenarioLine("@to approach")).toEqual([{ kind: "command", text: "@to approach" }]);
+    expect(highlightScenarioLine("@effects")).toEqual([{ kind: "command", text: "@effects" }]);
+  });
 });

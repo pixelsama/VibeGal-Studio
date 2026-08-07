@@ -21,10 +21,6 @@
       "severity": "error",
       "source": "node"
     },
-    "choice_instruction_not_supported": {
-      "severity": "error",
-      "source": "node"
-    },
     "missing_background_ref": {
       "severity": "error",
       "source": "node"

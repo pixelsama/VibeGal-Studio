@@ -26,6 +26,9 @@ import type {
   ShowCgInstruction,
   PlayVideoInstruction,
   CompleteEndingInstruction,
+  ChoiceInstruction,
+  ChoiceOptionSchema,
+  IfInstruction,
   VariableRegistrySchema,
   VariableDeclarationSchema,
   VariableKindSchema,
@@ -89,6 +92,9 @@ export type UnlockInstr = z.infer<typeof UnlockInstruction>;
 export type ShowCgInstr = z.infer<typeof ShowCgInstruction>;
 export type PlayVideoInstr = z.infer<typeof PlayVideoInstruction>;
 export type CompleteEndingInstr = z.infer<typeof CompleteEndingInstruction>;
+export type ChoiceOption = z.infer<typeof ChoiceOptionSchema>;
+export type ChoiceInstr = z.infer<typeof ChoiceInstruction>;
+export type IfInstr = z.infer<typeof IfInstruction>;
 
 // 运行时指令的判别 tag
 export type InstructionType = Instruction["t"];

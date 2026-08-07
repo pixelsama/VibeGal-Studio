@@ -57,6 +57,13 @@ describe("ExternalDiffPanel", () => {
     expect(html).not.toContain("另存为副本");
   });
 
+  it("makes keeping the local draft primary and marks disk replacement as confirmed danger", () => {
+    const html = renderPanel();
+
+    expect(html).toMatch(/<button[^>]*class="gs-btn gs-btn--primary"[^>]*>保留我的修改<\/button>/);
+    expect(html).toMatch(/<button[^>]*class="gs-btn gs-btn--danger"[^>]*aria-haspopup="dialog"[^>]*>载入磁盘版本<\/button>/);
+  });
+
   it("labels a deleted disk version and disables loading it", () => {
     const html = renderPanel({
       writeConflict: true,

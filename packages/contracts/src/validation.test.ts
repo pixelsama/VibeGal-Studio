@@ -73,10 +73,17 @@ describe("contract validation corpus", () => {
   });
 
   it("keeps instruction policies aligned with every generated discriminator", () => {
+    // Spec 35: choice/if 的 body/then/else 内嵌 Instruction[]，使 InstructionSchema
+    // 成为自递归类型。Zod 4 的 z.toJSONSchema 因此把指令联合抽到 $defs.<key>
+    // 并用 $ref 引用，而不再是 nodeFile.items.oneOf 的扁平数组。
     const nodeSchema = buildJsonSchema("nodeFile") as {
-      items: { oneOf: Array<{ properties: { t: { const: string } } }> };
+      items: { $ref?: string };
+      $defs?: Record<string, { oneOf: Array<{ properties: { t: { const: string } } }> }>;
     };
-    const discriminators = nodeSchema.items.oneOf
+    const defKey = (nodeSchema.items.$ref ?? "").split("/").pop()!;
+    const union = nodeSchema.$defs?.[defKey]?.oneOf;
+    expect(Array.isArray(union)).toBe(true);
+    const discriminators = union!
       .map((branch) => branch.properties.t.const)
       .sort();
 
@@ -220,6 +227,118 @@ describe("project semantic validation", () => {
       manifest,
       nodes: [{ nodeId: "chapter_2", data: [{ t: "narrate", id: "line-1", text: "Hello" }] }],
     })).toEqual([]);
+  });
+
+  it("accepts a chapter checkpoint targeting a story-point nested in an if-then branch (Phase 4)", () => {
+    const graph = {
+      entryNodeId: "opening",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        {
+          id: "chapter_2",
+          title: "Chapter 2",
+          checkpoint: {
+            nodeId: "chapter_2",
+            instructionId: "nested_hi",
+            vars: {},
+            background: null,
+            sprites: [],
+            bgm: null,
+          },
+        },
+      ],
+      nodes: [
+        { id: "opening", file: "nodes/opening.json", chapterId: "opening" },
+        { id: "chapter_2", file: "nodes/chapter-2.json", chapterId: "chapter_2" },
+      ],
+      edges: [],
+    };
+
+    expect(validateProjectSemantics({
+      graph,
+      manifest,
+      nodes: [{ nodeId: "chapter_2", data: [
+        { t: "set", key: "affection", value: 80 },
+        { t: "if", condition: "affection >= 60", then: [
+          { t: "narrate", id: "nested_hi", text: "高好感。" },
+        ] },
+      ] }],
+    })).toEqual([]);
+  });
+
+  it("accepts a chapter checkpoint targeting a story-point nested in a choice option body (Phase 4)", () => {
+    const graph = {
+      entryNodeId: "opening",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        {
+          id: "chapter_2",
+          title: "Chapter 2",
+          checkpoint: {
+            nodeId: "chapter_2",
+            instructionId: "react",
+            vars: {},
+            background: null,
+            sprites: [],
+            bgm: null,
+          },
+        },
+      ],
+      nodes: [
+        { id: "opening", file: "nodes/opening.json", chapterId: "opening" },
+        { id: "chapter_2", file: "nodes/chapter-2.json", chapterId: "chapter_2" },
+      ],
+      edges: [],
+    };
+
+    expect(validateProjectSemantics({
+      graph,
+      manifest,
+      nodes: [{ nodeId: "chapter_2", data: [
+        { t: "choice", id: "branch", options: [{
+          text: "继续",
+          body: [{ t: "say", id: "react", who: "hero", expr: "default", text: "反应。" }],
+        }] },
+      ] }],
+    })).toEqual([]);
+  });
+
+  it("rejects a chapter checkpoint targeting a story-point with a stale id in a nested branch (Phase 4)", () => {
+    const graph = {
+      entryNodeId: "opening",
+      chapters: [
+        { id: "opening", title: "Opening" },
+        {
+          id: "chapter_2",
+          title: "Chapter 2",
+          checkpoint: {
+            nodeId: "chapter_2",
+            instructionId: "gone",
+            vars: {},
+            background: null,
+            sprites: [],
+            bgm: null,
+          },
+        },
+      ],
+      nodes: [
+        { id: "opening", file: "nodes/opening.json", chapterId: "opening" },
+        { id: "chapter_2", file: "nodes/chapter-2.json", chapterId: "chapter_2" },
+      ],
+      edges: [],
+    };
+
+    expect(stable(validateProjectSemantics({
+      graph,
+      manifest,
+      nodes: [{ nodeId: "chapter_2", data: [
+        { t: "if", condition: "true", then: [
+          { t: "narrate", id: "nested_hi", text: "高好感。" },
+        ] },
+      ] }],
+    }))).toEqual([
+      { code: "checkpoint_story_point_missing", severity: "error", source: "graph", jsonPath: "$.chapters[1].checkpoint.instructionId" },
+    ]);
   });
 
   it("does not speculate when graph or manifest structure is invalid", () => {

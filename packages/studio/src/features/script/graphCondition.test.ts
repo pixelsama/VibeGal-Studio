@@ -1,6 +1,6 @@
 import { collectExpressionReads, parseExpression } from "@vibegal/engine";
 import { describe, expect, it } from "vitest";
-import { collectConditionVariables, parseGraphCondition } from "./graphCondition";
+import { collectConditionVariables, conditionDraftError, parseGraphCondition } from "./graphCondition";
 
 describe("graph conditions", () => {
   it("uses the engine expression contract as its only parser", () => {
@@ -13,5 +13,14 @@ describe("graph conditions", () => {
         collectExpressionReads(parseExpression(source)),
       );
     }
+  });
+
+  it("treats an empty condition as a valid fallback draft", () => {
+    expect(conditionDraftError("   ")).toBeNull();
+  });
+
+  it("returns a pure validation message for an invalid draft", () => {
+    expect(conditionDraftError("score >")).toEqual(expect.any(String));
+    expect(conditionDraftError("score >= 3")).toBeNull();
   });
 });
