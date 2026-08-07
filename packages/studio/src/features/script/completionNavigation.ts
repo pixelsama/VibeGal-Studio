@@ -9,3 +9,23 @@ export function moveCompletionIndex(index: number, delta: 1 | -1, itemCount: num
   const current = clampCompletionIndex(index, itemCount);
   return (current + delta + itemCount) % itemCount;
 }
+
+/**
+ * Cursor synchronization should only reset completion selection when the
+ * completion context changes. Keyboard navigation itself also causes a
+ * cursor-sync event, so resetting unconditionally would undo the selection.
+ */
+export function completionIndexAfterContextSync({
+  currentIndex,
+  previousContext,
+  nextContext,
+  itemCount,
+}: {
+  currentIndex: number;
+  previousContext: string | null;
+  nextContext: string | null;
+  itemCount: number;
+}): number {
+  if (previousContext == null || nextContext == null || previousContext !== nextContext) return 0;
+  return clampCompletionIndex(currentIndex, itemCount);
+}

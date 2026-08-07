@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { clampCompletionIndex, moveCompletionIndex } from "./completionNavigation";
+import {
+  clampCompletionIndex,
+  completionIndexAfterContextSync,
+  moveCompletionIndex,
+} from "./completionNavigation";
 
 describe("completion navigation", () => {
   it("normalizes an invalid index and keeps it inside the candidate list", () => {
@@ -16,5 +20,26 @@ describe("completion navigation", () => {
     expect(moveCompletionIndex(2, 1, 3)).toBe(0);
     expect(moveCompletionIndex(Number.NaN, 1, 3)).toBe(1);
     expect(moveCompletionIndex(0, 1, 0)).toBe(0);
+  });
+
+  it("preserves the active item when cursor sync stays in the same completion context", () => {
+    expect(completionIndexAfterContextSync({
+      currentIndex: 1,
+      previousContext: "command:trigger:",
+      nextContext: "command:trigger:",
+      itemCount: 3,
+    })).toBe(1);
+    expect(completionIndexAfterContextSync({
+      currentIndex: 1,
+      previousContext: "command:trigger:",
+      nextContext: "command:trigger:b",
+      itemCount: 3,
+    })).toBe(0);
+    expect(completionIndexAfterContextSync({
+      currentIndex: 9,
+      previousContext: "parameter:background:cla",
+      nextContext: "parameter:background:cla",
+      itemCount: 3,
+    })).toBe(2);
   });
 });

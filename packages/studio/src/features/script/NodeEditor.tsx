@@ -88,7 +88,11 @@ import {
   type DraftStorage,
 } from "../../lib/draftRecovery";
 import { useStudioI18n } from "../../lib/i18n";
-import { clampCompletionIndex, moveCompletionIndex } from "./completionNavigation";
+import {
+  clampCompletionIndex,
+  completionIndexAfterContextSync,
+  moveCompletionIndex,
+} from "./completionNavigation";
 import { statusError, statusInfo, statusOk, statusWarn, type StatusMessage } from "./statusMessage";
 
 export {
@@ -171,6 +175,11 @@ export function revisionSummary(revision: FileRevision | null | undefined): stri
   if (!revision) return "missing";
   return revision.sha256?.slice(0, 12)
     ?? `${Math.round(revision.mtimeMs)}:${revision.size}`;
+}
+
+function parameterCompletionContext(trigger: ScenarioParameterTrigger | null): string | null {
+  if (!trigger) return null;
+  return [trigger.kind, trigger.query, trigger.line, trigger.ownerId ?? ""].join("\u0000");
 }
 
 export function nodeExternalChange(
@@ -1023,14 +1032,28 @@ export function NodeEditor({
       return;
     }
     const nextCommand = scenarioCommandTriggerAtCursor(textarea.value, nextOffset);
+    const previousCommandContext = commandMenuSource
+      ? `command:${commandMenuSource}:${commandQuery}`
+      : null;
     if (nextCommand) {
       setParameterTrigger(null);
       setCommandMenuSource("trigger");
-      setCommandIndex(0);
+      setCommandIndex((current) => completionIndexAfterContextSync({
+        currentIndex: current,
+        previousContext: previousCommandContext,
+        nextContext: `command:trigger:${nextCommand.query}`,
+        itemCount: visibleCommands.length,
+      }));
     } else {
       if (commandMenuSource === "trigger") setCommandMenuSource(null);
-      setParameterTrigger(scenarioParameterTriggerAtCursor(textarea.value, nextOffset));
-      setCompletionIndex(0);
+      const nextParameterTrigger = scenarioParameterTriggerAtCursor(textarea.value, nextOffset);
+      setParameterTrigger(nextParameterTrigger);
+      setCompletionIndex((current) => completionIndexAfterContextSync({
+        currentIndex: current,
+        previousContext: parameterCompletionContext(parameterTrigger),
+        nextContext: parameterCompletionContext(nextParameterTrigger),
+        itemCount: visibleParameters.length,
+      }));
     }
   };
 

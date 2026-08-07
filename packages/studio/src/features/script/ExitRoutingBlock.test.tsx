@@ -97,11 +97,66 @@ describe("ExitRoutingBlock", () => {
     expect(captured).toBeNull();
   });
 
+  it("exposes the advanced expression editor for raw conditions", () => {
+    const html = render(
+      <ExitRoutingBlock
+        graph={graph}
+        nodeId="start"
+        edges={[
+          { id: "raw", from: "start", to: "approach", condition: "resolve >" },
+          { id: "fallback", from: "start", to: "shore", condition: null },
+        ]}
+        sources={[]}
+        trialValues={{}}
+        onTrialChange={() => {}}
+        onChange={() => {}}
+        onEditExpression={() => {}}
+      />,
+    );
+    expect(html).toContain("编辑表达式");
+  });
+
   it("reorders edges so a fallback (empty-condition) edge stays last after a move", () => {
     const reordered = orderDefaultAutoEdgeLast([
       { id: "e1", from: "s", to: "a", condition: null },
       { id: "e2", from: "s", to: "b", condition: "x" },
     ]);
     expect(reordered.map((e: GraphEdge) => e.id)).toEqual(["e2", "e1"]);
+  });
+
+  it("exposes warning and error severity for exit diagnostics", () => {
+    const warningHtml = render(
+      <ExitRoutingBlock
+        graph={graph}
+        nodeId="start"
+        edges={[
+          { id: "fallback", from: "start", to: "shore", condition: null },
+          { id: "shadowed", from: "start", to: "approach", condition: "true" },
+        ]}
+        sources={[]}
+        trialValues={{}}
+        onTrialChange={() => {}}
+        onChange={() => {}}
+      />,
+    );
+    expect(warningHtml).toContain('data-severity="warn"');
+    expect(warningHtml).toContain("警告");
+
+    const errorHtml = render(
+      <ExitRoutingBlock
+        graph={graph}
+        nodeId="start"
+        edges={[
+          { id: "invalid", from: "start", to: "approach", condition: "resolve >" },
+          { id: "fallback", from: "start", to: "shore", condition: null },
+        ]}
+        sources={[]}
+        trialValues={{}}
+        onTrialChange={() => {}}
+        onChange={() => {}}
+      />,
+    );
+    expect(errorHtml).toContain('data-severity="error"');
+    expect(errorHtml).toContain("错误");
   });
 });

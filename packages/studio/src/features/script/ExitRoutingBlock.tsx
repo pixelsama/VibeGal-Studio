@@ -119,8 +119,14 @@ export function ExitRoutingBlock({
                 onChange={(effects) => updateEdge(edge.id, { effects })}
               />
               {outcome?.problem && (
-                <span className="gs-exit-routing__problem">
-                  <TriangleAlert size={14} aria-hidden /> {outcome.problem.message}
+                <span
+                  className={`gs-exit-routing__problem gs-exit-routing__problem--${outcome.problem.severity}`}
+                  data-severity={outcome.problem.severity}
+                  role="alert"
+                >
+                  <TriangleAlert size={14} aria-hidden />
+                  <strong>{outcome.problem.severity === "error" ? t("status.severity.error") : t("status.severity.warning")}</strong>
+                  {outcome.problem.message}
                 </span>
               )}
               <span className="gs-exit-routing__move">

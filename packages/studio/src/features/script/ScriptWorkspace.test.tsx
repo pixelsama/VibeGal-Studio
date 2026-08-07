@@ -120,7 +120,7 @@ describe("ScriptWorkspace sidebar", () => {
     expect(html).toContain("aria-label=\"故事结构\"");
     expect(html).toContain("aria-expanded=\"true\"");
     expect(html).toContain("序章");
-    expect(html).toContain("全局视图");
+    expect(html).toContain("全部节点");
     expect(html).toContain("翻译对照");
   });
 

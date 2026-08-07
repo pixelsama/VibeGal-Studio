@@ -35,7 +35,7 @@ describe("StoryOutline", () => {
     }));
 
     expect(html).toContain("故事结构");
-    expect(html).toContain("全局视图");
+    expect(html).toContain("全部节点");
     expect(html).toContain("序章");
     expect(html).toContain("黎明抉择");
     expect(html).not.toContain("未分章");
@@ -123,6 +123,10 @@ describe("StoryOutline", () => {
       onDeleteChapter: () => {},
     }));
 
+    // More menu trigger exists per chapter row
+    const moreButton = html.match(/<summary[^>]*aria-label="更多操作"[^>]*>/);
+    expect(moreButton).toBeTruthy();
+    // Delete action exists inside the menu and is not disabled for a chapter with nodes
     const deleteButton = html.match(/<button[^>]*aria-label="删除章节 序章"[^>]*>/);
     expect(deleteButton).toBeTruthy();
     expect(deleteButton![0]).not.toContain('disabled=""');

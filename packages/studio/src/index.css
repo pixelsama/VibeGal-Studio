@@ -440,12 +440,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* ── 兜底禁用态：未迁移到 .gs-btn 的内联 button 至少能看出不可用 ── */
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* ── 可点击列表行（工作区项目列表等）：hover/focus 由全局类承担 ── */
 .gs-list-row {
   display: flex;
@@ -1284,6 +1278,73 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+/* ══ 出口路由（features/script/ExitRoutingBlock.tsx）══════════════════ */
+
+.gs-exit-routing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.gs-exit-routing__header {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+.gs-exit-routing__empty,
+.gs-exit-routing__single {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.gs-exit-routing__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gs-exit-routing__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+.gs-exit-routing__target {
+  color: var(--text-bright);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.gs-exit-routing__move {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-dim);
+}
+.gs-exit-routing__problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--status-warn-text);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.gs-exit-routing__problem--error {
+  color: var(--status-error-text);
+}
+.gs-exit-routing__problem strong {
+  flex: none;
+  font-weight: 700;
+}
+
 /* ══ 分流规则表（features/script/BranchRules.tsx）════════════════════════ */
 
 .gs-branch {
@@ -1603,24 +1664,6 @@ select:focus-visible {
   border: none;
   border-radius: var(--radius-md);
   background: var(--bg-raised);
-}
-.gs-coverage__stat--ok {
-  border-color: var(--border-ok);
-}
-.gs-coverage__stat--ok .gs-coverage__stat-value {
-  color: var(--status-ok-text);
-}
-.gs-coverage__stat--warn {
-  border-color: var(--border-warn);
-}
-.gs-coverage__stat--warn .gs-coverage__stat-value {
-  color: var(--status-warn-text);
-}
-.gs-coverage__stat--error {
-  border-color: var(--border-error);
-}
-.gs-coverage__stat--error .gs-coverage__stat-value {
-  color: var(--status-error-text);
 }
 .gs-coverage__stat--ok {
   border-color: var(--border-ok);

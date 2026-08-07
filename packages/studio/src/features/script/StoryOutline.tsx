@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { UIEvent } from "react";
 import type { Manifest, NodeEntry, ProjectGraph } from "../../lib/types";
@@ -105,15 +105,6 @@ export function StoryOutline({
           <div style={titleStyle}>{t("script.sidebar.story")}</div>
           <div style={hintStyle}>{t("script.outline.hint")}</div>
         </div>
-        <button
-          type="button"
-          aria-label={t("script.outline.createChapter")}
-          title={t("script.outline.createChapter")}
-          style={iconButtonStyle}
-          onClick={onCreateChapter}
-        >
-          <Plus size={15} />
-        </button>
       </div>
 
       <div style={searchStyle}>
@@ -127,7 +118,25 @@ export function StoryOutline({
         />
       </div>
 
-      {!searching && <div style={chapterListStyle}>
+      {!searching && <>
+      <div style={chapterHeaderRowStyle}>
+        <span style={chapterHeaderLabelStyle}>{t("script.outline.chapterHeader")}</span>
+        <span style={chapterHeaderCountStyle}>{t("script.outline.chapterCount", { count: chapters.length })}</span>
+        <button
+          type="button"
+          aria-label={t("script.outline.createChapter")}
+          title={t("script.outline.createChapter")}
+          style={chapterAddButtonStyle}
+          onClick={onCreateChapter}
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      <div style={chapterScrollStyle} onScroll={(e) => {
+        const el = e.currentTarget;
+        el.classList.toggle("gs-chapter-list--scrolled", el.scrollTop > 0);
+      }}>
+        <div style={chapterListStyle}>
         <ScopeButton
           active={scope.kind === "all"}
           title={t("script.globalView")}
@@ -142,30 +151,42 @@ export function StoryOutline({
               count={chapterCounts.get(chapter.id) ?? 0}
               onClick={() => onScopeChange({ kind: "chapter", chapterId: chapter.id })}
             />
-            <div style={chapterActionsStyle}>
-              <SmallAction label={t("script.outline.moveUp", { title: chapter.title })} disabled={index === 0} onClick={() => onMoveChapter(chapter.id, -1)}>
-                <ChevronUp size={12} />
-              </SmallAction>
-              <SmallAction label={t("script.outline.moveDown", { title: chapter.title })} disabled={index === chapters.length - 1} onClick={() => onMoveChapter(chapter.id, 1)}>
-                <ChevronDown size={12} />
-              </SmallAction>
-              <SmallAction label={t("script.outline.rename", { title: chapter.title })} onClick={() => onRenameChapter(chapter.id)}>
-                <Pencil size={12} />
-              </SmallAction>
-              <SmallAction
-                label={chapters.length === 1
-                  ? t("script.outline.deleteLastChapter")
-                  : t("script.outline.delete", { title: chapter.title })}
-                disabled={chapters.length === 1}
-                danger
-                onClick={() => onDeleteChapter(chapter.id)}
-              >
-                <Trash2 size={12} />
-              </SmallAction>
-            </div>
+            <details style={moreMenuStyle}>
+              <summary style={moreMenuTriggerStyle} aria-label={t("script.outline.moreActions")}>
+                <MoreHorizontal size={14} />
+              </summary>
+              <div style={moreMenuDropdownStyle}>
+                <button type="button" style={moreMenuItemStyle} disabled={index === 0} onClick={() => onMoveChapter(chapter.id, -1)}>
+                  <ChevronUp size={12} />
+                  {t("script.outline.moveUp", { title: chapter.title })}
+                </button>
+                <button type="button" style={moreMenuItemStyle} disabled={index === chapters.length - 1} onClick={() => onMoveChapter(chapter.id, 1)}>
+                  <ChevronDown size={12} />
+                  {t("script.outline.moveDown", { title: chapter.title })}
+                </button>
+                <button type="button" style={moreMenuItemStyle} onClick={() => onRenameChapter(chapter.id)}>
+                  <Pencil size={12} />
+                  {t("script.outline.rename", { title: chapter.title })}
+                </button>
+                <button
+                  type="button"
+                  style={{ ...moreMenuItemStyle, color: "var(--status-error-text)" }}
+                  disabled={chapters.length === 1}
+                  aria-label={chapters.length === 1
+                    ? t("script.outline.deleteLastChapter")
+                    : t("script.outline.delete", { title: chapter.title })}
+                  onClick={() => onDeleteChapter(chapter.id)}
+                >
+                  <Trash2 size={12} />
+                  {chapters.length === 1 ? t("script.outline.deleteLastChapter") : t("script.chapter.delete")}
+                </button>
+              </div>
+            </details>
           </div>
         ))}
-      </div>}
+        </div>
+      </div>
+      </>}
 
       <div style={nodeSectionStyle}>
         <div style={nodeHeadingStyle}>
@@ -273,31 +294,6 @@ function ScopeButton({ active, title, count, onClick }: { active: boolean; title
   );
 }
 
-function SmallAction({ label, disabled, danger, onClick, children }: {
-  label: string;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        ...smallActionStyle,
-        color: danger ? "var(--status-error-text)" : "var(--text-muted)",
-        ...(disabled ? { opacity: 0.4, cursor: "not-allowed" } : {}),
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 function scopeLabel(
   graph: ProjectGraph,
   scope: ChapterScope,
@@ -314,19 +310,33 @@ const STORY_OUTLINE_SEARCH_ROW_HEIGHT = 72;
 const STORY_OUTLINE_ROW_GAP = 4;
 
 const panelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 };
-const headingStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-4)" };
+const headingStyle: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-4) var(--space-4) var(--space-2)" };
 const titleStyle: React.CSSProperties = { fontSize: "var(--text-lg)", fontWeight: 700, color: "var(--text-bright)" };
 const hintStyle: React.CSSProperties = { marginTop: "var(--space-1)", fontSize: "var(--text-xs)", color: "var(--text-muted)" };
-const iconButtonStyle: React.CSSProperties = { width: "var(--control-lg)", height: "var(--control-lg)", display: "grid", placeItems: "center", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)", cursor: "pointer" };
 const searchStyle: React.CSSProperties = { padding: "0 var(--space-3) var(--space-3)" };
 const searchInputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--border-input)", borderRadius: "var(--radius-sm)", background: "var(--bg-panel)", color: "var(--text-primary)" };
 const listItemStyle: React.CSSProperties = { flexShrink: 0, overflow: "hidden" };
-const chapterListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-1)", padding: "0 var(--space-3) var(--space-3)", borderBottom: "1px solid var(--border)" };
+
+// Chapter section header
+const chapterHeaderRowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-4) var(--space-1)" };
+const chapterHeaderLabelStyle: React.CSSProperties = { fontSize: "var(--text-xs)", fontWeight: 500, color: "var(--text-muted)" };
+const chapterHeaderCountStyle: React.CSSProperties = { fontSize: "var(--text-xs)", color: "var(--text-muted)", flex: 1 };
+const chapterAddButtonStyle: React.CSSProperties = { display: "grid", placeItems: "center", width: "var(--control-sm)", height: "var(--control-sm)", border: 0, background: "transparent", color: "var(--accent)", cursor: "pointer", borderRadius: "var(--radius-sm)" };
+
+// Chapter scroll container — fixed max height + overflow for scalability
+const chapterScrollStyle: React.CSSProperties = { overflowY: "auto", minHeight: 0, maxHeight: "40vh", flexShrink: 1, padding: "0 var(--space-3) var(--space-3)", borderBottom: "1px solid var(--border)" };
+
+const chapterListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-1)" };
 const chapterRowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: "var(--space-1)" };
 const scopeButtonStyle: React.CSSProperties = { width: "100%", minHeight: "var(--control-lg)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: 0, borderRadius: "var(--radius-sm)", cursor: "pointer", textAlign: "left", fontSize: "var(--text-base)" };
 const countStyle: React.CSSProperties = { minWidth: "var(--control-sm)", padding: "1px 6px", borderRadius: "var(--radius-pill)", background: "var(--bg-panel)", color: "var(--text-muted)", fontSize: "var(--text-xs)", textAlign: "center" };
-const chapterActionsStyle: React.CSSProperties = { display: "flex", gap: "var(--space-1)" };
-const smallActionStyle: React.CSSProperties = { width: "var(--control-sm)", height: "var(--control-sm)", display: "grid", placeItems: "center", border: 0, background: "transparent", borderRadius: "var(--radius-sm)", cursor: "pointer" };
+
+// More menu (⋯)
+const moreMenuStyle: React.CSSProperties = { position: "relative" };
+const moreMenuTriggerStyle: React.CSSProperties = { display: "grid", placeItems: "center", width: "var(--control-sm)", height: "var(--control-sm)", border: 0, background: "transparent", color: "var(--text-muted)", cursor: "pointer", borderRadius: "var(--radius-sm)", listStyle: "none" };
+const moreMenuDropdownStyle: React.CSSProperties = { position: "absolute", right: 0, top: "100%", zIndex: 10, display: "flex", flexDirection: "column", minWidth: 160, padding: "4px", background: "var(--bg-raised)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-card)" };
+const moreMenuItemStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "6px 8px", border: 0, background: "transparent", color: "var(--text-primary)", cursor: "pointer", borderRadius: "var(--radius-xs)", fontSize: "var(--text-sm)", textAlign: "left" };
+
 const nodeSectionStyle: React.CSSProperties = { display: "flex", flexDirection: "column", minHeight: 0, flex: 1, padding: "var(--space-3)" };
 const nodeHeadingStyle: React.CSSProperties = { padding: "var(--space-1) var(--space-2) var(--space-2)", color: "var(--text-muted)", fontSize: "var(--text-xs)" };
 const nodeListStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-1)", overflowY: "auto", minHeight: 0, flex: 1 };
