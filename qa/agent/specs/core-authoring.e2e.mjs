@@ -18,6 +18,7 @@ import {
   readCoreAuthoringNode,
   readProjectGraph,
   renameSelectedNode,
+  routeCreatedChoiceToNode,
   requiredEnv,
   verifyPreviewBranch,
   waitForProjectFiles,
@@ -56,6 +57,7 @@ describe(`Core authoring desktop chain (${phase})`, () => {
 
       const textarea = await openNodeEditor(CORE_AUTHORING_NODE_TITLE);
       await authorNodeInstructions(textarea, projectPath);
+      await routeCreatedChoiceToNode();
 
       await waitForProjectFiles(projectPath, ({ graph, node }) => {
         const { edge } = assertCoreAuthoringGraph(graph);

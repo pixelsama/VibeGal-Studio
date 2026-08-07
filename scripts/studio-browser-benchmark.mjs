@@ -383,14 +383,25 @@ async function measureSingleNodeSave(cdp, sampleHeap) {
   await evaluate(cdp, `(() => {
     const item = document.querySelector('${OUTLINE_ITEM_BUTTON}');
     if (!item) throw new Error('node outline item not found');
+    const title = item.textContent.trim();
     item.click();
+    // Spec 35 removes the graph-side NodeInspector.  Enter the editor through
+    // the supported graph affordance: double-click the selected node.  Keep
+    // the outline click above so this still measures the real selection path.
+    const node = [...document.querySelectorAll('.react-flow__node')]
+      .find((candidate) => candidate.textContent.includes(title));
+    if (!(node instanceof HTMLElement)) {
+      throw new Error('selected outline node was not mounted in the graph');
+    }
+    const rect = node.getBoundingClientRect();
+    node.dispatchEvent(new MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: rect.left + Math.min(rect.width / 2, 24),
+      clientY: rect.top + Math.min(rect.height / 2, 24),
+    }));
   })()`);
-  await waitForExpression(
-    cdp,
-    `[...document.querySelectorAll('button')].some(${buttonMatches(["进入编辑", "Open editor"])})`,
-    5_000,
-  );
-  await clickButton(cdp, ["进入编辑", "Open editor"]);
   await waitForExpression(cdp, `document.querySelector('${SCENARIO_TEXTAREA}')`, 15_000);
   const samples = [];
   for (let index = 0; index < 6; index += 1) {

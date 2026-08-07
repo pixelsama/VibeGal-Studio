@@ -7240,8 +7240,9 @@ mod tests {
             graph["nodes"][0]["position"],
             serde_json::json!({ "x": 0.0, "y": 0.0 })
         );
-        assert_eq!(graph["edges"][0]["mode"], "linear");
-        assert_eq!(graph["edges"][0]["label"], serde_json::Value::Null);
+        assert_eq!(graph["edges"][0]["condition"], serde_json::Value::Null);
+        assert!(graph["edges"][0].get("mode").is_none());
+        assert!(graph["edges"][0].get("label").is_none());
         assert_eq!(project.content.manifest, find_case("manifest")["input"]);
         assert_eq!(project.content.meta, find_case("meta")["input"]);
         assert!(project

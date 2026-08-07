@@ -39,7 +39,9 @@ export function assertCoreAuthoringGraph(graph) {
       && candidate.to === CORE_AUTHORING_NEW_NODE_ID,
   );
   assert.ok(edge, `graph.json should connect ${CORE_AUTHORING_SOURCE_NODE_ID} to ${CORE_AUTHORING_NEW_NODE_ID}`);
-  assert.equal(edge.mode, "choice");
+  assert.equal(edge.condition ?? null, null);
+  assert.equal("mode" in edge, false);
+  assert.equal("label" in edge, false);
   return { node, edge };
 }
 
@@ -114,27 +116,7 @@ export async function createSuccessorFromGraphNode(nodeId = CORE_AUTHORING_SOURC
     );
   }
   await node.waitForExist();
-  // WebKit and Edge do not consistently forward WebDriver's synthetic
-  // right-click to React Flow's node context-menu handler. Dispatch the same
-  // bubbling DOM event so the QA path exercises the real menu implementation
-  // without depending on the host OS context-menu gesture.
-  await browser.execute((targetId) => {
-    const target = [...document.querySelectorAll(".react-flow__node")]
-      .find((candidate) => candidate.getAttribute("data-id") === targetId);
-    if (!(target instanceof HTMLElement)) {
-      throw new Error(`React Flow node ${targetId} was not found for context menu`);
-    }
-    const rect = target.getBoundingClientRect();
-    target.dispatchEvent(new MouseEvent("contextmenu", {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      button: 2,
-      buttons: 2,
-      clientX: rect.left + Math.min(rect.width / 2, 24),
-      clientY: rect.top + Math.min(rect.height / 2, 24),
-    }));
-  }, nodeId);
+  await dispatchNodeContextMenu(nodeId);
   const menu = await browser.$('[role="menu"]');
   await menu.waitForExist();
   const successor = await browser.$(
@@ -168,9 +150,13 @@ export async function createSuccessorFromGraphNode(nodeId = CORE_AUTHORING_SOURC
 }
 
 export async function renameSelectedNode() {
-  const titleInput = await browser.$(
-    `//label[.//span[normalize-space()=${xpathLiteral("标题")} or normalize-space()=${xpathLiteral("Title")}]]//input`,
+  await dispatchNodeContextMenu(CORE_AUTHORING_NEW_NODE_ID);
+  const rename = await browser.$(
+    `//div[@role="menu"]//button[@role="menuitem" and (normalize-space(.)=${xpathLiteral("重命名")} or normalize-space(.)=${xpathLiteral("Rename")})]`,
   );
+  await rename.waitForClickable();
+  await rename.click();
+  const titleInput = await browser.$('//div[@role="dialog"]//input');
   await titleInput.waitForExist();
   await titleInput.setValue(CORE_AUTHORING_NODE_TITLE);
   await browser.keys("Enter");
@@ -178,19 +164,77 @@ export async function renameSelectedNode() {
 }
 
 export async function openNodeEditor(nodeTitle = CORE_AUTHORING_NEW_NODE_ID) {
+  const flow = await browser.$(".react-flow");
+  if (!(await flow.isExisting())) {
+    const backToGraph = await buttonByTexts(["流程图", "Flowchart"]);
+    await backToGraph.waitForClickable();
+    await backToGraph.click();
+    await flow.waitForExist();
+  }
   const option = await browser.$(
     `//div[@role="list"]//button[.//span[normalize-space()=${xpathLiteral(nodeTitle)}]]`,
   );
   await option.waitForClickable();
   await option.click();
-  const enter = await buttonByTexts(["进入编辑", "Open editor"]);
-  await enter.waitForClickable();
-  await enter.click();
+  // Spec 35 removes the graph-side NodeInspector.  The editor is entered by
+  // double-clicking the selected node on the graph.
+  await browser.execute((title) => {
+    const target = [...document.querySelectorAll(".react-flow__node")]
+      .find((candidate) => candidate.textContent?.includes(title));
+    if (!(target instanceof HTMLElement)) {
+      throw new Error(`React Flow node ${title} was not found for editor entry`);
+    }
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(new MouseEvent("dblclick", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: rect.left + Math.min(rect.width / 2, 24),
+      clientY: rect.top + Math.min(rect.height / 2, 24),
+    }));
+  }, nodeTitle);
   const textarea = await browser.$(
     `//textarea[@aria-label=${xpathLiteral("剧本文本")} or @aria-label=${xpathLiteral("Script text")}]`,
   );
   await textarea.waitForExist();
   return textarea;
+}
+
+export async function routeCreatedChoiceToNode() {
+  const textarea = await openNodeEditor("苏醒");
+  const current = await textarea.getValue();
+  const next = current.replace("@to approach", `@to ${CORE_AUTHORING_NEW_NODE_ID}`);
+  assert.notEqual(next, current, "sample awakening choice should expose the approach target");
+  await textarea.setValue(next);
+  await waitForAnyBodyText(["未保存", "Unsaved"]);
+  const save = await buttonByTexts(["保存", "Save"]);
+  await save.waitForClickable();
+  await save.click();
+}
+
+async function dispatchNodeContextMenu(nodeId) {
+  // WebKit and Edge do not consistently forward WebDriver's synthetic
+  // right-click to React Flow's node context-menu handler. Dispatch the same
+  // bubbling DOM event so the QA path exercises the real menu implementation
+  // without depending on the host OS context-menu gesture.
+  await browser.execute((targetId) => {
+    const target = [...document.querySelectorAll(".react-flow__node")]
+      .find((candidate) => candidate.getAttribute("data-id") === targetId);
+    if (!(target instanceof HTMLElement)) {
+      throw new Error(`React Flow node ${targetId} was not found for context menu`);
+    }
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 2,
+      buttons: 2,
+      clientX: rect.left + Math.min(rect.width / 2, 24),
+      clientY: rect.top + Math.min(rect.height / 2, 24),
+    }));
+  }, nodeId);
+  await browser.$('[role="menu"]').waitForExist();
 }
 
 export async function authorNodeInstructions(textarea, projectPath) {
