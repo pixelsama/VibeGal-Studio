@@ -233,6 +233,14 @@ export function orderDefaultAutoEdgeLast(edges: GraphEdge[]): GraphEdge[] {
   return [...edges.filter((edge) => edge.condition?.trim()), ...edges.filter((edge) => !edge.condition?.trim())];
 }
 
+/** 更新一个出口的原始条件，并保持兜底出口位于最后。 */
+export function replaceEdgeCondition(edges: GraphEdge[], edgeId: string, source: string): GraphEdge[] {
+  const condition = source.trim() || null;
+  return orderDefaultAutoEdgeLast(edges.map((edge) => (
+    edge.id === edgeId ? { ...edge, condition } : edge
+  )));
+}
+
 export function targetTitle(
   graph: ProjectGraph,
   nodeId: string,

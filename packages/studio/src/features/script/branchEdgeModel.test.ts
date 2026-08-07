@@ -8,6 +8,7 @@ import {
   moveEdge,
   moveEdgeById,
   orderDefaultAutoEdgeLast,
+  replaceEdgeCondition,
   targetTitle,
 } from "./branchEdgeModel";
 import { collectStateSources, stateSourceDefaults } from "./storyState";
@@ -194,6 +195,18 @@ describe("edge ordering", () => {
   it("drag and keyboard reordering agree", () => {
     expect(moveEdgeById(autoEdges, "start__normal", "start__confess").map((edge) => edge.id))
       .toEqual(moveEdge(autoEdges, 1, -1).map((edge) => edge.id));
+  });
+
+  it("replaces a raw condition and keeps the fallback edge last", () => {
+    const next = replaceEdgeCondition([
+      { id: "fallback", from: "start", to: "normal", condition: null },
+      { id: "conditional", from: "start", to: "confess", condition: "affection >= 30" },
+    ], "conditional", "score >= 3 && route == \"stay\"");
+
+    expect(next).toEqual([
+      { id: "conditional", from: "start", to: "confess", condition: "score >= 3 && route == \"stay\"" },
+      { id: "fallback", from: "start", to: "normal", condition: null },
+    ]);
   });
 });
 

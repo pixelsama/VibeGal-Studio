@@ -37,7 +37,7 @@ import {
   type NodeEditorMode,
 } from "./nodeEditorModel";
 import { NodeEditorToolbar } from "./NodeEditorToolbar";
-import { ConfirmDialog } from "../common/Dialogs";
+import { ConfirmDialog, PromptDialog } from "../common/Dialogs";
 import { Toast, type ToastInput, type ToastMessage } from "../common/Toast";
 import { ExternalDiffPanel } from "./ExternalDiffPanel";
 import { diffLines, externalDiffTexts, summarizeDiff } from "./externalDiff";
@@ -64,6 +64,8 @@ import { ScenarioTextEditor, SCENARIO_LINE_HEIGHT, SCENARIO_TEXT_PADDING_TOP } f
 import { mapScenarioFrames } from "./scenarioFrames";
 import { ExitRoutingBlock } from "./ExitRoutingBlock";
 import { collectStateSources, stateSourceDefaults } from "./storyState";
+import { conditionDraftError } from "./graphCondition";
+import { replaceEdgeCondition } from "./branchEdgeModel";
 import { applyBackspace, applyEnter, applyTab } from "./scenarioIndentKeyboard";
 import { planScenarioInstructionMove } from "./scenarioReordering";
 import { followedPreviewStart } from "./nodePreviewStart";
@@ -447,6 +449,7 @@ export function NodeEditor({
   const [inspectorPane, setInspectorPane] = useState<NodeInspectorPaneState>(() => loadNodeInspectorPaneState());
   const [layoutWidth, setLayoutWidth] = useState<number | undefined>(undefined);
   const [draggingInspector, setDraggingInspector] = useState(false);
+  const [expressionPrompt, setExpressionPrompt] = useState<{ edgeId: string; source: string } | null>(null);
   const inspectorPaneLayout = useMemo(
     () => resolveNodeInspectorPaneLayout(inspectorPane, layoutWidth),
     [inspectorPane, layoutWidth],
@@ -1088,6 +1091,16 @@ export function NodeEditor({
     applyStructuredInstructions(move.instructions, { nextCursorOffset: move.cursorOffset });
   };
 
+  const handleEditExitExpression = (edge: GraphEdge) => {
+    setExpressionPrompt({ edgeId: edge.id, source: edge.condition ?? "" });
+  };
+
+  const handleCommitExitExpression = (source: string) => {
+    if (!expressionPrompt || !outgoingEdges || !onUpdateOutgoingEdges || conditionDraftError(source)) return;
+    onUpdateOutgoingEdges(replaceEdgeCondition(outgoingEdges, expressionPrompt.edgeId, source));
+    setExpressionPrompt(null);
+  };
+
   const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mode === "scenario") {
       const shortcut = undoShortcutType(event);
@@ -1369,6 +1382,7 @@ export function NodeEditor({
           trialValues={{ ...exitTrialDefaults, ...(trialOverrides ?? {}) }}
           onTrialChange={onTrialChange ?? (() => {})}
           onChange={onUpdateOutgoingEdges}
+          onEditExpression={handleEditExitExpression}
         />
       )}
     </div>
@@ -1460,6 +1474,19 @@ export function NodeEditor({
           if (pending) executeModeToggle(pending.nextMode);
         }}
         onClose={() => setUndoClearConfirm(null)}
+      />
+    )}
+    {expressionPrompt && (
+      <PromptDialog
+        title={t("script.condition.editExpression")}
+        label={t("script.condition.expressionLabel")}
+        initialValue={expressionPrompt.source}
+        allowUnchanged
+        allowEmpty
+        confirmLabel={t("script.condition.applyExpression")}
+        validate={conditionDraftError}
+        onConfirm={handleCommitExitExpression}
+        onClose={() => setExpressionPrompt(null)}
       />
     )}
     </>
