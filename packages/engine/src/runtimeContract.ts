@@ -65,6 +65,8 @@ export const RuntimeSnapshotSchema = z.strictObject({
   currentNodeId: z.string().min(1),
   currentStoryPoint: StoryPointIdSchema.nullable(),
   vars: z.record(z.string(), VariableValueSchema),
+  /** Variables at node entry, used to replay relative assignments without double-applying them. */
+  varsAtNodeEntry: z.record(z.string(), VariableValueSchema).optional(),
   background: z.string().nullable(),
   sprites: z.array(SerializableSpriteSchema),
   bgm: SerializableBgmSchema.nullable(),
@@ -82,13 +84,17 @@ export const DecisionLogEventSchema = z.discriminatedUnion("type", [
     type: z.literal("choice"),
     fromNodeId: z.string().min(1),
     toNodeId: z.string().min(1),
-    edgeId: z.string().min(1),
+    // Spec 35：choice 决策现在主要由节点内 choice 指令产生；choiceInstructionId +
+    // optionIndex 是新主键。edgeId 保留为可选，仅图出口直连（极少见）时使用。
+    choiceInstructionId: z.string().min(1).optional(),
+    optionIndex: z.number().int().nonnegative().optional(),
+    edgeId: z.string().min(1).optional(),
   }),
   z.strictObject({
     type: z.literal("auto"),
     fromNodeId: z.string().min(1),
     toNodeId: z.string().min(1),
-    edgeId: z.string().min(1),
+    edgeId: z.string().min(1).optional(),
   }),
   z.strictObject({ type: z.literal("checkpoint"), snapshot: RuntimeSnapshotSchema }),
 ]);
@@ -243,12 +249,14 @@ export function createRuntimeSnapshot(
   position: Pick<RuntimeSnapshot, "currentNodeId" | "currentStoryPoint">,
   playthroughId = createPlaythroughId(),
   nameInputOrigin?: RuntimeSnapshot["nameInputOrigin"],
+  varsAtNodeEntry?: RuntimeSnapshot["varsAtNodeEntry"],
 ): RuntimeSnapshot {
   return RuntimeSnapshotSchema.parse({
     playthroughId,
     currentNodeId: position.currentNodeId,
     currentStoryPoint: position.currentStoryPoint,
     vars: state.vars,
+    ...(varsAtNodeEntry ? { varsAtNodeEntry } : {}),
     background: state.background,
     sprites: state.sprites
       .filter((sprite) => !sprite.leaving)

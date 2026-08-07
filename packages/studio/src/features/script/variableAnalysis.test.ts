@@ -12,8 +12,8 @@ const graph: ProjectGraph = {
     { id: "orphan", title: "Orphan", file: "nodes/orphan.json", position: { x: 720, y: 0 } },
   ],
   edges: [
-    { id: "start__mid", from: "start", to: "mid", mode: "auto", label: null, condition: "flags.ready && route == 'stay'" },
-    { id: "mid__ending", from: "mid", to: "ending", mode: "linear", label: null, condition: null },
+    { id: "start__mid", from: "start", to: "mid", condition: "flags.ready && route == 'stay'" },
+    { id: "mid__ending", from: "mid", to: "ending", condition: null },
   ],
 };
 
@@ -48,13 +48,7 @@ describe("variable analysis", () => {
       endingNodes: 1,
       orphanNodes: 1,
       choiceBranches: [],
-      autoBranches: [
-        expect.objectContaining({
-          edgeId: "start__mid",
-          conditionState: "unknown",
-          reachesEnding: true,
-        }),
-      ],
+      autoBranches: [],
     });
   });
 
@@ -69,14 +63,33 @@ describe("variable analysis", () => {
         { id: "ending", title: "Ending", file: "nodes/ending.json", position: { x: 480, y: 0 } },
       ],
       edges: [
-        { id: "start__good", from: "start", to: "good", mode: "choice", label: "Go", condition: null },
-        { id: "start__bad", from: "start", to: "bad", mode: "choice", label: "Stay", condition: null },
-        { id: "good__ending", from: "good", to: "ending", mode: "linear", label: null, condition: null },
-        { id: "bad__bad", from: "bad", to: "bad", mode: "linear", label: null, condition: null },
+        { id: "start__good", from: "start", to: "good", condition: null },
+        { id: "start__bad", from: "start", to: "bad", condition: null },
+        { id: "good__ending", from: "good", to: "ending", condition: null },
+        { id: "bad__bad", from: "bad", to: "bad", condition: null },
       ],
     };
 
-    expect(buildRouteCoverage(choiceGraph).choiceBranches).toEqual([
+    const choiceNodeEntries: NodeEntry[] = [
+      {
+        relPath: "nodes/start.json",
+        data: [
+          {
+            t: "choice",
+            id: "start_choice",
+            options: [
+              { text: "Go", to: "good" },
+              { text: "Stay", to: "bad" },
+            ],
+          },
+        ],
+      },
+      { relPath: "nodes/good.json", data: [] },
+      { relPath: "nodes/bad.json", data: [] },
+      { relPath: "nodes/ending.json", data: [] },
+    ];
+
+    expect(buildRouteCoverage(choiceGraph, choiceNodeEntries).choiceBranches).toEqual([
       expect.objectContaining({
         edgeId: "start__good",
         fromNodeId: "start",
@@ -94,5 +107,50 @@ describe("variable analysis", () => {
         endingNodeIds: [],
       }),
     ]);
+  });
+
+  it("counts nested choice effects as writes for route conditions", () => {
+    const nestedChoiceGraph: ProjectGraph = {
+      ...graph,
+      nodes: graph.nodes.slice(0, 3),
+      edges: [{ id: "start__mid", from: "start", to: "mid", condition: "resolve >= 4" }],
+    };
+    const nestedNodes: NodeEntry[] = [
+      {
+        relPath: "nodes/start.json",
+        data: [{ t: "choice", options: [{
+          text: "加一点",
+          effects: [{ t: "set", key: "resolve", expr: "resolve + 4" }],
+        }] }],
+      },
+      { relPath: "nodes/mid.json", data: [] },
+      { relPath: "nodes/ending.json", data: [] },
+    ];
+
+    const entry = analyzeGraphVariables(nestedChoiceGraph, nestedNodes)
+      .variables.find((variable) => variable.name === "resolve");
+    expect(entry?.writes).toHaveLength(1);
+    expect(entry?.issues.map((issue) => issue.code)).not.toContain("read_before_write");
+  });
+
+  it("counts choice targets as reachable nodes in route coverage", () => {
+    const choiceGraph: ProjectGraph = {
+      version: 1,
+      entryNodeId: "start",
+      nodes: [
+        { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
+        { id: "target", title: "Target", file: "nodes/target.json", position: { x: 1, y: 0 } },
+      ],
+      edges: [],
+    };
+    const nodes: NodeEntry[] = [
+      { relPath: "nodes/start.json", data: [{ t: "choice", options: [{ text: "去", to: "target" }] }] },
+      { relPath: "nodes/target.json", data: [] },
+    ];
+
+    expect(buildRouteCoverage(choiceGraph, nodes)).toMatchObject({
+      reachableNodes: 2,
+      endingNodes: 1,
+    });
   });
 });

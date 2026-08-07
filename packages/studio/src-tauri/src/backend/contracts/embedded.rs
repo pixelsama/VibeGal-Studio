@@ -173,10 +173,24 @@ pub(crate) fn structural_code(
 
 fn instruction_branches() -> &'static HashMap<String, Value> {
     NODE_BRANCHES.get_or_init(|| {
-        let branches = schema(ContractSchemaKind::NodeFile)
+        // Spec 35：choice/if 的 body/then/else 内嵌 Instruction[]，使节点 schema 成为
+        // 自递归类型。Zod 4 的 z.toJSONSchema 因此把指令联合抽到 $defs.<key> 并用
+        // items.$ref 引用，而不是 items.oneOf 的扁平数组。这里跟随 $ref 取到联合。
+        let node_schema = schema(ContractSchemaKind::NodeFile);
+        let branches = node_schema
             .pointer("/items/oneOf")
             .and_then(Value::as_array)
-            .unwrap_or_else(|| panic!("embedded node schema has no items.oneOf"));
+            .or_else(|| {
+                // 递归形态：items = { "$ref": "#/$defs/<key>" }，解引用到 $defs.<key>.oneOf。
+                let ref_path = node_schema
+                    .pointer("/items/$ref")
+                    .and_then(Value::as_str)?;
+                let key = ref_path.rsplit('/').next()?;
+                let defs = node_schema.get("$defs")?;
+                defs.pointer(&format!("/{key}/oneOf"))
+                    .and_then(Value::as_array)
+            })
+            .unwrap_or_else(|| panic!("embedded node schema has no items.oneOf nor $defs union"));
         let mut result = HashMap::with_capacity(branches.len());
         for branch in branches {
             let instruction_type = branch

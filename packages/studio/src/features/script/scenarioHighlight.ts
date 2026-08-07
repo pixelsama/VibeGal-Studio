@@ -17,6 +17,15 @@ export function highlightScenarioLine(line: string): ScenarioLineToken[] {
   const trimmed = line.trim();
   if (trimmed.length === 0) return [];
 
+  // Spec 35 Phase 2：choice / if / else 块头整行作为 command 高亮。
+  if (/^(choice|if|else)(?:\s|$)/.test(trimmed)) {
+    return [{ kind: "command", text: line }];
+  }
+  // @to / @effects 标记行：command 高亮（便于在 option body 里识别）。
+  if (/^@to\s+\S+$/.test(trimmed) || trimmed === "@effects") {
+    return [{ kind: "command", text: line }];
+  }
+
   if (trimmed.startsWith("@")) {
     const parsed = parseScenarioLine(trimmed);
     if (!parsed.ok) return [{ kind: "invalid", text: line }];

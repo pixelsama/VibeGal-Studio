@@ -73,9 +73,10 @@ akari: 今天也很安静呢。`);
   });
 
   it("reports line diagnostics for malformed commands", () => {
+    // Spec 35：@choice 的旧拒绝已移除（choice 重新成为节点内指令）；
+    // 未知命令仍报诊断。
     const result = parseScenarioText(`@bg
-@choice
-- 没有目标`);
+@nonsense`);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -85,7 +86,7 @@ akari: 今天也很安静呢。`);
       message: diagnostic.message,
     }))).toEqual([
       { line: 1, message: "@bg 需要背景 ID。" },
-      { line: 2, message: "分支选项已移到流程图出口，请在流程图中配置。" },
+      { line: 2, message: "未知命令：@nonsense" },
     ]);
   });
 

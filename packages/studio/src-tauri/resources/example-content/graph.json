@@ -72,53 +72,24 @@
       "id": "prologue__awakening",
       "from": "prologue",
       "to": "awakening",
-      "mode": "linear",
-      "label": null,
       "condition": null
-    },
-    {
-      "id": "awakening__approach",
-      "from": "awakening",
-      "to": "approach",
-      "mode": "choice",
-      "label": "去看看那片火光",
-      "condition": null,
-      "effects": [
-        { "t": "set", "key": "resolve", "expr": "resolve + 4" },
-        { "t": "set", "key": "route", "value": "protector" }
-      ]
-    },
-    {
-      "id": "awakening__shore",
-      "from": "awakening",
-      "to": "shore",
-      "mode": "choice",
-      "label": "留在原地",
-      "condition": null,
-      "effects": [{ "t": "set", "key": "resolve", "expr": "resolve - 1" }]
     },
     {
       "id": "approach__protect",
       "from": "approach",
       "to": "protect",
-      "mode": "auto",
-      "label": null,
       "condition": "resolve >= 3 && knows_the_fire"
     },
     {
       "id": "approach__adrift",
       "from": "approach",
       "to": "adrift",
-      "mode": "auto",
-      "label": null,
       "condition": null
     },
     {
       "id": "shore__adrift",
       "from": "shore",
       "to": "adrift",
-      "mode": "linear",
-      "label": null,
       "condition": null
     }
   ]

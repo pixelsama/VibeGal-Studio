@@ -158,7 +158,76 @@ export const CompleteEndingInstruction = z.strictObject({
   endingId: z.string().min(1),
 }).meta({ "x-vibegal": instructionPolicies.completeEnding });
 
-export const InstructionSchema = z.discriminatedUnion("t", [
+// ──────────────────────────────────────────────
+// Spec 35 — 分支模型重构：choice / if 指令
+//
+// 把"选项"和"条件判断"从 graph edge 收回节点指令序列。
+// 两者都内嵌 Instruction[]（body / then / else），因此 InstructionSchema
+// 变成自递归类型 —— 通过 z.lazy(() => InstructionSchema) 延迟引用，让
+// Zod 既能解析嵌套结构，又能在 z.toJSONSchema 时输出 $defs/$ref。
+//
+// TypeScript 无法推断自递归类型，所以这里先用 z.infer 推出 ChoiceOption 的
+// 输出类型，再用一个具名 Instruction 类型显式声明 union，打破循环，让 types.ts
+// 的 z.infer<typeof InstructionSchema> 仍能反推出完整类型。
+// ──────────────────────────────────────────────
+
+export const ChoiceOptionSchema = z.object({
+  // 选项文案。玩家看到的选项标题。
+  text: z.string().min(1),
+  // 选了之后、演出反应之前的变量改变（复用 SetInstruction 形态）。
+  effects: z.array(SetInstruction).optional(),
+  // 选了之后的局部反应演出。执行完 body 后：有 to → 跳目标节点；无 to →
+  // 回到 choice 指令之后继续往下走指令序列。
+  body: z.array(z.lazy((): z.ZodType<Instruction> => InstructionSchema)).optional(),
+  // 跳转目标节点（可选）。不填 = 不跳转，继续走指令序列（合流）。
+  to: z.string().min(1).optional(),
+});
+
+export const ChoiceInstruction = z.strictObject({
+  t: z.literal("choice"),
+  // 有 id 才参与 chose.<id>.<optionIndex> 经历追踪；省略 = 不追踪。
+  id: StableInstructionIdSchema.optional(),
+  // 选项前的引导文案（可空）。
+  prompt: z.string().nullable().optional(),
+  options: z.array(ChoiceOptionSchema).min(1),
+}).meta({ "x-vibegal": instructionPolicies.choice });
+
+export const IfInstruction = z.strictObject({
+  t: z.literal("if"),
+  id: StableInstructionIdSchema.optional(),
+  // 条件表达式（复用 graph edge condition 的 expression 引擎语法）。
+  condition: z.string().min(1),
+  // 条件成立时执行。
+  then: z.array(z.lazy((): z.ZodType<Instruction> => InstructionSchema)),
+  // 条件不成立时执行（可选）。无论走哪条，执行完都合流回 if 指令之后。
+  else: z.array(z.lazy((): z.ZodType<Instruction> => InstructionSchema)).optional(),
+}).meta({ "x-vibegal": instructionPolicies.if });
+
+// Instruction 的输出类型：把 17 个叶子与 choice/if 显式联合起来。choice/if 的
+// 嵌套字段用 z.infer 推导出的 ChoiceOption 形态，避免手写一个内部接口污染 .d.ts。
+type Instruction =
+  | z.infer<typeof BgInstruction>
+  | z.infer<typeof BgmInstruction>
+  | z.infer<typeof SfxInstruction>
+  | z.infer<typeof VoiceInstruction>
+  | z.infer<typeof CharInstruction>
+  | z.infer<typeof SayInstruction>
+  | z.infer<typeof NarrateInstruction>
+  | z.infer<typeof SetInstruction>
+  | z.infer<typeof WaitInstruction>
+  | z.infer<typeof EffectInstruction>
+  | z.infer<typeof TransitionInstruction>
+  | z.infer<typeof PauseInstruction>
+  | z.infer<typeof InputNameInstruction>
+  | z.infer<typeof UnlockInstruction>
+  | z.infer<typeof ShowCgInstruction>
+  | z.infer<typeof PlayVideoInstruction>
+  | z.infer<typeof CompleteEndingInstruction>
+  | { t: "choice"; id?: string; prompt?: string | null; options: z.infer<typeof ChoiceOptionSchema>[] }
+  | { t: "if"; id?: string; condition: string; then: Instruction[]; else?: Instruction[] };
+
+// 显式类型注解打破自递归推断循环；types.ts 仍走 z.infer<typeof InstructionSchema>。
+export const InstructionSchema: z.ZodType<Instruction> = z.discriminatedUnion("t", [
   BgInstruction,
   BgmInstruction,
   SfxInstruction,
@@ -176,6 +245,8 @@ export const InstructionSchema = z.discriminatedUnion("t", [
   ShowCgInstruction,
   PlayVideoInstruction,
   CompleteEndingInstruction,
+  ChoiceInstruction,
+  IfInstruction,
 ]);
 
 export const ChapterSchema = z.array(InstructionSchema);
@@ -449,8 +520,10 @@ export const GraphEdgeSchema = z.object({
   id: z.string().min(1),
   from: z.string().min(1),
   to: z.string().min(1),
-  mode: z.enum(["linear", "choice", "auto"]).default("linear"),
-  label: z.string().nullable().default(null),
+  // Spec 35: 路由规则简化为「出口数量 + condition」。
+  //   0 条 → 节点结束；1 条 → 直接走；多条 → 按序求 condition，首个命中者走，
+  //   condition 为 null = 兜底（多条出口时至多一条，引擎求值时排到最后）。
+  // 兜底语义：null condition 仍是合法的"否则"出口。
   condition: z.string().nullable().default(null),
   /**
    * State changes that happen because the story took *this* exit.

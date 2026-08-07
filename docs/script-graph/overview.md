@@ -32,7 +32,7 @@
 ### 🔒 1.3 预览使用 graph-aware player
 
 - 项目预览从 `graph.entryNodeId` 启动，按节点边界加载 `content/nodes/*.json`。
-- 线性出口自动进入下一节点；玩家选择出口展示 `state.choice` 并等待 `onChoose`；自动条件出口根据 `state.vars` 选择目标。
+- 节点内的 `choice` 指令展示选项并等待玩家选择（带 `id` 的 `choice` 记入 `chose.<id>.<optionIndex>`）；节点内的 `if` 指令按 `condition` 选择 `then` / `else` 分支；节点出口按出边数量路由（0 条 = 结局，1 条 = 线性，2 条以上 = 按 `condition` 求值，首个命中胜出）。
 - 节点编辑页右上预览仍服务当前编辑语境，但底层播放语义不再依赖“第一条出边线性拍平”的启发式。
 - meta 级播放参数（`typingSpeedCps` 等）和固定舞台尺寸（`stage.width` / `stage.height`）仍从 `content/meta.json` 取。
 
@@ -43,13 +43,21 @@
 - 约定：把 `project.graph` 通过纯函数映射成 React Flow 的 `nodes`/`edges`，
   编辑动作（拖拽/连线/删除）反向写回 `project.graph` 再落盘。映射层是纯函数、可单测。
 
-### 🔒 1.5 分支语义在 graph outgoing edges
+### 🔒 1.5 分支语义在节点指令数组内（Spec 35 新模型）
 
-- 节点文件内不允许 `choice` 指令；若出现，CLI / projectReport 立即报 `choice_instruction_not_supported`。
-- 每个节点内部保持线性剧情帧；分支只发生在节点出口。
-- `edge.mode` 定义出口类型：`linear`（单一后继）、`choice`（玩家可见选项）、`auto`（根据变量条件自动路由）。
-- `choice` edge 用 `label` 作为展示给玩家的选项文本；`auto` edge 用 `condition` 作为表达式，空条件表示默认分支。
-- `set` 指令写入 `state.vars`，供 `auto` edge 条件表达式判断。
+> **Spec 35 起的分支模型。** 旧模型（graph edge 上挂 `mode`/`label`、节点内禁用 `choice`）已废弃移除。当前契约以 `docs/script-graph/schemas/graph.json` 与 `nodeFile.json` 为准。
+
+- 分支写在**节点文件的 `Instruction[]` 内**，而不是 graph 出边上。
+  - `choice` 指令：`options[]` 每项可有 `to`（跳转到目标节点）或 `body`（内联 `Instruction[]` 反应段，执行完后合并回主指令流）；带 `id` 的 `choice` 会把玩家选择记入 `chose.<choiceInstructionId>.<optionIndex>`。
+  - `if` 指令：`condition` 表达式为真走 `then`，否则走 `else`；两个分支都是 `Instruction[]`，执行完后合并回主指令流。
+  - 两者都支持嵌套（`choice` 嵌进 `if.then`，`if` 嵌进 `choice.body` 等），共享同一套递归指令 schema。
+- graph 出边是**纯结构**：`{ id, from, to, condition?, effects? }`，**没有** `mode` 或 `label` 字段。
+- 出边数量决定节点出口语义：
+  - 0 条 outgoing = 终端/结局节点；
+  - 1 条 outgoing = 线性后继；
+  - 2 条以上 = 按出边 `condition` 顺序求值，首个命中胜出；`condition` 为空/`null` 的边是默认回退边。
+- 出边的 `effects` 是 `set` 指令数组，节点切换时落地为 `state.vars`，供后续 `if` / 出边 `condition` 判断。
+- `choice` / `if` 等节点内指令可带 story-point `id`，Phase 4 的存档/读档据此精确恢复到嵌套分支内部的具体停点。
 
 ### 🔒 1.6 热重载无需新增 watch 路径
 
@@ -89,6 +97,8 @@ content/
 
 ### 2.2 `graph.json` schema
 
+> Spec 35 起边只有结构字段（`id`/`from`/`to`/可选 `condition`/可选 `effects`），不再有 `mode`/`label`。分支与选项改由节点文件的 `choice` / `if` 指令承担（见 §1.5）。完整 JSON Schema 见 `docs/script-graph/schemas/graph.json`。
+
 ```json
 {
   "version": 1,
@@ -99,7 +109,7 @@ content/
   ],
   "edges": [
     { "id": "prologue__first_meeting", "from": "prologue", "to": "first_meeting",
-      "mode": "linear", "label": null, "condition": null }
+      "condition": null }
   ]
 }
 ```
@@ -108,9 +118,10 @@ content/
 - `node.file`：相对 `content/` 根的路径（如 `nodes/prologue.json`），受路径安全约束（§4）。
 - `node.position`：画布坐标 `{x, y}`，单位 px。
 - `edge.id`：稳定标识，约定 `<from>__<to>`（双下划线分隔，避免与 id 内的 `_` 冲突）。
-- `edge.mode`：`linear`、`choice` 或 `auto`，缺省按 `linear` 兼容旧图。
-- `edge.label`：`choice` 出口展示给玩家的选项文本；其他模式通常为 `null`。
-- `edge.condition`：`auto` 出口条件表达式；空值是默认分支。
+- `edge.from` / `edge.to`：起点/终点节点 id。
+- `edge.condition`：可选表达式。当节点有多条出边时按顺序求值，首个命中胜出；`null`/空字符串表示默认回退边。
+- `edge.effects`：可选 `set` 指令数组，沿该边切换节点时落地为 `state.vars`，供后续 `if` 指令或下游出边 `condition` 使用。
+- 出口数量即语义：0 条 = 终端/结局；1 条 = 线性；2 条以上 = 条件求值。
 - `entryNodeId`：起点节点 id，必须在 `nodes` 中存在。
 
 ### 2.3 打开项目时的图入口判定
@@ -158,14 +169,13 @@ export interface GraphNode {
   position: { x: number; y: number };
 }
 
-/** 图边 */
+/** 图边（Spec 35：纯结构，无 mode/label） */
 export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  mode?: "linear" | "choice" | "auto";
-  label?: string | null;
-  condition: string | null;
+  condition?: string | null;          // 出边条件表达式，null/空 = 默认回退边
+  effects?: Array<{ t: "set"; key: string; value?: unknown; expr?: string; id?: string }>;
 }
 
 /** 完整图 */
@@ -202,9 +212,10 @@ pub struct GraphEdge {
     pub id: String,
     pub from: String,
     pub to: String,
-    pub mode: String,
-    pub label: Option<String>,
-    pub condition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,      // 出边条件表达式，None = 默认回退边
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effects: Option<Vec<serde_json::Value>>,  // set 指令数组
 }
 
 #[derive(Serialize, Clone)]
@@ -283,6 +294,6 @@ pub struct NodeEntry {
 | plan 提出的问题 | 本规格的处置 |
 |----------------|--------------|
 | 节点 = 章/场景/任意？ | 🟡 任意，推荐场景级；迁移时 1 章=1 节点（§1.2） |
-| 选项放节点内/边上/两者？ | 🔒 放 graph outgoing edge；节点内 `choice` 非法 |
+| 选项放节点内/边上/两者？ | 🔒 放**节点指令数组内**（Spec 35）：`choice` / `if` 是合法的节点内指令，分支可嵌套；graph 边只剩 `condition`/`effects` 结构（§1.5）。早期「放 graph 出边、节点内 `choice` 非法」的方案已废弃。 |
 | 预览播放选中节点还是整图？ | 🔒 使用 graph-aware player，项目预览按图路由（§1.3） |
 | Render 是工作台还是右侧面板？ | 🟡 Phase 1 先做成工作台（保住既有预览体验），后续可降级为面板 |

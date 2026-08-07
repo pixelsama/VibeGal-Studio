@@ -440,6 +440,12 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* ── 兜底禁用态：未迁移到 .gs-btn 的内联 button 至少能看出不可用 ── */
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── 可点击列表行（工作区项目列表等）：hover/focus 由全局类承担 ── */
 .gs-list-row {
   display: flex;
@@ -587,13 +593,10 @@ button:disabled {
   }
 }
 
-/* ── 三栏布局响应式：窄窗收起 inspector，画布/编辑器占满 ── */
+/* ── 图/编辑布局响应式：窄窗收起次要面板，主内容占满 ── */
 @media (max-width: 820px) {
   .gs-graph-layout {
     grid-template-columns: auto minmax(0, 1fr) !important;
-  }
-  .gs-graph-layout__inspector {
-    display: none;
   }
   .gs-node-editor-layout {
     grid-template-columns: minmax(0, 1fr) 0px 0px !important;
@@ -1600,6 +1603,24 @@ select:focus-visible {
   border: none;
   border-radius: var(--radius-md);
   background: var(--bg-raised);
+}
+.gs-coverage__stat--ok {
+  border-color: var(--border-ok);
+}
+.gs-coverage__stat--ok .gs-coverage__stat-value {
+  color: var(--status-ok-text);
+}
+.gs-coverage__stat--warn {
+  border-color: var(--border-warn);
+}
+.gs-coverage__stat--warn .gs-coverage__stat-value {
+  color: var(--status-warn-text);
+}
+.gs-coverage__stat--error {
+  border-color: var(--border-error);
+}
+.gs-coverage__stat--error .gs-coverage__stat-value {
+  color: var(--status-error-text);
 }
 .gs-coverage__stat--ok {
   border-color: var(--border-ok);

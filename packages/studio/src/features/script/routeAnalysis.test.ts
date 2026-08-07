@@ -33,8 +33,8 @@ describe("bounded ending route analysis", () => {
         { id: "draft", title: "Draft", file: "nodes/draft.json", position: { x: 1, y: 1 } },
       ],
       edges: [
-        { id: "a", from: "start", to: "registered", mode: "choice" as const, label: "A", condition: null },
-        { id: "b", from: "start", to: "draft", mode: "choice" as const, label: "B", condition: null },
+        { id: "a", from: "start", to: "registered", condition: null },
+        { id: "b", from: "start", to: "draft", condition: null },
       ],
     };
     const analysis = analyzeEndingRoutes({ graph, manifest });
@@ -55,18 +55,25 @@ describe("bounded ending route analysis", () => {
         { id: "b", title: "B", file: "nodes/b.json", position: { x: 1, y: 1 } },
       ],
       edges: [
-        { id: "choose-a", from: "start", to: "a", mode: "choice" as const, label: "Choose A", condition: null },
-        { id: "choose-b", from: "start", to: "b", mode: "choice" as const, label: "Choose B", condition: null },
+        { id: "choose-a", from: "start", to: "a", condition: null },
+        { id: "choose-b", from: "start", to: "b", condition: null },
       ],
     };
+    // Spec 35 Phase 3：路由矩阵列从节点 choice 指令的 options 派生（option.to 与
+    // 图边目标对齐），不再读 edge.mode/label。option.text 成为列标题。
     const nodes = [
+      { relPath: "nodes/start.json", data: [{ t: "choice", id: "start_choice", options: [
+        { text: "Choose A", to: "a" },
+        { text: "Choose B", to: "b" },
+      ] }] },
       { relPath: "nodes/a.json", data: [{ t: "completeEnding", id: "a", endingId: "a_end" }] },
       { relPath: "nodes/b.json", data: [{ t: "completeEnding", id: "b", endingId: "b_end" }] },
     ];
 
     const matrix = analyzeEndingRouteMatrix({ graph, manifest, nodes });
 
-    expect(matrix.columns.map((column) => column.id)).toEqual(["entry", "choice:choose-a", "choice:choose-b"]);
+    expect(matrix.columns.map((column) => column.id)).toEqual(["entry", "choice:start_choice:0", "choice:start_choice:1"]);
+    expect(matrix.columns.map((column) => column.title)).toEqual(["入口", "Choose A", "Choose B"]);
     expect(matrix.rows.find((row) => row.endingId === "a_end")?.cells.map((cell) => cell.reachability))
       .toEqual(["reachable", "reachable", "unreachable"]);
   });
@@ -84,8 +91,8 @@ describe("bounded ending route analysis", () => {
         { id: "bad", title: "Bad", file: "nodes/bad.json", position: { x: 1, y: 1 } },
       ],
       edges: [
-        { id: "true-route", from: "start", to: "true", mode: "auto" as const, label: null, condition: "affection >= 3" },
-        { id: "fallback", from: "start", to: "bad", mode: "auto" as const, label: null, condition: null },
+        { id: "true-route", from: "start", to: "true", condition: "affection >= 3" },
+        { id: "fallback", from: "start", to: "bad", condition: null },
       ],
     };
     const nodes = [
@@ -99,5 +106,27 @@ describe("bounded ending route analysis", () => {
 
     expect(result.find((item) => item.endingId === "true_end")?.reachability).toBe("reachable");
     expect(result.find((item) => item.endingId === "bad_end")?.reachability).toBe("unreachable");
+  });
+
+  it("treats choice option targets as structural routes even without graph edges", () => {
+    const manifest = { ...EMPTY_MANIFEST, unlocks: { ...EMPTY_MANIFEST.unlocks, endings: {
+      target_end: { title: "Target", nodeId: "target" },
+    } } };
+    const graph = {
+      version: 1,
+      entryNodeId: "start",
+      nodes: [
+        { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
+        { id: "target", title: "Target", file: "nodes/target.json", position: { x: 1, y: 0 } },
+      ],
+      edges: [],
+    };
+    const nodes = [
+      { relPath: "nodes/start.json", data: [{ t: "choice", id: "route", options: [{ text: "去", to: "target" }] }] },
+      { relPath: "nodes/target.json", data: [{ t: "completeEnding", id: "finish", endingId: "target_end" }] },
+    ];
+
+    expect(analyzeEndingRoutes({ graph, manifest, nodes })[0].reachability).toBe("reachable");
+    expect(collectUnregisteredTerminals(graph, manifest, nodes)).toEqual([]);
   });
 });

@@ -170,8 +170,6 @@ pub struct GraphEdge {
     pub id: String,
     pub from: String,
     pub to: String,
-    pub mode: String,
-    pub label: Option<String>,
     pub condition: Option<String>,
 }
 

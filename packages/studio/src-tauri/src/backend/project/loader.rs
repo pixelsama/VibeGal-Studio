@@ -610,7 +610,8 @@ fn validate_condition_variables(
         .collect::<std::collections::HashSet<_>>();
     let mut issues = vec![];
     for (index, edge) in graph.edges.iter().enumerate() {
-        if edge.mode != "auto" { continue; }
+        // Spec 35：所有带非空 condition 的出口都是条件路由（旧 auto 语义），
+        // 其条件里引用的变量都需要被声明或在节点内被写入。
         let Some(condition) = edge.condition.as_deref().filter(|value| !value.trim().is_empty()) else { continue };
         let Ok(reads) = parse_expression(condition) else { continue };
         for name in reads {

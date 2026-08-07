@@ -2,7 +2,8 @@ import type { Edge, Node } from "@xyflow/react";
 import type { VariableRegistry } from "@vibegal/engine";
 import type { GraphIssue, GraphReport, GraphNode, Manifest, NodeCreatorSummary, NodeEntry, ProjectGraph } from "../../lib/types";
 import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
-import { creatorEdgeLabel, creatorNodeSummary } from "./graphCreatorLanguage";
+import { creatorNodeSummary } from "./graphCreatorLanguage";
+import { buildEdgeChoiceAnnotations, type EdgeChoiceAnnotation } from "./branchEdgeModel";
 
 export const NODE_TYPE = "galNode";
 
@@ -24,7 +25,7 @@ export function mapGraphToFlow(
   graphReport?: GraphReport,
   nodeEntries?: NodeEntry[],
   manifest?: Manifest,
-  variables?: VariableRegistry,
+  _variables?: VariableRegistry,
   nodeSummaries?: NodeCreatorSummary[],
   t: StudioTranslator = translateZhCN,
 ): { nodes: Node<FlowNodeData, typeof NODE_TYPE>[]; edges: Edge[] } {
@@ -86,18 +87,23 @@ export function mapGraphToFlow(
       },
     };
   });
-  const edges: Edge[] = graph.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.from,
-    target: edge.to,
-    type: "smoothstep",
-    label: creatorEdgeLabel(edge, { graph, variables, manifest, t }),
-    data: {
-      condition: edge.condition,
-      mode: edge.mode ?? "linear",
-      ...(suspiciousEdgeIds.has(edge.id) ? { suspicious: true } : {}),
-    },
-  }));
+  // Spec 35 Phase 3：边不再标注 mode/label，只表示「可以通往」。
+  // Spec 35 Phase 4：choice 边附上选项文案标注（从节点 choice 指令派生）。
+  const edgeAnnotations = buildEdgeChoiceAnnotations(graph, nodeEntries, t);
+  const edges: Edge[] = graph.edges.map((edge) => {
+    const annotation: EdgeChoiceAnnotation | undefined = edgeAnnotations.get(edge.id);
+    return {
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      type: "smoothstep",
+      data: {
+        condition: edge.condition,
+        ...(suspiciousEdgeIds.has(edge.id) ? { suspicious: true } : {}),
+        ...(annotation ? { kind: annotation.kind, choiceOptions: annotation.options } : {}),
+      },
+    };
+  });
 
   return { nodes, edges };
 }
@@ -161,7 +167,6 @@ function deriveGraphNodeStatusFromSummary(
   const isConnected = summary.incoming > 0 || summary.outgoing > 0;
   if (!isConnected) return "orphan";
   if (summary.outgoing === 0) return "ending";
-  if (graph.edges.some((edge) => edge.from === nodeId && edge.from !== edge.to && edge.mode === "choice")) return "branch";
   if (summary.outgoing >= 2) return "branch";
   // 已连接但文件为空（无指令）：不显示绿色"已有内容"，改用中性"未编写"。
   if (!hasContent) return "empty";

@@ -25,8 +25,8 @@ const graph: ProjectGraph = {
     { id: "ending", title: "结束", file: "nodes/ending.json", position: { x: 480, y: 0 }, chapterId: "route" },
   ],
   edges: [
-    { id: "start__choice", from: "start", to: "choice", mode: "linear", label: null, condition: null },
-    { id: "choice__ending", from: "choice", to: "ending", mode: "linear", label: null, condition: null },
+    { id: "start__choice", from: "start", to: "choice", condition: null },
+    { id: "choice__ending", from: "choice", to: "ending", condition: null },
   ],
 };
 

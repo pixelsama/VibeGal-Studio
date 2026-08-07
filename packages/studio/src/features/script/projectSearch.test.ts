@@ -10,7 +10,7 @@ const graph: ProjectGraph = {
     { id: "ending_true", title: "True Ending", file: "nodes/ending_true.json", position: { x: 240, y: 0 } },
   ],
   edges: [
-    { id: "start__ending_true", from: "start", to: "ending_true", mode: "auto", label: null, condition: "affection >= 5" },
+    { id: "start__ending_true", from: "start", to: "ending_true", condition: "affection >= 5" },
   ],
 };
 

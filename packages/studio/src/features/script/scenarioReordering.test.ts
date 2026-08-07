@@ -80,4 +80,27 @@ describe("planScenarioInstructionMove", () => {
     expect(planScenarioInstructionMove(instructions, 1, 2)).toBeNull();
     expect(planScenarioInstructionMove(instructions, -1, 0)).toBeNull();
   });
+
+  it("moves a choice block as a single top-level instruction", () => {
+    // Spec 35 Phase 2：choice 整块算一条顶层指令，移动 index 0→1 把整块挪到 say 之后。
+    const instructions = [
+      {
+        t: "choice",
+        prompt: null,
+        options: [
+          { text: "A", to: "a" },
+          { text: "B", to: "b" },
+        ],
+      },
+      { t: "say", who: "akari", text: "开场。" },
+    ] as Instruction[];
+
+    const move = planScenarioInstructionMove(instructions, 0, 1);
+
+    expect(move?.instructions.map((i) => i.t)).toEqual(["say", "choice"]);
+    // 重新格式化后 choice 块保持完整缩进树
+    expect(move?.text).toContain("choice");
+    expect(move?.text).toContain("    A @to a");
+    expect(parse(move!.text).map((i) => i.t)).toEqual(["say", "choice"]);
+  });
 });

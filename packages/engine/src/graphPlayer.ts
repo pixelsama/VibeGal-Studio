@@ -5,7 +5,7 @@ import type { GraphRouteValue } from "./graphRouting";
 import type { NovelState } from "./state";
 import { createInitialState } from "./state";
 import { applyInstruction, advanceTyping, revealFully, buildInitialState, evaluateAssignmentExpression, RuntimeAssignmentError, type InterpreterDeps } from "./interpreter";
-import { decideGraphRoute } from "./graphRouting";
+import { decideGraphRoute, evaluateGraphConditionResult } from "./graphRouting";
 import { runtimeEffectFromInstruction, type RuntimeEffectHandler } from "./runtimeEffect";
 import {
   RuntimeSnapshotSchema,
@@ -79,7 +79,50 @@ export interface DebugSessionOptions {
 }
 
 type Listener = (state: NovelState) => void;
-type StableInstruction = Extract<Instruction, { t: "say" | "narrate" | "wait" | "pause" | "inputName" }>;
+type StableInstruction = Extract<Instruction, { t: "say" | "narrate" | "wait" | "pause" | "inputName" | "choice" }>;
+
+/**
+ * Spec 35：嵌套指令执行帧。
+ *
+ * 节点的顶层指令序列是根帧（隐式，不在 frameStack 里，由 currentNodeId +
+ * instructionsByNodeId 提供 this.ip 指向它）。遇到 `if` 的 then/else 或
+ * `choice` 选项的 body 时压一个子帧，跑完弹回父帧续跑。
+ *
+ * 根帧的语义保持不变：this.ip 仍是节点级进度，seekToInstruction / 进度条 /
+ * checkpoint 只看根帧。嵌套在 if/choice body 里的指令可正常演出，但 Phase 1
+ * 不支持把 checkpoint 停点设在嵌套帧内。
+ */
+interface InstructionFrame {
+  instructions: readonly Instruction[];
+  /** 压帧时父帧（this.ip）停在哪：弹帧时恢复 this.ip = resumeIp。 */
+  resumeIp: number;
+  /**
+   * 该帧的来源描述，用于 trace 归因（StateWriteEvent 里记的是根帧 index；
+   * choice 选项 effect 还会带 choiceInstructionId / optionIndex）。
+   */
+  origin: { kind: "if-then" } | { kind: "if-else" } | { kind: "choice-body"; choiceInstructionId?: string; optionIndex: number };
+  /** choice body may continue into a target node after the body finishes. */
+  completion?: { nodeId: string; routeDepth: number };
+}
+
+/**
+ * Spec 35：玩家面对 choice 指令时挂起的待选上下文。
+ *
+ * choose() 在 resume 时按 kind 分流：
+ * - instruction：选项来自节点内 choice 指令，resume 后跑 option.effects/body。
+ * - node：选项来自图出口（旧路径，Phase 1 后图路由不再产生 choice，保留兼容）。
+ */
+interface PendingChoiceContext {
+  kind: "instruction";
+  choiceInstructionId?: string;
+  routeDepth: number;
+  options: Array<{
+    optionIndex: number;
+    text: string;
+    to?: string;
+    option: Extract<Instruction, { t: "choice" }> ["options"][number];
+  }>;
+}
 
 export class GraphNovelPlayer {
   private deps: GraphPlayerDeps;
@@ -100,6 +143,15 @@ export class GraphNovelPlayer {
    */
   private varsAtNodeEntry: Record<string, GraphRouteValue> = {};
   private ip = 0;
+  /**
+   * Spec 35：嵌套帧栈。空 = 当前在节点根帧（this.ip 指向根帧）；
+   * 非空 = 顶层帧是当前执行位，跑完弹回栈顶父帧。
+   */
+  private frames: InstructionFrame[] = [];
+  /** Spec 35：choice 指令挂起时的待选上下文，choose() resume 时消费。 */
+  private pendingChoice: PendingChoiceContext | null = null;
+  /** Spec 35：嵌套深度保护，独立于图路由深度。 */
+  private static readonly MAX_INSTRUCTION_DEPTH = 32;
   private state: NovelState;
   private listeners = new Set<Listener>();
   private backlog: BacklogEntry[] = [];
@@ -166,6 +218,8 @@ export class GraphNovelPlayer {
     this.pendingChoiceCheckpoint = false;
     this.suppressStableCheckpoints = false;
     this.ip = 0;
+    this.frames = [];
+    this.pendingChoice = null;
     const total = this.currentInstructions().length;
     this.state = buildInitialState(0, total);
     this.state.vars = this.initialEffectiveVariables();
@@ -223,11 +277,10 @@ export class GraphNovelPlayer {
   setCurrentLocale(locale: string | undefined) {
     this.currentLocale = locale ?? this.deps.meta.locale?.default;
     if (!this.currentStoryPoint || !this.currentNodeId) return;
-    const instructions = this.currentInstructions();
-    const index = instructions.findIndex(
-      (instruction, instructionIndex) => getInstructionStoryPointId(instruction, instructionIndex) === this.currentStoryPoint?.instructionId,
-    );
-    const instruction = instructions[index];
+    const instructions = this.instructionsByNodeId.get(this.currentNodeId) ?? [];
+    // Spec 35 Phase 4：递归在指令树里查找当前 story-point 对应的 say/narrate。
+    const location = findStoryPointInTree(instructions, this.currentStoryPoint.instructionId);
+    const instruction = location?.instruction;
     if (!instruction || (instruction.t !== "say" && instruction.t !== "narrate")) return;
     const next = this.applyRuntimeInstruction(this.state, instruction);
     this.state = revealFully(next);
@@ -269,7 +322,7 @@ export class GraphNovelPlayer {
     return createRuntimeSnapshot({ ...this.state, vars: runVars }, {
       currentNodeId: this.currentNodeId ?? "entry",
       currentStoryPoint: this.getCurrentStoryPoint(),
-    }, this.playthroughId, this.currentNameInputOrigin());
+    }, this.playthroughId, this.currentNameInputOrigin(), this.varsAtNodeEntry);
   }
 
   restoreSnapshot(snapshot: RuntimeSnapshot): RuntimeRestoreResult {
@@ -326,7 +379,7 @@ export class GraphNovelPlayer {
     this.decisions = truncateDecisionLogToNode(this.decisions, point.nodeId);
     // 回滚撤销了之后走过的路，那段路上的状态改变也不该继续出现在剧情检查里。
     this.stateWrites = this.stateWrites.filter((event) => event.decisionIndex <= this.decisions.length);
-    const result = this.applyStoryPoint(point, this.stateForRollback());
+    const result = this.applyStoryPoint(point, this.stateForRollback(point.nodeId), this.storyPointEntryVars(point.nodeId));
     this.emit();
     return result;
   }
@@ -336,7 +389,7 @@ export class GraphNovelPlayer {
    * 早期实现从空状态起步，回滚会把好感度之类的累积值一并清空，后续 auto 分支
    * 条件也会因此求值失败。
    */
-  private stateForRollback(): NovelState {
+  private stateForRollback(targetNodeId = this.currentNodeId): NovelState {
     const currentInput = this.state.nameInput;
     const inputOrigin = currentInput && this.currentNodeId
       ? this.nameInputOrigins.get(`${this.currentNodeId}\u0000${currentInput.instructionId}`)
@@ -349,16 +402,23 @@ export class GraphNovelPlayer {
       else carried[currentInput.key] = inputOrigin;
     }
     const global = this.deps.globalState?.() ?? { vars: {}, playthroughCount: 0, lastEndingId: null };
+    const vars = targetNodeId === this.currentNodeId
+      ? { ...this.varsAtNodeEntry }
+      : effectiveVariables({
+          run: carried,
+          global: {},
+          playthroughCount: global.playthroughCount,
+          lastEndingId: global.lastEndingId,
+          experience: this.currentExperience(),
+        });
     return {
       ...createInitialState(),
-      vars: effectiveVariables({
-        run: carried,
-        global: {},
-        playthroughCount: global.playthroughCount,
-        lastEndingId: global.lastEndingId,
-        experience: this.currentExperience(),
-      }),
+      vars,
     };
+  }
+
+  private storyPointEntryVars(targetNodeId: string): Record<string, GraphRouteValue> | undefined {
+    return targetNodeId === this.currentNodeId ? { ...this.varsAtNodeEntry } : undefined;
   }
 
   startReplay(nodeId: string): RuntimeRestoreResult {
@@ -433,7 +493,7 @@ export class GraphNovelPlayer {
     this.suppressStableCheckpoints = true;
     this.state = { ...this.state, vars: { ...this.initialEffectiveVariables(), ...options.variableOverrides } };
     if (options.instructionId) {
-      const result = this.applyStoryPoint({ nodeId: options.nodeId, instructionId: options.instructionId }, this.state);
+      const result = this.applyStoryPoint({ nodeId: options.nodeId, instructionId: options.instructionId }, this.state, { ...this.state.vars });
       this.suppressStableCheckpoints = true;
       this.emit();
       return result;
@@ -527,23 +587,144 @@ export class GraphNovelPlayer {
     this.stepNext(0);
   }
 
-  choose(toNodeId: string) {
-    if (!this.state.choice?.choices.some((choice) => choice.to === toNodeId)) return;
+  /**
+   * Spec 35：玩家选了一个选项。
+   *
+   * 优先按 `optionIndex` 解析（choice 指令来源）；若 `toNodeId` 命中某个选项的
+   * `to`，也可解析。两种来源分流：
+   * - instruction：选项来自节点内 choice 指令。跑 option.effects → 若有 body 压帧
+   *   续跑；若 option.to 存在则跳目标节点；都没有则回到 choice 指令之后合流。
+   * - node：选项来自图出口（Phase 1 后图路由不再产生 choice，保留兼容）。
+   */
+  choose(toNodeId?: string, optionIndex?: number) {
+    const ctx = this.pendingChoice;
+    const choices = this.state.choice?.choices ?? [];
+    if (!choices.length) return;
+
+    let resolved: {
+      kind: "instruction";
+      optionIndex: number;
+      to?: string;
+      option: Extract<Instruction, { t: "choice" }> ["options"][number];
+    } | { kind: "node"; to: string } | null = null;
+
+    if (ctx?.kind === "instruction") {
+      // 优先用 optionIndex，其次用 toNodeId 反查。
+      const idx = optionIndex != null
+        ? optionIndex
+        : (toNodeId != null ? ctx.options.findIndex((opt) => opt.to === toNodeId) : -1);
+      if (idx >= 0 && idx < ctx.options.length) {
+        const opt = ctx.options[idx];
+        resolved = { kind: "instruction", optionIndex: idx, to: opt.to, option: opt.option };
+      }
+    } else {
+      // 旧路径：图出口直连。按 toNodeId 匹配 state.choice.choices。
+      if (toNodeId && choices.some((c) => c.to === toNodeId)) {
+        resolved = { kind: "node", to: toNodeId };
+      }
+    }
+    if (!resolved) return;
+
+    if (resolved.kind === "instruction" && resolved.to && !this.instructionsByNodeId.has(resolved.to)) {
+      this.stopOnMissingTarget(resolved.to);
+      return;
+    }
+    if (resolved.kind === "instruction"
+      && (resolved.option.body?.length ?? 0) > 0
+      && this.frames.length >= GraphNovelPlayer.MAX_INSTRUCTION_DEPTH) {
+      this.stopOnInstructionDepthExceeded();
+      return;
+    }
+
     this.clearAuto();
+    this.pendingChoice = null;
+    this.state = { ...this.state, choice: null };
     const fromNodeId = this.currentNodeId;
+
+    if (resolved.kind === "instruction") {
+      const option = resolved.option;
+      const choiceWriteStart = this.stateWrites.length;
+      // effects must be visible to the body, but the choice log is recorded
+      // before the body so nested conditions can observe chose.* as specified.
+      if (option && !this.applyChoiceOptionEffects(option, ctx!.choiceInstructionId, resolved.optionIndex)) return;
+      if (fromNodeId) {
+        this.decisions.push({
+          type: "choice",
+          fromNodeId,
+          toNodeId: resolved.to ?? fromNodeId,
+          choiceInstructionId: ctx!.choiceInstructionId,
+          optionIndex: resolved.optionIndex,
+        });
+        // Option effects are intentionally applied before the decision is
+        // appended, but their trace still belongs to that decision so a
+        // rollback to the choice checkpoint removes them.
+        for (let index = choiceWriteStart; index < this.stateWrites.length; index += 1) {
+          this.stateWrites[index].decisionIndex = this.decisions.length;
+        }
+        this.syncExperienceToState();
+      }
+
+      // Spec 35：choice 的 checkpoint 已在 presentChoiceInstruction 时发出，
+      // 这里不再重复标记 pendingChoiceCheckpoint（避免目标节点再发一次）。
+      if (option?.body && option.body.length > 0) {
+        // 有 body：先跑反应演出；body 完成后再按 to 决定跳转或合流。
+        // this.ip 已是 choice 指令之后的位置（presentChoiceInstruction 前已 ip += 1）。
+        this.frames.push({
+          instructions: option.body,
+          resumeIp: this.ip,
+          origin: { kind: "choice-body", choiceInstructionId: ctx!.choiceInstructionId, optionIndex: resolved.optionIndex },
+          ...(resolved.to ? { completion: { nodeId: resolved.to, routeDepth: ctx!.routeDepth } } : {}),
+        });
+        this.ip = 0;
+        this.stepNext(0);
+      } else if (resolved.to) {
+        this.jumpToNode(resolved.to);
+        this.stepNext(ctx!.routeDepth);
+      } else {
+        // 既无 body 也无 to：直接回到 choice 指令之后续跑指令序列（合流）。
+        this.stepNext(0);
+      }
+      return;
+    }
+
+    // ── node 来源（图出口直连，兼容旧路径）──
     const edge = fromNodeId
-      ? this.graph?.edges.find((candidate) => candidate.from === fromNodeId && candidate.to === toNodeId && candidate.mode === "choice")
+      ? this.graph?.edges.find((candidate) => candidate.from === fromNodeId && candidate.to === resolved.to)
       : null;
     if (fromNodeId && edge) {
-      this.decisions.push({ type: "choice", fromNodeId, toNodeId, edgeId: edge.id });
+      this.decisions.push({ type: "choice", fromNodeId, toNodeId: resolved.to, edgeId: edge.id });
       this.syncExperienceToState();
-      // 「选了这个选项之后」的状态改变：目标节点可能有多个入口，放在节点里会误伤
-      // 所有进入者，所以挂在出口上。
       if (!this.applyEdgeEffects(edge)) return;
     }
     this.pendingChoiceCheckpoint = true;
-    this.jumpToNode(toNodeId);
+    this.jumpToNode(resolved.to);
     this.stepNext(0);
+  }
+
+  /**
+   * 应用 choice 选项的 effects（在 body 之前执行）。
+   * 返回 false 表示赋值失败并已停在错误上。
+   */
+  private applyChoiceOptionEffects(
+    option: Extract<Instruction, { t: "choice" }>["options"][number],
+    choiceInstructionId: string | undefined,
+    optionIndex: number,
+  ): boolean {
+    if (!this.currentNodeId) return true;
+    for (const effect of option.effects ?? []) {
+      try {
+        this.state = this.applyRuntimeInstruction(this.state, effect, undefined, {
+          nodeId: this.currentNodeId,
+          choiceInstructionId,
+          optionIndex,
+        });
+      } catch (error) {
+        this.stopOnAssignmentError(error, this.ip);
+        return false;
+      }
+    }
+    if ((option.effects?.length ?? 0) > 0) this.emit();
+    return true;
   }
 
   submitName(value: string): boolean {
@@ -615,6 +796,10 @@ export class GraphNovelPlayer {
    * Rebuild the current node state through the first `target` instructions.
    * This is intentionally side-effect free: runtime effects, persistence writes,
    * and timers must not fire while a preview/debugger moves its playhead.
+   *
+   * Spec 35 Phase 4：重放递归进入 if 分支（求值条件后重放 then/else 里的 set），
+   * 并在遇到已做过选择的 choice 时重放该选项的 effects + body。嵌套帧内的
+   * 停点也能被精确定位。
    */
   seekToInstruction(target: number) {
     this.clearTimers();
@@ -624,13 +809,57 @@ export class GraphNovelPlayer {
     // 从进入本节点时的变量重放：空 vars 会让 `affection + 1` 抛「未知变量」，
     // 当前 vars 则会把已经算过的增量再叠一次。
     nextState.vars = { ...this.varsAtNodeEntry };
-    let lastStable: { instruction: StableInstruction; index: number } | null = null;
 
-    for (let index = 0; index < clamped; index += 1) {
-      const instruction = instructions[index];
-      nextState = this.applyRuntimeInstruction(nextState, instruction);
-      if (isStableInstruction(instruction)) lastStable = { instruction, index };
-    }
+    // Phase 4：重放递归进入 if 分支（求值条件后重放 then/else 里的 set），
+    // 并在遇到已做过选择的 choice 时重放该选项的 effects + body。
+    // 同时记录最后一条 stable 指令（根帧用真实 index，嵌套帧用 -1 表示 index 不可寻址）。
+    const replayWithStable = (
+      state: NovelState,
+      frameInstructions: readonly Instruction[],
+      count: number,
+      isRoot: boolean,
+      prevStable: { instruction: StableInstruction; index: number } | null,
+    ): { state: NovelState; lastStable: { instruction: StableInstruction; index: number } | null } => {
+      let s = state;
+      let stable = prevStable;
+      for (let index = 0; index < count; index += 1) {
+        const instr = frameInstructions[index];
+        if (instr.t === "if") {
+          const result = evaluateGraphConditionResult(instr.condition, s.vars);
+          if (!result.ok) continue;
+          const branch = result.value ? instr.then : (instr.else ?? []);
+          if (branch.length === 0) continue;
+          const inner = replayWithStable(s, branch, branch.length, false, stable);
+          s = inner.state;
+          stable = inner.lastStable;
+          continue;
+        }
+        if (instr.t === "choice") {
+          const decision = this.findChoiceDecision(instr.id);
+          if (!decision) continue;
+          const option = instr.options[decision.optionIndex];
+          if (!option) continue;
+          for (const effect of option.effects ?? []) {
+            s = this.applyRuntimeInstruction(s, effect);
+          }
+          if (option.body && option.body.length > 0) {
+            const inner = replayWithStable(s, option.body, option.body.length, false, stable);
+            s = inner.state;
+            stable = inner.lastStable;
+          }
+          continue;
+        }
+        s = this.applyRuntimeInstruction(s, instr);
+        if (isStableInstruction(instr)) {
+          stable = { instruction: instr, index: isRoot ? index : -1 };
+        }
+      }
+      return { state: s, lastStable: stable };
+    };
+
+    const replayed = replayWithStable(nextState, instructions, clamped, true, null);
+    nextState = replayed.state;
+    const lastStable = replayed.lastStable;
 
     if (clamped > 0) {
       const last = instructions[clamped - 1];
@@ -658,6 +887,9 @@ export class GraphNovelPlayer {
     this.currentStableKind = null;
     this.pendingVoiceId = undefined;
     this.routeError = null;
+    // Spec 35 Phase 4：seek 仍只在根帧定位（target 是根帧下标），清掉嵌套帧。
+    this.frames = [];
+    this.pendingChoice = null;
 
     if (lastStable && this.currentNodeId) {
       const instructionId = getInstructionStoryPointId(lastStable.instruction, lastStable.index);
@@ -685,6 +917,15 @@ export class GraphNovelPlayer {
     const index = this.ip;
     const instr = this.currentInstructions()[index];
     this.ip += 1;
+    if (instr.t === "if") {
+      if (!this.pushConditionalFrame(instr.then, instr.else, 0, instr.condition)) return;
+      this.stepNext(0);
+      return;
+    }
+    if (instr.t === "choice") {
+      this.presentChoiceInstruction(instr, 0);
+      return;
+    }
     if (instr.t === "inputName") {
       this.nameInputOrigins.set(this.storyPointKey(instr.id ?? `index:${index}`), this.state.vars[instr.key]);
     }
@@ -720,6 +961,9 @@ export class GraphNovelPlayer {
   }
 
   private currentInstructions(): Instruction[] {
+    // Spec 35：嵌套帧优先；没有帧时回到节点根帧。
+    const top = this.frames.at(-1);
+    if (top) return [...top.instructions];
     if (!this.currentNodeId) return [];
     return this.instructionsByNodeId.get(this.currentNodeId) ?? [];
   }
@@ -732,6 +976,9 @@ export class GraphNovelPlayer {
     this.currentReadKey = null;
     this.currentStableKind = null;
     this.ip = 0;
+    // Spec 35：进入新节点清空嵌套帧与待选上下文，从根帧重新开始。
+    this.frames = [];
+    this.pendingChoice = null;
     this.state = {
       ...this.state,
       speaker: null,
@@ -775,30 +1022,158 @@ export class GraphNovelPlayer {
       this.state = { ...this.state, sprites: this.state.sprites.filter((sprite) => !sprite.leaving) };
     }
 
-    const instructions = this.currentInstructions();
-    while (this.ip < instructions.length) {
+    // Spec 35：循环到「当前帧」用完。帧用完时弹回父帧续跑；根帧用完才路由。
+    while (true) {
+      const instructions = this.currentInstructions();
+      if (this.ip >= instructions.length) {
+        // 当前帧跑完。如果嵌在子帧里，弹回父帧续跑（恢复父帧的 this.ip）；
+        // 否则走图路由。
+        if (this.frames.length > 0) {
+          const frame = this.frames.pop()!;
+          if (frame.completion) {
+            if (!this.instructionsByNodeId.has(frame.completion.nodeId)) {
+              this.stopOnMissingTarget(frame.completion.nodeId);
+              return;
+            }
+            this.jumpToNode(frame.completion.nodeId);
+            this.stepNext(frame.completion.routeDepth);
+            return;
+          }
+          this.ip = frame.resumeIp;
+          continue;
+        }
+        this.resolveRoute(routeDepth);
+        return;
+      }
+
       const index = this.ip;
       const instr = instructions[index];
       this.ip += 1;
+
+      // ── Spec 35：if / choice 是控制流指令，不经过 applyRuntimeInstruction ──
+      if (instr.t === "if") {
+        if (!this.pushConditionalFrame(instr.then, instr.else, routeDepth, instr.condition)) {
+          return; // 条件求值出错或超深，已停。
+        }
+        continue;
+      }
+      if (instr.t === "choice") {
+        this.presentChoiceInstruction(instr, routeDepth);
+        return; // choice 挂起等玩家，afterStep 已由 presentChoiceInstruction 处理。
+      }
+
       if (instr.t === "inputName") {
         this.nameInputOrigins.set(this.storyPointKey(instr.id ?? `index:${index}`), this.state.vars[instr.key]);
       }
       try {
-        this.state = this.applyRuntimeInstruction(this.state, instr, index);
+        this.state = this.applyRuntimeInstruction(this.state, instr, this.isRootFrame() ? index : undefined, this.currentFrameOrigin());
       } catch (error) {
         if (instr.t === "inputName") this.nameInputOrigins.delete(this.storyPointKey(instr.id ?? `index:${index}`));
         this.stopOnAssignmentError(error, index);
         return;
       }
       this.trackInstructionSideEffects(instr);
-      if (this.emitRuntimeEffect(instr, index, routeDepth)) return;
-      this.state.flags.progress.current = this.ip;
+      if (this.emitRuntimeEffect(instr, this.isRootFrame() ? index : undefined, routeDepth)) return;
+      if (this.isRootFrame()) this.state.flags.progress.current = this.ip;
       this.emit();
 
       if (this.afterStep(instr, index)) return;
     }
+  }
 
-    this.resolveRoute(routeDepth);
+  private isRootFrame(): boolean {
+    return this.frames.length === 0;
+  }
+
+  private currentFrameOrigin(): { nodeId: string; edgeId: string } | { nodeId: string; choiceInstructionId?: string; optionIndex: number } | undefined {
+    const top = this.frames.at(-1);
+    if (!top) return undefined;
+    if (top.origin.kind === "choice-body" && this.currentNodeId) {
+      return { nodeId: this.currentNodeId, choiceInstructionId: top.origin.choiceInstructionId, optionIndex: top.origin.optionIndex };
+    }
+    // if-then / if-else 帧没有出口归因，用根帧 index 即可（applyRuntimeInstruction 传 undefined）。
+    return undefined;
+  }
+
+  /**
+   * Spec 35：求 if 条件并把命中的分支压成子帧。
+   * condition 为空字符串时也走 then（与 expression 引擎「空条件=真」一致）。
+   * 返回 false 表示求值出错或超深，已停。
+   */
+  private pushConditionalFrame(
+    thenBranch: readonly Instruction[],
+    elseBranch: readonly Instruction[] | undefined,
+    routeDepth: number,
+    condition: string,
+  ): boolean {
+    if (this.frames.length >= GraphNovelPlayer.MAX_INSTRUCTION_DEPTH) {
+      this.stopOnInstructionDepthExceeded();
+      return false;
+    }
+    const result = evaluateGraphConditionResult(condition, this.state.vars);
+    if (!result.ok) {
+      console.warn(`[graph-player] if 条件无效：${result.message}`);
+      this.routeError = `if 条件无效：${result.message}`;
+      this.clearAuto();
+      this.stopSkip();
+      return false;
+    }
+    const branch = result.value ? thenBranch : (elseBranch ?? []);
+    if (branch.length === 0) return true; // 命中的分支为空 = 直接合流，不压帧
+    // 压帧：当前 this.ip 已经是 if 之后的位置（调用前已 ip += 1），存为 resumeIp；
+    // 子帧从 0 起步。
+    this.frames.push({
+      instructions: branch,
+      resumeIp: this.ip,
+      origin: { kind: result.value ? "if-then" : "if-else" },
+    });
+    this.ip = 0;
+    void routeDepth;
+    return true;
+  }
+
+  /**
+   * Spec 35：呈现 choice 指令的选项，挂起等玩家选择。
+   */
+  private presentChoiceInstruction(
+    instr: Extract<Instruction, { t: "choice" }>,
+    _routeDepth: number,
+    emitCheckpoint = true,
+  ) {
+    this.pendingChoice = {
+      kind: "instruction",
+      choiceInstructionId: instr.id,
+      routeDepth: _routeDepth,
+      options: instr.options.map((option, optionIndex) => ({
+        optionIndex,
+        text: option.text,
+        to: option.to,
+        option,
+      })),
+    };
+    this.state = {
+      ...this.state,
+      speaker: null,
+      dialogue: null,
+      narration: null,
+      choice: {
+        choices: instr.options.map((option, optionIndex) => ({
+          text: option.text,
+          to: option.to,
+          optionIndex,
+        })),
+      },
+      currentCueMs: null,
+    };
+    // choice 是 storyPoint（带 id 时）—— 在中断处登记并发 choice checkpoint，
+    // 便于 save/restore 在「玩家面对选项」这一刻停住。
+    if (instr.id && this.currentNodeId) {
+      if (emitCheckpoint) this.pendingChoiceCheckpoint = true;
+      this.updateCurrentStoryPoint(instr, this.ip - 1, emitCheckpoint);
+    }
+    this.clearAuto();
+    this.stopSkip();
+    this.emit();
   }
 
   private resolveRoute(routeDepth: number) {
@@ -826,19 +1201,6 @@ export class GraphNovelPlayer {
         this.clearAuto();
         this.stopSkip();
         return;
-      case "choice":
-        this.state = {
-          ...this.state,
-          speaker: null,
-          dialogue: null,
-          narration: null,
-          choice: { choices: decision.choices },
-          currentCueMs: null,
-        };
-        this.clearAuto();
-        this.stopSkip();
-        this.emit();
-        return;
       case "target":
         this.followEdge(decision.edge, routeDepth);
         return;
@@ -853,13 +1215,28 @@ export class GraphNovelPlayer {
       this.stopSkip();
       return;
     }
-    if (edge.mode === "auto") {
-      this.decisions.push({ type: "auto", fromNodeId: edge.from, toNodeId: edge.to, edgeId: edge.id });
-      this.syncExperienceToState();
-    }
+    // Spec 35：所有多出口都是条件路由（旧 auto 语义）；linear/单出口直接走。
+    // 一律记一条 auto 决策（条件路由），让 seen.* 更新；线性单出口也记，保持
+    // 「离开节点即记账」的语义。
+    this.decisions.push({ type: "auto", fromNodeId: edge.from, toNodeId: edge.to, edgeId: edge.id });
+    this.syncExperienceToState();
     if (!this.applyEdgeEffects(edge)) return;
     this.jumpToNode(edge.to);
     this.stepNext(routeDepth + 1);
+  }
+
+  private stopOnMissingTarget(nodeId: string) {
+    this.routeError = `Target node ${nodeId} does not exist.`;
+    this.clearAuto();
+    this.stopSkip();
+    this.emit();
+  }
+
+  private stopOnInstructionDepthExceeded() {
+    this.routeError = "instruction_depth_exceeded";
+    this.clearAuto();
+    this.stopSkip();
+    this.emit();
   }
 
   /**
@@ -1040,15 +1417,17 @@ export class GraphNovelPlayer {
   }
 
   /**
-   * @param instructionIndex 当前指令在节点里的下标；给状态写入 trace 用。
+   * @param instructionIndex 当前指令在节点根帧里的下标；给状态写入 trace 用。
    *   重放（seekToInstruction）传 undefined，此时不记 trace —— 重放会把同一批
    *   指令再跑一遍，记下来会让「发生过的状态变化」出现重复条目。
+   *   Spec 35：嵌套在 if/choice body 里的指令也传 undefined（trace 只在根帧记账）。
+   * @param origin 出口效果 / choice 选项效果的归因；普通节点内指令不传。
    */
   private applyRuntimeInstruction(
     state: NovelState,
     instr: Instruction,
     instructionIndex?: number,
-    origin?: { nodeId: string; edgeId: string },
+    origin?: { nodeId: string; edgeId: string } | { nodeId: string; choiceInstructionId?: string; optionIndex: number },
   ): NovelState {
     if (instr.t === "say" || instr.t === "narrate") {
       const localized = this.localizedInstruction(instr);
@@ -1082,7 +1461,7 @@ export class GraphNovelPlayer {
     } catch (error) {
       throw new RuntimeAssignmentError(error instanceof Error ? error.message : String(error));
     }
-    if (origin) this.recordEdgeStateWrite(instr.key, state.vars[instr.key] ?? null, value, origin);
+    if (origin) this.recordExitOrChoiceStateWrite(instr.key, state.vars[instr.key] ?? null, value, origin);
     else if (instructionIndex != null) this.recordStateWrite(instr.key, state.vars[instr.key] ?? null, value, instructionIndex);
     if ((declaration?.scope ?? "run") === "global") {
       if (!instr.id) throw new Error(`global set ${instr.key} 缺少稳定 id`);
@@ -1091,22 +1470,34 @@ export class GraphNovelPlayer {
     return { ...state, vars: { ...state.vars, [instr.key]: value } };
   }
 
-  /** 出口效果的写入：归属到出口本身，检查面板才能说「因为选了这个选项」。 */
-  private recordEdgeStateWrite(
+  /** 出口效果 / choice 选项效果的写入：归属到出口或选项，检查面板才能说「因为选了这个选项」。 */
+  private recordExitOrChoiceStateWrite(
     variable: string,
     from: GraphRouteValue,
     to: GraphRouteValue,
-    origin: { nodeId: string; edgeId: string },
+    origin: { nodeId: string; edgeId: string } | { nodeId: string; choiceInstructionId?: string; optionIndex: number },
   ) {
     if (from === to) return;
-    this.stateWrites.push({
-      variable,
-      from,
-      to,
-      nodeId: origin.nodeId,
-      edgeId: origin.edgeId,
-      decisionIndex: this.decisions.length,
-    });
+    if ("edgeId" in origin) {
+      this.stateWrites.push({
+        variable,
+        from,
+        to,
+        nodeId: origin.nodeId,
+        edgeId: origin.edgeId,
+        decisionIndex: this.decisions.length,
+      });
+    } else {
+      this.stateWrites.push({
+        variable,
+        from,
+        to,
+        nodeId: origin.nodeId,
+        choiceInstructionId: origin.choiceInstructionId,
+        optionIndex: origin.optionIndex,
+        decisionIndex: this.decisions.length,
+      });
+    }
   }
 
   /** 值没变就不记：作者关心的是「哪里改了它」，不是「哪里碰过它」。 */
@@ -1159,7 +1550,14 @@ export class GraphNovelPlayer {
 
   /** chose./seen. 由决策日志实时派生，不落盘，因此回滚与读档天然一致。 */
   private currentExperience() {
-    return storyExperienceVariables(this.graph, this.decisions);
+    // Spec 35：chose.* 从节点内 choice 指令派生，需要节点内容。
+    const nodeEntries = this.graph
+      ? this.graph.nodes.map((node) => ({
+          id: node.id,
+          instructions: this.instructionsByNodeId.get(node.id) ?? [],
+        }))
+      : [];
+    return storyExperienceVariables(this.graph, nodeEntries, this.decisions);
   }
 
   private refreshPersistentVariableView() {
@@ -1193,7 +1591,7 @@ export class GraphNovelPlayer {
     this.restoreSavedNameInputOrigin(snapshot);
     const baseState = this.stateFromSnapshot(snapshot, normalized.vars);
     if (snapshot.currentStoryPoint) {
-      const result = this.applyStoryPoint(snapshot.currentStoryPoint, baseState);
+      const result = this.applyStoryPoint(snapshot.currentStoryPoint, baseState, snapshot.varsAtNodeEntry);
       warnings.push(...result.warnings);
       if (result.warnings.length === 0) return { warnings };
     } else {
@@ -1206,7 +1604,26 @@ export class GraphNovelPlayer {
     return { warnings };
   }
 
-  private applyStoryPoint(point: StoryPointId, baseState: NovelState): RuntimeRestoreResult {
+  /** Spec 35 Phase 4：在决策日志里查当前节点内某个 choice 指令的选择记录。 */
+  private findChoiceDecision(choiceInstructionId?: string): { optionIndex: number } | null {
+    if (!choiceInstructionId || !this.currentNodeId) return null;
+    for (let index = this.decisions.length - 1; index >= 0; index -= 1) {
+      const decision = this.decisions[index];
+      if (decision.type === "choice"
+        && decision.fromNodeId === this.currentNodeId
+        && decision.choiceInstructionId === choiceInstructionId
+        && decision.optionIndex != null) {
+        return { optionIndex: decision.optionIndex };
+      }
+    }
+    return null;
+  }
+
+  private applyStoryPoint(
+    point: StoryPointId,
+    baseState: NovelState,
+    entryVars?: Record<string, GraphRouteValue>,
+  ): RuntimeRestoreResult {
     const instructions = this.instructionsByNodeId.get(point.nodeId);
     if (!instructions) {
       this.currentNodeId = point.nodeId;
@@ -1223,10 +1640,8 @@ export class GraphNovelPlayer {
       };
     }
 
-    const index = instructions.findIndex((instr, instructionIndex) => (
-      getInstructionStoryPointId(instr, instructionIndex) === point.instructionId
-    ));
-    if (index < 0) {
+    const location = findStoryPointInTree(instructions, point.instructionId);
+    if (!location) {
       this.currentNodeId = point.nodeId;
       this.currentStoryPoint = null;
       this.ip = 0;
@@ -1241,7 +1656,7 @@ export class GraphNovelPlayer {
       };
     }
 
-    const instr = instructions[index];
+    const instr = location.instruction;
     this.currentNodeId = point.nodeId;
     this.playbackEnded = false;
     this.currentStoryPoint = { ...point };
@@ -1250,25 +1665,151 @@ export class GraphNovelPlayer {
     this.currentReadKey = instr.t === "say" || instr.t === "narrate"
       ? createReadTextKey({ ...point, text: instr.text })
       : null;
-    this.ip = index + 1;
-    // 落到节点中间（读档/回滚/调试起点）时，把 baseState 当作本节点的入口状态，
-    // 后续 seekToInstruction 才有正确的重放起点。
-    this.varsAtNodeEntry = { ...baseState.vars };
-    const restoredBase = instr.t === "inputName"
-      ? this.restoreNameInputOrigin(point, instr, baseState)
+
+    // Replay must start at node entry. The snapshot still carries the state at
+    // the stop point, so using baseState.vars here would apply relative sets a
+    // second time. Older snapshots do not have entry vars; those are retained
+    // as the best available base for compatibility.
+    const replayWrites = entryVars != null;
+    const replayBaseState = entryVars
+      ? { ...baseState, vars: { ...entryVars } }
       : baseState;
-    this.varsAtNodeEntry = { ...restoredBase.vars };
+    const firstEntry = location.frames[0]?.entryIndex;
+    let replayState = this.replayRange(
+      replayBaseState,
+      instructions,
+      firstEntry ?? location.targetIndex,
+      replayWrites,
+      baseState.vars,
+    );
+
+    // Walk the exact frame path. Each descriptor identifies a control
+    // instruction in its parent; execute that control once, then replay only
+    // the prefix of the selected branch before the next control/target.
+    const rebuiltFrames: InstructionFrame[] = [];
+    let parentInstructions: readonly Instruction[] = instructions;
+    for (let f = 0; f < location.frames.length; f += 1) {
+      const desc = location.frames[f];
+      const control = parentInstructions[desc.entryIndex];
+      if (control?.t === "if") {
+        const result = evaluateGraphConditionResult(control.condition, replayState.vars);
+        const expectedThen = desc.origin.kind === "if-then";
+        if (result.ok && result.value !== expectedThen) {
+          // The saved point is no longer on the branch selected by the
+          // reconstructed variables. Keep the path deterministic for editor
+          // recovery, but do not execute the wrong branch's writes.
+          replayState = { ...replayState, vars: { ...replayState.vars } };
+        }
+      } else if (control?.t === "choice") {
+        const decision = this.findChoiceDecision(control.id);
+        const option = decision ? control.options[decision.optionIndex] : undefined;
+        if (replayWrites) {
+          for (const effect of option?.effects ?? []) {
+            replayState = this.applyRuntimeInstruction(replayState, effect);
+          }
+        }
+      }
+
+      const isLast = f === location.frames.length - 1;
+      const stopAt = isLast
+        ? location.targetIndex
+        : (location.frames[f + 1]?.entryIndex ?? desc.instructions.length);
+      replayState = this.replayRange(replayState, desc.instructions, stopAt, replayWrites, baseState.vars);
+      const completion = control?.t === "choice"
+        ? (() => {
+            const decision = this.findChoiceDecision(control.id);
+            const option = decision ? control.options[decision.optionIndex] : undefined;
+            return option?.to ? { nodeId: option.to, routeDepth: 0 } : undefined;
+          })()
+        : undefined;
+      rebuiltFrames.push({
+        instructions: desc.instructions,
+        resumeIp: desc.resumeIp,
+        origin: desc.origin,
+        ...(completion ? { completion } : {}),
+      });
+      parentInstructions = desc.instructions;
+    }
+
+    this.ip = location.targetIndex + 1;
+    this.varsAtNodeEntry = { ...(entryVars ?? replayBaseState.vars) };
+    const restoredBase = instr.t === "inputName"
+      ? this.restoreNameInputOrigin(point, instr, replayState)
+      : replayState;
     if (instr.t === "inputName") {
       const key = `${point.nodeId}\u0000${point.instructionId}`;
       if (!this.nameInputOrigins.has(key)) {
         this.nameInputOrigins.set(key, restoredBase.vars[instr.key]);
       }
     }
-    this.state = this.applyRuntimeInstruction(restoredBase, instr);
+    this.frames = rebuiltFrames;
+    const rootProgress = location.frames.length === 0
+      ? location.targetIndex + 1
+      : location.rootIndex;
+    this.state = this.withRestoredProgress(restoredBase, rootProgress, instructions.length);
+
+    if (instr.t === "choice") {
+      // A choice story point means "the options are visible", not "the
+      // no-op choice instruction has already been consumed".
+      this.presentChoiceInstruction(instr, 0, false);
+      return { warnings: [] };
+    }
+
+    this.state = this.applyRuntimeInstruction(this.state, instr);
     if (instr.t === "say" || instr.t === "narrate") this.state = revealFully(this.state);
+    // Reconstruct the visible line without replaying one-shot audio/effects.
+    this.state = this.withRestoredAudio(this.state);
     if (instr.t === "wait") this.state = { ...this.state, flags: { ...this.state.flags, isWaiting: false } };
-    this.state = this.withRestoredProgress(this.state, index + 1, instructions.length);
     return { warnings: [] };
+  }
+
+  /**
+   * Spec 35 Phase 4：重放一个指令序列的前 count 条（不含 count），
+   * 遇到 if/choice 时按条件/决策日志递归重放。与 seekToInstruction 的重放一致。
+   */
+  private replayRange(
+    state: NovelState,
+    instructions: readonly Instruction[],
+    count: number,
+    applyWrites = true,
+    inputValues?: Readonly<Record<string, GraphRouteValue>>,
+  ): NovelState {
+    let s = { ...state, vars: { ...state.vars } };
+    for (let index = 0; index < count; index += 1) {
+      const instr = instructions[index];
+      if (instr.t === "if") {
+        const result = evaluateGraphConditionResult(instr.condition, s.vars);
+        if (!result.ok) continue;
+        const branch = result.value ? instr.then : (instr.else ?? []);
+        if (branch.length === 0) continue;
+        s = this.replayRange(s, branch, branch.length, applyWrites, inputValues);
+        continue;
+      }
+      if (instr.t === "choice") {
+        const decision = this.findChoiceDecision(instr.id);
+        if (!decision) continue;
+        const option = instr.options[decision.optionIndex];
+        if (!option) continue;
+        if (applyWrites) {
+          for (const effect of option.effects ?? []) {
+            s = this.applyRuntimeInstruction(s, effect);
+          }
+        }
+        if (option.body && option.body.length > 0) {
+          s = this.replayRange(s, option.body, option.body.length, applyWrites, inputValues);
+        }
+        continue;
+      }
+      if (instr.t === "inputName"
+        && inputValues
+        && Object.prototype.hasOwnProperty.call(inputValues, instr.key)) {
+        s = { ...s, vars: { ...s.vars, [instr.key]: inputValues[instr.key] } };
+        continue;
+      }
+      if (instr.t === "set" && !applyWrites) continue;
+      s = this.applyRuntimeInstruction(s, instr);
+    }
+    return s;
   }
 
   private stateFromSnapshot(
@@ -1461,11 +2002,9 @@ export class GraphNovelPlayer {
     const point = this.currentStoryPoint;
     if (!point) return undefined;
     const instructions = this.instructionsByNodeId.get(point.nodeId) ?? [];
-    const instructionIndex = instructions.findIndex((candidate, index) => (
-      candidate.t === "inputName"
-      && getInstructionStoryPointId(candidate, index) === point.instructionId
-    ));
-    const instruction = instructions[instructionIndex];
+    // Spec 35 Phase 4：递归查找 inputName 停点。
+    const location = findStoryPointInTree(instructions, point.instructionId);
+    const instruction = location?.instruction;
     if (!instruction || instruction.t !== "inputName") return undefined;
     const id = `${point.nodeId}\u0000${point.instructionId}`;
     if (!this.nameInputOrigins.has(id)) return undefined;
@@ -1634,10 +2173,143 @@ function getInstructionStoryPointId(instr: Instruction, index: number): string |
     case "pause":
     case "inputName":
     case "completeEnding":
+    case "choice": // Spec 35：choice 是玩家中断点，带 id 时作为 story-point。
       return instr.id ?? (index >= 0 ? `index:${index}` : null);
     default:
       return null;
   }
+}
+
+/**
+ * Spec 35 Phase 4：帧路径上的一帧描述，用于重建 frames 栈。
+ *
+ * `entryIndex` 是控制指令（if/choice）在**父序列**里的下标；
+ * `resumeIp` = entryIndex + 1（与运行时 pushConditionalFrame / choose 的
+ * resumeIp 语义一致：压帧时 this.ip 已是控制指令之后）。
+ */
+interface FrameDescriptor {
+  entryIndex: number;
+  instructions: Instruction[];
+  resumeIp: number;
+  origin: { kind: "if-then" } | { kind: "if-else" } | { kind: "choice-body"; choiceInstructionId?: string; optionIndex: number };
+}
+
+/**
+ * Spec 35 Phase 4：story-point 在指令树里的位置。
+ *
+ * `rootIndex` = 根帧里控制指令下标 +1（重放完根帧到控制指令后、压帧前的 ip）。
+ * `frames` = 从根帧到目标帧的路径（外层在前）。`targetIndex` = 目标在其所在帧
+ * （frames 最后一帧；frames 为空时为根帧）内的下标。
+ */
+interface StoryPointLocation {
+  instruction: Instruction;
+  rootIndex: number;
+  frames: FrameDescriptor[];
+  targetIndex: number;
+}
+
+function isStoryPointKind(instr: Instruction): instr is Instruction & { id?: string } {
+  return instr.t === "say" || instr.t === "narrate" || instr.t === "wait"
+    || instr.t === "pause" || instr.t === "inputName" || instr.t === "completeEnding" || instr.t === "choice";
+}
+
+/**
+ * Spec 35 Phase 4：在节点的指令树里按 instructionId 查找 story-point。
+ *
+ * 根帧停点：匹配 `instr.id` 或 `index:<N>`。
+ * 嵌套帧停点：**仅匹配显式 `instr.id`**（index:N 在不同帧间有歧义，不支持）。
+ */
+function findStoryPointInTree(
+  instructions: readonly Instruction[],
+  instructionId: string,
+): StoryPointLocation | null {
+  const isRootFallback = instructionId.startsWith("index:");
+  for (let i = 0; i < instructions.length; i += 1) {
+    const instr = instructions[i];
+    const id = getInstructionStoryPointId(instr, i);
+    if (id === instructionId) {
+      return { instruction: instr, rootIndex: i + 1, frames: [], targetIndex: i };
+    }
+    if (isRootFallback) continue;
+    // 嵌套帧：仅按显式 id 匹配。
+    if (instr.t === "if") {
+      const loc = findInBranch(instr.then, instructionId);
+      if (loc) return finishBranch(loc, i, instr.then, { kind: "if-then" });
+      if (instr.else) {
+        const elseLoc = findInBranch(instr.else, instructionId);
+        if (elseLoc) return finishBranch(elseLoc, i, instr.else, { kind: "if-else" });
+      }
+    } else if (instr.t === "choice") {
+      for (let optIdx = 0; optIdx < instr.options.length; optIdx += 1) {
+        const option = instr.options[optIdx];
+        if (!option.body) continue;
+        const loc = findInBranch(option.body, instructionId);
+        if (loc) return finishBranch(loc, i, option.body, { kind: "choice-body", choiceInstructionId: instr.id, optionIndex: optIdx });
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 在子分支里递归查找 story-point。返回的 frames 是从**该分支所在帧**开始向内
+ * 的路径（内层在前），不含最外层帧。调用方用 finishBranch 补上最外层帧。
+ */
+function findInBranch(
+  branch: readonly Instruction[],
+  instructionId: string,
+): { instruction: Instruction; frames: FrameDescriptor[]; targetIndex: number } | null {
+  for (let i = 0; i < branch.length; i += 1) {
+    const instr = branch[i];
+    if (isStoryPointKind(instr) && instr.id === instructionId) {
+      return { instruction: instr, frames: [], targetIndex: i };
+    }
+    if (instr.t === "if") {
+      const loc = findInBranch(instr.then, instructionId);
+      if (loc) return nest(loc, i, instr.then, { kind: "if-then" });
+      if (instr.else) {
+        const elseLoc = findInBranch(instr.else, instructionId);
+        if (elseLoc) return nest(elseLoc, i, instr.else, { kind: "if-else" });
+      }
+    } else if (instr.t === "choice") {
+      for (let optIdx = 0; optIdx < instr.options.length; optIdx += 1) {
+        const option = instr.options[optIdx];
+        if (!option.body) continue;
+        const loc = findInBranch(option.body, instructionId);
+        if (loc) return nest(loc, i, option.body, { kind: "choice-body", choiceInstructionId: instr.id, optionIndex: optIdx });
+      }
+    }
+  }
+  return null;
+}
+
+/** 在递归结果头部插入一帧（该帧的 entryIndex 是控制指令在**当前分支**里的下标）。 */
+function nest(
+  loc: { instruction: Instruction; frames: FrameDescriptor[]; targetIndex: number },
+  entryIndex: number,
+  branch: readonly Instruction[],
+  origin: FrameDescriptor["origin"],
+): { instruction: Instruction; frames: FrameDescriptor[]; targetIndex: number } {
+  return {
+    instruction: loc.instruction,
+    frames: [{ entryIndex, instructions: [...branch], resumeIp: entryIndex + 1, origin }, ...loc.frames],
+    targetIndex: loc.targetIndex,
+  };
+}
+
+/** 把 findInBranch 的结果（frames 从当前分支开始）补上最外层帧并返回完整 location。 */
+function finishBranch(
+  loc: { instruction: Instruction; frames: FrameDescriptor[]; targetIndex: number },
+  rootEntryIndex: number,
+  branch: readonly Instruction[],
+  origin: FrameDescriptor["origin"],
+): StoryPointLocation {
+  return {
+    instruction: loc.instruction,
+    rootIndex: rootEntryIndex + 1,
+    frames: [{ entryIndex: rootEntryIndex, instructions: [...branch], resumeIp: rootEntryIndex + 1, origin }, ...loc.frames],
+    targetIndex: loc.targetIndex,
+  };
 }
 
 function cloneDecisionEvent(event: DecisionLogEvent): DecisionLogEvent {
@@ -1650,7 +2322,8 @@ function isStableInstruction(instr: Instruction): instr is StableInstruction {
     || instr.t === "narrate"
     || instr.t === "wait"
     || instr.t === "pause"
-    || instr.t === "inputName";
+    || instr.t === "inputName"
+    || instr.t === "choice";
 }
 
 function readKeyId(key: ReadTextKey): string {

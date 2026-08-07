@@ -17,7 +17,6 @@ export const contractDiagnostics = {
   instruction_invalid_field: { severity: "error", source: "node" },
   instruction_id_missing: { severity: "warn", source: "node" },
   instruction_id_duplicate: { severity: "error", source: "node" },
-  choice_instruction_not_supported: { severity: "error", source: "node" },
   missing_background_ref: { severity: "error", source: "node" },
   missing_bgm_ref: { severity: "error", source: "node" },
   missing_sfx_ref: { severity: "error", source: "node" },
@@ -191,6 +190,11 @@ export const instructionPolicies = {
   showCg: { references: [{ kind: "registry", registryPath: ["cg"], idField: "id", missingCode: "missing_cg_ref" }] },
   playVideo: { references: [{ kind: "registry", registryPath: ["videos"], idField: "id", missingCode: "missing_video_ref" }] },
   completeEnding: { storyPoint: true, references: [{ kind: "registry", registryPath: ["unlocks", "endings"], idField: "endingId", missingCode: "missing_ending_ref" }] },
+  // Spec 35: choice / if move branching into the instruction stream.
+  // choice 是玩家中断点（需可 save/restore），故 storyPoint: true；
+  // if 是纯控制流（无副作用、无中断语义），故不标 storyPoint。
+  choice: { storyPoint: true },
+  if: {},
 } as const satisfies Record<string, InstructionPolicy>;
 
 export function diagnosticDefinition(code: DiagnosticCode): ContractDiagnostic {

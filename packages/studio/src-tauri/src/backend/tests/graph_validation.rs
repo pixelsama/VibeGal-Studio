@@ -147,79 +147,9 @@ fn validate_graph_flags_duplicate_edge_id() {
     assert_eq!(issue.edge_id.as_deref(), Some("prologue__ending"));
 }
 
-#[test]
-fn validate_graph_flags_choice_edge_missing_label() {
-    let mut graph = choice_branch_graph();
-    graph.edges[1].label = Some(" ".to_string());
-    let nodes = present_node_entries(&graph);
-
-    let issues = validate_graph(&graph, &nodes);
-
-    let issue = issues
-        .iter()
-        .find(|issue| issue.code == "choice_edge_missing_label")
-        .expect("choice edge without label should be reported");
-    assert_eq!(issue.severity, GraphIssueSeverity::Error);
-    assert_eq!(issue.node_id.as_deref(), Some("start"));
-    assert_eq!(issue.edge_id.as_deref(), Some("start__leave"));
-    assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
-    assert_eq!(issue.json_path.as_deref(), Some("$.edges[1].label"));
-}
-
-#[test]
-fn validate_graph_flags_mixed_outgoing_modes() {
-    let mut graph = choice_branch_graph();
-    graph.nodes.push(graph_node("secret", "nodes/secret.json"));
-    graph
-        .edges
-        .push(graph_edge("start__secret", "start", "secret"));
-    let nodes = present_node_entries(&graph);
-
-    let issues = validate_graph(&graph, &nodes);
-
-    let issue = issues
-        .iter()
-        .find(|issue| issue.code == "mixed_outgoing_modes")
-        .expect("mixed outgoing modes should be reported");
-    assert_eq!(issue.severity, GraphIssueSeverity::Error);
-    assert_eq!(issue.node_id.as_deref(), Some("start"));
-}
-
-#[test]
-fn validate_graph_warns_duplicate_choice_label() {
-    let mut graph = choice_branch_graph();
-    graph.edges[1].label = Some("留下".to_string());
-    let nodes = present_node_entries(&graph);
-
-    let issues = validate_graph(&graph, &nodes);
-
-    let issue = issues
-        .iter()
-        .find(|issue| issue.code == "duplicate_choice_label")
-        .expect("duplicate choice label should be reported");
-    assert_eq!(issue.severity, GraphIssueSeverity::Warn);
-    assert_eq!(issue.node_id.as_deref(), Some("start"));
-    assert_eq!(issue.edge_id.as_deref(), Some("start__leave"));
-}
-
-#[test]
-fn validate_graph_flags_linear_multiple_outgoing() {
-    let mut graph = choice_branch_graph();
-    for edge in &mut graph.edges {
-        edge.mode = "linear".to_string();
-        edge.label = None;
-    }
-    let nodes = present_node_entries(&graph);
-
-    let issues = validate_graph(&graph, &nodes);
-
-    let issue = issues
-        .iter()
-        .find(|issue| issue.code == "linear_node_multiple_outgoing")
-        .expect("linear multi-edge node should be reported");
-    assert_eq!(issue.severity, GraphIssueSeverity::Error);
-    assert_eq!(issue.node_id.as_deref(), Some("start"));
-}
+// Spec 35：choice/mode 相关的旧规则已移除（choice_edge_missing_label、
+// mixed_outgoing_modes、duplicate_choice_label、linear_node_multiple_outgoing）。
+// 路由规则简化为「多条出口至多一条兜底边 + 兜底边须在最后 + condition 语法」。
 
 #[test]
 fn validate_graph_flags_auto_multiple_default_edges() {
@@ -235,7 +165,7 @@ fn validate_graph_flags_auto_multiple_default_edges() {
     let issue = issues
         .iter()
         .find(|issue| issue.code == "auto_multiple_default_edges")
-        .expect("multiple auto default edges should be reported");
+        .expect("multiple fallback edges should be reported");
     assert_eq!(issue.severity, GraphIssueSeverity::Error);
     assert_eq!(issue.node_id.as_deref(), Some("start"));
 }
@@ -254,13 +184,13 @@ fn validate_graph_warns_auto_without_default_edge() {
     let issue = issues
         .iter()
         .find(|issue| issue.code == "auto_missing_default_edge")
-        .expect("auto route without default edge should be reported");
+        .expect("multi-exit route without fallback should be reported");
     assert_eq!(issue.severity, GraphIssueSeverity::Warn);
     assert_eq!(issue.node_id.as_deref(), Some("start"));
 }
 
 #[test]
-fn validate_graph_rejects_invalid_condition_and_default_before_condition() {
+fn validate_graph_rejects_invalid_condition_but_accepts_default_before_condition() {
     let mut graph = choice_branch_graph();
     graph.edges = vec![
         auto_edge("fallback", "start", "stay", None),
@@ -271,10 +201,9 @@ fn validate_graph_rejects_invalid_condition_and_default_before_condition() {
         .iter()
         .any(|issue| issue.code == "invalid_edge_condition"
             && issue.edge_id.as_deref() == Some("bad")));
-    assert!(issues
+    assert!(!issues
         .iter()
-        .any(|issue| issue.code == "auto_default_edge_not_last"
-            && issue.edge_id.as_deref() == Some("fallback")));
+        .any(|issue| issue.code == "auto_default_edge_not_last"));
 }
 
 #[test]
@@ -300,6 +229,40 @@ fn route_analysis_finds_unreachable_nodes() {
     assert_eq!(issue.severity, GraphIssueSeverity::Warn);
     assert_eq!(issue.node_id.as_deref(), Some("orphan"));
     assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+}
+
+#[test]
+fn route_analysis_follows_choice_option_targets() {
+    let mut graph = choice_branch_graph();
+    graph.edges.clear();
+    let nodes = vec![
+        NodeEntry {
+            rel_path: "nodes/start.json".to_string(),
+            data: Some(
+                serde_json::json!([{ "t": "choice", "options": [{ "text": "去", "to": "stay" }] }]),
+            ),
+        },
+        NodeEntry {
+            rel_path: "nodes/stay.json".to_string(),
+            data: Some(serde_json::json!([])),
+        },
+        NodeEntry {
+            rel_path: "nodes/leave.json".to_string(),
+            data: Some(serde_json::json!([])),
+        },
+    ];
+
+    let issues = validate_graph(&graph, &nodes);
+
+    assert!(!issues
+        .iter()
+        .any(|issue| issue.code == "unreachable_node" && issue.node_id.as_deref() == Some("stay")));
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "unreachable_node"
+                && issue.node_id.as_deref() == Some("leave"))
+    );
 }
 
 #[test]

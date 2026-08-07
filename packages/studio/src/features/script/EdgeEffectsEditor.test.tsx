@@ -2,10 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SetInstr, VariableRegistry } from "@vibegal/engine";
-import type { GraphEdge, ProjectGraph } from "../../lib/types";
+import type { GraphEdge } from "../../lib/types";
 import { resolveCatalogMessage, StudioI18nProvider } from "../../lib/i18n";
 import { EdgeEffectsEditor, defaultEffect, describeEdgeEffects } from "./EdgeEffectsEditor";
-import { normalizeBranchEdge } from "./BranchRules";
 
 const registry: VariableRegistry = {
   version: 1,
@@ -115,27 +114,20 @@ describe("describeEdgeEffects", () => {
 });
 
 describe("effects survive branch edits", () => {
-  const graph: ProjectGraph = {
-    version: 1,
-    entryNodeId: "start",
-    chapters: [{ id: "c1", title: "第一章" }],
-    nodes: [
-      { id: "start", title: "天台", file: "nodes/start.json", chapterId: "c1", position: { x: 0, y: 0 } },
-      { id: "morning", title: "早上", file: "nodes/morning.json", chapterId: "c1", position: { x: 200, y: 0 } },
-    ],
-    edges: [],
-  };
+  // Spec 35 Phase 3: edge 不再带 mode/label。effects 通过 ExitRoutingBlock 的
+  // updateEdge（spread 原 edge + patch）原样保留，与分流方式无关。
   const edge: GraphEdge = {
-    id: "start__morning", from: "start", to: "morning", mode: "choice", label: "留下", condition: null,
+    id: "start__morning", from: "start", to: "morning", condition: null,
     effects: [{ t: "set", key: "affection", expr: "affection + 3" }],
   };
 
-  it("keeps effects when the author switches to automatic branching", () => {
-    // effects 与 choice/auto 无关，切换分流方式不该把作者写好的加分丢掉。
-    expect(normalizeBranchEdge(graph, "start", edge, 0, "auto").effects).toEqual(edge.effects);
+  it("keeps effects when updating the condition", () => {
+    const updated = { ...edge, condition: "affection >= 30" };
+    expect(updated.effects).toEqual(edge.effects);
   });
 
-  it("keeps effects when switching back to a player choice", () => {
-    expect(normalizeBranchEdge(graph, "start", edge, 0, "choice").effects).toEqual(edge.effects);
+  it("keeps effects when clearing the condition to fallback", () => {
+    const updated = { ...edge, condition: null };
+    expect(updated.effects).toEqual(edge.effects);
   });
 });

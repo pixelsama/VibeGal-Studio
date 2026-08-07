@@ -186,19 +186,17 @@ pub(crate) fn graph_edge(id: &str, from: &str, to: &str) -> GraphEdge {
         id: id.to_string(),
         from: from.to_string(),
         to: to.to_string(),
-        mode: "linear".to_string(),
-        label: None,
         condition: None,
     }
 }
 
-pub(crate) fn choice_edge(id: &str, from: &str, to: &str, label: &str) -> GraphEdge {
+/// Spec 35：choice 不再是图边概念。保留该 helper 仅作普通边的别名（label 参数忽略），
+/// 供尚未迁移的旧测试编译；新测试应直接用 choice 指令在节点内。
+pub(crate) fn choice_edge(id: &str, from: &str, to: &str, _label: &str) -> GraphEdge {
     GraphEdge {
         id: id.to_string(),
         from: from.to_string(),
         to: to.to_string(),
-        mode: "choice".to_string(),
-        label: Some(label.to_string()),
         condition: None,
     }
 }
@@ -208,8 +206,6 @@ pub(crate) fn auto_edge(id: &str, from: &str, to: &str, condition: Option<&str>)
         id: id.to_string(),
         from: from.to_string(),
         to: to.to_string(),
-        mode: "auto".to_string(),
-        label: None,
         condition: condition.map(|condition| condition.to_string()),
     }
 }

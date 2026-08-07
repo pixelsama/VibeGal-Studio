@@ -63,8 +63,6 @@ export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  mode?: "linear" | "choice" | "auto";
-  label?: string | null;
   condition: string | null;
   /** 「走这条出口之后」的状态改变；见 contracts 的 GraphEdgeSchema.effects。 */
   effects?: SetInstr[];

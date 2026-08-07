@@ -120,9 +120,15 @@ export interface NovelState {
   /** 阻塞式玩家命名请求；提交前播放器不能继续推进。 */
   nameInput: PendingNameInput | null;
 
-  /** 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。 */
+  /**
+   * 当前选择项。非 null 时播放器停在此处，等待渲染层调用 controls.choose。
+   *
+   * Spec 35：选项可能来自节点内 choice 指令（optionIndex 标记第几个，to 可空
+   * = 选了不跳转、继续走指令序列），也可能来自图出口（必带 to）。渲染层按 text
+   * 渲染、回传 choose(to?, optionIndex?)。
+   */
   choice: {
-    choices: { text: string; to: string }[];
+    choices: Array<{ text: string; to?: string; optionIndex?: number }>;
   } | null;
 
   /** 待播放特效 / 转场（组件消费） */

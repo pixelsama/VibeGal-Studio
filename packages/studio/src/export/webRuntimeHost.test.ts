@@ -115,7 +115,7 @@ describe("web export runtime host", () => {
     const runtime = createWebRuntimePlayer({
       meta,
       manifest,
-      graph: runtimeGraph([{ id: "start__middle", from: "start", to: "middle", mode: "linear", label: null, condition: null }]),
+      graph: runtimeGraph([{ id: "start__middle", from: "start", to: "middle", condition: null }]),
       nodes: [node("start", "start"), node("middle", "middle")],
       contentBase: "./content",
     });
@@ -129,26 +129,28 @@ describe("web export runtime host", () => {
   });
 
   it("webRuntimeHandlesChoiceRoute", () => {
+    // Spec 35：choice 是节点内指令，选项 to 指向目标节点。
     const runtime = createWebRuntimePlayer({
       meta,
       manifest,
-      graph: runtimeGraph([
-        { id: "start__left", from: "start", to: "left", mode: "choice", label: "Left", condition: null },
-        { id: "start__right", from: "start", to: "right", mode: "choice", label: "Right", condition: null },
-      ]),
-      nodes: [node("start", "start"), node("left", "left"), node("right", "right")],
+      graph: runtimeGraph([]),
+      nodes: [
+        { id: "start", instructions: [{ t: "narrate", text: "start" }, { t: "choice", id: "route", options: [{ text: "Left", to: "left" }, { text: "Right", to: "right" }] }] },
+        node("left", "left"),
+        node("right", "right"),
+      ],
       contentBase: "./content",
     });
 
     runtime.advance();
     runtime.advance();
     runtime.advance();
-    expect(runtime.getState().choice?.choices).toEqual([
+    expect(runtime.getState().choice?.choices.map((c) => ({ text: c.text, to: c.to }))).toEqual([
       { text: "Left", to: "left" },
       { text: "Right", to: "right" },
     ]);
 
-    runtime.choose("right");
+    runtime.choose("right", 1);
 
     expect(runtime.getState().choice).toBeNull();
     expect(runtime.getState().narration?.text).toBe("right");
@@ -216,7 +218,7 @@ describe("web export runtime host", () => {
     const runtime = createWebRuntimePlayer({
       meta,
       manifest,
-      graph: runtimeGraph([{ id: "start__middle", from: "start", to: "middle", mode: "linear", label: null, condition: null }]),
+      graph: runtimeGraph([{ id: "start__middle", from: "start", to: "middle", condition: null }]),
       nodes: [node("start", "start"), node("middle", "middle")],
       contentBase: "./content",
       projectId: "project-a",
@@ -382,11 +384,12 @@ describe("web export runtime host", () => {
     const runtime = createWebRuntimePlayer({
       meta,
       manifest,
-      graph: runtimeGraph([
-        { id: "start__left", from: "start", to: "left", mode: "choice", label: "Left", condition: null },
-        { id: "start__right", from: "start", to: "right", mode: "choice", label: "Right", condition: null },
-      ]),
-      nodes: [node("start", "start"), node("left", "left"), node("right", "right")],
+      graph: runtimeGraph([]),
+      nodes: [
+        { id: "start", instructions: [{ t: "narrate", text: "start" }, { t: "choice", id: "route", options: [{ text: "Left", to: "left" }, { text: "Right", to: "right" }] }] },
+        node("left", "left"),
+        node("right", "right"),
+      ],
       contentBase: "./content",
       projectId: "project-a",
       storage: adapter,
@@ -396,23 +399,22 @@ describe("web export runtime host", () => {
     await vi.waitFor(() => expect(writeSaveSlot).toHaveBeenCalledTimes(1));
     runtime.advance();
     runtime.advance();
-    runtime.choose("right");
+    runtime.choose("right", 1);
     await vi.waitFor(() => expect(writeSaveSlot).toHaveBeenCalledTimes(3));
 
+    // Spec 35：choice 现在是玩家中断点。auto:node 在 start narrate 处写一次，
+    // auto:choice 在 choice 指令呈现时写一次，再 auto:node 在选了 right 进入目标节点时写一次。
     expect(writeSaveSlot.mock.calls.map(([, slotId]) => slotId)).toEqual([
       "auto:node",
-      "auto:node",
       "auto:choice",
+      "auto:node",
     ]);
 
-    const snapshot = await adapter.readSaveSlot("project-a", "auto:choice");
-    expect(snapshot?.preview).toEqual({
-      text: "right",
-      tokens: [{ type: "text", text: "right" }],
-      background: null,
-    });
+    // auto:choice 的 snapshot 是「玩家面对选项」这一刻，还没有进入 right。
+    const choiceSnapshot = await adapter.readSaveSlot("project-a", "auto:choice");
+    expect(choiceSnapshot?.position).toMatchObject({ nodeId: "start" });
     await runtime.rendererProps().runtime?.save.load("auto:choice");
-    runtime.rendererProps().controls.rollbackTo(snapshot!.position!);
+    runtime.rendererProps().controls.rollbackTo(choiceSnapshot!.position!);
     expect(writeSaveSlot).toHaveBeenCalledTimes(3);
     runtime.dispose();
   });
@@ -475,7 +477,7 @@ describe("web export runtime host", () => {
   it("webRuntimeSavePersistsAcrossRuntimeInstances", async () => {
     const storage = new MemoryStorage();
     const graph = runtimeGraph([
-      { id: "start__middle", from: "start", to: "middle", mode: "linear", label: null, condition: null },
+      { id: "start__middle", from: "start", to: "middle", condition: null },
     ]);
     const nodes = [
       { id: "start", instructions: [
@@ -522,14 +524,12 @@ describe("web export runtime host", () => {
       const runtime = createWebRuntimePlayer({
         meta,
         manifest,
-        graph: runtimeGraph([
-          { id: "start__left", from: "start", to: "left", mode: "choice", label: "Left", condition: null },
-          { id: "start__right", from: "start", to: "right", mode: "choice", label: "Right", condition: null },
-        ]),
+        graph: runtimeGraph([]),
         nodes: [
           { id: "start", instructions: [
             { t: "narrate", id: "line_01", text: "first" },
             { t: "narrate", id: "line_02", text: "second" },
+            { t: "choice", id: "route", options: [{ text: "Left", to: "left" }, { text: "Right", to: "right" }] },
           ] },
           node("left", "left"),
           node("right", "right"),
@@ -548,7 +548,7 @@ describe("web export runtime host", () => {
       runtime.rendererProps().controls.setSkipMode("all");
       await vi.runAllTimersAsync();
 
-      expect(runtime.getState().choice?.choices).toEqual([
+      expect(runtime.getState().choice?.choices.map((c) => ({ text: c.text, to: c.to }))).toEqual([
         { text: "Left", to: "left" },
         { text: "Right", to: "right" },
       ]);

@@ -19,7 +19,6 @@ import { StoryStateView } from "./StoryStateView";
 import { TranslationComparison } from "./TranslationComparison";
 import { assignInstructionTextKey } from "./translationModel";
 import { RouteCoveragePanel } from "./RouteCoveragePanel";
-import { NodeInspector } from "./NodeInspector";
 import {
   NodeEditor,
   nodeExternalChange as resolveNodeExternalChange,
@@ -153,6 +152,9 @@ export function ScriptWorkspace({
   const [localFocus, setLocalFocus] = useState<GraphIssueFocusRequest | null>(null);
   const [retainedNodeEditor, setRetainedNodeEditor] = useState<RetainedNodeEditor | null>(null);
   const [nodeEditorDirty, setNodeEditorDirty] = useState(false);
+  // Spec 35 Phase 3：出口试算值按节点 id 持久化在 ScriptWorkspace，避免 NodeEditor
+  // 因文件 revision 变更 remount 时丢失试算输入。
+  const [trialOverridesByNode, setTrialOverridesByNode] = useState<Record<string, Record<string, string | number | boolean | null>>>({});
   const [resolvedNodeChange, setResolvedNodeChange] = useState<ResolvedNodeChange | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -396,13 +398,6 @@ export function ScriptWorkspace({
     } finally {
       setSavingGraph(false);
     }
-  };
-
-  const handleRenameNode = (id: string, title: string) => {
-    const nextState = applyGraphCommand(graphHistory, { kind: "renameNode", nodeId: id, title });
-    if (nextState === graphHistory) return;
-    setGraphHistory(nextState);
-    void persistGraph(nextState.graph);
   };
 
   const handleSetNodeChapter = (id: string, chapterId: string) => {
@@ -1001,30 +996,12 @@ export function ScriptWorkspace({
                   onRenameNode={handleRenameNodeDialog}
                   onSetEntry={handleSetEntry}
                   onManageEnding={handleManageEnding}
-                  onAutoLayout={handleAutoLayout}
-                  onOpenShortcutsHelp={onOpenShortcutsHelp}
-                />
-              </div>
-            </div>
-            <div className="gs-graph-layout__inspector" style={inspectorPaneStyle}>
-              <div style={inspectorContentStyle}>
-                <NodeInspector
-                  graph={graph}
-                  nodeSummaries={project.nodeSummaries}
-                  selectedNodeId={selectedNodeId}
-                  onEnter={handleEnter}
-                  onRename={handleRenameNode}
                   onSetChapter={handleSetNodeChapter}
-                  onUpdateOutgoingEdges={handleUpdateOutgoingEdges}
-                  onSetEntry={handleSetEntry}
-                  onCreateNode={() => void handleCreateNode()}
-                  saving={savingGraph}
-                  variables={project.content.variables}
-                  manifest={project.content.manifest}
-                  onRegisterEnding={handleManageEnding}
                   onEditEnding={handleEditEnding}
                   onUnregisterEnding={handleUnregisterEnding}
                   onInsertEndingCompletion={handleInsertEndingCompletion}
+                  onAutoLayout={handleAutoLayout}
+                  onOpenShortcutsHelp={onOpenShortcutsHelp}
                 />
               </div>
             </div>
@@ -1046,6 +1023,10 @@ export function ScriptWorkspace({
                 nodeRevision={editorDetail.revision}
                 externalChange={activeNodeChange}
                 focusRequest={localFocus ?? focusRequest}
+                outgoingEdges={graph.edges.filter((edge) => edge.from === editorNode.id)}
+                onUpdateOutgoingEdges={(edges) => handleUpdateOutgoingEdges(editorNode.id, edges)}
+                trialOverrides={trialOverridesByNode[editorNode.id]}
+                onTrialChange={(values) => setTrialOverridesByNode((prev) => ({ ...prev, [editorNode.id]: values }))}
                 onSaved={onSaved}
                 onDirtyChange={handleNodeDirtyChange}
                 onExternalChangeResolved={handleExternalChangeResolved}
@@ -1185,7 +1166,7 @@ const scopeIndicatorStyle: React.CSSProperties = {
 
 const graphLayoutStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "auto minmax(0, 1fr) minmax(280px, 340px)",
+  gridTemplateColumns: "auto minmax(0, 1fr)",
   width: "100%",
   height: "100%",
 };
@@ -1224,17 +1205,4 @@ const toolbarSpacerStyle: React.CSSProperties = {
 
 const statusTextStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
-};
-
-const inspectorPaneStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  minWidth: 0,
-  overflow: "hidden",
-  borderLeft: "1px solid var(--border)",
-};
-
-const inspectorContentStyle: React.CSSProperties = {
-  minHeight: 0,
-  flex: 1,
 };

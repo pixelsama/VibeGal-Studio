@@ -11,12 +11,13 @@ import {
   variableBandLowerBound,
   variableKind,
   type ExpressionAst,
+  type Instruction,
   type Manifest,
   type VariableDeclaration,
   type VariableKind,
   type VariableRegistry,
 } from "@vibegal/engine";
-import type { ProjectGraph } from "../../lib/types";
+import type { NodeEntry, ProjectGraph } from "../../lib/types";
 import { translateZhCN, type StudioTranslator } from "../../lib/i18n";
 
 // ── 词汇表 ─────────────────────────────────────────────────────────────
@@ -96,15 +97,36 @@ export function variableLabel(
 }
 
 /**
+ * 递归收集指令树里的所有 `choice` 指令（进入 if.then/else、choice option body）。
+ * 用于从节点内容派生 `chose.<choiceId>.<optionIndex>` 来源。
+ */
+function collectChoiceInstructions(instructions: Instruction[]): Extract<Instruction, { t: "choice" }>[] {
+  const results: Extract<Instruction, { t: "choice" }>[] = [];
+  for (const instr of instructions) {
+    if (instr.t === "choice") {
+      results.push(instr);
+      for (const opt of instr.options) {
+        if (opt.body) results.push(...collectChoiceInstructions(opt.body));
+      }
+    } else if (instr.t === "if") {
+      results.push(...collectChoiceInstructions(instr.then));
+      if (instr.else) results.push(...collectChoiceInstructions(instr.else));
+    }
+  }
+  return results;
+}
+
+/**
  * 汇总条件里可以引用的一切故事状态：声明变量 + 剧情经历 + 系统状态。
  *
- * 剧情经历（chose./seen.）不需要作者声明任何东西就能用 —— 这是这次重构里
+ * 剧情经历（chose./seen.）不需要作者声明任何东西就能用 -- 这是这次重构里
  * 唯一真正减少工作量的部分，所以它和声明变量并列出现在同一个选择器里。
  */
 export function collectStateSources(input: {
   registry?: VariableRegistry;
   graph?: ProjectGraph;
   manifest?: Manifest;
+  nodes?: NodeEntry[];
   t?: StudioTranslator;
 }): StateSource[] {
   const t = input.t ?? translateZhCN;
@@ -122,18 +144,27 @@ export function collectStateSources(input: {
     });
   }
 
+  // Spec 35 Phase 3：chose.* 从节点 choice 指令派生（chose.<choiceId>.<optionIndex>），
+  // 不再从 graph edge 的 mode/label 读取。
   const nodeTitle = new Map((input.graph?.nodes ?? []).map((node) => [node.id, node.title || node.id]));
-  for (const edge of input.graph?.edges ?? []) {
-    if ((edge.mode ?? "linear") !== "choice") continue;
-    const from = nodeTitle.get(edge.from) ?? edge.from;
-    const option = edge.label?.trim() || nodeTitle.get(edge.to) || edge.to;
-    sources.push({
-      name: `chose.${edge.id}`,
-      label: t("script.condition.source.chose", { from, option }),
-      kind: "chose",
-      group: t("script.condition.sourceGroup.experience"),
-      readonly: true,
-    });
+  if (input.nodes && input.graph) {
+    for (const node of input.graph.nodes) {
+      const entry = input.nodes.find((e) => e.relPath === node.file);
+      if (!entry?.data || !Array.isArray(entry.data)) continue;
+      for (const choice of collectChoiceInstructions(entry.data as Instruction[])) {
+        if (!choice.id) continue;
+        choice.options.forEach((option, optionIndex) => {
+          const optionLabel = option.text || nodeTitle.get(option.to ?? "") || (option.to ?? `选项 ${optionIndex + 1}`);
+          sources.push({
+            name: `chose.${choice.id}.${optionIndex}`,
+            label: t("script.condition.source.chose", { from: node.title || node.id, option: optionLabel }),
+            kind: "chose",
+            group: t("script.condition.sourceGroup.experience"),
+            readonly: true,
+          });
+        });
+      }
+    }
   }
   for (const node of input.graph?.nodes ?? []) {
     sources.push({

@@ -13,7 +13,7 @@ VibeGal 的数据契约和源码需要稳定，创作者看到的语言则应直
 | **故事状态** | 故事会记录、改变或用于判断的值 | variable、变量（作为产品对象时） | `variables.json`、`VariableRegistry` |
 | **分流** | 玩家选择或故事状态判断后，剧情从一个节点去往另一个节点 | branch、edge（作为作者操作时） | `GraphEdge`、`edgeId` |
 | **出口效果** | 走过一条分流后、进入目标节点前产生的故事状态变化 | edge effects | `edge.effects` |
-| **属性面板** | 查看或编辑当前节点、当前剧本行属性的侧边面板 | Inspector | `NodeInspector`、`ScenarioInspector` |
+| **属性编辑** | 在剧本行或节点出口上就地查看与编辑结构化字段的区块（嵌入编辑器，不再有独立侧栏） | Inspector、属性面板（作为独立侧栏时） | `ScenarioInspector`、`ExitRoutingBlock` |
 | **资源登记表** | 项目中可供剧本和界面引用的资源登记数据 | manifest（作为界面名称时） | `content/manifest.json`、`ManifestSchema` |
 | **CG 鉴赏** | 玩家查看已解锁 CG 的菜单 | CG Gallery | `gallery-cg`、`unlock.cg` |
 | **清理预览** | 真正写盘前展示将移除哪些登记、保留哪些文件 | Cleanup dry-run | cleanup proposal |
@@ -29,7 +29,7 @@ Studio 的中文和英文界面使用同一组创作者概念。英文翻译同�
 | 故事状态 | Story state | `variables.json`、`VariableRegistry` |
 | 分流 | Route | `GraphEdge`、`edgeId` |
 | 出口效果 | Exit effects | `edge.effects` |
-| 属性面板 | Inspector | `NodeInspector`、`ScenarioInspector` |
+| 属性编辑 | Inline editor | `ScenarioInspector`、`ExitRoutingBlock` |
 | 资源登记表 | Asset registry | `content/manifest.json`、`ManifestSchema` |
 | CG 鉴赏 | CG gallery | `gallery-cg`、`unlock.cg` |
 | 清理预览 | Cleanup preview | cleanup proposal |
@@ -51,7 +51,7 @@ Studio 的中文和英文界面使用同一组创作者概念。英文翻译同�
 | 白场淡出 | `white_out` |
 | 黑场 | `black` |
 
-例如，属性面板显示「淡入」，保存到剧本的文本仍可以是 `@transition fade_in 1200ms`。显示名变化不能改写或迁移已有项目语法。
+例如，属性编辑区块显示「淡入」，保存到剧本的文本仍可以是 `@transition fade_in 1200ms`。显示名变化不能改写或迁移已有项目语法。
 
 ## 导出选项
 

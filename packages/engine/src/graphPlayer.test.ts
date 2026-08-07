@@ -176,13 +176,19 @@ describe("GraphNovelPlayer playback history and skip", () => {
     player.loadGraph(
       {
         ...baseGraph,
-        edges: [
-          { id: "start__left", from: "start", to: "left", mode: "choice", label: "Left", condition: null },
-          { id: "start__right", from: "start", to: "right", mode: "choice", label: "Right", condition: null },
-        ],
+        edges: [],
       },
       [
-        { id: "start", instructions: [{ t: "narrate", id: "start_01", text: "start" }] },
+        {
+          id: "start", instructions: [
+            { t: "narrate", id: "start_01", text: "start" },
+            // Spec 35：choice 是节点内指令，带 id 时在中断点发 choice checkpoint。
+            { t: "choice", id: "start_choice", options: [
+              { text: "Left", to: "left" },
+              { text: "Right", to: "right" },
+            ] },
+          ],
+        },
         { id: "left", instructions: [{ t: "narrate", id: "left_01", text: "left" }] },
         { id: "right", instructions: [{ t: "narrate", id: "right_01", text: "right" }] },
       ],
@@ -192,11 +198,16 @@ describe("GraphNovelPlayer playback history and skip", () => {
     expect(checkpoints).toEqual([{ reason: "node", nodeId: "start", instructionId: "start_01" }]);
     player.advance();
     player.advance();
+    // 走完旁白后呈现 choice 指令，发出 choice checkpoint。
+    expect(checkpoints).toEqual([
+      { reason: "node", nodeId: "start", instructionId: "start_01" },
+      { reason: "choice", nodeId: "start", instructionId: "start_choice" },
+    ]);
     player.choose("right");
     expect(checkpoints).toEqual([
       { reason: "node", nodeId: "start", instructionId: "start_01" },
+      { reason: "choice", nodeId: "start", instructionId: "start_choice" },
       { reason: "node", nodeId: "right", instructionId: "right_01" },
-      { reason: "choice", nodeId: "right", instructionId: "right_01" },
     ]);
 
     const snapshot = player.createSnapshot();
@@ -465,6 +476,26 @@ describe("GraphNovelPlayer playback history and skip", () => {
     restored.dispose();
   });
 
+  it("restores a submitted name when saving after the naming checkpoint", () => {
+    const instructions = [
+      { t: "inputName" as const, id: "ask_name", key: "playerName", prompt: "怎么称呼你？", maxLength: 20 },
+      { t: "narrate" as const, id: "line_01", text: "你好，{玩家名字}。" },
+    ];
+    const original = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    original.loadGraph(baseGraph, [{ id: "start", instructions }]);
+    original.advance();
+    original.submitName("小满");
+    const snapshot = original.createSnapshot();
+
+    const restored = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    restored.loadGraph(baseGraph, [{ id: "start", instructions }]);
+    expect(restored.restoreSnapshot(snapshot).warnings).toEqual([]);
+    expect(restored.getState().vars.playerName).toBe("小满");
+    expect(restored.getState().narration?.text).toBe("你好，小满。");
+    original.dispose();
+    restored.dispose();
+  });
+
   it("usesTheDefaultNameAndRejectsNonTextStoryState", () => {
     const player = new GraphNovelPlayer({ manifest, meta, variables: registry });
     player.loadGraph(baseGraph, [{
@@ -662,13 +693,19 @@ describe("GraphNovelPlayer playback history and skip", () => {
       player.loadGraph(
         {
           ...baseGraph,
-          edges: [
-            { id: "start__left", from: "start", to: "left", mode: "choice", label: "左", condition: null },
-            { id: "start__right", from: "start", to: "right", mode: "choice", label: "右", condition: null },
-          ],
+          edges: [],
         },
         [
-          { id: "start", instructions: [{ t: "say", id: "line_01", who: "hero", expr: "default", text: "选吧。" }] },
+          {
+            id: "start", instructions: [
+              { t: "say", id: "line_01", who: "hero", expr: "default", text: "选吧。" },
+              // Spec 35：choice 指令驱动选择支，跳过模式在玩家选择前停下。
+              { t: "choice", id: "route", options: [
+                { text: "左", to: "left" },
+                { text: "右", to: "right" },
+              ] },
+            ],
+          },
           { id: "left", instructions: [{ t: "narrate", id: "left_01", text: "左。" }] },
           { id: "right", instructions: [{ t: "narrate", id: "right_01", text: "右。" }] },
         ],
@@ -679,7 +716,7 @@ describe("GraphNovelPlayer playback history and skip", () => {
       await vi.runAllTimersAsync();
 
       expect(player.getSkipMode()).toBe("off");
-      expect(player.getState().choice?.choices).toEqual([
+      expect(player.getState().choice?.choices.map((c) => ({ text: c.text, to: c.to }))).toEqual([
         { text: "左", to: "left" },
         { text: "右", to: "right" },
       ]);

@@ -289,6 +289,14 @@ export function applyInstruction(
     case "completeEnding":
       return state;
 
+    case "choice":
+    case "if":
+      // Spec 35：choice/if 是控制流指令，纯状态机不做嵌套执行。
+      // 真正的分支/选项处理在 GraphNovelPlayer 里（帧栈 + 玩家选择）。
+      // 这里返回 state 不变；应用前置的 choice/nameInput 清理由调用方在
+      // 进入分支体时按需处理。
+      return state;
+
     default: {
       // 穷尽性检查：如果新增指令类型忘了处理，编译期就会报错
       const _exhaustive: never = instr;

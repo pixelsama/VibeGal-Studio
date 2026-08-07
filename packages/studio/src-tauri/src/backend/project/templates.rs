@@ -23,10 +23,12 @@ This directory is a VibeGal-Studio project. Treat the project root as the worksp
 - Node `file` values are relative to `content/`, for example `nodes/start.json`.
 - VibeGal-Studio's node editor may show Scenario DSL text, but project files still persist node content as `Instruction[]` JSON.
 - `pause` is a valid instruction for a pure visual story-frame stop. `wait` is a timed wait; `pause` waits for player input.
-- Do not write `choice` instructions inside node files. Branching lives on graph outgoing edges.
-- Graph edges use `mode`: `linear` for a single automatic next node, `choice` for player-visible options, and `auto` for variable-condition routing.
-- `choice` edges must provide `label`; `auto` edges may provide `condition` and should include one default edge with no condition.
-- The `auto` default edge must be last. Conditions and `set` expressions use the finite scalar grammar documented by the schemas; arbitrary JavaScript is forbidden.
+- Branching lives **inside node instructions**, not on graph edges. Use the `choice` instruction (with `options[].to` to jump to a target node, or `options[].body` for an inline reaction that merges back) and the `if` instruction (`then`/`else` instruction arrays, both merge back after running) for conditional and player-driven branching.
+- Graph edges are pure structure: each edge has `id`, `from`, `to`, an optional `condition` (expression evaluated at runtime, first match wins), and optional `effects` (state changes applied when traversing). Edges have no `mode` or `label` field.
+- A node with 0 outgoing edges ends the story; 1 outgoing edge is a linear continuation; 2+ outgoing edges are condition-evaluated routes (first matching `condition` wins, a null/empty `condition` acts as the fallback). Include exactly one default edge with no condition among multi-exit nodes.
+- `choice` and `if` instructions support nesting (a `choice` inside an `if.then` branch, etc.). Story-point ids on nested instructions let checkpoints/save-restore target them precisely.
+- `chose.<choiceInstructionId>.<optionIndex>` tracks which option a player picked (only for `choice` instructions that have an `id`).
+- Conditions and `set` expressions use the finite scalar grammar documented by the schemas; arbitrary JavaScript is forbidden.
 - Graph terminals and registered endings are different. Register endings in `manifest.unlocks.endings`; use `completeEnding` to settle a playthrough. Plain `unlock endings` does not increment playthrough count.
 - If `content/graph.json` is missing, report a `missing_graph` issue rather than synthesizing legacy chapters.
 - Do not use absolute paths, parent-directory traversal, or Windows drive paths in project data.
@@ -241,7 +243,7 @@ akari: 今天也很安静呢。
 ```
 
 Blank lines split story frames. Stage-only frames become `{ "t": "pause" }`, a player-input stop distinct from timed `{ "t": "wait" }`.
-Choices and automatic branches are configured on the selected node's outgoing graph edges, not inside the node text.
+Branching lives inside node instructions. Use the `choice` instruction for player-visible options (each option can `to` a target node or run an inline `body` that merges back) and the `if` instruction for condition-driven branches (`then`/`else` arrays that merge back). Graph edges are pure structure — `from`/`to` plus an optional `condition` (first match wins, null = fallback) and optional `effects`; they carry no `mode` or `label`.
 
 ## Schemas
 

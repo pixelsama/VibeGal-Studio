@@ -155,7 +155,7 @@ describe("GraphNovelPlayer routing", () => {
   it("linear_edge_enters_target_node", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(
-      { ...baseGraph, edges: [{ id: "start__stay", from: "start", to: "stay", mode: "linear", label: null, condition: null }] },
+      { ...baseGraph, edges: [{ id: "start__stay", from: "start", to: "stay", condition: null }] },
       [
         { id: "start", instructions: [] },
         { id: "stay", instructions: [{ t: "narrate", text: "留下。" }] },
@@ -169,24 +169,26 @@ describe("GraphNovelPlayer routing", () => {
   });
 
   it("choice_edges_set_choice_state_and_choose_enters_target", () => {
+    // Spec 35：choice 现在是节点内指令。两条 choice 边迁移成一个 choice 指令的两个选项。
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(
-      {
-        ...baseGraph,
-        edges: [
-          { id: "start__stay", from: "start", to: "stay", mode: "choice", label: "留下", condition: null },
-          { id: "start__leave", from: "start", to: "leave", mode: "choice", label: "离开", condition: null },
-        ],
-      },
+      { ...baseGraph, edges: [] },
       [
-        { id: "start", instructions: [] },
+        {
+          id: "start", instructions: [
+            { t: "choice", id: "route", options: [
+              { text: "留下", to: "stay" },
+              { text: "离开", to: "leave" },
+            ] },
+          ],
+        },
         { id: "stay", instructions: [{ t: "narrate", text: "留下。" }] },
         { id: "leave", instructions: [{ t: "narrate", text: "离开。" }] },
       ],
     );
 
     player.advance();
-    expect(player.getState().choice?.choices).toEqual([
+    expect(player.getState().choice?.choices.map((c) => ({ text: c.text, to: c.to }))).toEqual([
       { text: "留下", to: "stay" },
       { text: "离开", to: "leave" },
     ]);
@@ -199,13 +201,14 @@ describe("GraphNovelPlayer routing", () => {
   });
 
   it("auto_edges_use_runtime_vars_and_first_matching_edge", () => {
+    // Spec 35：auto 语义 = 多出口按 condition 求值，首命中者走；空 condition 兜底。
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(
       {
         ...baseGraph,
         edges: [
-          { id: "start__stay", from: "start", to: "stay", mode: "auto", label: null, condition: "has_key == true" },
-          { id: "start__leave", from: "start", to: "leave", mode: "auto", label: null, condition: null },
+          { id: "start__stay", from: "start", to: "stay", condition: "has_key == true" },
+          { id: "start__leave", from: "start", to: "leave", condition: null },
         ],
       },
       [
@@ -226,13 +229,13 @@ describe("GraphNovelPlayer routing", () => {
     const player = new GraphNovelPlayer({ manifest, meta });
     player.loadGraph(
       { ...baseGraph, edges: [
-        { id: "bad", from: "start", to: "stay", mode: "auto", label: null, condition: "affection >" },
-        { id: "fallback", from: "start", to: "leave", mode: "auto", label: null, condition: null },
+        { id: "bad", from: "start", to: "stay", condition: "affection >" },
+        { id: "fallback", from: "start", to: "leave", condition: null },
       ] },
       [{ id: "start", instructions: [] }],
     );
     player.advance();
-    expect(player.getRouteError()).toContain("自动分支条件无效");
+    expect(player.getRouteError()).toContain("出口条件无效");
     expect(player.getCurrentNodeId()).toBe("start");
     player.dispose();
   });

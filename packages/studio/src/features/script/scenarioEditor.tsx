@@ -1,6 +1,7 @@
 import { useRef, useState, type CSSProperties, type ComponentProps, type ReactNode, type Ref } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
+  findScenarioBlockHeaderAtLine,
   formatScenarioInstruction,
   INSTRUCTION_DEFAULTS,
   parseScenarioLine,
@@ -9,6 +10,8 @@ import {
 } from "@vibegal/engine";
 import { ResourcePicker } from "../assets/ResourcePicker";
 import { StateChangeEditor } from "./StateChangeEditor";
+import { EdgeEffectsEditor } from "./EdgeEffectsEditor";
+import { ConditionEditor } from "./ConditionEditor";
 import { variableKind, type VariableDeclaration } from "@vibegal/engine";
 import { variableLabel } from "./storyState";
 import { BottomSheet } from "../common/BottomSheet";
@@ -40,6 +43,8 @@ export type ScenarioSelectionKind =
   | "showCg"
   | "playVideo"
   | "completeEnding"
+  | "choice"
+  | "if"
   | "invalid";
 
 export interface ScenarioSelection {
@@ -49,6 +54,8 @@ export interface ScenarioSelection {
   endLine: number;
   lineText: string;
   instruction?: Instruction;
+  /** Spec 35 Phase 2：块头行的指令路径（顶层下标）；叶子行无 path。 */
+  path?: readonly (number | string)[];
   message?: string;
 }
 
@@ -64,6 +71,29 @@ export function getScenarioSelection(text: string, cursorOffset: number): Scenar
   }
 
   const parsed = parseScenarioLine(trimmed);
+
+  // Spec 35 Phase 2：choice / if 块头行——用 findScenarioBlockHeaderAtLine 取得
+  // 完整指令与多行行范围。else 行（无独立指令）回退到 empty。
+  if (parsed.ok && (parsed.block === "choice" || parsed.block === "if")) {
+    const block = findScenarioBlockHeaderAtLine(text, line);
+    if (block) {
+      return {
+        kind: block.kind,
+        line,
+        startLine: block.startLine,
+        endLine: block.endLine,
+        lineText,
+        instruction: block.instruction,
+        path: [block.topIndex],
+      };
+    }
+    return { kind: parsed.block, line, startLine: line, endLine: line, lineText };
+  }
+  if (parsed.ok && parsed.block === "else") {
+    // else 行本身没有独立指令；选中时不展示 inspector（归属父 if）。
+    return { kind: "empty", line, startLine: line, endLine: line, lineText };
+  }
+
   if (!parsed.ok) {
     return { kind: "invalid", line, startLine: line, endLine: line, lineText, message: parsed.message };
   }
@@ -260,6 +290,12 @@ function inlineInstructionFields(
         <CompactTextStatePicker label={t("script.scenario.field.saveAs")} manifest={manifest} variables={variables} value={instruction.key} onChange={(key) => onChange({ ...instruction, key })} />
         <CompactNumber label={t("script.scenario.field.maxCharacters")} value={instruction.maxLength ?? INSTRUCTION_DEFAULTS.inputName.maxLength} min={1} max={100} onChange={(maxLength) => onChange({ ...instruction, maxLength })} />
       </>;
+    case "choice":
+      // Spec 35 Phase 2：choice 的选项/prompt/effects 在 inspector 编辑；行内只提示选项数。
+      return <span style={mutedTextStyle}>{t("script.scenario.choice.inlineOptionCount", { count: instruction.options.length })}</span>;
+    case "if":
+      // Spec 35 Phase 2：if 的 condition 在 inspector 编辑；行内只提示。
+      return <span style={mutedTextStyle}>{t("script.scenario.choice.inlineIfHint")}</span>;
     default:
       return <span style={mutedTextStyle}>{t("script.scenario.moreInInspector")}</span>;
   }
@@ -358,6 +394,8 @@ function inlineInstructionTitle(
     pause: "script.scenario.instruction.pause",
     unlock: "script.scenario.instruction.unlock",
     completeEnding: "script.scenario.instruction.completeEnding",
+    choice: "script.scenario.instruction.choice",
+    if: "script.scenario.instruction.if",
   } as const)[instruction.t];
   return key ? t(key) : instruction.t;
 }
@@ -781,6 +819,92 @@ export function ScenarioInspector({
           <div style={mutedTextStyle}>{t("script.scenario.endingHint")}</div>
         </InspectorPanel>
       );
+    case "choice": {
+      // Spec 35 Phase 2：choice 结构化编辑器——编辑 prompt 与每个 option 的 text/effects/to。
+      // option 的 body 在剧本区以缩进树编辑，这里只给计数提示。
+      const options = instruction.options;
+      const updateOption = (index: number, patch: Partial<(typeof options)[number]>) => {
+        const nextOptions = options.map((option, i) => (i === index ? { ...option, ...patch } : option));
+        onReplaceInstruction({ ...instruction, options: nextOptions });
+      };
+      const removeOption = (index: number) => {
+        if (options.length <= 1) return;
+        onReplaceInstruction({ ...instruction, options: options.filter((_, i) => i !== index) });
+      };
+      const addOption = () => {
+        onReplaceInstruction({
+          ...instruction,
+          options: [...options, { text: t("script.scenario.choice.newOptionText") }],
+        });
+      };
+      return (
+        <InspectorPanel title={t("script.scenario.instruction.choice")}>
+          <OptionalTextField
+            label={t("script.scenario.choice.prompt")}
+            value={instruction.prompt ?? undefined}
+            onChange={(prompt) => onReplaceInstruction({ ...instruction, prompt: prompt || null })}
+          />
+          {options.map((option, index) => (
+            <div key={index} style={inspectorPanelStyle}>
+              <TextField
+                label={t("script.scenario.choice.optionText", { number: index + 1 })}
+                value={option.text}
+                onChange={(text) => updateOption(index, { text })}
+              />
+              <EdgeEffectsEditor
+                effects={option.effects}
+                registry={variables}
+                onChange={(effects) => updateOption(index, { effects })}
+              />
+              <OptionalTextField
+                label={t("script.scenario.choice.jumpTarget")}
+                value={option.to}
+                onChange={(to) => updateOption(index, { to: to || undefined })}
+              />
+              {option.body && option.body.length > 0 && (
+                <div style={mutedTextStyle}>
+                  {t("script.scenario.choice.bodyCount", { count: option.body.length })}
+                </div>
+              )}
+              <button
+                type="button"
+                className="gs-btn gs-btn--ghost"
+                disabled={options.length <= 1}
+                onClick={() => removeOption(index)}
+                style={toolButtonStyle}
+              >
+                {t("script.scenario.choice.removeOption")}
+              </button>
+            </div>
+          ))}
+          <button type="button" className="gs-btn gs-btn--secondary" onClick={addOption} style={toolButtonStyle}>
+            {t("script.scenario.choice.addOption")}
+          </button>
+          <div style={mutedTextStyle}>{t("script.scenario.choice.editBodyHint")}</div>
+        </InspectorPanel>
+      );
+    }
+    case "if": {
+      // Spec 35 Phase 2：if 结构化编辑器——编辑 condition，then/else 在剧本区编辑。
+      return (
+        <InspectorPanel title={t("script.scenario.instruction.if")}>
+          <ConditionEditor
+            source={instruction.condition}
+            sources={[]}
+            onChange={(condition) => onReplaceInstruction({ ...instruction, condition })}
+          />
+          <div style={mutedTextStyle}>
+            {t("script.scenario.choice.thenCount", { count: instruction.then.length })}
+          </div>
+          {instruction.else && instruction.else.length > 0 && (
+            <div style={mutedTextStyle}>
+              {t("script.scenario.choice.elseCount", { count: instruction.else.length })}
+            </div>
+          )}
+          <div style={mutedTextStyle}>{t("script.scenario.choice.editBranchHint")}</div>
+        </InspectorPanel>
+      );
+    }
     default:
       // 当前 switch 已覆盖全部指令类型；保留兜底以防未来新增指令类型时没有表单。
       return (

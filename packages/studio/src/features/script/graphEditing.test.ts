@@ -131,14 +131,12 @@ describe("graphEditing", () => {
       id: "ending__node",
       from: "ending",
       to: "node",
-      mode: "linear",
-      label: null,
       condition: null,
     });
     expect(duplicate.edges).toHaveLength(next.edges.length);
   });
 
-  it("connectNodes upgrades a second outgoing edge into a player choice branch", () => {
+  it("connectNodes adds a second outgoing edge alongside an existing one", () => {
     const next = connectNodes(sampleGraph, "node", "ending");
     const outgoing = next.edges.filter((edge) => edge.from === "node");
 
@@ -147,16 +145,12 @@ describe("graphEditing", () => {
         id: "node__node_2",
         from: "node",
         to: "node_2",
-        mode: "choice",
-        label: "Node 2",
         condition: null,
       },
       {
         id: "node__ending",
         from: "node",
         to: "ending",
-        mode: "choice",
-        label: "Ending",
         condition: null,
       },
     ]);
@@ -278,8 +272,6 @@ describe("createSuccessor", () => {
       id: "ending__ending_2",
       from: "ending",
       to: "ending_2",
-      mode: "linear",
-      label: null,
       condition: null,
     });
     expect(graph.nodes).toHaveLength(sampleGraph.nodes.length + 1);

@@ -149,27 +149,25 @@ describe("graphMapping", () => {
         source: "prologue",
         target: "first-meeting",
         type: "smoothstep",
-        data: { condition: null, mode: "linear" },
+        data: { condition: null },
       },
     ]);
   });
 
-  it("mapGraphToFlow_labels_choice_edges_from_edge_label", () => {
-    const flow = mapGraphToFlow({
-      ...sampleGraph,
-      edges: [{ ...sampleGraph.edges[0], mode: "choice", label: "继续前进" }],
-    });
-
-    expect(flow.edges[0].label).toBe("继续前进");
-  });
-
   it("mapGraphToFlow_marks_choice_exit_node_as_branch", () => {
-    const graphWithNonEntryChoice: ProjectGraph = {
+    const graphWithBranch: ProjectGraph = {
       ...sampleGraph,
       entryNodeId: "first-meeting",
-      edges: [{ ...sampleGraph.edges[0], mode: "choice", label: "继续前进" }],
+      nodes: [
+        ...sampleGraph.nodes,
+        { id: "second-meeting", title: "再遇", file: "nodes/second-meeting.json", position: { x: 420, y: 360 } },
+      ],
+      edges: [
+        { id: "prologue__first-meeting", from: "prologue", to: "first-meeting", condition: null },
+        { id: "prologue__second-meeting", from: "prologue", to: "second-meeting", condition: null },
+      ],
     };
-    const flow = mapGraphToFlow(graphWithNonEntryChoice);
+    const flow = mapGraphToFlow(graphWithBranch);
 
     expect(flow.nodes.find((node) => node.id === "prologue")?.data.status).toBe("branch");
   });

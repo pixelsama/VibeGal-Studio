@@ -10,6 +10,7 @@ import {
 import { readNodeFileSnapshot, saveNode } from "../../lib/tauri";
 import type {
   FileRevision,
+  GraphEdge,
   GraphIssueFocusRequest,
   GraphNode,
   NodeFileSnapshot,
@@ -61,6 +62,9 @@ import {
 } from "./scenarioEditor";
 import { ScenarioTextEditor, SCENARIO_LINE_HEIGHT, SCENARIO_TEXT_PADDING_TOP } from "./ScenarioTextEditor";
 import { mapScenarioFrames } from "./scenarioFrames";
+import { ExitRoutingBlock } from "./ExitRoutingBlock";
+import { collectStateSources, stateSourceDefaults } from "./storyState";
+import { applyBackspace, applyEnter, applyTab } from "./scenarioIndentKeyboard";
 import { planScenarioInstructionMove } from "./scenarioReordering";
 import { followedPreviewStart } from "./nodePreviewStart";
 import {
@@ -111,6 +115,13 @@ interface NodeEditorProps {
   nodeRevision?: FileRevision;
   externalChange?: NodeExternalChange | null;
   focusRequest?: GraphIssueFocusRequest | null;
+  /** Spec 35 Phase 2：节点的出口边（来自图），供底部出口路由区块编辑 condition。 */
+  outgoingEdges?: GraphEdge[];
+  /** 出口边的条件/effects 编辑回写（走 ScriptWorkspace 的 replaceOutgoingEdges 管线）。 */
+  onUpdateOutgoingEdges?: (edges: GraphEdge[]) => void;
+  /** Spec 35 Phase 3：出口试算值的会话覆盖（提升到 ScriptWorkspace，避免 NodeEditor remount 丢失）。 */
+  trialOverrides?: Record<string, string | number | boolean | null>;
+  onTrialChange?: (values: Record<string, string | number | boolean | null>) => void;
   onSaved: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onExternalChangeResolved?: () => void;
@@ -338,6 +349,10 @@ export function NodeEditor({
   nodeRevision,
   externalChange,
   focusRequest,
+  outgoingEdges,
+  onUpdateOutgoingEdges,
+  trialOverrides,
+  onTrialChange,
   onSaved,
   onDirtyChange,
   onExternalChangeResolved,
@@ -649,6 +664,17 @@ export function NodeEditor({
 
   const scenarioSelection = useMemo(() => getScenarioSelection(text, cursorOffset), [cursorOffset, text]);
   const scenarioFrameMap = useMemo(() => mapScenarioFrames(text), [text]);
+  // Spec 35 Phase 2：出口路由区块的试算来源。
+  const exitStateSources = useMemo(
+    () => collectStateSources({
+      registry: project.content.variables,
+      graph: project.graph,
+      manifest: project.content.manifest,
+      nodes: project.nodes,
+    }),
+    [project.content.variables, project.graph, project.content.manifest, project.nodes],
+  );
+  const exitTrialDefaults = useMemo(() => stateSourceDefaults(exitStateSources), [exitStateSources]);
   const [previewStartIndex, setPreviewStartIndex] = useState<number | null>(null);
   const [followPreviewCursor, setFollowPreviewCursor] = useState(false);
   const currentLineStartIndex = useMemo(() => {
@@ -1115,6 +1141,43 @@ export function NodeEditor({
     if ((event.key === "Enter" || event.key === "Tab") && commandMenuVisible && visibleCommands[0]) {
       event.preventDefault();
       handleInsertCommand((visibleCommands[commandIndex] ?? visibleCommands[0]).kind);
+      return;
+    }
+
+    // Spec 35 Phase 2：缩进树键盘交互（仅在 scenario 模式且没有补全菜单打开时）。
+    if (mode === "scenario" && !parameterMenuVisible && !commandMenuVisible) {
+      const textarea = event.currentTarget;
+      const selStart = textarea.selectionStart;
+      const selEnd = textarea.selectionEnd;
+      const collapsed = selStart === selEnd;
+      if (event.key === "Enter" && !event.shiftKey && collapsed) {
+        const result = applyEnter(text, selStart);
+        if (result.cursorOffset !== selStart + 1) { // 仅当产生缩进时拦截
+          event.preventDefault();
+          pendingSelectionRef.current = result.cursorOffset;
+          setCursorOffset(result.cursorOffset);
+          applyScenarioText(result.text, {});
+          return;
+        }
+      }
+      if (event.key === "Backspace" && collapsed) {
+        const result = applyBackspace(text, selStart);
+        if (result) {
+          event.preventDefault();
+          pendingSelectionRef.current = result.cursorOffset;
+          setCursorOffset(result.cursorOffset);
+          applyScenarioText(result.text, {});
+          return;
+        }
+      }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        const result = applyTab(text, selStart, event.shiftKey ? -1 : 1);
+        pendingSelectionRef.current = result.cursorOffset;
+        setCursorOffset(result.cursorOffset);
+        applyScenarioText(result.text, {});
+        return;
+      }
     }
   };
 
@@ -1296,6 +1359,18 @@ export function NodeEditor({
         onKeyDown={handleTextareaKeyDown}
         onScroll={setTextareaScrollTop}
       />
+      {mode === "scenario" && project.graph && outgoingEdges && onUpdateOutgoingEdges && (
+        <ExitRoutingBlock
+          graph={project.graph}
+          nodeId={node.id}
+          edges={outgoingEdges}
+          sources={exitStateSources}
+          registry={project.content.variables}
+          trialValues={{ ...exitTrialDefaults, ...(trialOverrides ?? {}) }}
+          onTrialChange={onTrialChange ?? (() => {})}
+          onChange={onUpdateOutgoingEdges}
+        />
+      )}
     </div>
   );
 
