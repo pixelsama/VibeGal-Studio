@@ -56,35 +56,49 @@ function instructionPolicy(instruction: { t: string }): InstructionPolicy | unde
 
 function validateInstructionIdentity(chapter: Chapter, file: string): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const firstIndexById = new Map<string, number>();
+  const firstIndexById = new Map<string, { index: number }>();
 
-  chapter.forEach((instr, index) => {
-    if (!instructionPolicy(instr)?.storyPoint) return;
-    const instructionId = (instr as Record<string, unknown>).id;
-    if (typeof instructionId !== "string" || !instructionId) {
-      issues.push(productIssue(
-        "instruction_id_missing",
-        file,
-        `${instr.t} 指令缺少稳定 id；存档、已读和回滚将无法稳定定位该停点。`,
-        index,
-        `$[${index}].id`,
-      ));
-      return;
-    }
+  const visit = (instructions: readonly Chapter[number][], path: string, rootIndex?: number) => {
+    instructions.forEach((instr, index) => {
+      const instructionPath = `${path}[${index}]`;
+      const topLevelIndex = rootIndex ?? index;
+      if (instructionPolicy(instr)?.storyPoint) {
+        const instructionId = (instr as Record<string, unknown>).id;
+        if (typeof instructionId !== "string" || !instructionId) {
+          issues.push(productIssue(
+            "instruction_id_missing",
+            file,
+            `${instr.t} 指令缺少稳定 id；存档、已读和回滚将无法稳定定位该停点。`,
+            topLevelIndex,
+            `${instructionPath}.id`,
+          ));
+        } else {
+          const first = firstIndexById.get(instructionId);
+          if (first) {
+            issues.push(productIssue(
+              "instruction_id_duplicate",
+              file,
+              `同一节点内重复的停点 instruction id: "${instructionId}"（首次出现于 #${first.index}）。`,
+              topLevelIndex,
+              `${instructionPath}.id`,
+            ));
+          } else {
+            firstIndexById.set(instructionId, { index: topLevelIndex });
+          }
+        }
+      }
+      if (instr.t === "if") {
+        visit(instr.then, `${instructionPath}.then`, topLevelIndex);
+        if (instr.else) visit(instr.else, `${instructionPath}.else`, topLevelIndex);
+      } else if (instr.t === "choice") {
+        instr.options.forEach((option, optionIndex) => {
+          if (option.body) visit(option.body, `${instructionPath}.options[${optionIndex}].body`, topLevelIndex);
+        });
+      }
+    });
+  };
 
-    const firstIndex = firstIndexById.get(instructionId);
-    if (firstIndex != null) {
-      issues.push(productIssue(
-        "instruction_id_duplicate",
-        file,
-        `同一节点内重复的停点 instruction id: "${instructionId}"（首次出现于 #${firstIndex}）。`,
-        index,
-        `$[${index}].id`,
-      ));
-      return;
-    }
-    firstIndexById.set(instructionId, index);
-  });
+  visit(chapter, "$");
 
   return issues;
 }
@@ -132,12 +146,25 @@ export function validateReferences(
   const parsed = ChapterSchema.safeParse(chapter);
   if (!parsed.success) return contractIssues("nodeFile", chapter, file);
 
-  parsed.data.forEach((instruction, index) => {
-    const fields = instruction as Record<string, unknown>;
-    for (const rule of instructionPolicy(instruction)?.references ?? []) {
-      validateReferenceRule(rule, fields, manifest, file, index, issues);
-    }
-  });
+  const visit = (instructions: readonly Chapter[number][], path: string, rootIndex?: number) => {
+    instructions.forEach((instruction, index) => {
+      const instructionPath = `${path}[${index}]`;
+      const topLevelIndex = rootIndex ?? index;
+      const fields = instruction as Record<string, unknown>;
+      for (const rule of instructionPolicy(instruction)?.references ?? []) {
+        validateReferenceRule(rule, fields, manifest, file, topLevelIndex, instructionPath, issues);
+      }
+      if (instruction.t === "if") {
+        visit(instruction.then, `${instructionPath}.then`, topLevelIndex);
+        if (instruction.else) visit(instruction.else, `${instructionPath}.else`, topLevelIndex);
+      } else if (instruction.t === "choice") {
+        instruction.options.forEach((option, optionIndex) => {
+          if (option.body) visit(option.body, `${instructionPath}.options[${optionIndex}].body`, topLevelIndex);
+        });
+      }
+    });
+  };
+  visit(parsed.data, "$");
   return issues;
 }
 
@@ -147,6 +174,7 @@ function validateReferenceRule(
   manifest: Manifest,
   file: string,
   index: number,
+  instructionPath: string,
   issues: ValidationIssue[],
 ) {
   if (rule.kind === "registry" || rule.kind === "optionalRegistry") {
@@ -154,7 +182,7 @@ function validateReferenceRule(
     if (rule.kind === "optionalRegistry" && id == null) return;
     const registry = recordAtPath(manifest, rule.registryPath);
     if (typeof id === "string" && !(id in registry)) {
-      issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `$[${index}].${rule.idField}`));
+      issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `${instructionPath}.${rule.idField}`));
     }
     return;
   }
@@ -165,11 +193,11 @@ function validateReferenceRule(
     if (typeof characterId !== "string") return;
     const character = manifest.characters[characterId];
     if (!character) {
-      issues.push(productIssue("missing_character_ref", file, `引用了不存在的 character id: "${characterId}"`, index, `$[${index}].${rule.characterIdField}`));
+      issues.push(productIssue("missing_character_ref", file, `引用了不存在的 character id: "${characterId}"`, index, `${instructionPath}.${rule.characterIdField}`));
       return;
     }
     if (typeof expression === "string" && !(expression in character.sprites)) {
-      issues.push(productIssue("missing_character_expr", file, `角色 "${characterId}" 没有表情 "${expression}"（可用: ${Object.keys(character.sprites).join(", ")}）`, index, `$[${index}].${rule.expressionField}`));
+      issues.push(productIssue("missing_character_expr", file, `角色 "${characterId}" 没有表情 "${expression}"（可用: ${Object.keys(character.sprites).join(", ")}）`, index, `${instructionPath}.${rule.expressionField}`));
     }
     return;
   }
@@ -181,7 +209,7 @@ function validateReferenceRule(
     if (!branch || typeof id !== "string") return;
     const registry = recordAtPath(manifest, [...rule.registryPath, ...branch]);
     if (!(id in registry)) {
-      issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `$[${index}].${rule.idField}`));
+      issues.push(productIssue(rule.missingCode, file, `引用了不存在的资源 id: "${id}"`, index, `${instructionPath}.${rule.idField}`));
     }
     return;
   }

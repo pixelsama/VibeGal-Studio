@@ -53,16 +53,22 @@ describe("shouldDedentOnBackspace", () => {
     expect(shouldDedentOnBackspace(text, offset)).toBe(true);
   });
 
+  it("dedents when the cursor is naturally after the inserted indentation", () => {
+    const text = "choice\n    \n";
+    const offset = "choice\n    ".length;
+    expect(shouldDedentOnBackspace(text, offset)).toBe(true);
+  });
+
   it("does not dedent a non-empty line", () => {
     const text = "choice\n    opt";
     const offset = "choice\n".length;
     expect(shouldDedentOnBackspace(text, offset)).toBe(false);
   });
 
-  it("does not dedent when cursor is not at column 0", () => {
+  it("also dedents when the cursor is inside the indentation", () => {
     const text = "choice\n    \n";
     const offset = "choice\n  ".length;
-    expect(shouldDedentOnBackspace(text, offset)).toBe(false);
+    expect(shouldDedentOnBackspace(text, offset)).toBe(true);
   });
 });
 
@@ -109,6 +115,13 @@ describe("applyBackspace", () => {
     const result = applyBackspace(text, offset);
     expect(result).not.toBeNull();
     expect(result!.text).toBe("choice\n\n");
+  });
+
+  it("exits a nested choice body back to top-level indentation", () => {
+    const text = "choice\n    option\n        \n";
+    const result = applyBackspace(text, "choice\n    option\n        ".length);
+    expect(result).not.toBeNull();
+    expect(result!.text).toBe("choice\n    option\n\n");
   });
 
   it("returns null for a non-empty line (lets native backspace run)", () => {

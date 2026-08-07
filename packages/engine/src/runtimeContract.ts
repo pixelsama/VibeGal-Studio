@@ -65,6 +65,8 @@ export const RuntimeSnapshotSchema = z.strictObject({
   currentNodeId: z.string().min(1),
   currentStoryPoint: StoryPointIdSchema.nullable(),
   vars: z.record(z.string(), VariableValueSchema),
+  /** Variables at node entry, used to replay relative assignments without double-applying them. */
+  varsAtNodeEntry: z.record(z.string(), VariableValueSchema).optional(),
   background: z.string().nullable(),
   sprites: z.array(SerializableSpriteSchema),
   bgm: SerializableBgmSchema.nullable(),
@@ -247,12 +249,14 @@ export function createRuntimeSnapshot(
   position: Pick<RuntimeSnapshot, "currentNodeId" | "currentStoryPoint">,
   playthroughId = createPlaythroughId(),
   nameInputOrigin?: RuntimeSnapshot["nameInputOrigin"],
+  varsAtNodeEntry?: RuntimeSnapshot["varsAtNodeEntry"],
 ): RuntimeSnapshot {
   return RuntimeSnapshotSchema.parse({
     playthroughId,
     currentNodeId: position.currentNodeId,
     currentStoryPoint: position.currentStoryPoint,
     vars: state.vars,
+    ...(varsAtNodeEntry ? { varsAtNodeEntry } : {}),
     background: state.background,
     sprites: state.sprites
       .filter((sprite) => !sprite.leaving)

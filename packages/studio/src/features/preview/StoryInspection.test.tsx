@@ -188,6 +188,28 @@ describe("describeNextBranch", () => {
     if (branch.kind !== "auto") throw new Error("expected auto");
     expect(branch.winnerNodeId).toBeNull();
   });
+
+  it("evaluates a fallback after conditional exits regardless of declaration order", () => {
+    const inspectionGraph: ProjectGraph = {
+      version: 1,
+      entryNodeId: "rooftop",
+      nodes: [
+        { id: "rooftop", title: "屋顶", file: "nodes/rooftop.json", position: { x: 0, y: 0 } },
+        { id: "good", title: "好", file: "nodes/good.json", position: { x: 1, y: 0 } },
+        { id: "fallback", title: "兜底", file: "nodes/fallback.json", position: { x: 1, y: 1 } },
+      ],
+      edges: [
+        { id: "fallback-first", from: "rooftop", to: "fallback", condition: null },
+        { id: "conditional", from: "rooftop", to: "good", condition: "affection >= 60" },
+      ],
+    };
+
+    expect(describeNextBranch(inspectionGraph, "rooftop", { affection: 65 }, new Map())).toMatchObject({
+      kind: "auto",
+      winnerNodeId: "good",
+      edgeId: "conditional",
+    });
+  });
 });
 
 describe("describeChange", () => {

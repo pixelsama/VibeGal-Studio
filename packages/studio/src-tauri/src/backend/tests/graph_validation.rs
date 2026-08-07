@@ -190,7 +190,7 @@ fn validate_graph_warns_auto_without_default_edge() {
 }
 
 #[test]
-fn validate_graph_rejects_invalid_condition_and_default_before_condition() {
+fn validate_graph_rejects_invalid_condition_but_accepts_default_before_condition() {
     let mut graph = choice_branch_graph();
     graph.edges = vec![
         auto_edge("fallback", "start", "stay", None),
@@ -201,10 +201,9 @@ fn validate_graph_rejects_invalid_condition_and_default_before_condition() {
         .iter()
         .any(|issue| issue.code == "invalid_edge_condition"
             && issue.edge_id.as_deref() == Some("bad")));
-    assert!(issues
+    assert!(!issues
         .iter()
-        .any(|issue| issue.code == "auto_default_edge_not_last"
-            && issue.edge_id.as_deref() == Some("fallback")));
+        .any(|issue| issue.code == "auto_default_edge_not_last"));
 }
 
 #[test]
@@ -230,6 +229,40 @@ fn route_analysis_finds_unreachable_nodes() {
     assert_eq!(issue.severity, GraphIssueSeverity::Warn);
     assert_eq!(issue.node_id.as_deref(), Some("orphan"));
     assert_eq!(issue.file.as_deref(), Some("content/graph.json"));
+}
+
+#[test]
+fn route_analysis_follows_choice_option_targets() {
+    let mut graph = choice_branch_graph();
+    graph.edges.clear();
+    let nodes = vec![
+        NodeEntry {
+            rel_path: "nodes/start.json".to_string(),
+            data: Some(
+                serde_json::json!([{ "t": "choice", "options": [{ "text": "去", "to": "stay" }] }]),
+            ),
+        },
+        NodeEntry {
+            rel_path: "nodes/stay.json".to_string(),
+            data: Some(serde_json::json!([])),
+        },
+        NodeEntry {
+            rel_path: "nodes/leave.json".to_string(),
+            data: Some(serde_json::json!([])),
+        },
+    ];
+
+    let issues = validate_graph(&graph, &nodes);
+
+    assert!(!issues
+        .iter()
+        .any(|issue| issue.code == "unreachable_node" && issue.node_id.as_deref() == Some("stay")));
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == "unreachable_node"
+                && issue.node_id.as_deref() == Some("leave"))
+    );
 }
 
 #[test]

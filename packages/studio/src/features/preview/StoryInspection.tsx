@@ -194,7 +194,7 @@ export function describeNextBranch(
 
   // 首个命中者胜出，与 graphRouting 的语义一致。
   let winner: { toNodeId: string; edgeId: string } | null = null;
-  for (const edge of outgoing) {
+  for (const edge of orderInspectionRouteEdges(outgoing)) {
     const result = evaluateGraphConditionResult(edge.condition ?? null, vars);
     if (result.ok && result.value) {
       winner = { toNodeId: edge.to, edgeId: edge.id };
@@ -224,6 +224,17 @@ export function describeNextBranch(
       : [];
 
   return { kind: "auto", clauses, winnerNodeId: winner?.toNodeId ?? null, edgeId: explained.id };
+}
+
+function orderInspectionRouteEdges(edges: ProjectGraph["edges"]): ProjectGraph["edges"] {
+  return edges
+    .map((edge, index) => ({ edge, index }))
+    .sort((left, right) => {
+      const leftFallback = left.edge.condition?.trim() ? 0 : 1;
+      const rightFallback = right.edge.condition?.trim() ? 0 : 1;
+      return leftFallback - rightFallback || left.index - right.index;
+    })
+    .map(({ edge }) => edge);
 }
 
 /** 检查节点指令树是否含 choice 指令（递归进入 if.then/else、choice option body）。 */

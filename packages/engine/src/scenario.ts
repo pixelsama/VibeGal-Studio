@@ -519,6 +519,15 @@ function parseOptionChildren(
       ci = findChildIndex(children, next);
       continue;
     }
+    if (header?.kind === "else") {
+      acc.diagnostics.push({ line: child.index + 1, message: "else 必须跟在 if 之后。" });
+      // An orphan else owns the more-indented lines beneath it syntactically;
+      // skip that malformed subtree instead of silently leaking its body into
+      // the surrounding choice option.
+      ci += 1;
+      while (ci < children.length && children[ci].indent > child.indent) ci += 1;
+      continue;
+    }
     // 叶子指令行
     const parsed = parseScenarioLine(child.text);
     if (!parsed.ok) {
@@ -619,6 +628,9 @@ function parseIfBlock(
   }
   const then = parseChildInstructions(lines, thenChildren, acc);
   const elseBranch = elseChildren ? parseChildInstructions(lines, elseChildren, acc) : undefined;
+  if (thenChildren.length === 0 && elseChildren == null) {
+    acc.diagnostics.push({ line: headerLine.index + 1, message: "if 需要至少一条缩进正文；普通旁白请使用 @narrate。" });
+  }
   if (!condition) return { instruction: null, next: i };
   const instruction = pruneUndefined({
     t: "if" as const,
@@ -732,16 +744,11 @@ export function findScenarioBlockHeaderAtLine(text: string, lineNumber: number):
   if (!target) return null;
   const header = parseBlockHeader(target.text);
   if (!header || header.kind === "else") return null;
-  // 计算该块头是第几条顶层指令（顶层 = 缩进 0 的指令/块头；空行不算）。
-  let topIndex = -1;
-  for (const line of lines) {
-    if (line.blank) continue;
-    if (line.indent === 0 && !line.text.startsWith("@continue")) {
-      // @to 不可能出现在顶层；@effects 也不行。只有真指令/块头算顶层。
-      topIndex += 1;
-    }
-    if (line.index === target.index) break;
-  }
+  // Use the parser on the prefix to count actual instructions. Counting
+  // top-level source lines is insufficient because a blank line can inject an
+  // implicit pause for a non-blocking frame before this block header.
+  const prefixResult = parseScenarioText(lines.slice(0, target.index).map((line) => line.raw).join("\n"));
+  const topIndex = prefixResult.instructions.length;
   const result = parseScenarioText(text);
   const instruction = result.instructions[topIndex];
   if (!instruction || instruction.t !== header.kind) return null;

@@ -158,7 +158,7 @@ DSL 规则：
 - 只有舞台命令、没有文本/等待的帧会自动补一个 `{ "t": "pause" }`，用于停在纯画面状态等待玩家继续。
 - `@wait 800` 是时间等待，计时结束后自动继续；`@pause` 是玩家停点，不会自动继续。
 - `@set key value` 设置剧情变量；`value` 可为字符串、数字、布尔值或 `null`。变量供节点内 `if` 指令或出边 `condition` 判断。
-- 节点内的 `choice` / `if` 分支指令以 JSON 形式写在 `Instruction[]` 中（见上方指令表）；当前 Scenario DSL 文本投影尚未为 `choice` / `if` 提供专属语法，需要嵌套分支时请直接编辑 `content/nodes/*.json`。
+- 节点内的 `choice` / `if` 分支指令既可直接写在 `Instruction[]` JSON 中，也可使用 Scenario DSL 的缩进块语法（`choice` / `if` / `else`，选项正文支持 `@to` 与 `@effects`）；需要表达 DSL 尚未覆盖的字段时再使用 `@instruction` JSON 逃生语法。
 - V1 不支持 `@layout`、相对坐标或 renderer layout override；精细布局属于后续能力。
 
 ## meta.json

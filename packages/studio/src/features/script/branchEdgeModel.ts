@@ -48,8 +48,6 @@ export function buildEdgeChoiceAnnotations(
 
   // 先收集每条边的 choice 选项文案。
   const edgeOptions = new Map<string, string[]>();
-  // 记录哪些边的源节点有 choice 指令（用于区分 choice vs auto）。
-  const choiceEdgeIds = new Set<string>();
 
   for (const node of graph.nodes) {
     const entry = nodes.find((e) => e.relPath === node.file);
@@ -60,7 +58,6 @@ export function buildEdgeChoiceAnnotations(
         if (!option.to) continue;
         const edge = graph.edges.find((e) => e.from === node.id && e.to === option.to);
         if (!edge) continue;
-        choiceEdgeIds.add(edge.id);
         const label = option.text || nodeTitle.get(option.to) || option.to;
         const list = edgeOptions.get(edge.id) ?? [];
         list.push(label);
@@ -71,10 +68,9 @@ export function buildEdgeChoiceAnnotations(
 
   // 构建标注。
   for (const edge of graph.edges) {
-    const outgoing = graph.edges.filter((e) => e.from === edge.from);
-    const kind: EdgeKind = choiceEdgeIds.has(edge.id)
-      ? "choice"
-      : outgoing.length > 1 ? "auto" : "linear";
+    // Keep edge-kind derivation in one place so labels and edge metadata cannot
+    // disagree about nested choice targets.
+    const kind = deriveEdgeKind(graph, nodes, edge);
     const options = edgeOptions.get(edge.id) ?? [];
     if (kind === "choice" || options.length > 0) {
       annotations.set(edge.id, { kind, options });
@@ -139,27 +135,8 @@ function hasChoiceOptionTargeting(
   if (!node || !nodes) return false;
   const entry = nodes.find((e) => e.relPath === node.file);
   if (!entry?.data) return false;
-  return scanChoiceOptions(entry.data as Instruction[], targetNodeId);
-}
-
-function scanChoiceOptions(instructions: Instruction[], targetNodeId: string): boolean {
-  for (const instr of instructions) {
-    if (instr.t === "choice") {
-      if (instr.options.some((opt) => opt.to === targetNodeId)) return true;
-    }
-    // 递归进入 if.then / if.else
-    if (instr.t === "if") {
-      if (scanChoiceOptions(instr.then, targetNodeId)) return true;
-      if (instr.else && scanChoiceOptions(instr.else, targetNodeId)) return true;
-    }
-    // 递归进入 choice option body
-    if (instr.t === "choice") {
-      for (const opt of instr.options) {
-        if (opt.body && scanChoiceOptions(opt.body, targetNodeId)) return true;
-      }
-    }
-  }
-  return false;
+  return collectChoiceInstructions(entry.data as Instruction[])
+    .some((choice) => choice.options.some((option) => option.to === targetNodeId));
 }
 
 // ── 试算 ───────────────────────────────────────────────────────────────

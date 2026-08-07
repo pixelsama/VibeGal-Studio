@@ -476,6 +476,26 @@ describe("GraphNovelPlayer playback history and skip", () => {
     restored.dispose();
   });
 
+  it("restores a submitted name when saving after the naming checkpoint", () => {
+    const instructions = [
+      { t: "inputName" as const, id: "ask_name", key: "playerName", prompt: "怎么称呼你？", maxLength: 20 },
+      { t: "narrate" as const, id: "line_01", text: "你好，{玩家名字}。" },
+    ];
+    const original = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    original.loadGraph(baseGraph, [{ id: "start", instructions }]);
+    original.advance();
+    original.submitName("小满");
+    const snapshot = original.createSnapshot();
+
+    const restored = new GraphNovelPlayer({ manifest, meta, variables: registry });
+    restored.loadGraph(baseGraph, [{ id: "start", instructions }]);
+    expect(restored.restoreSnapshot(snapshot).warnings).toEqual([]);
+    expect(restored.getState().vars.playerName).toBe("小满");
+    expect(restored.getState().narration?.text).toBe("你好，小满。");
+    original.dispose();
+    restored.dispose();
+  });
+
   it("usesTheDefaultNameAndRejectsNonTextStoryState", () => {
     const player = new GraphNovelPlayer({ manifest, meta, variables: registry });
     player.loadGraph(baseGraph, [{

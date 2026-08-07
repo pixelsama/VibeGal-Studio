@@ -93,4 +93,20 @@ describe("preview start helpers", () => {
       nodeId: "locked",
     });
   });
+
+  it("evaluates a fallback after conditional exits regardless of declaration order", () => {
+    const graph = {
+      ...project.graph!,
+      edges: [
+        { id: "fallback-first", from: "start", to: "fallback", condition: null },
+        { id: "conditional", from: "start", to: "locked", condition: "has_key == true" },
+      ],
+    };
+
+    expect(resolveAutoRoutePreview(graph, "start", { has_key: true })).toEqual({
+      kind: "target",
+      edgeId: "conditional",
+      nodeId: "locked",
+    });
+  });
 });

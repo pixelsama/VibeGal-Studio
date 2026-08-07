@@ -49,7 +49,10 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
             issues.push(GraphIssue {
                 severity: GraphIssueSeverity::Error,
                 code: "missing_chapter_ref".to_string(),
-                message: format!("节点「{}」引用了不存在的章节 {}", node.title, node.chapter_id),
+                message: format!(
+                    "节点「{}」引用了不存在的章节 {}",
+                    node.title, node.chapter_id
+                ),
                 file: Some("content/graph.json".to_string()),
                 json_path: Some(format!("$.nodes[{index}].chapterId")),
                 node_id: Some(node.id.clone()),
@@ -134,7 +137,11 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
 
         // Spec 35：边不再有 mode/label；条件路由对所有带非空 condition 的出口求值。
         // 校验 condition 表达式语法（空 condition = 兜底，合法）。
-        if let Some(condition) = edge.condition.as_deref().filter(|value| !value.trim().is_empty()) {
+        if let Some(condition) = edge
+            .condition
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
             if let Err(message) = super::expression::parse_expression(condition) {
                 issues.push(GraphIssue {
                     severity: GraphIssueSeverity::Error,
@@ -152,7 +159,7 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
     // Spec 35：路由规则简化为「出口数量 + condition」。多条出口时按声明顺序求 condition，
     // 空条件（null/空串）= 兜底边，引擎求值时排到最后。校验：
     //   - 至多一条兜底边（auto_multiple_default_edges）
-    //   - 兜底边应位于最后（auto_default_edge_not_last）
+    //   - 兜底边的位置不影响运行时语义：引擎会在求值时排到最后
     //   - 多条出口且无兜底边 = 可能无路可走（auto_missing_default_edge，warn）
     for (node_id, outgoing) in &outgoing_edges {
         if outgoing.len() <= 1 {
@@ -171,22 +178,14 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
             issues.push(GraphIssue {
                 severity: GraphIssueSeverity::Error,
                 code: "auto_multiple_default_edges".to_string(),
-                message: format!("节点 {} 的多条出口最多只能有一条兜底边（空 condition）", node_id),
+                message: format!(
+                    "节点 {} 的多条出口最多只能有一条兜底边（空 condition）",
+                    node_id
+                ),
                 file: Some("content/graph.json".to_string()),
                 json_path: Some("$.edges".to_string()),
                 node_id: Some(node_id.clone()),
                 edge_id: None,
-            });
-        } else if default_edges == 1 && outgoing.last().is_some_and(|(_, edge)| edge.condition.as_deref().is_some_and(|value| !value.trim().is_empty())) {
-            let (edge_index, edge) = outgoing.iter().find(|(_, edge)| edge.condition.as_deref().map(str::trim).unwrap_or("").is_empty()).unwrap();
-            issues.push(GraphIssue {
-                severity: GraphIssueSeverity::Error,
-                code: "auto_default_edge_not_last".to_string(),
-                message: format!("节点 {node_id} 的兜底出口（空 condition）必须位于最后"),
-                file: Some("content/graph.json".to_string()),
-                json_path: Some(format!("$.edges[{edge_index}]")),
-                node_id: Some(node_id.clone()),
-                edge_id: Some(edge.id.clone()),
             });
         } else if default_edges == 0 {
             issues.push(GraphIssue {
@@ -215,12 +214,12 @@ pub fn validate_graph(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<Gra
         });
     }
 
-    issues.extend(analyze_graph_routes(graph));
+    issues.extend(analyze_graph_routes(graph, nodes_data));
 
     issues
 }
 
-fn analyze_graph_routes(graph: &ProjectGraph) -> Vec<GraphIssue> {
+fn analyze_graph_routes(graph: &ProjectGraph, nodes_data: &[NodeEntry]) -> Vec<GraphIssue> {
     if graph.entry_node_id.is_empty()
         || !graph
             .nodes
@@ -235,10 +234,10 @@ fn analyze_graph_routes(graph: &ProjectGraph) -> Vec<GraphIssue> {
         .iter()
         .map(|node| node.id.clone())
         .collect::<HashSet<_>>();
-    let adjacency = build_adjacency(graph, &node_ids);
+    let adjacency = build_adjacency(graph, nodes_data, &node_ids);
     let reachable = collect_reachable_nodes(&graph.entry_node_id, &adjacency);
-    let endings = collect_ending_nodes(graph, &reachable);
-    let can_reach_ending = collect_nodes_that_can_reach_targets(graph, &endings);
+    let endings = collect_ending_nodes(graph, &reachable, &adjacency);
+    let can_reach_ending = collect_nodes_that_can_reach_targets(&adjacency, &endings);
     let cycle_nodes = detect_cycle_nodes(&adjacency, &reachable);
     let mut issues = vec![];
 
@@ -294,6 +293,7 @@ fn analyze_graph_routes(graph: &ProjectGraph) -> Vec<GraphIssue> {
 
 fn build_adjacency(
     graph: &ProjectGraph,
+    nodes_data: &[NodeEntry],
     node_ids: &HashSet<String>,
 ) -> HashMap<String, Vec<String>> {
     let mut adjacency = graph
@@ -310,7 +310,58 @@ fn build_adjacency(
             .or_default()
             .push(edge.to.clone());
     }
+    for node in &graph.nodes {
+        let Some(entry) = nodes_data.iter().find(|entry| entry.rel_path == node.file) else {
+            continue;
+        };
+        let Some(data) = &entry.data else { continue };
+        let mut choice_targets = Vec::new();
+        collect_choice_targets(data, &mut choice_targets);
+        for target in choice_targets {
+            if !node_ids.contains(&target) {
+                continue;
+            }
+            let outgoing = adjacency.entry(node.id.clone()).or_default();
+            if !outgoing.contains(&target) {
+                outgoing.push(target);
+            }
+        }
+    }
     adjacency
+}
+
+fn collect_choice_targets(value: &serde_json::Value, targets: &mut Vec<String>) {
+    let Some(instructions) = value.as_array() else {
+        return;
+    };
+    for instruction in instructions {
+        let Some(object) = instruction.as_object() else {
+            continue;
+        };
+        match object.get("t").and_then(serde_json::Value::as_str) {
+            Some("choice") => {
+                if let Some(options) = object.get("options").and_then(serde_json::Value::as_array) {
+                    for option in options {
+                        if let Some(target) = option.get("to").and_then(serde_json::Value::as_str) {
+                            targets.push(target.to_string());
+                        }
+                        if let Some(body) = option.get("body") {
+                            collect_choice_targets(body, targets);
+                        }
+                    }
+                }
+            }
+            Some("if") => {
+                if let Some(then) = object.get("then") {
+                    collect_choice_targets(then, targets);
+                }
+                if let Some(else_branch) = object.get("else") {
+                    collect_choice_targets(else_branch, targets);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn collect_reachable_nodes(
@@ -332,34 +383,35 @@ fn collect_reachable_nodes(
     reachable
 }
 
-fn collect_ending_nodes(graph: &ProjectGraph, reachable: &HashSet<String>) -> HashSet<String> {
-    let mut outgoing_counts = HashMap::<String, usize>::new();
-    for edge in &graph.edges {
-        *outgoing_counts.entry(edge.from.clone()).or_insert(0) += 1;
-    }
+fn collect_ending_nodes(
+    graph: &ProjectGraph,
+    reachable: &HashSet<String>,
+    adjacency: &HashMap<String, Vec<String>>,
+) -> HashSet<String> {
     graph
         .nodes
         .iter()
         .filter(|node| {
-            reachable.contains(&node.id) && outgoing_counts.get(&node.id).copied().unwrap_or(0) == 0
+            reachable.contains(&node.id)
+                && adjacency.get(&node.id).map(|next| next.len()).unwrap_or(0) == 0
         })
         .map(|node| node.id.clone())
         .collect()
 }
 
 fn collect_nodes_that_can_reach_targets(
-    graph: &ProjectGraph,
+    adjacency: &HashMap<String, Vec<String>>,
     targets: &HashSet<String>,
 ) -> HashSet<String> {
     let mut reverse = HashMap::<String, Vec<String>>::new();
-    for node in &graph.nodes {
-        reverse.entry(node.id.clone()).or_default();
-    }
-    for edge in &graph.edges {
-        reverse
-            .entry(edge.to.clone())
-            .or_default()
-            .push(edge.from.clone());
+    for (source, destinations) in adjacency {
+        reverse.entry(source.clone()).or_default();
+        for destination in destinations {
+            reverse
+                .entry(destination.clone())
+                .or_default()
+                .push(source.clone());
+        }
     }
 
     let mut seen = HashSet::new();

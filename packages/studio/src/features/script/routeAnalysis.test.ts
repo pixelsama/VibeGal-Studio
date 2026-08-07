@@ -107,4 +107,26 @@ describe("bounded ending route analysis", () => {
     expect(result.find((item) => item.endingId === "true_end")?.reachability).toBe("reachable");
     expect(result.find((item) => item.endingId === "bad_end")?.reachability).toBe("unreachable");
   });
+
+  it("treats choice option targets as structural routes even without graph edges", () => {
+    const manifest = { ...EMPTY_MANIFEST, unlocks: { ...EMPTY_MANIFEST.unlocks, endings: {
+      target_end: { title: "Target", nodeId: "target" },
+    } } };
+    const graph = {
+      version: 1,
+      entryNodeId: "start",
+      nodes: [
+        { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
+        { id: "target", title: "Target", file: "nodes/target.json", position: { x: 1, y: 0 } },
+      ],
+      edges: [],
+    };
+    const nodes = [
+      { relPath: "nodes/start.json", data: [{ t: "choice", id: "route", options: [{ text: "去", to: "target" }] }] },
+      { relPath: "nodes/target.json", data: [{ t: "completeEnding", id: "finish", endingId: "target_end" }] },
+    ];
+
+    expect(analyzeEndingRoutes({ graph, manifest, nodes })[0].reachability).toBe("reachable");
+    expect(collectUnregisteredTerminals(graph, manifest, nodes)).toEqual([]);
+  });
 });

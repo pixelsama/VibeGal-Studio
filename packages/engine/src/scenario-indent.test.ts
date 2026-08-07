@@ -199,6 +199,29 @@ describe("scenario indentation tree — if", () => {
     if (result.ok) return;
     expect(result.diagnostics[0]?.line).toBe(1);
   });
+
+  it("diagnoses an if-shaped bare narration instead of dropping it silently", () => {
+    const result = parseScenarioText("if 这是普通旁白");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.diagnostics[0]?.message).toContain("至少一条缩进正文");
+  });
+
+  it("reports and ignores an orphan else inside a choice option body", () => {
+    const text = [
+      "choice",
+      `${INDENT}继续`,
+      `${INDENT}${INDENT}else`,
+      `${INDENT}${INDENT}${INDENT}NPC: 不应被当作选项正文。`,
+    ].join("\n");
+
+    const result = parseScenarioText(text);
+
+    expect(result.ok).toBe(false);
+    expect(result.instructions[0]).toMatchObject({ t: "choice", options: [{ text: "继续" }] });
+    if (result.instructions[0]?.t === "choice") expect(result.instructions[0].options[0].body).toBeUndefined();
+    if (!result.ok) expect(result.diagnostics.some((diagnostic) => diagnostic.message.includes("else 必须跟在 if 之后"))).toBe(true);
+  });
 });
 
 describe("scenario indentation tree — nesting", () => {
@@ -521,6 +544,22 @@ describe("scenario indentation tree — block header location", () => {
     expect(found.startLine).toBe(4);
     expect(found.endLine).toBe(6);
     expect(found.instruction.options).toHaveLength(2);
+  });
+
+  it("accounts for implicit pauses before a block header", () => {
+    const text = [
+      "@bg room",
+      "@set resolve = 1",
+      "",
+      "choice",
+      "    继续",
+      "@continue",
+    ].join("\n");
+
+    const found = findScenarioBlockHeaderAtLine(text, 4);
+
+    expect(found?.kind).toBe("choice");
+    expect(found?.instruction.t).toBe("choice");
   });
 
   it("returns null for non-block-header lines", () => {

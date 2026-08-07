@@ -108,4 +108,49 @@ describe("variable analysis", () => {
       }),
     ]);
   });
+
+  it("counts nested choice effects as writes for route conditions", () => {
+    const nestedChoiceGraph: ProjectGraph = {
+      ...graph,
+      nodes: graph.nodes.slice(0, 3),
+      edges: [{ id: "start__mid", from: "start", to: "mid", condition: "resolve >= 4" }],
+    };
+    const nestedNodes: NodeEntry[] = [
+      {
+        relPath: "nodes/start.json",
+        data: [{ t: "choice", options: [{
+          text: "加一点",
+          effects: [{ t: "set", key: "resolve", expr: "resolve + 4" }],
+        }] }],
+      },
+      { relPath: "nodes/mid.json", data: [] },
+      { relPath: "nodes/ending.json", data: [] },
+    ];
+
+    const entry = analyzeGraphVariables(nestedChoiceGraph, nestedNodes)
+      .variables.find((variable) => variable.name === "resolve");
+    expect(entry?.writes).toHaveLength(1);
+    expect(entry?.issues.map((issue) => issue.code)).not.toContain("read_before_write");
+  });
+
+  it("counts choice targets as reachable nodes in route coverage", () => {
+    const choiceGraph: ProjectGraph = {
+      version: 1,
+      entryNodeId: "start",
+      nodes: [
+        { id: "start", title: "Start", file: "nodes/start.json", position: { x: 0, y: 0 } },
+        { id: "target", title: "Target", file: "nodes/target.json", position: { x: 1, y: 0 } },
+      ],
+      edges: [],
+    };
+    const nodes: NodeEntry[] = [
+      { relPath: "nodes/start.json", data: [{ t: "choice", options: [{ text: "去", to: "target" }] }] },
+      { relPath: "nodes/target.json", data: [] },
+    ];
+
+    expect(buildRouteCoverage(choiceGraph, nodes)).toMatchObject({
+      reachableNodes: 2,
+      endingNodes: 1,
+    });
+  });
 });

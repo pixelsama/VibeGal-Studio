@@ -52,18 +52,22 @@ export function analyzeGraphVariables(
   for (const entry of nodeEntries ?? []) {
     const node = nodesByFile.get(entry.relPath);
     if (!node || !Array.isArray(entry.data)) continue;
-    entry.data.forEach((instruction, instructionIndex) => {
-      const obj = typeof instruction === "object" && instruction != null ? instruction as Record<string, unknown> : null;
-      if (!obj || obj.t !== "set" || typeof obj.key !== "string") return;
-      const slot = ensureVariable(variableMap, obj.key);
-      slot.types.add(inferVariableValueType(obj.value));
-      slot.writes.push({
-        nodeId: node.id,
-        file: `content/${node.file}`,
-        jsonPath: `$[${instructionIndex}].value`,
-        instructionIndex,
-        preview: `set ${obj.key}`,
-      });
+    visitInstructionTree(entry.data as Instruction[], (instruction, jsonPath, instructionIndex) => {
+      if (instruction.t === "set" && typeof instruction.key === "string") {
+        const slot = ensureVariable(variableMap, instruction.key);
+        slot.types.add(inferVariableValueType("value" in instruction ? instruction.value : undefined));
+        slot.writes.push({
+          nodeId: node.id,
+          file: `content/${node.file}`,
+          jsonPath: `${jsonPath}.value`,
+          instructionIndex,
+          preview: `set ${instruction.key}`,
+        });
+        if (instruction.expr) collectInstructionExpressionReads(instruction.expr, node, instructionIndex, jsonPath, variableMap);
+      }
+      if (instruction.t === "if") {
+        collectInstructionExpressionReads(instruction.condition, node, instructionIndex, jsonPath, variableMap);
+      }
     });
   }
 
@@ -127,6 +131,49 @@ export function analyzeGraphVariables(
   return { variables, parseIssues };
 }
 
+function visitInstructionTree(
+  instructions: Instruction[],
+  visit: (instruction: Instruction, jsonPath: string, instructionIndex: number) => void,
+  path = "$",
+  rootIndex?: number,
+) {
+  instructions.forEach((instruction, index) => {
+    const jsonPath = `${path}[${index}]`;
+    const instructionIndex = rootIndex ?? index;
+    visit(instruction, jsonPath, instructionIndex);
+    if (instruction.t === "if") {
+      visitInstructionTree(instruction.then, visit, `${jsonPath}.then`, instructionIndex);
+      if (instruction.else) visitInstructionTree(instruction.else, visit, `${jsonPath}.else`, instructionIndex);
+    } else if (instruction.t === "choice") {
+      instruction.options.forEach((option, optionIndex) => {
+        if (option.effects) visitInstructionTree(option.effects, visit, `${jsonPath}.options[${optionIndex}].effects`, instructionIndex);
+        if (option.body) visitInstructionTree(option.body, visit, `${jsonPath}.options[${optionIndex}].body`, instructionIndex);
+      });
+    }
+  });
+}
+
+function collectInstructionExpressionReads(
+  source: string,
+  node: ProjectGraph["nodes"][number],
+  instructionIndex: number,
+  jsonPath: string,
+  variableMap: Map<string, { types: Set<VariableValueType>; writes: VariableUsagePoint[]; reads: VariableUsagePoint[] }>,
+) {
+  const parsed = parseGraphCondition(source);
+  if (!parsed.ok) return;
+  collectConditionVariables(parsed.ast).forEach((name) => {
+    const slot = ensureVariable(variableMap, name);
+    slot.reads.push({
+      nodeId: node.id,
+      file: `content/${node.file}`,
+      jsonPath,
+      instructionIndex,
+      preview: source,
+    });
+  });
+}
+
 function ensureVariable(
   variableMap: Map<string, { types: Set<VariableValueType>; writes: VariableUsagePoint[]; reads: VariableUsagePoint[] }>,
   name: string,
@@ -175,7 +222,7 @@ export interface AutoBranchCoverage {
 }
 
 export function buildRouteCoverage(graph: ProjectGraph, nodes?: NodeEntry[]): RouteCoverageSummary {
-  const reachable = collectReachableNodeIds(graph);
+  const reachable = collectReachableNodeIds(graph, nodes);
   const outgoingCounts = new Map<string, number>();
   const incomingCounts = new Map<string, number>();
   const outgoingByNode = new Map<string, ProjectGraph["edges"]>();
@@ -185,6 +232,21 @@ export function buildRouteCoverage(graph: ProjectGraph, nodes?: NodeEntry[]): Ro
     incomingCounts.set(edge.to, (incomingCounts.get(edge.to) ?? 0) + 1);
     outgoingByNode.get(edge.from)?.push(edge);
   });
+  const choiceOptionEdges = collectChoiceOptionEdges(graph, nodes);
+  for (const choiceEdge of choiceOptionEdges) {
+    // A choice option may already have a matching graph edge. That edge is
+    // already represented in the structural counts; only add a synthetic
+    // adjacency entry when the graph intentionally omits it.
+    if (!choiceEdge.synthetic) continue;
+    outgoingCounts.set(choiceEdge.fromNodeId, (outgoingCounts.get(choiceEdge.fromNodeId) ?? 0) + 1);
+    incomingCounts.set(choiceEdge.toNodeId, (incomingCounts.get(choiceEdge.toNodeId) ?? 0) + 1);
+    outgoingByNode.get(choiceEdge.fromNodeId)?.push({
+      id: choiceEdge.edgeId,
+      from: choiceEdge.fromNodeId,
+      to: choiceEdge.toNodeId,
+      condition: null,
+    });
+  }
   const endingNodeIds = graph.nodes
     .filter((node) => reachable.has(node.id) && (outgoingCounts.get(node.id) ?? 0) === 0)
     .map((node) => node.id)
@@ -196,7 +258,6 @@ export function buildRouteCoverage(graph: ProjectGraph, nodes?: NodeEntry[]): Ro
 
   // Spec 35 Phase 3：choiceBranches 从节点 choice 指令的 options 派生，
   // autoBranches = 多出口且无 choice 指令的节点的 outgoing edges。
-  const choiceOptionEdges = collectChoiceOptionEdges(graph, nodes);
   const choiceNodeEdges = new Set(choiceOptionEdges.map((e) => e.edgeId));
   return {
     totalNodes: graph.nodes.length,
@@ -233,12 +294,12 @@ export function buildRouteCoverage(graph: ProjectGraph, nodes?: NodeEntry[]): Ro
 
 /** 从节点 choice 指令的 options 收集 choice 分支信息（用于 RouteCoverage）。 */
 function collectChoiceOptionEdges(graph: ProjectGraph, nodes?: NodeEntry[]): Array<{
-  edgeId: string; fromNodeId: string; toNodeId: string; label: string;
+  edgeId: string; fromNodeId: string; toNodeId: string; label: string; synthetic: boolean;
 }> {
   if (!nodes) return [];
   const nodeByFile = new Map(graph.nodes.map((node) => [node.file, node.id]));
   const nodeTitle = new Map(graph.nodes.map((node) => [node.id, node.title || node.id]));
-  const results: Array<{ edgeId: string; fromNodeId: string; toNodeId: string; label: string }> = [];
+  const results: Array<{ edgeId: string; fromNodeId: string; toNodeId: string; label: string; synthetic: boolean }> = [];
   for (const entry of nodes) {
     const nodeId = nodeByFile.get(entry.relPath);
     if (!nodeId || !Array.isArray(entry.data)) continue;
@@ -252,6 +313,7 @@ function collectChoiceOptionEdges(graph: ProjectGraph, nodes?: NodeEntry[]): Arr
           fromNodeId: nodeId,
           toNodeId: option.to,
           label: option.text || nodeTitle.get(option.to) || option.to,
+          synthetic: !edge,
         });
       });
     }
@@ -312,11 +374,20 @@ function classifyAutoCondition(condition: string | null | undefined): AutoBranch
   return "unknown";
 }
 
-function collectReachableNodeIds(graph: ProjectGraph): Set<string> {
+function collectReachableNodeIds(graph: ProjectGraph, nodes?: NodeEntry[]): Set<string> {
   if (!graph.entryNodeId || !graph.nodes.some((node) => node.id === graph.entryNodeId)) return new Set();
   const adjacency = new Map<string, string[]>();
   graph.nodes.forEach((node) => adjacency.set(node.id, []));
   graph.edges.forEach((edge) => adjacency.get(edge.from)?.push(edge.to));
+  for (const entry of nodes ?? []) {
+    const node = graph.nodes.find((candidate) => candidate.file === entry.relPath);
+    if (!node || !Array.isArray(entry.data)) continue;
+    for (const choice of collectChoiceInstructions(entry.data as Instruction[])) {
+      for (const option of choice.options) {
+        if (option.to) adjacency.get(node.id)?.push(option.to);
+      }
+    }
+  }
   const seen = new Set<string>();
   const stack = [graph.entryNodeId];
   while (stack.length > 0) {

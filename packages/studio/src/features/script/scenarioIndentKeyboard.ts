@@ -5,7 +5,7 @@
  * - 在 choice / if 块头行末按回车 → 新行缩进 = 块头 + 1（进入子级）。
  * - 在 option 标题行末按回车 → 新行缩进 = option + 1（进入 option body）。
  * - 在 body / then / else 行末按回车 → 新行保持同一缩进。
- * - 在块内空行按退格 → 先缩进 -1；已是最外层时退成普通空行。
+ * - 在块内空行按退格 → 退出当前块并回到顶层缩进。
  * - Tab / Shift+Tab → 当前行缩进 ±1。
  *
  * 这里只算「应该插入的缩进」，文本 splice 与光标定位由调用方完成。
@@ -121,16 +121,19 @@ export function planEnterIndent(text: string, cursorOffset: number): string {
 }
 
 /**
- * 退格在行首（列 0，即光标在缩进起点或行最左）按下时，决定是否减少缩进。
- * 返回 true 表示应拦截原生退格并改为减少缩进。
+ * 退格在空行缩进区域按下时，决定是否退出当前块。
+ * 返回 true 表示应拦截原生退格并退出当前块。
  */
 export function shouldDedentOnBackspace(text: string, cursorOffset: number): boolean {
   const { line: lineIndex, column } = locateCursor(text, cursorOffset);
-  if (column !== 0) return false;
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const currentRaw = lines[lineIndex] ?? "";
-  // 行首退格且当前行有缩进 → 减少缩进（而非合并到上一行）。
-  return indentWidth(currentRaw) > 0 && currentRaw.trim().length === 0;
+  const currentIndent = indentWidth(currentRaw);
+  // Enter 后光标通常位于自动插入的缩进末尾，而不是 column 0；两者都应
+  // 被识别为块内空行退格，避免编辑器把退格交给原生行为合并上一行。
+  return currentIndent > 0
+    && currentRaw.trim().length === 0
+    && column <= currentIndent;
 }
 
 /** Tab / Shift+Tab 时计算目标缩进宽度（相对于当前行）。 */
@@ -168,14 +171,12 @@ export function applyEnter(text: string, cursorOffset: number): IndentEdit {
   return { text: next, cursorOffset: cursorOffset + 1 + indent.length };
 }
 
-/** 退格：若在缩进空行行首，减少一级缩进；否则返回原文本（交由原生处理）。 */
+/** 退格：若在缩进空行的缩进区域，回到顶层；否则返回原文本（交由原生处理）。 */
 export function applyBackspace(text: string, cursorOffset: number): IndentEdit | null {
   if (!shouldDedentOnBackspace(text, cursorOffset)) return null;
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const { line: lineIndex } = locateCursor(text, cursorOffset);
-  const raw = lines[lineIndex] ?? "";
-  const width = Math.max(0, indentWidth(raw) - 4);
-  lines[lineIndex] = indentPrefix(width);
+  lines[lineIndex] = "";
   const next = lines.join("\n");
   // 光标定位到该行行首。
   const cursor = lineStartOffset(next, lineIndex);

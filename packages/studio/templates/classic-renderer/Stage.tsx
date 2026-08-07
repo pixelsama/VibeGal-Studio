@@ -618,13 +618,14 @@ export function Stage({ state, manifest, meta, contentBase, controls, runtime }:
         >
           {state.choice.choices.map((choice) => (
             <button
-              key={`${choice.text}:${choice.to}`}
+              key={`${choice.text}:${choice.to ?? ""}:${choice.optionIndex ?? ""}`}
               type="button"
               data-choice-to={choice.to}
+              data-choice-index={choice.optionIndex}
               disabled={busy || menuPage != null || confirmAction != null}
               onClick={() => {
-                setChoiceHint(`将跳转到 ${choice.to}`);
-                controls.choose(choice.to);
+                setChoiceHint(choice.to ? `将跳转到 ${choice.to}` : "选择已记录，继续剧情");
+                controls.choose(choice.to, choice.optionIndex);
               }}
               style={choiceButtonStyle(uiTokens.choiceButton)}
             >

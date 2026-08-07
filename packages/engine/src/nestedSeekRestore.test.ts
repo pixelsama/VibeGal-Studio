@@ -31,7 +31,7 @@ const graph: ProjectGraphData = {
 
 const variables: VariableRegistry = {
   version: 1,
-  variables: { affection: { scope: "run", type: "number", min: 0, max: 100 } },
+  variables: { affection: { scope: "run", type: "number", default: 0, min: 0, max: 1000 } },
 };
 
 describe("seekToInstruction into nested if-branches (Phase 4)", () => {
@@ -139,6 +139,86 @@ describe("seekToInstruction into nested if-branches (Phase 4)", () => {
     // affection 应反映 choice 选项的 effects + body 重放（0 + 4 + 1 = 5）。
     expect(player.state.vars.affection).toBe(5);
     player.dispose();
+  });
+
+  it("does not apply relative writes twice when restoring or rolling back", () => {
+    const instructions = [
+      { t: "set", key: "affection", expr: "affection + 10" },
+      { t: "narrate", id: "mid_relative", text: "中间停点。" },
+      { t: "set", key: "affection", expr: "affection + 100" },
+    ] as const;
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(graph, [{ id: "start", instructions: [...instructions] }]);
+
+    player.advance();
+    expect(player.state.vars.affection).toBe(10);
+    const snapshot = player.createSnapshot();
+    expect(snapshot.currentStoryPoint).toEqual({ nodeId: "start", instructionId: "mid_relative" });
+
+    const restored = new GraphNovelPlayer({ manifest, meta, variables });
+    restored.loadGraph(graph, [{ id: "start", instructions: [...instructions] }]);
+    expect(restored.restoreSnapshot(snapshot).warnings).toEqual([]);
+    expect(restored.state.vars.affection).toBe(10);
+
+    player.advance();
+    player.advance();
+    expect(player.state.vars.affection).toBe(110);
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "mid_relative" });
+    expect(player.state.vars.affection).toBe(10);
+
+    player.dispose();
+    restored.dispose();
+  });
+
+  it("does not replay nested branch instructions twice or include future writes", () => {
+    const instructions = [
+      { t: "if", condition: "true", then: [
+        { t: "set", key: "affection", expr: "affection + 10" },
+        { t: "if", condition: "true", then: [
+          { t: "set", key: "affection", expr: "affection + 80" },
+          { t: "narrate", id: "nested_target", text: "嵌套停点。" },
+        ] },
+      ] },
+      { t: "set", key: "affection", expr: "affection + 100" },
+    ] as const;
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(graph, [{ id: "start", instructions: [...instructions] }]);
+
+    player.advance();
+    expect(player.state.vars.affection).toBe(90);
+    player.advance();
+    player.advance();
+    expect(player.state.vars.affection).toBe(190);
+
+    player.jumpToStoryPoint({ nodeId: "start", instructionId: "nested_target" });
+    expect(player.state.vars.affection).toBe(90);
+
+    player.dispose();
+  });
+
+  it("restores a choice checkpoint with the options still present", () => {
+    const choiceInstructions = [{
+      t: "set", key: "affection", value: 3,
+    }, {
+      t: "choice", id: "restore_choice", options: [
+        { text: "A" },
+        { text: "B" },
+      ],
+    }] as const;
+    const player = new GraphNovelPlayer({ manifest, meta, variables });
+    player.loadGraph(graph, [{ id: "start", instructions: [...choiceInstructions] }]);
+    while (!player.state.choice) player.advance();
+    const snapshot = player.createSnapshot();
+
+    const restored = new GraphNovelPlayer({ manifest, meta, variables });
+    restored.loadGraph(graph, [{ id: "start", instructions: [...choiceInstructions] }]);
+    expect(restored.restoreSnapshot(snapshot).warnings).toEqual([]);
+    expect(restored.getCurrentStoryPoint()).toEqual({ nodeId: "start", instructionId: "restore_choice" });
+    expect(restored.state.choice?.choices.map((choice) => choice.text)).toEqual(["A", "B"]);
+    expect(restored.state.vars.affection).toBe(3);
+
+    player.dispose();
+    restored.dispose();
   });
 });
 

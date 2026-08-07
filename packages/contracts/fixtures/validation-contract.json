@@ -24,7 +24,7 @@
           { "text": "冲过去", "effects": [{ "t": "set", "key": "resolve", "expr": "resolve + 1" }], "body": [{ "t": "narrate", "id": "branch-1-a", "text": "你冲了过去。" }] },
           { "text": "等等看", "to": "wait_node" }
         ] },
-        { "t": "if", "condition": "resolve >= 3", "then": [{ "t": "narrate", "id": "branch-1-cond", "text": "决心足够。" }], "else": [{ "t": "narrate", "text": "再想想。" }] }
+        { "t": "if", "condition": "resolve >= 3", "then": [{ "t": "narrate", "id": "branch-1-cond", "text": "决心足够。" }], "else": [{ "t": "narrate", "id": "branch-1-else", "text": "再想想。" }] }
       ],
       "issues": []
     },

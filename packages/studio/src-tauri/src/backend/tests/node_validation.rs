@@ -42,7 +42,7 @@ fn validate_node_contents_accepts_choice_and_if_instructions() {
             { "t": "choice", "id": "branch", "options": [
                 { "text": "留下", "to": "stay", "effects": [{ "t": "set", "key": "route", "value": "stay" }] }
             ] },
-            { "t": "if", "condition": "route == \"stay\"", "then": [{ "t": "narrate", "text": "留下。" }] }
+            { "t": "if", "condition": "route == \"stay\"", "then": [{ "t": "narrate", "id": "stay_reaction", "text": "留下。" }] }
         ]),
     )];
 
@@ -378,6 +378,33 @@ fn validate_node_contents_rejects_duplicate_story_point_ids() {
     assert_eq!(issues[0].code, "instruction_id_duplicate");
     assert_eq!(issues[0].severity, GraphIssueSeverity::Error);
     assert_eq!(issues[0].json_path.as_deref(), Some("$[1].id"));
+}
+
+#[test]
+fn validate_node_contents_checks_nested_references_and_story_point_ids() {
+    let graph = one_node_graph();
+    let nodes = vec![node_entry(
+        "nodes/start.json",
+        serde_json::json!([
+            { "t": "if", "condition": "true", "then": [
+                { "t": "say", "id": "same", "who": "ghost", "text": "缺失角色" },
+                { "t": "choice", "id": "nested", "options": [
+                    { "text": "继续", "body": [{ "t": "narrate", "id": "same", "text": "重复停点" }] }
+                ] }
+            ] }
+        ]),
+    )];
+
+    let issues = validate_node_contents(&graph, &nodes, &manifest_with_refs());
+
+    assert!(issues
+        .iter()
+        .any(|issue| issue.code == "missing_character_ref"
+            && issue.json_path.as_deref() == Some("$[0].then[0].who")));
+    assert!(issues
+        .iter()
+        .any(|issue| issue.code == "instruction_id_duplicate"
+            && issue.json_path.as_deref() == Some("$[0].then[1].options[0].body[0].id")));
 }
 
 #[test]
